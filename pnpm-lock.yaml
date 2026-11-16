@@ -78,6 +78,18 @@ importers:
         specifier: workspace:*
         version: link:../protocol
 
+  packages/agent-grok-acp:
+    dependencies:
+      '@ormicode/agent-core':
+        specifier: workspace:*
+        version: link:../agent-core
+      '@ormicode/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+
   packages/protocol:
     dependencies:
       zod:

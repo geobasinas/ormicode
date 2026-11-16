@@ -988,9 +988,11 @@ The experimental opt-in bridge binds to loopback, uses a random per-turn bearer 
 - No approvals and no sandbox — tools run with pi's own permissions. Sessions are JSONL trees in `~/.pi/agent/sessions/`; a killed process loses nothing written.
 
 **Grok**
-- **CLI flags:** `-p`, `-m`, `-s` (named session), `-r` (resume), `-c` (continue), `--cwd`, `--output-format plain|json|streaming-json`, `--always-approve`, `--no-alt-screen`, `--no-auto-update` (use on long runs). Sessions in `~/.grok/sessions`.
+- **CLI flags:** `-p`, `-m`, `-s` (create a named session), `-r` (resume), `-c` (continue), `--cwd`, `--output-format plain|json|streaming-json`, `--always-approve`, `--no-alt-screen`, `--no-auto-update` (use on long runs). Sessions in `~/.grok/sessions`. Use `-r` to resume rather than reusing `-s`.
 - Permission modes: default ask, `acceptEdits`, `auto`, `dontAsk`, `bypassPermissions`, plus allow/ask/deny rules and hooks. Sandbox profiles `off`, `workspace`, `devbox`, `read-only`, `strict` (child-network blocking Linux-only).
 - **ACP** (`grok agent stdio`): protocol v1, `loadSession`, images, MCP http/sse, session list/resume/close. `session/new` returns models with efforts and `configOptions` for `model` and `reasoning_effort`. Permissions via `session/request_permission`; `_meta.yoloMode` accepted.
+
+**Current Grok implementation status:** `agent-grok-acp` owns its Grok ACP connection and adapter directly; it does not depend on a shared ACP agent package. It starts or loads sessions, streams text and tool updates, and can send cancellation. Permission requests are cancelled until approval routing is implemented, and capabilities remain disabled until verified. The launcher does not enable automatic approvals, but Grok's own configuration can affect its permissions and sandbox. A live text turn passed with Grok 1.0.77 on Windows/Node 24; live tool calls, permission decisions, cancellation, resumption and Linux/Node 26 still need verification. The Grok CLI adapter has not been implemented.
 
 **Vibe** (no SDK)
 - **CLI:** `vibe --prompt`, `--output text|json|streaming`, `--resume`, `--model` (new sessions), `--agent`, `--auto-approve`, `--worktree`, limits, `--output-dir`. Denies approval-needing calls unless auto-approve, so approvals = false.
@@ -1008,7 +1010,7 @@ The experimental opt-in bridge binds to loopback, uses a random per-turn bearer 
 
 **Used for the native ACP transports of OpenCode, Grok and Vibe, and for any third-party agent. Never for Claude, Codex or pi, which have no native ACP.**
 
-**Versions:** one package `agent-acp`, two profiles.
+**Versions:** Grok's ACP implementation currently lives in `agent-grok-acp`; do not introduce a shared ACP agent package until the owner requests it. The following version profiles are the intended ACP behavior for future transports.
 - Send `initialize` with `protocolVersion: 2`. Answer 2 → use v2. Answer 1 → keep the same connection and switch to v1 (never send `initialize` twice, never reconnect). v2 can also fail with `-32022` and a `supported` list.
 - v2 is still a draft (first published 2026-07-20; schemas ship as `v2.0.0-alpha.N` beside v1). v1 ships first and stays forever; v2 sits behind negotiation and a flag. Pin the alpha schema you test against ([v2 draft](https://agentclientprotocol.com/announcements/acp-v2-draft), [migration guide](https://agentclientprotocol.com/protocol/v2/migration)).
 - **v2 gotcha:** a successful `session/prompt` response only means the message was accepted, not that the turn finished. End the turn from the `state_update` stream, never from the prompt response.
