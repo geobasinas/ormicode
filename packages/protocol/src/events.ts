@@ -34,6 +34,7 @@ export const eventBodies = {
   thinking_delta: z.looseObject({ kind: z.literal('thinking_delta'), text }),
 } as const;
 export type ImplementedEvent = keyof typeof eventBodies;
+export type AgentEvent = z.infer<(typeof eventBodies)[ImplementedEvent]>;
 
 /** Validate only explicitly supported event bodies; unknown kinds are not accepted. */
 export function parseEventBody(body: unknown) {

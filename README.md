@@ -430,7 +430,7 @@ If a worker loses the supervisor it stops (no unbounded buffering).
 | `awaiting_approval` | Waiting on a decision |
 | `awaiting_input` | Agent asked a question |
 | `retrying` | Retrying after a rate limit (attempt shown) |
-| `paused_rate_limited` | 5 tries failed; resumes at the reset time |
+| `paused_rate_limited` | Initial call and 5 retries failed; resumes at the reset time |
 | `interrupted` | Process died mid-turn |
 | `failed` | Fatal error, kept for inspection |
 | `done` | Agent says it's finished |
@@ -891,7 +891,7 @@ export interface AgentAdapter {
   models(): Promise<ModelList>;
 
   start(spec: StartSpec): Promise<Handle>;
-  resume(ref: NativeRef): Promise<Handle>;
+  resume?(ref: NativeRef): Promise<Handle>;
   prompt(h: Handle, input: PromptInput): Promise<void>;
   steer?(h: Handle, input: PromptInput): Promise<void>;
   setModel?(h: Handle, model: string): Promise<void>;
@@ -919,7 +919,9 @@ Optional methods = optional features. No `steer` means the client queues instead
 - **Retries** are events: `rate_limited` (attempt) then `retry_scheduled` (delay). Structured limits map by subtype, never message text: budget cap → `plan_limit`; turn cap, refusal, interrupted loop → `unknown`. A denial the agent made without asking → `permission_denied` (never a fake approval).
 - **Error codes:** `rate_limited`, `plan_limit`, `auth`, `context_exceeded`, `binary_missing`, `crashed`, `overloaded`, `unknown`. Retry logic uses these, never strings.
 
-**Retry:** `agent-core` owns it — 5 attempts, backoff 2/4/8/16/32 s, honouring `retry-after`. Then `paused_rate_limited` until the reset ([Rate limits](#rate-limits)).
+**Retry:** `agent-core` owns it — one initial call and up to 5 retries, with backoff 2/4/8/16/32 s, honouring `retry-after`. Then `paused_rate_limited` until the reset ([Rate limits](#rate-limits)). Retry only operations the adapter can repeat without duplicating effects. The daemon owns scheduling a later resume; the core retry helper returns a paused result instead of starting a background timer.
+
+**Current agent-core:** the package provides the adapter interface, capability checks, structured errors, cancellable rate-limit retry, a recorded-turn validator and an in-memory fake adapter. The fake echoes one text turn, uses a bounded single-consumer event queue, and supports no resume or approvals; it is for tests, not a real provider. The validator checks registered event schemas, ordering, tool-call pairing and approval decisions for a completed turn; it is not proof that a vendor adapter works. Real adapter behavior, provider detection and fixtures still need to be implemented per transport.
 
 **Raw logs:** each worker saves the agent's stderr/stdout ([Raw logs](#raw-logs)).
 
@@ -1250,8 +1252,8 @@ No approval from the agent = none shown. Before starting a transport without app
 - **Plan limits:** your subscription window is used up (Claude's 5-hour/weekly, Codex, Mistral). Retrying doesn't help.
 
 **Policy**
-- 5 attempts, backoff 2/4/8/16/32 s (or `retry-after` if longer). State `retrying` with the attempt count.
-- All 5 fail → `paused_rate_limited`: worker stays alive, turn unfinished, badge shows the reason and reset time.
+- One initial call and up to 5 retries, backoff 2/4/8/16/32 s (or `retry-after` if longer). State `retrying` with the retry number.
+- If the initial call and all 5 retries fail → `paused_rate_limited`: worker stays alive, turn unfinished, badge shows the reason and reset time.
 - **Resumes on its own** at the reset time; if none was given, one try every 15 minutes. Continues the turn where it stopped. You can also resume or cancel by hand.
 - Never switches model silently — the paused session offers a "switch model" button.
 

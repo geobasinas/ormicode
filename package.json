@@ -8,7 +8,7 @@
   },
   "scripts": {
     "check": "tsc -p tsconfig.json && node scripts/check-rules.mjs",
-    "test": "node --test scripts/*.test.mjs packages/protocol/test/*.test.mjs"
+    "test": "node --test scripts/*.test.mjs packages/protocol/test/*.test.mjs packages/agent-core/test/*.test.mjs"
   },
   "devDependencies": {
     "typescript": "7.0.2"
