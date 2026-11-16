@@ -34,3 +34,20 @@ test('Grok mapper preserves tool pairing and rejects other sessions', () => {
  assert.throws(() => mapper.update({ sessionId: 'other', update: { sessionUpdate: 'plan' } }), /session ID/);
 });
 
+test('ACP forwards an explicit denial through the live RPC flow', async () => {
+ const adapter = new GrokAcpAdapter({ spawn: fake });
+ const handle = await adapter.start({ cwd: process.cwd() });
+ try {
+  const stream = adapter.events(handle);
+  await adapter.prompt(handle, { text: 'approval-test' });
+  const events = [];
+  for await (const event of stream) {
+   events.push(event);
+   if (event.kind === 'approval_request') await adapter.approve(handle, event.request, 'deny');
+   if (event.kind === 'turn_end' || event.kind === 'interrupted') break;
+  }
+  assert.equal(events.at(-1).kind, 'turn_end');
+  assert.ok(events.some(event => event.kind === 'approval_decision' && event.option === 'deny'));
+ } finally { await adapter.dispose(handle); }
+});
+

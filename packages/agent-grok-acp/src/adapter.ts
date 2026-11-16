@@ -5,13 +5,14 @@ import { EventQueue, NO_CAPABILITIES } from '@ormicode/agent-core';
 import type { AgentAdapter, Handle, NativeRef, PromptInput, StartSpec } from '@ormicode/agent-core';
 import { AcpConnection } from './connection.ts';
 import { GrokTurnMapper } from './map.ts';
+import { GrokPermissionBroker } from './permissions.ts';
 import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from 'node:child_process';
 
 type Spawn = (command: string, args: string[], options: SpawnOptionsWithoutStdio) => ChildProcessWithoutNullStreams;
-type Session = { connection: AcpConnection; nativeId: string; queue: EventQueue; active: boolean; disposed: boolean; needsRecovery: boolean; mapper?: GrokTurnMapper; running?: Promise<void>; cancelRequested: boolean };
+type Session = { connection: AcpConnection; nativeId: string; queue: EventQueue; broker: GrokPermissionBroker; active: boolean; disposed: boolean; needsRecovery: boolean; mapper?: GrokTurnMapper; running?: Promise<void>; cancelRequested: boolean };
 const execFileAsync = promisify(execFile);
 
-/** Grok ACP adapter. Permissions are cancelled until approval routing is available. */
+/** Grok ACP adapter. Permission choices are forwarded without changing their scope. */
 export class GrokAcpAdapter implements AgentAdapter {
   readonly id = 'grok';
   readonly transport = 'acp' as const;
@@ -40,12 +41,13 @@ export class GrokAcpAdapter implements AgentAdapter {
     let session: Session | undefined;
     const connection = await AcpConnection.start({ executable: this.options.executable ?? 'grok', args: ['--no-auto-update', 'agent', 'stdio'], cwd, spawn: this.options.spawn, onNotification: (method, params) => {
       if (method === 'session/update' && session?.active && session.mapper) session.queue.push(session.mapper.update(params));
-    } });
+    }, onRequest: (_method, params) => session?.active ? session.broker.request(params, session.nativeId) : Promise.resolve({ outcome: { outcome: 'cancelled' } }) });
     try {
       const nativeId = existingId ?? await connection.newSession(cwd);
       if (existingId) await connection.loadSession(existingId, cwd);
       const handle = Object.freeze({ id: `grok-acp-${randomUUID()}` });
-      session = { connection, nativeId, queue: new EventQueue(), active: false, disposed: false, needsRecovery: false, cancelRequested: false };
+      const queue = new EventQueue();
+      session = { connection, nativeId, queue, broker: new GrokPermissionBroker(event => queue.push([event])), active: false, disposed: false, needsRecovery: false, cancelRequested: false };
       this.options.onNativeId?.(handle, nativeId);
       this.sessions.set(handle, session);
       return handle;
@@ -73,10 +75,11 @@ export class GrokAcpAdapter implements AgentAdapter {
     } catch (error) {
       session.needsRecovery = true;
       if (!session.disposed) {
-        try { session.queue.push([{ kind: 'interrupted', reason: 'grok_acp_error' }, { kind: 'error', code: 'unknown', message: error instanceof Error ? error.message : 'Grok ACP failed' }]); }
+        try { session.queue.push([{ kind: 'error', code: 'unknown', message: error instanceof Error ? error.message : 'Grok ACP failed' }, { kind: 'interrupted', reason: 'grok_acp_error' }]); }
         catch { session.queue.close(); }
       }
     } finally {
+      session.broker.expireAll('turn_finished');
       session.active = false; session.mapper = undefined;
       if (completed && !session.disposed) { try { session.queue.push([{ kind: 'turn_end' }]); } catch { session.queue.close(); } }
     }
@@ -84,12 +87,13 @@ export class GrokAcpAdapter implements AgentAdapter {
   async interrupt(handle: Handle): Promise<void> {
     const session = this.get(handle);
     if (!session.active) throw new Error('Grok session has no active turn');
-    session.cancelRequested = true; session.connection.cancel(session.nativeId);
+    session.cancelRequested = true; session.broker.expireAll('cancelled'); session.connection.cancel(session.nativeId);
   }
+  async approve(handle: Handle, requestId: string, optionId: string): Promise<void> { this.get(handle).broker.decide(requestId, optionId); }
   events(handle: Handle) { return this.get(handle).queue.subscribe(); }
   async dispose(handle: Handle): Promise<void> {
     const session = this.sessions.get(handle); if (!session) return;
-    session.disposed = true; session.connection.close(); await session.running; session.queue.close(); this.sessions.delete(handle);
+    session.disposed = true; session.broker.expireAll('disposed'); session.connection.close(); await session.running; session.queue.close(); this.sessions.delete(handle);
   }
   private get(handle: Handle): Session {
     const session = this.sessions.get(handle);

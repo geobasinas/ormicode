@@ -4,7 +4,7 @@ import { parseEventBody } from '@ormicode/protocol';
 
 const envelope = z.looseObject({ sessionId: z.string(), update: z.looseObject({ sessionUpdate: z.string() }) });
 const chunk = z.looseObject({ content: z.looseObject({ type: z.string(), text: z.optional(z.string()) }) });
-const tool = z.looseObject({ toolCallId: z.string().check(z.minLength(1)), title: z.optional(z.string()), status: z.optional(z.string()), rawInput: z.optional(z.json()), rawOutput: z.optional(z.json()) });
+const tool = z.looseObject({ toolCallId: z.string().check(z.minLength(1)), title: z.optional(z.nullable(z.string())), status: z.optional(z.nullable(z.string())), rawInput: z.optional(z.json()), rawOutput: z.optional(z.json()) });
 
 /** Maps one Grok turn, retaining text and tool state until the prompt ends. */
 export class GrokTurnMapper {

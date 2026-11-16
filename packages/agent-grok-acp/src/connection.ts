@@ -17,20 +17,21 @@ const limit = 1024 * 1024;
 export class AcpConnection {
   private readonly child: ChildProcessWithoutNullStreams;
   private readonly onNotification?: (method: string, params: unknown) => void;
+  private readonly onRequest?: (method: string, params: unknown) => Promise<unknown>;
   private readonly pending = new Map<string | number, Pending>();
   private nextId = 0;
   private closed = false;
-  private constructor(child: ChildProcessWithoutNullStreams, onNotification?: (method: string, params: unknown) => void) {
-    this.child = child; this.onNotification = onNotification;
+  private constructor(child: ChildProcessWithoutNullStreams, onNotification?: (method: string, params: unknown) => void, onRequest?: (method: string, params: unknown) => Promise<unknown>) {
+    this.child = child; this.onNotification = onNotification; this.onRequest = onRequest;
     child.stderr.resume();
     child.stdin.on('error', () => this.close('ACP input failed'));
     child.once('error', () => this.close('ACP process failed'));
     child.once('close', () => this.close('ACP process closed'));
     void this.read();
   }
-  static async start(options: { executable: string; args: string[]; cwd?: string; spawn?: Spawn; onNotification?: (method: string, params: unknown) => void }): Promise<AcpConnection> {
+  static async start(options: { executable: string; args: string[]; cwd?: string; spawn?: Spawn; onNotification?: (method: string, params: unknown) => void; onRequest?: (method: string, params: unknown) => Promise<unknown> }): Promise<AcpConnection> {
     const child = (options.spawn ?? spawn)(options.executable, options.args, { cwd: options.cwd, windowsHide: true, shell: false });
-    const connection = new AcpConnection(child, options.onNotification);
+    const connection = new AcpConnection(child, options.onNotification, options.onRequest);
     try {
       const result = await connection.request('initialize', { protocolVersion: 1, clientCapabilities: {}, clientInfo: { name: 'ormicode', version: '0.0.0' } });
       if (!z.safeParse(z.looseObject({ protocolVersion: z.literal(1) }), result).success) throw new Error('Unsupported or invalid ACP version');
@@ -103,20 +104,31 @@ export class AcpConnection {
   }
   private receive(input: unknown): void {
     const message = z.parse(frame, input);
-    if ('method' in message) {
+    if ('method' in message && typeof message.method === 'string') {
       if ('id' in message) {
-        // Refuse unimplemented permissions explicitly; never choose an approval option.
-        const response = message.method === 'session/request_permission' ? { result: { outcome: { outcome: 'cancelled' } } } : { error: { code: -32601, message: 'Client method not supported' } };
-        this.send({ jsonrpc: '2.0', id: message.id, ...response });
+        void this.respond(z.parse(id, message.id), message.method, message.params);
       } else this.onNotification?.(message.method, message.params);
       return;
     }
-    const entry = this.pending.get(message.id);
+    const responseId = z.parse(id, message.id);
+    const entry = this.pending.get(responseId);
     if (!entry) return;
-    this.pending.delete(message.id); clearTimeout(entry.timer);
+    this.pending.delete(responseId); clearTimeout(entry.timer);
     if ('error' in message) {
       const error = message.error as { code: number; message: string };
       entry.reject(new Error(`ACP error ${error.code}: ${error.message}`));
     } else entry.resolve(message.result);
+  }
+  private async respond(requestId: string | number, method: string, params: unknown): Promise<void> {
+    try {
+      if (method !== 'session/request_permission') {
+        this.send({ jsonrpc: '2.0', id: requestId, error: { code: -32601, message: 'Client method not supported' } });
+        return;
+      }
+      let result: unknown = { outcome: { outcome: 'cancelled' } };
+      try { if (this.onRequest) result = await this.onRequest(method, params); } catch { /* Cancel if the handler fails. */ }
+      if (!z.safeParse(z.json(), result).success) result = { outcome: { outcome: 'cancelled' } };
+      if (!this.closed) this.send({ jsonrpc: '2.0', id: requestId, result });
+    } catch { this.close('ACP response failed'); }
   }
 }
