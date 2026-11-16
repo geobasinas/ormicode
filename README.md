@@ -2998,7 +2998,7 @@ This is about *where capability lives*, not how plain the UI looks. The UI can b
 
 The owner requested only the top-level app and package folders up front. These empty folders are placeholders, including for *later* features; they do not indicate implemented functionality. Add `src/`, `test/`, a package manifest, TypeScript configuration and code when work on that package starts. The tree below describes the intended layout, not files that already exist. "Same shape" means the [package layout](#package-layout).
 
-The initial workspace has no application dependencies or runnable apps. Its `pnpm check` verifies scaffold directories and source file sizes, and `pnpm test` tests that check using Node's built-in test runner. Add Biome, TypeScript, Vitest, Turborepo and their full checks as the first implementation slice introduces code; until then these commands do not claim to run those tools. The scaffold check can run on Node 24, but the daemon target remains Node 26.
+The workspace has no runnable apps yet. The first protocol schemas use Zod; `pnpm check` runs TypeScript and scaffold checks, and `pnpm test` runs the current tests with Node's built-in runner. Add Biome, Vitest, Turborepo and their full checks as implementation progresses; the current commands do not claim to run those tools. These checks can run on Node 24, but the daemon target remains Node 26.
 
 ```
 ormicode/
@@ -3193,6 +3193,23 @@ There are no per-package root scripts and no `lint:js`-style variants. A script 
 
 **Schemas:** Before implementing a method, define request and response schemas, errors, authorization, timeout, ordering and retry behavior. Include worked examples for start, prompt, subscribe, approval and reconnect. A response can be lost after success: side-effecting methods need an idempotency key with defined scope, retention, replay result and conflicting-body error, or must explicitly reject automatic retries. `packages/protocol` has a zod schema for every method and event body. The schema is the definition and this section is the index. No schema = not implemented. Bodies that don't parse are refused before reaching the daemon.
 
+**Current protocol foundation:** envelope and ID validation, a UTF-8 JSON frame parser with a 256 KB cap, core session request/response schemas, and initial agent and lifecycle event schemas live in the isolated protocol package. The registered schemas are listed in `packages/protocol/src/methods.ts` and `packages/protocol/src/events.ts`. This does not implement daemon methods. An envelope passing validation is not sufficient: the receiver also validates the body against its registered method or event schema. Unregistered methods and event kinds return `protocol.unknown_method` and `protocol.unknown_event` respectively. Many later-feature method and event schemas, replay behavior and transport integration still need implementation. No method is exposed to a client until its complete request, response and error semantics are defined.
+
+For these initial contracts, the client must not automatically retry a side-effecting session operation after a lost response: the action may already have succeeded. Read-only lookups may be retried. A subscription is scoped to its connection; reconnect using `session.subscribe` with the last processed per-session cursor. The daemon must define an idempotency strategy before it offers automatic retries of side-effecting methods.
+
+Example request and response bodies (inside their corresponding envelopes):
+
+```json
+{"method":"session.start","body":{"machine":"m_01J8Z3K4M5N6P7Q8R9S0T1V2W3","project":"/repo","vendor":"fake","transport":"cli","model":"default","effort":"default","mode":"default","workspace":{"kind":"current"}}}
+{"body":{"session":"s_01J8Z3K4M5N6P7Q8R9S0T1V2W3"}}
+{"method":"session.prompt","body":{"session":"s_01J8Z3K4M5N6P7Q8R9S0T1V2W3","text":"Inspect the project"}}
+{"body":{"accepted":true}}
+{"method":"session.subscribe","body":{"session":"s_01J8Z3K4M5N6P7Q8R9S0T1V2W3","after":0}}
+{"body":{"subscribed":true}}
+{"method":"session.decide","body":{"session":"s_01J8Z3K4M5N6P7Q8R9S0T1V2W3","request":"req_01J8Z3K4M5N6P7Q8R9S0T1V2W3","option":"allow"}}
+{"body":{"decided":true}}
+```
+
 **Ids:** `<prefix>_<26-char Crockford ULID>`. Prefixes: `s` session, `req` request, `a` artifact, `bl` blob, `d` device, `n` note, `m` machine. Ids sort by creation time.
 
 **Methods**
@@ -3242,7 +3259,7 @@ There are no per-package root scripts and no `lint:js`-style variants. A script 
 
 **Efficiency:** batch frames per tick, merge text deltas, put several messages in one frame, enable `web_socket_compression`, and send snapshot + deltas by `seq` rather than full replays ([Performance](#performance)).
 
-**Errors:** `domain.reason` codes, lowercase: `session.busy`, `session.already_decided`, `session.not_found`, `session.not_running`, `session.resync_required`, `agent.unauthorized`, `agent.binary_missing`, `agent.rate_limited`, `agent.plan_limit`, `agent.failed`, `agent.unsupported`, `machine.unreachable`, `git.dirty_worktree`, `git.failed`, `git.worktree_in_use`, `relay.rate_limited`, `pairing.expired`, `acp.unsupported_version`, `lease.held`, `protocol.unknown_method`, `protocol.unsupported_version`, `protocol.invalid_frame`. The registry is `packages/protocol/src/errors.ts`, and a new code gets added there. Human wording lives in the client.
+**Errors:** `domain.reason` codes, lowercase: `session.busy`, `session.already_decided`, `session.not_found`, `session.not_running`, `session.resync_required`, `agent.unauthorized`, `agent.binary_missing`, `agent.rate_limited`, `agent.plan_limit`, `agent.failed`, `agent.unsupported`, `machine.unreachable`, `git.dirty_worktree`, `git.failed`, `git.worktree_in_use`, `relay.rate_limited`, `pairing.expired`, `acp.unsupported_version`, `lease.held`, `protocol.unknown_method`, `protocol.unknown_event`, `protocol.unsupported_version`, `protocol.invalid_frame`. The registry is `packages/protocol/src/errors.ts`, and a new code gets added there. Human wording lives in the client.
 
 **Always included:** every session frame carries `vendor`, `transport`, and for ACP `acpVersion`, so clients show what actually ran.
 
