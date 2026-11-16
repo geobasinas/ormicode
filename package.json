@@ -7,8 +7,8 @@
     "node": ">=26 <27"
   },
   "scripts": {
-    "check": "tsc -p tsconfig.json && tsc -p packages/agent-claude-cli/tsconfig.json && tsc -p packages/agent-codex-cli/tsconfig.json && tsc -p packages/agent-grok-acp/tsconfig.json && tsc -p packages/agent-grok-cli/tsconfig.json && node scripts/check-rules.mjs",
-    "test": "node --test scripts/*.test.mjs packages/protocol/test/*.test.mjs packages/agent-core/test/*.test.mjs packages/agent-claude-sdk/test/*.test.mjs packages/agent-claude-cli/test/*.test.mjs packages/agent-codex-sdk/test/*.test.mjs packages/agent-codex-cli/test/*.test.mjs packages/agent-grok-acp/test/*.test.mjs packages/agent-grok-cli/test/*.test.mjs"
+    "check": "tsc -p tsconfig.json && tsc -p packages/agent-claude-cli/tsconfig.json && tsc -p packages/agent-codex-cli/tsconfig.json && tsc -p packages/agent-grok-acp/tsconfig.json && tsc -p packages/agent-grok-cli/tsconfig.json && tsc -p packages/agent-opencode-sdk/tsconfig.json && node scripts/check-rules.mjs",
+    "test": "node --test scripts/*.test.mjs packages/protocol/test/*.test.mjs packages/agent-core/test/*.test.mjs packages/agent-claude-sdk/test/*.test.mjs packages/agent-claude-cli/test/*.test.mjs packages/agent-codex-sdk/test/*.test.mjs packages/agent-codex-cli/test/*.test.mjs packages/agent-grok-acp/test/*.test.mjs packages/agent-grok-cli/test/*.test.mjs packages/agent-opencode-sdk/test/*.test.mjs"
   },
   "devDependencies": {
     "@types/node": "26.6.6",

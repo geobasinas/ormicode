@@ -104,8 +104,13 @@ export class GrokCliAdapter implements AgentAdapter {
         catch { session.queue.close(); }
       }
     } finally {
-      if (promptFile) await unlink(promptFile).catch(() => {});
-      if (directory) await rmdir(directory).catch(() => {});
+      let cleanupFailed = false;
+      if (promptFile) await unlink(promptFile).catch((error: NodeJS.ErrnoException) => { if (error.code !== 'ENOENT') cleanupFailed = true; });
+      if (directory) await rmdir(directory).catch(() => { cleanupFailed = true; });
+      if (cleanupFailed && !session.disposed) {
+        completed = false; session.needsRecovery = true;
+        try { session.queue.push([{ kind: 'error', code: 'unknown', message: 'Could not remove the temporary prompt file' }, { kind: 'interrupted', reason: 'prompt_cleanup_failed' }]); } catch { session.queue.close(); }
+      }
       session.process = undefined; session.active = false;
       if (completed && !session.disposed) { try { session.queue.push([{ kind: 'turn_end' }]); } catch { session.queue.close(); } }
     }

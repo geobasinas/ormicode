@@ -21,6 +21,7 @@ export class AcpConnection {
   private readonly pending = new Map<string | number, Pending>();
   private nextId = 0;
   private closed = false;
+  private supportsLoadSession = false;
   private constructor(child: ChildProcessWithoutNullStreams, onNotification?: (method: string, params: unknown) => void, onRequest?: (method: string, params: unknown) => Promise<unknown>) {
     this.child = child; this.onNotification = onNotification; this.onRequest = onRequest;
     child.stderr.resume();
@@ -34,7 +35,9 @@ export class AcpConnection {
     const connection = new AcpConnection(child, options.onNotification, options.onRequest);
     try {
       const result = await connection.request('initialize', { protocolVersion: 1, clientCapabilities: {}, clientInfo: { name: 'ormicode', version: '0.0.0' } });
-      if (!z.safeParse(z.looseObject({ protocolVersion: z.literal(1) }), result).success) throw new Error('Unsupported or invalid ACP version');
+      const parsed = z.safeParse(z.looseObject({ protocolVersion: z.literal(1), agentCapabilities: z.optional(z.looseObject({ loadSession: z.optional(z.boolean()) })) }), result);
+      if (!parsed.success) throw new Error('Unsupported or invalid ACP version');
+      connection.supportsLoadSession = parsed.data.agentCapabilities?.loadSession === true;
       return connection;
     } catch (error) { connection.close(); throw error; }
   }
@@ -62,6 +65,7 @@ export class AcpConnection {
   }
   async loadSession(sessionId: string, cwd: string): Promise<void> {
     if (!sessionId || !cwd) throw new Error('session ID and cwd are required');
+    if (!this.supportsLoadSession) throw new Error('Grok did not advertise session loading');
     await this.request('session/load', { sessionId, cwd, mcpServers: [] });
   }
   async prompt(sessionId: string, text: string, timeoutMs = 300_000): Promise<string> {

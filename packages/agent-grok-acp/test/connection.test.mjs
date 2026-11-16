@@ -24,3 +24,10 @@ test('ACP rejects incompatible versions and invalid input', async () => {
  try { await assert.rejects(connection.prompt('', 'hello'), /required/); }
  finally { connection.close(); }
 });
+
+test('does not load sessions if the agent did not advertise support', async () => {
+ const script = `process.stdin.once('data', b => { const q = JSON.parse(b.toString()); console.log(JSON.stringify({jsonrpc:'2.0',id:q.id,result:{protocolVersion:1,agentCapabilities:{}}})); });`;
+ const connection = await AcpConnection.start({ executable: 'fake', args: [], spawn: (_c, _a, options) => spawn(process.execPath, ['-e', script], options) });
+ try { await assert.rejects(connection.loadSession('s', process.cwd()), /did not advertise/); }
+ finally { connection.close(); }
+});
