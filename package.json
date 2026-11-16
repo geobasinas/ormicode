@@ -1,0 +1,13 @@
+{
+  "name": "ormicode",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.20.0",
+  "engines": {
+    "node": ">=26 <27"
+  },
+  "scripts": {
+    "check": "node scripts/check-rules.mjs",
+    "test": "node --test scripts/*.test.mjs"
+  }
+}
