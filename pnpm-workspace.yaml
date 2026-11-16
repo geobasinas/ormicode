@@ -1,4 +1,7 @@
 packages:
   - apps/*
   - packages/*
+allowBuilds:
+  '@google/genai': false
+  protobufjs: false
 nodeLinker: hoisted

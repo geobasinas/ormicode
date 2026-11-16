@@ -1,0 +1,8 @@
+{
+  "name": "@ormicode/agent-pi-sdk",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": { "@earendil-works/pi-coding-agent": "1.5.2", "@ormicode/agent-core": "workspace:*", "@ormicode/protocol": "workspace:*", "zod": "4.6.7" }
+}
