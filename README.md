@@ -1075,6 +1075,8 @@ node packages/agent-acp/scripts/smoke.ts --human
 
 Replay fixtures: a `vibe-acp` v1 and a `codex-acp` v2 capture, each checking one `initialize`, `turn_start`, text, usage, `turn_end`. Recheck the [v2 migration guide](https://agentclientprotocol.com/protocol/v2/migration) while v2 is a draft. No agent needs `session/delete` or `additionalDirectories` yet.
 
+**Current `agent-acp` implementation status:** the generic adapter exists and speaks v1 and v2 through separate protocol profiles (`src/v1.ts`, `src/v2.ts` — no interleaved version checks; the shared layer is only `jsonrpc.ts` framing and `profile.ts` types). Negotiation sends a v2 `initialize` first: a `protocolVersion: 1` answer selects the v1 profile on the same connection, and a `-32022` rejection respawns once at v1 (`preferV1` skips v2 entirely). v2 ends turns on the `idle` `state_update`, never the prompt response; v1 keeps the response `stopReason` contract. Resume is `session/load` on v1 and `session/resume` with `replayFrom: start` on v2; settings go through `session/set_config_option` (v2 `configId`+`type`, v1 value form) with a `session/set_mode` fallback for v1 mode lists. Permissions forward `optionId`s verbatim for both param shapes. The synthetic fixture covers both versions' turns, permissions, resume, config options, cancel and `-32022` fallback; real-agent captures and terminal/file client methods are still missing, so all capability flags stay off and the negotiated `acpVersion` is stored per session via `adapter.acpVersion(handle)`.
+
 ## Handoff
 
 > **Status:** next · **Needs:** [Agent adapters](#agent-adapters), [Sessions](#sessions)
