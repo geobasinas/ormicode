@@ -64,3 +64,70 @@ test('the fake event buffer has a bounded capacity and rejects the entire turn',
   for await (const event of stream) { assert.ok(event.kind); count++; }
   assert.equal(count, 1023);
 });
+
+test('the slow script holds a turn open until interrupted', async () => {
+  const adapter = new FakeAdapter({ script: 'slow', delayMs: 60_000 });
+  const handle = await adapter.start({ cwd: '/test' });
+  const stream = adapter.events(handle)[Symbol.asyncIterator]();
+  await adapter.prompt(handle, { text: 'go' });
+  assert.equal((await stream.next()).value.kind, 'turn_start');
+  assert.equal((await stream.next()).value.kind, 'text_delta');
+  await adapter.interrupt(handle);
+  assert.deepEqual((await stream.next()).value, { kind: 'interrupted', reason: 'user_abort' });
+  await stream.return();
+  await adapter.dispose(handle);
+});
+
+test('the tool script leaves an interrupted tool result when killed mid-call', async () => {
+  const adapter = new FakeAdapter({ script: 'tool', delayMs: 60_000 });
+  const handle = await adapter.start({ cwd: '/test' });
+  const stream = adapter.events(handle)[Symbol.asyncIterator]();
+  await adapter.prompt(handle, { text: 'ls' });
+  assert.equal((await stream.next()).value.kind, 'turn_start');
+  assert.equal((await stream.next()).value.kind, 'tool_call');
+  await adapter.interrupt(handle);
+  assert.deepEqual((await stream.next()).value, { kind: 'tool_result', callId: 'call-1', status: 'interrupted' });
+  assert.equal((await stream.next()).value.kind, 'interrupted');
+  await stream.return();
+  await adapter.dispose(handle);
+});
+
+test('the tool script completes when the hold elapses', async () => {
+  const adapter = new FakeAdapter({ script: 'tool', delayMs: 5 });
+  const handle = await adapter.start({ cwd: '/test' });
+  await adapter.prompt(handle, { text: 'ls' });
+  const kinds = [];
+  for await (const event of adapter.events(handle)) { kinds.push(event.kind); if (event.kind === 'turn_end' || event.kind === 'interrupted') break; }
+  assert.deepEqual(kinds, ['turn_start', 'tool_call', 'tool_result', 'text', 'turn_end']);
+  await adapter.dispose(handle);
+});
+
+test('the approval script waits for a decision and forwards it verbatim', async () => {
+  const adapter = new FakeAdapter({ script: 'approval', delayMs: 60_000 });
+  const handle = await adapter.start({ cwd: '/test' });
+  const stream = adapter.events(handle)[Symbol.asyncIterator]();
+  await adapter.prompt(handle, { text: 'rm -rf x' });
+  assert.equal((await stream.next()).value.kind, 'turn_start');
+  assert.equal((await stream.next()).value.kind, 'tool_call');
+  const request = (await stream.next()).value;
+  assert.equal(request.kind, 'approval_request');
+  await adapter.approve(handle, request.request, 'allow');
+  assert.equal((await stream.next()).value.kind, 'approval_decision');
+  assert.equal((await stream.next()).value.kind, 'tool_result');
+  assert.equal((await stream.next()).value.kind, 'turn_end');
+  await stream.return();
+  await adapter.dispose(handle);
+});
+
+test('the ratelimit script reports structured limits and each session gets a native id', async () => {
+  const adapter = new FakeAdapter({ script: 'ratelimit' });
+  const handle = await adapter.start({ cwd: '/test' });
+  const stream = adapter.events(handle)[Symbol.asyncIterator]();
+  await adapter.prompt(handle, { text: 'go' });
+  assert.equal((await stream.next()).value.kind, 'turn_start');
+  assert.equal((await stream.next()).value.kind, 'rate_limited');
+  assert.equal((await stream.next()).value.kind, 'retry_scheduled');
+  assert.equal(adapter.nativeId(handle), 'fake-native-1');
+  await stream.return();
+  await adapter.dispose(handle);
+});
