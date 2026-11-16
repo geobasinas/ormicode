@@ -99,7 +99,7 @@ export class VibeCliAdapter implements AgentAdapter {
         const trailing = mapper.finish();
         if (trailing.length) session.queue.push(trailing);
       }
-      if (!session.disposed && !session.interrupted && !failed && exitCode === 0 && terminal && terminalId) {
+      if (!session.disposed && !session.interrupted && !failed && !mapper.failedGeneration && exitCode === 0 && terminalId && (terminal || mapper.completedEntry)) {
         this.options.onNativeId?.(handle, terminalId); session.nativeId = terminalId; completed = true;
       } else if (!session.disposed) {
         session.needsRecovery = true;

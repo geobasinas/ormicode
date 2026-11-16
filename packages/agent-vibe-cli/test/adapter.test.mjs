@@ -15,7 +15,7 @@ test('CLI streams text and usage, stores native ID, and resumes via --resume', a
   let id; let seen; const adapter = new VibeCliAdapter({ spawn: (cmd, args, options) => { seen = args; return fake(cmd, args, options); }, onNativeId: (_, value) => { id = value; } });
   const handle = await adapter.start({ cwd: process.cwd() });
   const first = await run(adapter, handle, 'hello');
-  assert.deepEqual(first.map(event => event.kind), ['turn_start', 'text_delta', 'usage', 'text', 'turn_end']);
+  assert.deepEqual(first.map(event => event.kind), ['turn_start', 'text_delta', 'text', 'turn_end']);
   assert.equal(id, 'vibe-sess-1');
   const second = await run(adapter, handle, 'again');
   assert.equal(second.at(-1).kind, 'turn_end');
@@ -34,7 +34,7 @@ test('CLI completes a turn that includes a tool call', async () => {
   const adapter = new VibeCliAdapter({ spawn: fake });
   const handle = await adapter.start({ cwd: process.cwd() });
   const events = await run(adapter, handle, 'tool');
-  assert.deepEqual(events.map(event => event.kind), ['turn_start', 'tool_call', 'tool_result', 'text_delta', 'usage', 'text', 'turn_end']);
+  assert.deepEqual(events.map(event => event.kind), ['turn_start', 'tool_call', 'tool_result', 'text_delta', 'text', 'turn_end']);
   await adapter.dispose(handle);
 });
 test('CLI mapper pairs tool blocks with role-tool results', () => {
@@ -47,4 +47,13 @@ test('CLI mapper pairs tool blocks with role-tool results', () => {
   const end = mapper.map({ type: 'result', sessionId: 's', usage: { prompt_tokens: 8, completion_tokens: 2 }, total_cost_usd: 0.01 });
   assert.equal(end.events[0].input, 8);
   assert.equal(end.terminal, true);
+});
+test('CLI mapper marks committed assistant entries as the completion signal', () => {
+  const mapper = new VibeCliMapper();
+  assert.equal(mapper.completedEntry, false);
+  mapper.map({ type: 'message', role: 'assistant', sessionId: 's', generationStatus: 'completed', outcome: { type: 'committed' }, content: [{ type: 'text', text: 'ok' }] });
+  assert.equal(mapper.completedEntry, true);
+  const failed = new VibeCliMapper();
+  failed.map({ type: 'message', role: 'assistant', sessionId: 's', generationStatus: 'failed', outcome: null, content: [] });
+  assert.equal(failed.failedGeneration, true);
 });
