@@ -12,6 +12,8 @@
   },
   "include": [
     "packages/protocol/src/**/*.ts",
-    "packages/agent-core/src/**/*.ts"
+    "packages/agent-core/src/**/*.ts",
+    "packages/agent-claude-sdk/src/**/*.ts",
+    "packages/agent-codex-sdk/src/**/*.ts"
   ]
 }

@@ -1,0 +1,14 @@
+{
+  "name": "@ormicode/agent-codex-sdk",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@openai/codex-sdk": "0.169.0",
+    "@ormicode/agent-core": "workspace:*",
+    "@ormicode/protocol": "workspace:*"
+  }
+}

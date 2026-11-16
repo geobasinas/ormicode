@@ -12,7 +12,7 @@ export class EventQueue {
 
   push(events: readonly AgentEvent[]): void {
     if (this.closed) throw new Error('event queue is closed');
-    if (this.items.length + events.length > 1024) throw new Error('fake event buffer is full');
+    if (this.items.length + events.length > 1024) throw new Error('event buffer is full');
     this.items.push(...events);
     this.flush();
   }

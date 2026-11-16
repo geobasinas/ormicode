@@ -26,3 +26,21 @@ test('recorded turns reject incomplete, duplicate or unknown events', () => {
   assert.ok(validateTurn([{ kind: 'turn_start' }, { kind: 'turn_start' }, { kind: 'turn_end' }]).some((e) => e.includes('duplicate')));
   assert.ok(validateTurn([{ kind: 'turn_start' }, { kind: 'invented' }, { kind: 'turn_end' }]).some((e) => e.includes('unknown_event')));
 });
+
+test('recorded question answers must match the question text', () => {
+  const request = { kind: 'question_request', request: req, questions: [{ question: 'Which?', header: 'Choice', options: [{ label: 'A', description: 'First' }], multiSelect: false }] };
+  assert.deepEqual(validateTurn([{ kind: 'turn_start' }, request, { kind: 'question_answer', request: req, answers: { 'Which?': 'A' } }, { kind: 'turn_end' }]), []);
+  const errors = validateTurn([{ kind: 'turn_start' }, request, { kind: 'question_answer', request: req, answers: { wrong: 'A' } }, { kind: 'turn_end' }]);
+  assert.ok(errors.some((error) => error.includes('invalid question answers')));
+  assert.ok(errors.includes('unfinished questions'));
+});
+
+test('expired interactions no longer count as pending', () => {
+  const events = [
+    { kind: 'turn_start' },
+    { kind: 'approval_request', request: req, options: [{ id: 'allow', label: 'Allow' }] },
+    { kind: 'interaction_expired', request: req, reason: 'cancelled' },
+    { kind: 'turn_end' },
+  ];
+  assert.deepEqual(validateTurn(events), []);
+});

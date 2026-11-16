@@ -47,6 +47,7 @@ export const requestBodies = {
   'session.subscribe': z.object({ ...session, after: z.optional(cursorSchema) }),
   'session.unsubscribe': z.object(session),
   'session.decide': z.object({ ...session, request: requestIdSchema, option: nonEmpty }),
+  'session.answer': z.object({ ...session, request: requestIdSchema, answers: z.record(nonEmpty, nonEmpty) }),
 } as const;
 
 export const responseBodies = {
@@ -72,6 +73,7 @@ export const responseBodies = {
   'session.subscribe': z.object({ subscribed: z.literal(true) }),
   'session.unsubscribe': z.object({ unsubscribed: z.literal(true) }),
   'session.decide': z.object({ decided: z.literal(true) }),
+  'session.answer': z.object({ answered: z.literal(true) }),
 } as const;
 
 export type ImplementedMethod = keyof typeof requestBodies;

@@ -6,6 +6,7 @@ export function validateTurn(events: readonly unknown[]): string[] {
   const calls = new Set<string>();
   const seenCalls = new Set<string>();
   const approvals = new Map<string, Set<string>>();
+  const questions = new Map<string, Set<string>>();
   let started = false;
   let ended = false;
   for (const [index, input] of events.entries()) {
@@ -40,10 +41,25 @@ export function validateTurn(events: readonly unknown[]): string[] {
       if (!options?.has(event.option)) errors.push(`event ${index}: unknown approval or option`);
       else approvals.delete(event.request);
     }
+    if (event.kind === 'question_request') {
+      const names = event.questions.map((question) => question.question);
+      if (questions.has(event.request) || names.length === 0 || new Set(names).size !== names.length) errors.push(`event ${index}: invalid question request`);
+      questions.set(event.request, new Set(names));
+    }
+    if (event.kind === 'question_answer') {
+      const expected = questions.get(event.request);
+      const names = Object.keys(event.answers);
+      if (!expected || names.length !== expected.size || names.some((name) => !expected.has(name) || !event.answers[name]?.trim())) errors.push(`event ${index}: invalid question answers`);
+      else questions.delete(event.request);
+    }
+    if (event.kind === 'interaction_expired') {
+      if (!approvals.delete(event.request) && !questions.delete(event.request)) errors.push(`event ${index}: unknown interaction`);
+    }
   }
   if (!started) errors.push('missing turn_start');
   if (!ended) errors.push('missing turn_end');
   if (calls.size) errors.push('unfinished tool calls');
   if (approvals.size) errors.push('unfinished approvals');
+  if (questions.size) errors.push('unfinished questions');
   return errors;
 }

@@ -61,3 +61,11 @@ test('wire parser checks byte length, JSON and protocol version', async () => {
   assert.deepEqual(parseWireFrame('{"v":2}'), { success: false, error: 'protocol.unsupported_version' });
   assert.deepEqual(parseWireFrame('é'.repeat(MAX_FRAME_BYTES / 2 + 1)), { success: false, error: 'protocol.invalid_frame' });
 });
+
+test('question contracts preserve vendor presentation fields', () => {
+  const body = { kind: 'question_request', request, questions: [{ question: 'Which?', header: 'Choice', options: [{ label: 'A', description: 'First', preview: 'example' }], multiSelect: false }] };
+  assert.deepEqual(parseEventBody(body), { success: true, data: body });
+  assert.equal(parseRequestBody('session.answer', { session, request, answers: { 'Which?': 'A' } }).success, true);
+  assert.equal(parseRequestBody('session.answer', { session, request, answers: { 'Which?': '' } }).success, false);
+  assert.equal(parseResponseBody('session.answer', { answered: true }).success, true);
+});

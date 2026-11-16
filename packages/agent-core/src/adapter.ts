@@ -35,6 +35,7 @@ export interface AgentAdapter {
   setMode?(handle: Handle, mode: string): Promise<void>;
   setOption?(handle: Handle, id: string, value: string | boolean): Promise<void>;
   approve?(handle: Handle, requestId: string, optionId: string): Promise<void>;
+  answerQuestion?(handle: Handle, requestId: string, answers: Record<string, string>): Promise<void>;
   interrupt?(handle: Handle): Promise<void>;
   compact?(handle: Handle, instructions?: string): Promise<void>;
   exportState?(handle: Handle): Promise<HandoffState>;

@@ -1,0 +1,16 @@
+{
+  "name": "@ormicode/agent-claude-cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "@ormicode/agent-core": "workspace:*",
+    "@ormicode/protocol": "workspace:*",
+    "ulid": "3.0.2",
+    "zod": "4.6.7"
+  }
+}
