@@ -105,6 +105,33 @@ importers:
         specifier: 4.6.7
         version: 4.6.7
 
+  packages/agent-opencode-acp:
+    dependencies:
+      '@ormicode/agent-core':
+        specifier: workspace:*
+        version: link:../agent-core
+      '@ormicode/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      ulid:
+        specifier: 3.0.2
+        version: 3.0.2
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+
+  packages/agent-opencode-cli:
+    dependencies:
+      '@ormicode/agent-core':
+        specifier: workspace:*
+        version: link:../agent-core
+      '@ormicode/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+
   packages/agent-opencode-sdk:
     dependencies:
       '@opencode/client':
@@ -116,6 +143,9 @@ importers:
       '@ormicode/protocol':
         specifier: workspace:*
         version: link:../protocol
+      ulid:
+        specifier: 3.0.2
+        version: 3.0.2
       zod:
         specifier: 4.6.7
         version: 4.6.7
