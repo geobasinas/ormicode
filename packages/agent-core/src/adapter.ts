@@ -16,7 +16,7 @@ export type ModelList = readonly Model[];
 export interface StartSpec { cwd: string; model?: string; effort?: string; mode?: string }
 export interface NativeRef { id: string; cwd: string }
 export interface Handle { readonly id: string }
-export interface PromptInput { text: string }
+export interface PromptInput { text: string; images?: { data: string; mimeType: string }[] }
 export interface HandoffState { summary: string }
 
 /** Capabilities describe verified behavior; unsupported operations are omitted. */

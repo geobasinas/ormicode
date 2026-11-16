@@ -16,7 +16,21 @@ const summarySchema = z.object({
   id: sessionIdSchema, title: z.nullable(z.string()), state: sessionStateSchema,
   project: nonEmpty, vendor: nonEmpty, transport: nonEmpty, updatedAt: timestampSchema,
 });
-const detailsSchema = z.extend(summarySchema, { model: z.nullable(z.string()), effort: z.nullable(z.string()) });
+const configOptionSchema = z.object({
+  id: nonEmpty, category: z.optional(nonEmpty), type: z.optional(nonEmpty), name: z.optional(z.string()),
+  current: z.optional(z.union([z.string(), z.boolean()])),
+  choices: z.optional(z.array(z.object({ value: z.union([z.string(), z.boolean()]), name: z.optional(z.string()) }))),
+});
+const sessionModeSchema = z.object({ id: nonEmpty, name: z.string() });
+const imageSchema = z.object({ data: nonEmpty, mimeType: nonEmpty });
+const detailsSchema = z.extend(summarySchema, {
+  model: z.nullable(z.string()), effort: z.nullable(z.string()),
+  // What actually ran: the agent's own session id for resume, its reported version,
+  // and the negotiated ACP protocol version when the transport is acp.
+  nativeId: z.optional(z.nullable(nonEmpty)), agentVersion: z.optional(z.nullable(z.string())),
+  acpVersion: z.optional(z.nullable(z.union([z.literal(1), z.literal(2)]))),
+  options: z.optional(z.array(configOptionSchema)), modes: z.optional(z.array(sessionModeSchema)),
+});
 
 // A registered body schema does not expose the operation; the server must implement it separately.
 export const requestBodies = {
@@ -29,8 +43,8 @@ export const requestBodies = {
   }),
   'session.get': z.object(session),
   'session.list': z.object({ archived: z.optional(z.boolean()) }),
-  'session.prompt': z.object({ ...session, text: nonEmpty }),
-  'session.steer': z.object({ ...session, text: nonEmpty }),
+  'session.prompt': z.object({ ...session, text: nonEmpty, images: z.optional(z.array(imageSchema)) }),
+  'session.steer': z.object({ ...session, text: nonEmpty, images: z.optional(z.array(imageSchema)) }),
   'session.pause': z.object(session),
   'session.resume': z.object(session),
   'session.abort': z.object(session),

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseFrame, parseRequestBody, sessionIdSchema } from '../src/index.ts';
+import { parseFrame, parseRequestBody, parseResponseBody, sessionIdSchema } from '../src/index.ts';
 import * as z from 'zod/mini';
 
 const s = 's_01J8Z3K4M5N6P7Q8R9S0T1V2W3';
@@ -41,8 +41,25 @@ test('preserves durable event data and validates ephemeral deltas', () => {
 
 test('method validation rejects unknown operations and bad bodies', () => {
   assert.equal(parseRequestBody('session.prompt', { session: s, text: 'hello' }).success, true);
+  assert.equal(parseRequestBody('session.prompt', { session: s, text: '', images: [{ data: 'aGk=', mimeType: 'image/png' }] }).success, false);
+  assert.equal(parseRequestBody('session.prompt', { session: s, text: 'hi', images: [{ data: 'aGk=', mimeType: 'image/png' }] }).success, true);
+  assert.equal(parseRequestBody('session.prompt', { session: s, text: 'hi', images: [{ data: '', mimeType: 'image/png' }] }).success, false);
+  assert.equal(parseRequestBody('session.prompt', { session: s, text: 'hi', images: [{ data: 'aGk=' }] }).success, false);
+  assert.equal(parseRequestBody('session.steer', { session: s, text: 'hi', images: [{ data: 'aGk=', mimeType: 'image/png' }] }).success, true);
   assert.equal(parseRequestBody('session.prompt', { session: s, text: '' }).success, false);
   assert.equal(parseRequestBody('session.prompt', { session: 'bad', text: 'hi' }).success, false);
   assert.deepEqual(parseRequestBody('session.handoff', {}), { success: false, error: 'protocol.unknown_method' });
   assert.deepEqual(parseRequestBody('toString', {}), { success: false, error: 'protocol.unknown_method' });
+});
+
+test('session details carry what actually ran and the advertised pickers', () => {
+  const base = { id: s, title: null, state: 'idle', project: 'p', vendor: 'grok', transport: 'acp', updatedAt: 1, model: null, effort: null };
+  assert.equal(parseResponseBody('session.get', { ...base, acpVersion: 1, nativeId: 'native-1', agentVersion: '1.0.77' }).success, true);
+  assert.equal(parseResponseBody('session.get', { ...base, acpVersion: 2 }).success, true);
+  assert.equal(parseResponseBody('session.get', { ...base, acpVersion: 3 }).success, false);
+  assert.equal(parseResponseBody('session.get', { ...base, nativeId: '' }).success, false);
+  const option = { id: 'mode', category: 'mode', type: 'select', current: 'ask', choices: [{ value: 'ask' }, { value: 'code' }] };
+  assert.equal(parseResponseBody('session.get', { ...base, options: [option], modes: [{ id: 'ask', name: 'Ask' }] }).success, true);
+  assert.equal(parseResponseBody('session.get', { ...base, options: [{ id: '' }] }).success, false);
+  assert.equal(parseResponseBody('session.get', base).success, true);
 });
