@@ -1,5 +1,6 @@
 import * as z from 'zod/mini';
 import type { AgentEvent } from '@ormicode/protocol';
+import type { McpServerSpec } from '@ormicode/agent-core';
 import { parseEventBody } from '@ormicode/protocol';
 import type { JsonRpcPeer } from './jsonrpc.ts';
 
@@ -14,8 +15,8 @@ export interface AcpProfile {
   readonly version: 1 | 2;
   initializeParams(): unknown;
   parseInitialize(result: unknown): { loadSession: boolean; info: AgentInfo };
-  newSession(peer: JsonRpcPeer, cwd: string): Promise<SessionBootstrap>;
-  resumeSession(peer: JsonRpcPeer, nativeId: string, cwd: string): Promise<SessionBootstrap>;
+  newSession(peer: JsonRpcPeer, cwd: string, mcpServers?: AcpMcpServer[]): Promise<SessionBootstrap>;
+  resumeSession(peer: JsonRpcPeer, nativeId: string, cwd: string, mcpServers?: AcpMcpServer[]): Promise<SessionBootstrap>;
   /** v1 resolves with the stopReason that ended the turn; v2 resolves on insertion and the turn ends via state_update. */
   sendPrompt(peer: JsonRpcPeer, sessionId: string, text: string): Promise<string | undefined>;
   cancel(peer: JsonRpcPeer, sessionId: string): void;
@@ -60,4 +61,13 @@ export const usageUpdate = z.looseObject({ used: z.optional(z.number()), size: z
 export function mapUsage(input: unknown): unknown[] {
   const data = z.parse(usageUpdate, input);
   return [{ kind: 'usage', ...(data.used !== undefined ? { input: data.used } : {}), ...(data.cost?.currency === 'USD' ? { costUsd: data.cost.amount } : {}) }];
+}
+
+/** ACP wire shape for session/new mcpServers. */
+export interface AcpMcpServer { name: string; command: string; args: string[]; env: { name: string; value: string }[] }
+export function acpMcpServers(servers: Record<string, McpServerSpec> | undefined): AcpMcpServer[] {
+  return Object.entries(servers ?? {}).map(([name, s]) => ({
+    name, command: s.command, args: s.args ?? [],
+    env: Object.entries(s.env ?? {}).map(([k, value]) => ({ name: k, value })),
+  }));
 }

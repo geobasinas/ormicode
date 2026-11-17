@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from 'node:child_process';
 import * as z from 'zod/mini';
 import type { RawLog } from '@ormicode/agent-core';
+import type { AcpMcpServer } from '@ormicode/agent-acp';
 import { attachRawLog } from '@ormicode/agent-core';
 
 type Spawn = (command: string, args: string[], options: SpawnOptionsWithoutStdio) => ChildProcessWithoutNullStreams;
@@ -60,17 +61,17 @@ export class AcpConnection {
     if (!method || !z.safeParse(z.json(), params).success) throw new Error('Invalid ACP notification');
     this.send({ jsonrpc: '2.0', method, params });
   }
-  async newSession(cwd: string): Promise<string> {
+  async newSession(cwd: string, mcpServers: AcpMcpServer[] = []): Promise<string> {
     if (!cwd) throw new Error('cwd is required');
-    const result = await this.request('session/new', { cwd, mcpServers: [] });
+    const result = await this.request('session/new', { cwd, mcpServers });
     const parsed = z.safeParse(z.looseObject({ sessionId: z.string().check(z.minLength(1)) }), result);
     if (!parsed.success) throw new Error('Invalid ACP session/new response');
     return parsed.data.sessionId;
   }
-  async loadSession(sessionId: string, cwd: string): Promise<void> {
+  async loadSession(sessionId: string, cwd: string, mcpServers: AcpMcpServer[] = []): Promise<void> {
     if (!sessionId || !cwd) throw new Error('session ID and cwd are required');
     if (!this.supportsLoadSession) throw new Error('OpenCode did not advertise session loading');
-    await this.request('session/load', { sessionId, cwd, mcpServers: [] });
+    await this.request('session/load', { sessionId, cwd, mcpServers });
   }
   async prompt(sessionId: string, text: string, timeoutMs = 300_000): Promise<string> {
     if (!sessionId || !text) throw new Error('session ID and prompt are required');

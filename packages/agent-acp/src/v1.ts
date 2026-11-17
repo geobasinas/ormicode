@@ -71,14 +71,14 @@ export function createV1Profile(): AcpProfile {
       loadSession = parsed.agentCapabilities?.loadSession === true;
       return { loadSession, info: parsed.agentInfo ?? {} };
     },
-    async newSession(peer, cwd) {
-      const parsed = z.parse(sessionNew, await peer.request('session/new', { cwd, mcpServers: [] }));
+    async newSession(peer, cwd, mcpServers = []) {
+      const parsed = z.parse(sessionNew, await peer.request('session/new', { cwd, mcpServers }));
       const { modes, currentMode } = parseModes(parsed.modes);
       return { nativeId: parsed.sessionId, options: parseOptions(parsed.configOptions), modes, ...(currentMode !== undefined ? { currentMode } : {}) };
     },
-    async resumeSession(peer, nativeId, cwd) {
+    async resumeSession(peer, nativeId, cwd, mcpServers = []) {
       if (!loadSession) throw new Error('Agent did not advertise session loading');
-      const parsed = z.parse(sessionNew, await peer.request('session/load', { sessionId: nativeId, cwd, mcpServers: [] }));
+      const parsed = z.parse(sessionNew, await peer.request('session/load', { sessionId: nativeId, cwd, mcpServers }));
       const { modes, currentMode } = parseModes(parsed.modes);
       return { nativeId, options: parseOptions(parsed.configOptions), modes, ...(currentMode !== undefined ? { currentMode } : {}) };
     },

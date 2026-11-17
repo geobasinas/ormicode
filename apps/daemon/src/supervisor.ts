@@ -83,6 +83,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
         ...(row.mode && row.mode !== 'default' ? { ORMICODE_MODE: row.mode } : {}),
         ...(row.agent_command ? { ORMICODE_AGENT_COMMAND: row.agent_command } : {}),
         ...(row.agent_args ? { ORMICODE_AGENT_ARGS_JSON: row.agent_args } : {}),
+        ORMICODE_MCP: '1',
       },
       stdio: 'ignore', windowsHide: true, detached: process.platform !== 'win32',
     });
@@ -264,7 +265,8 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   // idx summaries keep remote session lists fresh without streaming transcripts.
   let idxTimer: NodeJS.Timeout | undefined;
   const pushIdx = (to: string) => {
-    relay?.sendIdx(to, listSessions(db).map(s => ({ id: s.id, state: s.state, title: s.title, updatedAt: s.updated_at })));
+    if (!relay || closing) return;
+    relay.sendIdx(to, listSessions(db).map(s => ({ id: s.id, state: s.state, title: s.title, updatedAt: s.updated_at })));
   };
   const idxSoon = () => {
     if (idxTimer) return;
@@ -324,6 +326,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     socketPath, storePath, db, workers,
     async close() {
       closing = true;
+      if (idxTimer) clearTimeout(idxTimer);
       for (const t of idleTimers.values()) clearTimeout(t);
       idleTimers.clear();
       for (const t of retryTimers.values()) clearTimeout(t);

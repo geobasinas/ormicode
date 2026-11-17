@@ -22,19 +22,20 @@ export interface NewSession {
   kind?: string; model?: string; effort?: string; mode?: string;
   agentCommand?: string; agentArgs?: string[];
   cwd: string; worktree?: string; branch?: string; baseBranch?: string;
-  baseCommit?: string; title?: string; now?: number;
+  baseCommit?: string; title?: string; parent?: string; now?: number;
 }
 
 export function createSession(db: Store, s: NewSession): void {
   const now = s.now ?? Date.now();
   db.prepare(`INSERT INTO sessions(id, title, machine, project, vendor, transport, kind,
     agent_command, agent_args, model, effort, mode, cwd, worktree, branch, base_branch,
-    base_commit, state, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'idle', ?, ?)`)
+    base_commit, parent, state, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'idle', ?, ?)`)
     .run(s.id, s.title ?? null, s.machine, s.project, s.vendor, s.transport, s.kind ?? 'session',
       s.agentCommand ?? null, s.agentArgs ? JSON.stringify(s.agentArgs) : null,
       s.model ?? null, s.effort ?? null, s.mode ?? null,
-      s.cwd, s.worktree ?? null, s.branch ?? null, s.baseBranch ?? null, s.baseCommit ?? null, now, now);
+      s.cwd, s.worktree ?? null, s.branch ?? null, s.baseBranch ?? null, s.baseCommit ?? null,
+      s.parent ?? null, now, now);
 }
 
 export function getSession(db: Store, id: string): SessionRow | undefined {

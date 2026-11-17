@@ -48,7 +48,7 @@ test('method validation rejects unknown operations and bad bodies', () => {
   assert.equal(parseRequestBody('session.steer', { session: s, text: 'hi', images: [{ data: 'aGk=', mimeType: 'image/png' }] }).success, true);
   assert.equal(parseRequestBody('session.prompt', { session: s, text: '' }).success, false);
   assert.equal(parseRequestBody('session.prompt', { session: 'bad', text: 'hi' }).success, false);
-  assert.deepEqual(parseRequestBody('session.handoff', {}), { success: false, error: 'protocol.unknown_method' });
+  assert.deepEqual(parseRequestBody('session.teleport', {}), { success: false, error: 'protocol.unknown_method' });
   assert.deepEqual(parseRequestBody('toString', {}), { success: false, error: 'protocol.unknown_method' });
 });
 

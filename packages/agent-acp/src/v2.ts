@@ -88,12 +88,12 @@ export function createV2Profile(): AcpProfile {
       const parsed = z.parse(initResult, result);
       return { loadSession: true, info: parsed.info ?? {} };
     },
-    async newSession(peer, cwd) {
-      const parsed = z.parse(sessionNew, await peer.request('session/new', { cwd, mcpServers: [] }));
+    async newSession(peer, cwd, mcpServers = []) {
+      const parsed = z.parse(sessionNew, await peer.request('session/new', { cwd, mcpServers }));
       return { nativeId: parsed.sessionId, options: parseOptions(parsed.configOptions), modes: [] };
     },
-    async resumeSession(peer, nativeId, cwd) {
-      const parsed = z.parse(sessionNew, await peer.request('session/resume', { sessionId: nativeId, cwd, mcpServers: [], replayFrom: { type: 'start' } }));
+    async resumeSession(peer, nativeId, cwd, mcpServers = []) {
+      const parsed = z.parse(sessionNew, await peer.request('session/resume', { sessionId: nativeId, cwd, mcpServers, replayFrom: { type: 'start' } }));
       return { nativeId: parsed.sessionId === nativeId ? nativeId : parsed.sessionId, options: parseOptions(parsed.configOptions), modes: [] };
     },
     async sendPrompt(peer, sessionId, text) {

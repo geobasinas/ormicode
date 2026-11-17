@@ -32,6 +32,7 @@ const detailsSchema = z.extend(summarySchema, {
   nativeId: z.optional(z.nullable(nonEmpty)), agentVersion: z.optional(z.nullable(z.string())),
   acpVersion: z.optional(z.nullable(z.union([z.literal(1), z.literal(2)]))),
   options: z.optional(z.array(configOptionSchema)), modes: z.optional(z.array(sessionModeSchema)),
+  parent: z.optional(z.nullable(sessionIdSchema)),
 });
 
 // A registered body schema does not expose the operation; the server must implement it separately.
@@ -42,6 +43,8 @@ export const requestBodies = {
     model: nonEmpty, effort: nonEmpty, mode: nonEmpty, workspace: workspaceSchema,
     workspaceName: z.optional(nonEmpty), agentCommand: z.optional(nonEmpty),
     agentArgs: z.optional(z.array(z.string())),
+    // Which session started this one (ormi_start via the MCP server).
+    parent: z.optional(sessionIdSchema),
   }),
   'session.get': z.object(session),
   'session.list': z.object({ archived: z.optional(z.boolean()) }),
@@ -53,6 +56,18 @@ export const requestBodies = {
   'session.retry': z.object(session),
   'session.archive': z.object(session),
   'session.delete': z.object(session),
+  // Hand this task to another agent/config. in_place changes model/effort on
+  // the same session; rehydrate spawns a linked session with a brief; fork
+  // is rehydrate on a new branch.
+  'session.handoff': z.object({
+    ...session,
+    to: z.object({
+      vendor: z.optional(nonEmpty), transport: z.optional(nonEmpty),
+      model: z.optional(nonEmpty), effort: z.optional(nonEmpty), branch: z.optional(nonEmpty),
+    }),
+    mode: z.enum(['in_place', 'rehydrate', 'fork']),
+    brief: z.optional(z.string()), reason: z.optional(z.string()),
+  }),
   'session.setModel': z.object({ ...session, model: nonEmpty }),
   'session.setEffort': z.object({ ...session, effort: nonEmpty }),
   'session.setMode': z.object({ ...session, mode: nonEmpty }),
@@ -87,6 +102,7 @@ export const responseBodies = {
   'session.retry': z.object({ accepted: z.literal(true) }),
   'session.archive': z.object({ archived: z.literal(true) }),
   'session.delete': z.object({ deleted: z.literal(true) }),
+  'session.handoff': z.object({ session: sessionIdSchema, brief: z.string(), parent: sessionIdSchema }),
   'session.setModel': z.object({ updated: z.literal(true) }),
   'session.setEffort': z.object({ updated: z.literal(true) }),
   'session.setMode': z.object({ updated: z.literal(true) }),

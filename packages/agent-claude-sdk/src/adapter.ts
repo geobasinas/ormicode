@@ -176,6 +176,10 @@ export class ClaudeSdkAdapter implements AgentAdapter {
         ...(session.spec.model ? { model: session.spec.model } : {}),
         ...(session.spec.effort ? { effort: session.spec.effort as Options['effort'] } : {}),
         ...(session.nativeId ? { resume: session.nativeId } : {}),
+        ...(session.spec.mcpServers ? {
+          mcpServers: Object.fromEntries(Object.entries(session.spec.mcpServers)
+            .map(([name, s]) => [name, { type: 'stdio' as const, command: s.command, args: s.args ?? [], env: s.env ?? {} }])),
+        } : {}),
       };
       // Streaming input: the initial prompt plus any steered messages and
       // steer backlog queued while no turn was active.

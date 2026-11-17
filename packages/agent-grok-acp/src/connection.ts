@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from 'node:child_process';
 import * as z from 'zod/mini';
 import type { RawLog } from '@ormicode/agent-core';
-import { parseOptions, parseModes } from '@ormicode/agent-acp';
+import { parseOptions, parseModes , type AcpMcpServer } from '@ormicode/agent-acp';
 import type { ConfigOption, Mode } from '@ormicode/agent-acp';
 export interface AcpBootstrap { sessionId: string; options: ConfigOption[]; modes: Mode[]; currentMode?: string }
 import { attachRawLog } from '@ormicode/agent-core';
@@ -63,14 +63,14 @@ export class AcpConnection {
     if (!method || !z.safeParse(z.json(), params).success) throw new Error('Invalid ACP notification');
     this.send({ jsonrpc: '2.0', method, params });
   }
-  async newSession(cwd: string): Promise<AcpBootstrap> {
+  async newSession(cwd: string, mcpServers: AcpMcpServer[] = []): Promise<AcpBootstrap> {
     if (!cwd) throw new Error('cwd is required');
-    return this.bootstrap(await this.request('session/new', { cwd, mcpServers: [] }), 'session/new');
+    return this.bootstrap(await this.request('session/new', { cwd, mcpServers }), 'session/new');
   }
-  async loadSession(sessionId: string, cwd: string): Promise<AcpBootstrap> {
+  async loadSession(sessionId: string, cwd: string, mcpServers: AcpMcpServer[] = []): Promise<AcpBootstrap> {
     if (!sessionId || !cwd) throw new Error('session ID and cwd are required');
     if (!this.supportsLoadSession) throw new Error('Grok did not advertise session loading');
-    return this.bootstrap(await this.request('session/load', { sessionId, cwd, mcpServers: [] }), 'session/load', sessionId);
+    return this.bootstrap(await this.request('session/load', { sessionId, cwd, mcpServers }), 'session/load', sessionId);
   }
   private async bootstrap(result: unknown, method: string, expectedId?: string): Promise<AcpBootstrap> {
     const parsed = z.safeParse(z.looseObject({ sessionId: z.optional(z.string()), configOptions: z.optional(z.json()), modes: z.optional(z.json()) }), result);

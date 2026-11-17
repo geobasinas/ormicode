@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { EventQueue, NO_CAPABILITIES, RawLog } from '@ormicode/agent-core';
 import type { AgentAdapter, Handle, NativeRef, PromptInput, StartSpec } from '@ormicode/agent-core';
 import { AcpConnection } from './connection.ts';
+import { acpMcpServers } from '@ormicode/agent-acp';
 import type { ConfigOption, Mode } from '@ormicode/agent-acp';
 import { VibeTurnMapper } from './map.ts';
 import { VibePermissionBroker } from './permissions.ts';
@@ -43,7 +44,7 @@ export class VibeAcpAdapter implements AgentAdapter {
       if (method === 'session/update' && session?.active && session.mapper) session.queue.push(session.mapper.update(params));
     }, onRequest: (_method, params) => session?.active ? session.broker.request(params, session.nativeId) : Promise.resolve({ outcome: { outcome: 'cancelled' } }) });
     try {
-      const bootstrap = existingId ? await connection.loadSession(existingId, cwd) : await connection.newSession(cwd);
+      const bootstrap = existingId ? await connection.loadSession(existingId, cwd, acpMcpServers(spec?.mcpServers)) : await connection.newSession(cwd, acpMcpServers(spec?.mcpServers));
       const nativeId = bootstrap.sessionId;
       const handle = Object.freeze({ id: `vibe-acp-${randomUUID()}` });
       const queue = new EventQueue();

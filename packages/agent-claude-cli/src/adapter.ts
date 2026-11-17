@@ -71,13 +71,22 @@ export class ClaudeCliAdapter implements AgentAdapter {
     let bridge: Awaited<ReturnType<typeof startPermissionBridge>> | undefined;
     try {
       const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages', '--permission-prompts', this.options.approvalBridge ? 'host' : 'none', '--permission-mode', session.spec.mode ?? 'default'];
+      const mcpServers: Record<string, unknown> = {};
+      if (session.spec.mcpServers)
+        for (const [name, s] of Object.entries(session.spec.mcpServers))
+          mcpServers[name] = { type: 'stdio', command: s.command, args: s.args ?? [], env: s.env ?? {} };
+      let promptTool = '';
       if (this.options.approvalBridge) {
         session.broker = new PermissionBroker((event) => session.queue.push([event]));
         bridge = await startPermissionBridge(session.broker);
         if (session.disposed) return;
         const serverName = `ormicode_${newId().toLowerCase()}`;
-        const config = { mcpServers: { [serverName]: { type: 'http', url: bridge.url, headers: { Authorization: 'Bearer ${ORMICODE_CLI_APPROVAL_TOKEN}' } } } };
-        args.push('--mcp-config', JSON.stringify(config), '--permission-prompt-tool', `mcp__${serverName}__approve`);
+        mcpServers[serverName] = { type: 'http', url: bridge.url, headers: { Authorization: 'Bearer ${ORMICODE_CLI_APPROVAL_TOKEN}' } };
+        promptTool = `mcp__${serverName}__approve`;
+      }
+      if (Object.keys(mcpServers).length) {
+        args.push('--mcp-config', JSON.stringify({ mcpServers }));
+        if (promptTool) args.push('--permission-prompt-tool', promptTool);
       }
       if (session.spec.model) args.push('--model', session.spec.model);
       if (session.spec.effort) args.push('--effort', session.spec.effort);

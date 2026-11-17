@@ -4,6 +4,7 @@ import { getSession, listSessions, sessionsInStates, setState, listNotes, setNot
 import { replay, setCursor } from '@ormicode/journal';
 import { listDevices, renameDevice, revokeDevice } from '@ormicode/session-store';
 import { handleJoin, type Pairing } from './pair.ts';
+import { handoffBrief } from './handoff.ts';
 import type { RelayClient } from './relay.ts';
 import { join } from 'node:path';
 import { mkdirSync, rmSync } from 'node:fs';
@@ -90,6 +91,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
           ...(body.mode && body.mode !== 'default' ? { mode: String(body.mode) } : {}),
           ...(body.agentCommand ? { agentCommand: String(body.agentCommand) } : {}),
           ...(body.agentArgs ? { agentArgs: body.agentArgs as string[] } : {}),
+          ...(body.parent ? { parent: String(body.parent) } : {}),
         });
         ctx.spawnWorker(sessionId);
         return client.link.reply(id, { session: sessionId });
@@ -107,7 +109,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         return client.link.reply(id, {
           id: s.id, title: s.title, state: s.state, project: s.project, vendor: s.vendor,
           transport: s.transport, updatedAt: s.updated_at, model: s.model, effort: s.effort,
-          nativeId: s.native_id, acpVersion: s.acp_version,
+          nativeId: s.native_id, acpVersion: s.acp_version, parent: s.parent,
         });
       }
       case 'session.prompt': {
@@ -167,6 +169,63 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
           try { rmSync(sessionLogDir(session), { recursive: true, force: true }); } catch { /* best effort */ }
         }
         return client.link.reply(id, method === 'session.delete' ? { deleted: true } : { archived: true });
+      }
+      case 'session.handoff': {
+        const session = String(body.session);
+        const s = getSession(db, session);
+        if (!s) return client.link.replyError(id, 'session.not_found', session);
+        const to = body.to as { vendor?: string; transport?: string; model?: string; effort?: string; branch?: string };
+        const mode = String(body.mode);
+        const reason = typeof body.reason === 'string' ? body.reason : undefined;
+        if (mode === 'in_place') {
+          // Same session, new model/effort — the worker stays put.
+          for (const [kind, value] of [['model', to.model], ['effort', to.effort]] as const) {
+            if (!value) continue;
+            const res = await ctx.toWorker(session, 'worker.configure', { kind, value });
+            if (res?.type === 'res') db.prepare(`UPDATE sessions SET ${kind} = ? WHERE id = ?`).run(value, session);
+          }
+          return client.link.reply(id, { session: s.id, brief: '', parent: s.id });
+        }
+        // Guards: at most 3 handoffs per task chain, and no A→B→A bounce.
+        let depth = 0; let cur = s.parent as string | null;
+        while (cur) { depth++; cur = getSession(db, cur)?.parent ?? null; }
+        if (depth >= 3) return client.link.replyError(id, 'handoff.limit', 'max handoffs per task');
+        const targetVendor = to.vendor ?? s.vendor;
+        const parentRow = s.parent ? getSession(db, s.parent) : undefined;
+        if (parentRow && parentRow.vendor === targetVendor && parentRow.vendor !== s.vendor)
+          return client.link.replyError(id, 'handoff.bounce', `cannot hand back to ${targetVendor}`);
+        if (!hasTransport(targetVendor, to.transport ?? s.transport))
+          return client.link.replyError(id, 'agent.unsupported', `${targetVendor}/${to.transport ?? s.transport}`);
+        // fork gets a new branch; rehydrate takes over the same workspace.
+        let resolved = { cwd: s.cwd, worktree: s.worktree ?? undefined, branch: s.branch ?? undefined };
+        if (mode === 'fork') {
+          const r = resolveWorkspace(s.project, { kind: 'branch', branch: to.branch ?? `handoff/${newId('s')}` }, undefined, session, () => false);
+          if ('err' in r) return client.link.replyError(id, r.err, r.detail ?? r.err);
+          resolved = { cwd: r.cwd, worktree: r.worktree, branch: r.branch };
+        } else {
+          // Old session is handed off — release its lease so the new one can take it.
+          releaseForSession(db, session);
+          const lease = acquireWorkspace(db, resolved.cwd, session, s.machine);
+          if (lease.conflict) return client.link.replyError(id, 'lease.conflict', `workspace held by ${lease.conflict}`);
+        }
+        const brief = typeof body.brief === 'string' && body.brief ? body.brief : handoffBrief(db, session);
+        const child = newId('s');
+        createSession(db, {
+          id: child, machine: s.machine, project: s.project, vendor: targetVendor,
+          transport: to.transport ?? s.transport, cwd: resolved.cwd,
+          worktree: resolved.worktree, branch: resolved.branch,
+          ...(to.model ?? s.model ? { model: String(to.model ?? s.model) } : {}),
+          ...(to.effort ?? s.effort ? { effort: String(to.effort ?? s.effort) } : {}),
+          ...(s.mode ? { mode: s.mode } : {}),
+          title: s.title ?? undefined, parent: s.id,
+        });
+        db.prepare('UPDATE sessions SET handed_off = 1, state = ? WHERE id = ?').run('done', session);
+        ctx.spawnWorker(child);
+        // The brief is the new agent's first prompt — same path as restart recaps.
+        void ctx.sendPrompt(child, `You are taking over this task${reason ? ` — ${reason}` : ''}. Handoff brief:\n${brief}\nContinue where the previous session left off.`)
+          .then(ok => { if (!ok) setState(db, child, 'interrupted', 'handoff_failed'); })
+          .catch(() => { try { setState(db, child, 'interrupted', 'handoff_failed'); } catch { /* daemon closing */ } });
+        return client.link.reply(id, { session: child, brief, parent: s.id });
       }
       case 'session.setModel': case 'session.setEffort': case 'session.setMode': case 'session.setOption': {
         const session = String(body.session);

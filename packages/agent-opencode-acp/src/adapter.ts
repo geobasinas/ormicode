@@ -7,6 +7,7 @@ import { AcpConnection } from './connection.ts';
 import { OpenCodeTurnMapper } from './map.ts';
 import { OpenCodePermissionBroker } from './permissions.ts';
 import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from 'node:child_process';
+import { acpMcpServers } from '@ormicode/agent-acp';
 
 type Spawn = (command: string, args: string[], options: SpawnOptionsWithoutStdio) => ChildProcessWithoutNullStreams;
 type Session = { connection: AcpConnection; nativeId: string; queue: EventQueue; broker: OpenCodePermissionBroker; active: boolean; disposed: boolean; needsRecovery: boolean; mapper?: OpenCodeTurnMapper; running?: Promise<void>; cancelRequested: boolean };
@@ -30,21 +31,21 @@ export class OpenCodeAcpAdapter implements AgentAdapter {
   async models() { return []; }
   async start(spec: StartSpec): Promise<Handle> {
     if (spec.model || spec.mode || spec.effort) throw new Error('OpenCode ACP configuration is not yet supported');
-    return this.create(spec.cwd, undefined, spec.logDir);
+    return this.create(spec.cwd, undefined, spec.logDir, spec.mcpServers);
   }
   async resume(ref: NativeRef): Promise<Handle> {
     if (!ref.id) throw new Error('native session ID is required');
-    return this.create(ref.cwd, ref.id, ref.logDir);
+    return this.create(ref.cwd, ref.id, ref.logDir, ref.mcpServers);
   }
-  private async create(cwd: string, existingId?: string, logDir?: string): Promise<Handle> {
+  private async create(cwd: string, existingId?: string, logDir?: string, mcpServers?: StartSpec['mcpServers']): Promise<Handle> {
     if (!cwd) throw new Error('cwd is required');
     let session: Session | undefined;
     const connection = await AcpConnection.start({ executable: this.options.executable ?? 'opencode', args: ['acp'], cwd, spawn: this.options.spawn, log: logDir ? new RawLog(logDir) : undefined, onNotification: (method, params) => {
       if (method === 'session/update' && session?.active && session.mapper) session.queue.push(session.mapper.update(params));
     }, onRequest: (_method, params) => session?.active ? session.broker.request(params, session.nativeId) : Promise.resolve({ outcome: { outcome: 'cancelled' } }) });
     try {
-      const nativeId = existingId ?? await connection.newSession(cwd);
-      if (existingId) await connection.loadSession(existingId, cwd);
+      const nativeId = existingId ?? await connection.newSession(cwd, acpMcpServers(mcpServers));
+      if (existingId) await connection.loadSession(existingId, cwd, acpMcpServers(mcpServers));
       const handle = Object.freeze({ id: `opencode-acp-${randomUUID()}` });
       const queue = new EventQueue();
       session = { connection, nativeId, queue, broker: new OpenCodePermissionBroker(event => queue.push([event])), active: false, disposed: false, needsRecovery: false, cancelRequested: false };

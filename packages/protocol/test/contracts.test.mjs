@@ -19,7 +19,7 @@ test('response contracts reject missing fields and unknown methods', () => {
   assert.equal(parseResponseBody('session.start', {}).success, false);
   assert.equal(parseResponseBody('session.prompt', { accepted: false }).success, false);
   assert.equal(parseResponseBody('session.list', { sessions: [] }).success, true);
-  assert.deepEqual(parseResponseBody('session.handoff', {}), { success: false, error: 'protocol.unknown_method' });
+  assert.deepEqual(parseResponseBody('session.teleport', {}), { success: false, error: 'protocol.unknown_method' });
 });
 
 test('event body contracts check state, text and approval data', () => {

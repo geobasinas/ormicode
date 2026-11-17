@@ -16,6 +16,8 @@ export function usage(code: number): never {
   ormi session note <id> <title> [body]
   ormi session notes <id>
   ormi session tail <id>                          stream live + replayed events
+  ormi run <vendor> [--transport t] [agent args]   start a session and attach (Ctrl+] detaches)
+  ormi attach <id>                                reattach a running session
   ormi relay register --account <a> [--relay <url>] [--secret <s>]   register this hub
   ormi pair                                       mint a pairing code on the hub
   ormi connect <relay-url> --account <a> --code <c> [--name <n>]   pair this device to a remote hub

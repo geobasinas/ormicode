@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { connect } from './socket.ts';
 import { createAdapter } from './registry.ts';
 import type { AgentAdapter, Handle } from '@ormicode/agent-core';
@@ -114,6 +115,14 @@ try {
     ...(process.env.ORMICODE_EFFORT ? { effort: process.env.ORMICODE_EFFORT } : {}),
     ...(process.env.ORMICODE_MODE ? { mode: process.env.ORMICODE_MODE } : {}),
     ...(process.env.ORMICODE_LOG_DIR ? { logDir: process.env.ORMICODE_LOG_DIR } : {}),
+    ...(process.env.ORMICODE_MCP ? {
+      mcpServers: {
+        ormi: {
+          command: process.execPath, args: [fileURLToPath(new URL('./mcp-serve.ts', import.meta.url))],
+          env: { ORMICODE_SOCKET: env('ORMICODE_SOCKET'), ORMI_SESSION: session },
+        },
+      },
+    } : {}),
   };
   handle = resumeId && adapter.resume
     ? await adapter.resume({ id: resumeId, ...spec })
