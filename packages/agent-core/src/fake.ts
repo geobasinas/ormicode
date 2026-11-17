@@ -3,12 +3,13 @@ import type { AgentAdapter, Handle, PromptInput, StartSpec } from './adapter.ts'
 import { EventQueue } from './event-queue.ts';
 import type { AgentEvent } from '@ormicode/protocol';
 
-export type FakeScript = 'echo' | 'slow' | 'tool' | 'approval' | 'ratelimit';
+export type FakeScript = 'echo' | 'slow' | 'tool' | 'approval' | 'ratelimit' | 'ratelimit_pause';
 type Session = {
   queue: EventQueue; spec: StartSpec; nativeId: string;
   script: FakeScript; delayMs: number;
   active: boolean; interrupted: boolean; hold?: () => void;
   approvalRequest?: string; approvalResolve?: (option: string) => void;
+  pausedOnce?: boolean;
 };
 
 /** Deterministic test adapter. Sessions and transcripts exist only in memory. `echo` (default) answers instantly; the scripted modes hold turns open so tests can kill or interrupt mid-turn, mid-tool-call, or mid-approval. Script comes from `options.script` or `ORMICODE_FAKE_SCRIPT`. */
@@ -22,8 +23,8 @@ export class FakeAdapter implements AgentAdapter {
   private readonly delayMs: number;
   constructor(options: { script?: FakeScript; delayMs?: number } = {}) {
     const env = process.env.ORMICODE_FAKE_SCRIPT;
-    this.script = options.script ?? (env === 'slow' || env === 'tool' || env === 'approval' || env === 'ratelimit' ? env : undefined);
-    this.delayMs = options.delayMs ?? 30_000;
+    this.script = options.script ?? (env === 'slow' || env === 'tool' || env === 'approval' || env === 'ratelimit' || env === 'ratelimit_pause' ? env : undefined);
+    this.delayMs = options.delayMs ?? (Number(process.env.ORMICODE_FAKE_DELAY_MS) || 30_000);
   }
   async detect() { return { available: true, version: 'fake-1' }; }
   async models() { return []; }
@@ -74,6 +75,15 @@ export class FakeAdapter implements AgentAdapter {
         session.queue.push([...events, { kind: 'tool_call', callId: 'call-1', name: 'fake_tool', input: { text } }, { kind: 'approval_request', request: session.approvalRequest, options: [{ id: 'allow', label: 'Allow' }, { id: 'deny', label: 'Deny' }] }]);
         const option = await new Promise<string>(resolve => { session.approvalResolve = resolve; this.endHold(session); session.hold = () => resolve('deny'); });
         session.queue.push([{ kind: 'approval_decision', request: session.approvalRequest, option }, { kind: 'tool_result', callId: 'call-1', status: option === 'allow' ? 'completed' : 'interrupted' }, ...(session.interrupted || option === 'deny' ? [{ kind: 'interrupted', reason: 'user_abort' } satisfies AgentEvent] : [{ kind: 'turn_end' } satisfies AgentEvent])]);
+      } else if (session.script === 'ratelimit_pause') {
+        // First turn gives up after the retry budget: no turn_end, the session
+        // suspends until the supervisor resends at resetAt. Later turns echo.
+        if (session.pausedOnce) session.queue.push([...events, { kind: 'text', text }, { kind: 'turn_end' }]);
+        else {
+          session.pausedOnce = true;
+          session.queue.push([...events, { kind: 'rate_limited', attempt: 5 },
+            { kind: 'error', code: 'plan_limit', message: 'plan limit reached', resetAt: Date.now() + session.delayMs }]);
+        }
       } else {
         session.queue.push([...events, { kind: 'rate_limited', attempt: 1 }, { kind: 'retry_scheduled', delayMs: 1000 }, { kind: 'text', text }, { kind: 'turn_end' }]);
       }

@@ -39,9 +39,9 @@ async function runScript(script: string, extra: string[]): Promise<number> {
 async function fakeSmoke(args: string[]): Promise<number> {
   const { FakeAdapter, smokeAdapter, reportSmoke } = await import('@ormicode/agent-core');
   const script = flag(args, '--script');
-  if (script && !['echo', 'slow', 'tool', 'approval', 'ratelimit'].includes(script)) { console.error(`unknown fake script ${script}`); return usage(2); }
+  if (script && !['echo', 'slow', 'tool', 'approval', 'ratelimit', 'ratelimit_pause'].includes(script)) { console.error(`unknown fake script ${script}`); return usage(2); }
   return reportSmoke('fake', 'inprocess', await smokeAdapter('fake', 'inprocess', {
-    create: () => new FakeAdapter({ ...(script ? { script: script as 'echo' | 'slow' | 'tool' | 'approval' | 'ratelimit' } : {}) }),
+    create: () => new FakeAdapter({ ...(script ? { script: script as 'echo' | 'slow' | 'tool' | 'approval' | 'ratelimit' | 'ratelimit_pause' } : {}) }),
     repo: flag(args, '--repo'),
     home: flag(args, '--home'),
     kill: args.includes('--kill'),

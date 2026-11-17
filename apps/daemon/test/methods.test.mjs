@@ -128,3 +128,23 @@ test('setModel reaches the worker and persists on the session row', async () => 
   assert.equal(res.type, 'err');
   await cleanup();
 });
+
+test('a paused_rate_limited session retries the held prompt at resetAt', async () => {
+  const { daemon, client, cleanup } = await boot({ ORMICODE_FAKE_SCRIPT: 'ratelimit_pause', ORMICODE_FAKE_DELAY_MS: '300' });
+  const session = await startSession(client);
+  await client.request('session.subscribe', { session });
+  const states = [];
+  client.onFrame = f => { if (f.type === 'evt') states.push(f.body.kind); };
+  await client.request('session.prompt', { session, text: 'retry me' });
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline && getSession(daemon.db, session)?.state !== 'paused_rate_limited')
+    await new Promise(r => setTimeout(r, 25));
+  assert.equal(getSession(daemon.db, session)?.state, 'paused_rate_limited');
+  // After the reset delay the supervisor resends the held prompt: a second
+  // turn_start followed by a real turn_end proves the schedule fired.
+  while (Date.now() < deadline && states.filter(k => k === 'turn_start').length < 2)
+    await new Promise(r => setTimeout(r, 50));
+  assert.equal(states.filter(k => k === 'turn_start').length, 2, 'held prompt resent at reset');
+  assert.equal(getSession(daemon.db, session)?.state, 'idle');
+  await cleanup();
+});

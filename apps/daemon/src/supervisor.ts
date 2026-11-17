@@ -3,20 +3,17 @@ import { rmSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Frame } from '@ormicode/protocol';
-import { parseRequestBody, newId } from '@ormicode/protocol';
-import { openStore, createSession, getSession, listSessions, setState, setWorkerPid, setNativeId, listNotes, setNote, deleteNote, archiveSession, type Store, type SessionState } from '@ormicode/session-store';
-import { acquireWorkspace, releaseForSession } from './leases.ts';
+import { openStore, getSession, setState, setWorkerPid, setNativeId, type SessionState } from '@ormicode/session-store';
 import { killTree } from './proctree.ts';
 import { recoverSessions, resumePolicy } from './recovery.ts';
-import { append, replay } from '@ormicode/journal';
+import { onClientFrame, type Client, type DispatchCtx } from './dispatch.ts';
+import { append } from '@ormicode/journal';
 import { serve, defaultSocketPath, ormicodeDir, type Link } from './socket.ts';
-import { hasTransport } from './registry.ts';
 
 const WORKER_MAIN = join(dirname(fileURLToPath(import.meta.url)), 'worker-main.ts');
 const startedAt = Date.now();
 
 interface Worker { proc: ChildProcess; session: string; pid: number | undefined; ready: boolean }
-interface Client { link: Link; subscriptions: Set<string>; device: string }
 
 const stateFor: Record<string, SessionState> = {
   turn_start: 'running', turn_end: 'idle', approval_request: 'awaiting_approval',
@@ -46,7 +43,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   // Boot: interrupt in-flight sessions, expire pending interactions, reap stale
   // pids; auto-resume candidates are spawned once spawnWorker exists below.
   const resuming = new Set<string>();
-  const resumeCandidates = recoverSessions(db, resumePolicy());
+  const recovery = recoverSessions(db, resumePolicy());
 
   const fanout = (session: string, frame: string) => {
     for (const c of clients) if (c.subscriptions.has(session) && !c.link.closed) c.link.send(JSON.parse(frame));
@@ -86,6 +83,8 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     proc.on('exit', code => {
       if (closing) return;
       resuming.delete(session);
+      const retryTimer = retryTimers.get(session);
+      if (retryTimer) { clearTimeout(retryTimer); retryTimers.delete(session); }
       workers.delete(session);
       setWorkerPid(db, session, null);
       const current = getSession(db, session);
@@ -127,10 +126,16 @@ export async function startDaemon(opts: DaemonOptions = {}) {
         const { seq } = append(db, session, { kind, payload: { kind, ...(body.payload as Record<string, unknown>) }, ts: Number(body.ts) || Date.now() });
         const frameOut = JSON.stringify({ v: 1, type: 'evt', session, seq, ts: Number(body.ts) || Date.now(), body: { kind, ...(body.payload as Record<string, unknown>) } });
         fanout(session, frameOut);
+        const payload = body.payload as Record<string, unknown>;
         const mapped = stateFor[kind];
         if (mapped) {
-          setState(db, session, mapped, typeof (body.payload as Record<string, unknown>)?.reason === 'string' ? (body.payload as Record<string, unknown>).reason as string : undefined);
+          setState(db, session, mapped, typeof payload?.reason === 'string' ? payload.reason as string : undefined);
           armIdle(session, mapped);
+        }
+        if (kind === 'error' && typeof payload?.resetAt === 'number'
+            && (payload.code === 'rate_limited' || payload.code === 'plan_limit')) {
+          setState(db, session, 'paused_rate_limited', String(payload.code));
+          scheduleRateRetry(session, payload.resetAt);
         }
         answer({ seq });
         break;
@@ -199,162 +204,37 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     poll();
   });
 
-  const onClientFrame = async (client: Client, frame: Frame) => {
-    if (frame.type === 'ack') { /* device cursor tracking lands with devices */ return; }
-    if (frame.type !== 'req') return;
-    const { id, method } = frame;
-    const parsed = parseRequestBody(method, frame.body);
-    if (!parsed.success) return client.link.replyError(id, parsed.error, method);
-    const body = parsed.data as Record<string, unknown>;
-    try {
-      switch (method) {
-        case 'daemon.status':
-          return client.link.reply(id, { version: '0.0.0', uptimeMs: Date.now() - startedAt, liveWorkers: workers.size, relay: 'disconnected', lastError });
-        case 'session.start': {
-          const vendor = String(body.vendor); const transport = String(body.transport);
-          if (!hasTransport(vendor, transport)) return client.link.replyError(id, 'agent.unsupported', `${vendor}/${transport}`);
-          const sessionId = newId('s');
-          const cwd = process.cwd();
-          const lease = acquireWorkspace(db, cwd, sessionId, String(body.machine ?? 'm_local'));
-          if (lease.conflict) return client.link.replyError(id, 'lease.conflict', `workspace held by ${lease.conflict}`);
-          createSession(db, {
-            id: sessionId, machine: String(body.machine ?? 'm_local'), project: String(body.project),
-            vendor, transport, cwd,
-            ...(body.model ? { model: String(body.model) } : {}),
-            ...(body.effort ? { effort: String(body.effort) } : {}),
-            ...(body.mode ? { mode: String(body.mode) } : {}),
-            ...(body.agentCommand ? { agentCommand: String(body.agentCommand) } : {}),
-            ...(body.agentArgs ? { agentArgs: body.agentArgs as string[] } : {}),
-          });
-          spawnWorker(sessionId);
-          return client.link.reply(id, { session: sessionId });
-        }
-        case 'session.list': {
-          const sessions = listSessions(db, Boolean(body.archived)).map(s => ({
-            id: s.id, title: s.title, state: s.state, project: s.project, vendor: s.vendor,
-            transport: s.transport, updatedAt: s.updated_at,
-          }));
-          return client.link.reply(id, { sessions });
-        }
-        case 'session.get': {
-          const s = getSession(db, String(body.session));
-          if (!s) return client.link.replyError(id, 'session.not_found', String(body.session));
-          return client.link.reply(id, {
-            id: s.id, title: s.title, state: s.state, project: s.project, vendor: s.vendor,
-            transport: s.transport, updatedAt: s.updated_at, model: s.model, effort: s.effort,
-            nativeId: s.native_id, acpVersion: s.acp_version,
-          });
-        }
-        case 'session.prompt': {
-          const session = String(body.session);
-          const s = getSession(db, session);
-          if (!s) return client.link.replyError(id, 'session.not_found', session);
-          if (s.state === 'running') return client.link.replyError(id, 'session.busy', 'turn in progress');
-          if (paused.has(session)) {
-            const held = heldPrompts.get(session) ?? [];
-            held.push({ text: String(body.text), ...(body.images ? { images: body.images as unknown[] } : {}) });
-            heldPrompts.set(session, held);
-            return client.link.reply(id, { accepted: true });
-          }
-          await ensureWorker(session);
-          const res = await toWorker(session, 'worker.prompt', { text: body.text, ...(body.images ? { images: body.images } : {}) });
-          if (!res || res.type === 'err') return client.link.replyError(id, 'agent.failed', 'worker rejected prompt');
-          lastPrompt.set(session, { text: String(body.text), ...(body.images ? { images: body.images as unknown[] } : {}) });
-          return client.link.reply(id, { accepted: true });
-        }
-        case 'session.pause':
-          paused.add(String(body.session));
-          return client.link.reply(id, { paused: true });
-        case 'session.resume': {
-          const session = String(body.session);
-          paused.delete(session);
-          const held = heldPrompts.get(session) ?? [];
-          heldPrompts.delete(session);
-          for (const p of held) {
-            try {
-              await ensureWorker(session);
-              const res = await toWorker(session, 'worker.prompt', { text: p.text, ...(p.images ? { images: p.images } : {}) });
-              if (!res || res.type === 'err') {
-                heldPrompts.set(session, [p, ...held.slice(held.indexOf(p) + 1)]);
-                return client.link.replyError(id, 'agent.failed', 'held prompt rejected');
-              }
-              lastPrompt.set(session, p);
-            } catch (error) {
-              heldPrompts.set(session, held.slice(held.indexOf(p)));
-              return client.link.replyError(id, 'agent.failed', error instanceof Error ? error.message : String(error));
-            }
-          }
-          return client.link.reply(id, { resumed: true });
-        }
-        case 'session.retry': {
-          const session = String(body.session);
-          const last = lastPrompt.get(session);
-          if (!last) return client.link.replyError(id, 'session.not_found', 'no prompt to retry');
-          await ensureWorker(session);
-          const res = await toWorker(session, 'worker.prompt', { text: last.text, ...(last.images ? { images: last.images } : {}) });
-          if (!res || res.type === 'err') return client.link.replyError(id, 'agent.failed', 'worker rejected retry');
-          return client.link.reply(id, { accepted: true });
-        }
-        case 'session.delete': case 'session.archive': {
-          archiveSession(db, String(body.session));
-          releaseForSession(db, String(body.session));
-          return client.link.reply(id, method === 'session.delete' ? { deleted: true } : { archived: true });
-        }
-        case 'session.setModel': case 'session.setEffort': case 'session.setMode': case 'session.setOption': {
-          const session = String(body.session);
-          const column = method === 'session.setModel' ? 'model' : method === 'session.setEffort' ? 'effort' : method === 'session.setMode' ? 'mode' : undefined;
-          const kind = column ?? 'option';
-          const res = await toWorker(session, 'worker.configure', { kind, ...(kind === 'option' ? { id: body.id } : {}), value: body.value ?? body.model ?? body.effort ?? body.mode });
-          if (res?.type !== 'res') return client.link.replyError(id, 'agent.unsupported', kind);
-          if (column) db.prepare(`UPDATE sessions SET ${column} = ? WHERE id = ?`).run(String(body[column] ?? ''), session);
-          return client.link.reply(id, { updated: true });
-        }
-        case 'session.answer': {
-          const res = await toWorker(String(body.session), 'worker.answer', { request: body.request, answers: body.answers });
-          return res?.type === 'res' ? client.link.reply(id, { answered: true }) : client.link.replyError(id, 'agent.unsupported', 'answer');
-        }
-        case 'session.getNotes':
-          return client.link.reply(id, { notes: listNotes(notesDir, String(body.session)) });
-        case 'session.setNotes': {
-          const noteId = setNote(notesDir, String(body.session), { ...(body.id ? { id: String(body.id) } : {}), title: String(body.title), body: String(body.body) }, () => newId('n'));
-          return client.link.reply(id, { id: noteId });
-        }
-        case 'session.deleteNote':
-          return deleteNote(notesDir, String(body.session), String(body.id))
-            ? client.link.reply(id, { deleted: true })
-            : client.link.replyError(id, 'session.not_found', String(body.id));
-        case 'session.steer': {
-          const res = await toWorker(String(body.session), 'worker.steer', { text: body.text });
-          return res?.type === 'res' ? client.link.reply(id, { accepted: true, queued: false }) : client.link.replyError(id, 'agent.unsupported', 'steer');
-        }
-        case 'session.abort': {
-          const res = await toWorker(String(body.session), 'worker.abort', {});
-          return res?.type === 'res' ? client.link.reply(id, { interrupted: true }) : client.link.replyError(id, 'agent.unsupported', 'abort');
-        }
-        case 'session.decide': {
-          const res = await toWorker(String(body.session), 'worker.decide', { request: body.request, option: body.option });
-          return res?.type === 'res' ? client.link.reply(id, { decided: true }) : client.link.replyError(id, 'agent.unsupported', 'decide');
-        }
-        case 'session.subscribe': {
-          const session = String(body.session);
-          client.subscriptions.add(session);
-          for (const row of replay(db, session, Number(body.after ?? 0))) {
-            client.link.send(JSON.parse(JSON.stringify({ v: 1, type: 'evt', session, seq: row.seq, ts: row.ts, body: JSON.parse(row.payload) })));
-          }
-          return client.link.reply(id, { subscribed: true });
-        }
-        case 'session.unsubscribe':
-          client.subscriptions.delete(String(body.session));
-          return client.link.reply(id, { unsubscribed: true });
-        default:
-          return client.link.replyError(id, 'protocol.unimplemented', method);
-      }
-    } catch (error) {
-      return client.link.replyError(id, 'daemon.error', error instanceof Error ? error.message : String(error));
-    }
+  const sendPrompt = async (session: string, text: string, images?: unknown[]): Promise<boolean> => {
+    await ensureWorker(session);
+    const res = await toWorker(session, 'worker.prompt', { text, ...(images ? { images } : {}) });
+    if (!res || res.type === 'err') return false;
+    lastPrompt.set(session, { text, ...(images ? { images } : {}) });
+    return true;
   };
 
-  for (const s of resumeCandidates) { resuming.add(s.id); spawnWorker(s.id); }
+  // Sessions paused by a rate limit wake at the provider's reset time and retry
+  // the held prompt; timers are in-memory and re-armed from the journal on boot.
+  const retryTimers = new Map<string, NodeJS.Timeout>();
+  const scheduleRateRetry = (session: string, resetAt: number) => {
+    const existing = retryTimers.get(session);
+    if (existing) clearTimeout(existing);
+    retryTimers.set(session, setTimeout(() => {
+      retryTimers.delete(session);
+      const last = lastPrompt.get(session);
+      if (last && getSession(db, session)?.state === 'paused_rate_limited') {
+        void sendPrompt(session, last.text, last.images).then(ok => { if (!ok) setState(db, session, 'interrupted', 'resume_failed'); });
+      }
+    }, Math.max(0, resetAt - Date.now())).unref());
+  };
+
+  const dispatchCtx: DispatchCtx = {
+    db, notesDir, startedAt, paused, heldPrompts, lastPrompt,
+    lastError: () => lastError, liveWorkers: () => workers.size,
+    spawnWorker, toWorker, sendPrompt,
+  };
+
+  for (const s of recovery.autoResume) { resuming.add(s.id); spawnWorker(s.id); }
+  for (const r of recovery.rateLimited) scheduleRateRetry(r.id, r.resetAt);
 
   const server = await serve(socketPath, link => {
     link.onFrame = frame => {
@@ -365,7 +245,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
       } else {
         let client = [...clients].find(c => c.link === link);
         if (!client) { client = { link, subscriptions: new Set(), device: 'cli' }; clients.add(client); }
-        void onClientFrame(client, frame);
+        void onClientFrame(dispatchCtx, client, frame);
       }
     };
     link.onClose = () => {
@@ -383,6 +263,8 @@ export async function startDaemon(opts: DaemonOptions = {}) {
       closing = true;
       for (const t of idleTimers.values()) clearTimeout(t);
       idleTimers.clear();
+      for (const t of retryTimers.values()) clearTimeout(t);
+      retryTimers.clear();
       for (const w of workers.values()) {
         const link = workerLinks.get(w.session);
         try { await link?.request('worker.evict', { session: w.session }, 5_000); } catch { /* kill below */ }
