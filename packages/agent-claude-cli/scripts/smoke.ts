@@ -8,6 +8,7 @@ const has = (name: string) => args.includes(name);
 const code = reportSmoke('claude', 'cli', await smokeAdapter('claude', 'cli', {
   create: hooks => new ClaudeCliAdapter({ ...(hooks.onNativeId ? { onNativeId: hooks.onNativeId } : {}) }),
   repo: flag('--repo'),
+  home: flag('--home'),
   kill: has('--kill'),
   approve: flag('--approve'),
   keep: has('--keep'),

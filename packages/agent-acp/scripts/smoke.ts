@@ -12,6 +12,7 @@ const cmdArgs = (flag('--args') ?? process.env.ORMICODE_ACP_ARGS ?? '').split(' 
 const code = reportSmoke(vendor, 'acp', await smokeAdapter(vendor, 'acp', {
   create: hooks => new AcpAdapter({ vendor, command: command!, args: cmdArgs, preferV1: has('--v1'), ...(hooks.onNativeId ? { onNativeId: hooks.onNativeId } : {}) }),
   repo: flag('--repo'),
+  home: flag('--home'),
   kill: has('--kill'),
   approve: flag('--approve'),
   keep: has('--keep'),

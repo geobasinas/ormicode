@@ -4,11 +4,13 @@ import { join } from 'node:path';
 import type { AgentEvent } from '@ormicode/protocol';
 import type { AgentAdapter, Handle } from './adapter.ts';
 import { validateTurn } from './validate-turn.ts';
+import { validateCapabilities } from './adapter.ts';
 
 export interface SmokeHooks { onNativeId?: (handle: Handle, id: string) => void }
 export interface SmokeOptions {
   create: (hooks: SmokeHooks) => AgentAdapter | Promise<AgentAdapter>;
   repo?: string;
+  home?: string;
   kill?: boolean;
   approve?: string;
   keep?: boolean;
@@ -65,9 +67,28 @@ export async function smokeAdapter(vendor: string, transport: string, options: S
   let adapter: AgentAdapter;
   try { adapter = await options.create({ onNativeId: (_handle, id) => { nativeId = id; } }); }
   catch (error) { fail('detect', error instanceof Error ? error.message : String(error)); return steps; }
+
+  // --home redirects logins/config for the spawned agent without touching the caller's env afterwards.
+  const savedHome: Record<string, string | undefined> = {};
+  if (options.home) {
+    for (const key of ['HOME', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH']) { savedHome[key] = process.env[key]; delete process.env[key]; }
+    process.env.HOME = options.home;
+    if (process.platform === 'win32') process.env.USERPROFILE = options.home;
+  }
+  const restoreHome = () => { for (const [key, value] of Object.entries(savedHome)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } };
+
   const detection = await adapter.detect().catch(() => ({ available: false } as { available: boolean; version?: string; reason?: string }));
-  if (!detection.available) { fail('detect', detection.reason ?? 'not available'); return steps; }
+  if (!detection.available) { restoreHome(); fail('detect', detection.reason ?? 'not available'); return steps; }
   ok('detect', detection.version);
+
+  const capProblems = validateCapabilities(adapter);
+  const claimed = Object.entries(adapter.capabilities).filter(([, v]) => v).map(([k]) => k);
+  capProblems.length ? fail('capabilities', capProblems.join('; ')) : ok('capabilities', claimed.length ? claimed.join(', ') : 'none claimed');
+
+  const models = await adapter.models().catch(() => undefined);
+  models === undefined ? fail('models', 'models() threw')
+    : models.length ? ok('models', `${models.length} model(s), first: ${models[0].id}`)
+    : unverified('models', 'empty model list');
 
   const own = !options.repo;
   const repo = options.repo ?? await mkdtemp(join(tmpdir(), `ormi-smoke-${vendor}-`));
@@ -124,6 +145,7 @@ export async function smokeAdapter(vendor: string, transport: string, options: S
   } catch (error) {
     fail('session', error instanceof Error ? error.message : String(error));
   } finally {
+    restoreHome();
     if (own && !options.keep) await rm(repo, { recursive: true, force: true }).catch(() => undefined);
   }
   return steps;

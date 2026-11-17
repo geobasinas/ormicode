@@ -8,6 +8,7 @@ const has = (name: string) => args.includes(name);
 const code = reportSmoke('pi', 'cli', await smokeAdapter('pi', 'cli', {
   create: hooks => new PiCliAdapter({ ...(hooks.onNativeId ? { onNativeId: hooks.onNativeId } : {}) }),
   repo: flag('--repo'),
+  home: flag('--home'),
   kill: has('--kill'),
   approve: flag('--approve'),
   keep: has('--keep'),

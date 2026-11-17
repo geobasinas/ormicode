@@ -8,6 +8,7 @@ const has = (name: string) => args.includes(name);
 const code = reportSmoke('opencode', 'cli', await smokeAdapter('opencode', 'cli', {
   create: hooks => new OpenCodeCliAdapter({ ...(hooks.onNativeId ? { onNativeId: hooks.onNativeId } : {}) }),
   repo: flag('--repo'),
+  home: flag('--home'),
   kill: has('--kill'),
   approve: flag('--approve'),
   keep: has('--keep'),

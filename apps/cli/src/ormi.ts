@@ -53,6 +53,7 @@ async function agentSmoke(vendor: string, args: string[]): Promise<number> {
     const code = reportSmoke('fake', 'inprocess', await smokeAdapter('fake', 'inprocess', {
       create: () => new FakeAdapter({ ...(script ? { script: script as 'echo' | 'slow' | 'tool' | 'approval' | 'ratelimit' } : {}) }),
       repo: flag('--repo'),
+      home: flag('--home'),
       kill: args.includes('--kill'),
       approve: flag('--approve'),
       keep: args.includes('--keep'),
