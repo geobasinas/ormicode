@@ -41,7 +41,9 @@ async function collectTurn(adapter: AgentAdapter, handle: Handle, text: string, 
       if (!event) return { events, failed: 'timed out waiting for turn end' };
       events.push(event);
       if (event.kind === 'approval_request') {
-        if (opts.approve) await adapter.approve!(handle, event.request, opts.approve);
+        const label = (event as { tool?: string; title?: string }).tool ?? (event as { title?: string }).title ?? 'tool';
+        const detail = `${label}${event.destructive ? ' (destructive)' : ''} -> ${opts.approve}`;
+        if (opts.approve) { await adapter.approve!(handle, event.request, opts.approve); opts.seen.push({ step: 'approval', status: 'ok', detail }); }
         else opts.seen.push({ step: 'approval', status: 'unverified', detail: 'approval_request arrived without --approve' });
       }
       if (event.kind === 'turn_end') return { events };

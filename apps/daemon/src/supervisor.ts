@@ -120,7 +120,13 @@ export async function startDaemon(opts: DaemonOptions = {}) {
           w.ready = true; w.pid = Number(body.pid) || w.pid; setWorkerPid(db, session, w.pid ?? null); setState(db, session, 'idle'); armIdle(session, 'idle'); enforcePool();
           if (resuming.delete(session)) {
             record(session, 'resumed', {});
-            if (recapPending.delete(session)) record(session, 'handoff_brief', { text: handoffBrief(db, session) });
+            if (recapPending.delete(session)) {
+              const brief = handoffBrief(db, session);
+              record(session, 'handoff_brief', { text: brief });
+              // No native transcript exists, so the brief is the context: send
+              // it as the first prompt so the fresh agent picks up the thread.
+              void sendPrompt(session, `You are resuming work after a hub restart. Context recap:\n${brief}\nContinue where the session left off.`);
+            }
           }
         }
         answer({ ok: true });

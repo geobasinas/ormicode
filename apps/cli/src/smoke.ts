@@ -14,7 +14,7 @@ const transports: Record<string, string[]> = {
   vibe: ['cli', 'acp'],
 };
 
-const passthrough = ['--repo', '--home', '--approve', '--command', '--args', '--vendor', '--v1'];
+const passthrough = ['--repo', '--home', '--approve', '--command', '--args', '--vendor', '--v1', '--tool-prompt'];
 const flags = ['--kill', '--keep'];
 
 function forward(args: string[]): string[] {

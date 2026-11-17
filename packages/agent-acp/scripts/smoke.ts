@@ -15,6 +15,7 @@ const code = reportSmoke(vendor, 'acp', await smokeAdapter(vendor, 'acp', {
   home: flag('--home'),
   kill: has('--kill'),
   approve: flag('--approve'),
+  toolPrompt: flag('--tool-prompt'),
   keep: has('--keep'),
 }));
 process.exit(code);

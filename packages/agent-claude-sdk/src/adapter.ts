@@ -51,6 +51,9 @@ function turnInput(): TurnInput {
   };
 }
 
+const neverIterable: AsyncIterable<SDKUserMessage> = { [Symbol.asyncIterator]() { return { next: () => new Promise<IteratorResult<SDKUserMessage>>(() => {}) }; } };
+const withTimeout = <T>(p: Promise<T>, ms: number) => Promise.race([p, new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
+
 /** One SDK query per turn; native session IDs reconnect subsequent queries. */
 export class ClaudeSdkAdapter implements AgentAdapter {
   readonly id = 'claude';
@@ -88,7 +91,25 @@ export class ClaudeSdkAdapter implements AgentAdapter {
     } catch { /* logging must never break a turn */ }
   }
   async detect() { return { available: true, reason: 'SDK package available; authentication not checked' }; }
-  async models() { return []; }
+  async models() {
+    if (this.modelCache) return this.modelCache;
+    const create = this.options.query ?? query;
+    const probe = create({ prompt: neverIterable, options: {} });
+    try {
+      const list = await withTimeout(probe.supportedModels(), 15000);
+      this.modelCache = list.map((model) => ({
+        id: model.value,
+        name: model.displayName,
+        ...(model.supportedEffortLevels ? { efforts: model.supportedEffortLevels } : {}),
+      }));
+      return this.modelCache;
+    } catch {
+      return [];
+    } finally {
+      try { probe.close?.(); } catch { /* probe teardown is best-effort */ }
+    }
+  }
+  private modelCache?: { id: string; name?: string; efforts?: readonly string[] }[];
   async start(spec: StartSpec): Promise<Handle> { return this.create(spec); }
   async resume(ref: NativeRef): Promise<Handle> { return this.create({ ...ref }, ref.id); }
   private create(spec: StartSpec, nativeId?: string): Handle {

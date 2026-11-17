@@ -140,6 +140,40 @@ test('a completed session auto-resumes on daemon restart under the safe policy',
   rmSync(dir, { recursive: true, force: true });
 });
 
+test('a non-resumable session under the all policy gets a recap injected as context', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ormi-daemon-test-'));
+  const storePath = join(dir, 'store.db');
+  // fake/sdk is not in the resumable set, so 'all' recovery respawns it recap-only.
+  const daemon = await startDaemon({ socketPath: '127.0.0.1:0', storePath });
+  const client = await connect(daemon.socketPath);
+  const res = await client.request('session.start', { machine: newId('m'), project: 'p_t', vendor: 'fake', transport: 'sdk', model: 'x', effort: 'x', mode: 'x', workspace: { kind: 'current' } });
+  const session = res.body.session;
+  await client.request('session.prompt', { session, text: 'hi' });
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline && getSession(daemon.db, session)?.state !== 'idle')
+    await new Promise(r => setTimeout(r, 25));
+  assert.equal(getSession(daemon.db, session)?.state, 'idle');
+  await daemon.close(); client.close();
+
+  process.env.ORMICODE_RESUME_POLICY = 'all';
+  const daemon2 = await startDaemon({ socketPath: '127.0.0.1:0', storePath });
+  delete process.env.ORMICODE_RESUME_POLICY;
+  const deadline2 = Date.now() + 15_000;
+  const journal = () => replay(daemon2.db, session).map(r => ({ kind: r.kind, text: JSON.parse(r.payload).text }));
+  const recapDone = () => { const rows = journal(); const i = rows.findIndex(r => r.kind === 'handoff_brief'); return i >= 0 && rows.slice(i + 1).some(r => r.kind === 'turn_end'); };
+  while (Date.now() < deadline2 && !recapDone())
+    await new Promise(r => setTimeout(r, 25));
+  const rows = journal();
+  const briefIdx = rows.findIndex(r => r.kind === 'handoff_brief');
+  assert.ok(briefIdx >= 0, 'handoff_brief journaled');
+  assert.ok(rows[briefIdx].text.includes('fake/sdk'), 'brief describes the session');
+  const after = rows.slice(briefIdx + 1);
+  assert.ok(after.some(r => r.kind === 'turn_end'), 'recap prompt completed a turn');
+  assert.ok(after.some(r => r.kind === 'text' && String(r.text).includes('Context recap')), 'recap text reached the agent');
+  await daemon2.close();
+  rmSync(dir, { recursive: true, force: true });
+});
+
 test('hello device identity drives ack cursors per device', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'ormi-daemon-test-'));
   const { getCursor } = await import('@ormicode/journal');

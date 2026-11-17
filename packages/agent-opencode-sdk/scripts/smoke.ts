@@ -11,6 +11,7 @@ const code = reportSmoke('opencode', 'sdk', await smokeAdapter('opencode', 'sdk'
   home: flag('--home'),
   kill: has('--kill'),
   approve: flag('--approve'),
+  toolPrompt: flag('--tool-prompt'),
   keep: has('--keep'),
 }));
 process.exit(code);

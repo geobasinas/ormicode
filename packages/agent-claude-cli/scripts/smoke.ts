@@ -11,6 +11,7 @@ const code = reportSmoke('claude', 'cli', await smokeAdapter('claude', 'cli', {
   home: flag('--home'),
   kill: has('--kill'),
   approve: flag('--approve'),
+  toolPrompt: flag('--tool-prompt'),
   keep: has('--keep'),
 }));
 process.exit(code);
