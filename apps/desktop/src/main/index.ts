@@ -77,34 +77,47 @@ async function connectDaemon(): Promise<void> {
 let restoreBounds: Electron.Rectangle | undefined;
 let animTimer: ReturnType<typeof setInterval> | undefined;
 
-function animateBounds(w: BrowserWindow, to: Electron.Rectangle, ms = 200): void {
-  clearInterval(animTimer);
+const ease = (p: number) => (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2);
+
+function tween(ms: number, step: (e: number) => void): Promise<void> {
+  return new Promise(resolve => {
+    const t0 = performance.now();
+    const tick = () => {
+      const p = Math.min(1, (performance.now() - t0) / ms);
+      step(ease(p));
+      if (p === 1) { clearInterval(animTimer); resolve(); }
+    };
+    clearInterval(animTimer);
+    animTimer = setInterval(tick, 8);
+  });
+}
+
+function animateBounds(w: BrowserWindow, to: Electron.Rectangle, ms = 260): Promise<void> {
   const from = w.getBounds();
-  const t0 = Date.now();
-  animTimer = setInterval(() => {
-    const p = Math.min(1, (Date.now() - t0) / ms);
-    const e = 1 - Math.pow(1 - p, 3);
-    const l = (a: number, b: number) => Math.round(a + (b - a) * e);
-    w.setBounds({ x: l(from.x, to.x), y: l(from.y, to.y), width: l(from.width, to.width), height: l(from.height, to.height) });
-    if (p === 1) clearInterval(animTimer);
-  }, 8);
+  const l = (a: number, b: number, e: number) => Math.round(a + (b - a) * e);
+  return tween(ms, e => w.setBounds({ x: l(from.x, to.x, e), y: l(from.y, to.y, e), width: l(from.width, to.width, e), height: l(from.height, to.height, e) }));
 }
 
 function toggleMax(w: BrowserWindow): void {
-  if (restoreBounds) { animateBounds(w, restoreBounds); restoreBounds = undefined; return; }
+  if (restoreBounds) { void animateBounds(w, restoreBounds); restoreBounds = undefined; return; }
   restoreBounds = w.getBounds();
-  animateBounds(w, screen.getDisplayMatching(restoreBounds).workArea);
+  void animateBounds(w, screen.getDisplayMatching(restoreBounds).workArea);
 }
 
-function fadeOut(w: BrowserWindow, ms = 120): Promise<void> {
-  return new Promise(resolve => {
-    const t0 = Date.now();
-    const id = setInterval(() => {
-      const p = Math.min(1, (Date.now() - t0) / ms);
-      w.setOpacity(1 - p);
-      if (p === 1) { clearInterval(id); resolve(); }
-    }, 8);
+function fadeOut(w: BrowserWindow, ms = 140): Promise<void> {
+  return tween(ms, e => w.setOpacity(1 - e));
+}
+
+async function minimizeAnimated(w: BrowserWindow): Promise<void> {
+  const from = w.getBounds();
+  const to = { x: from.x + Math.round(from.width * 0.06), y: from.y + Math.round(from.height * 0.14), width: Math.round(from.width * 0.88), height: Math.round(from.height * 0.88) };
+  const l = (a: number, b: number, e: number) => Math.round(a + (b - a) * e);
+  await tween(240, e => {
+    w.setBounds({ x: l(from.x, to.x, e), y: l(from.y, to.y, e), width: l(from.width, to.width, e), height: l(from.height, to.height, e) });
+    w.setOpacity(1 - e);
   });
+  w.setBounds(from);
+  w.minimize();
 }
 
 function createWindow(): void {
@@ -121,6 +134,7 @@ function createWindow(): void {
       nodeIntegration: false,
     },
   });
+  win.on('restore', () => { const w = win; if (w) void tween(200, e => w.setOpacity(e)); });
   const devUrl = process.env.ELECTRON_RENDERER_URL;
   if (devUrl) void win.loadURL(devUrl);
   else void win.loadFile(join(__dirname, '../renderer/index.html'));
@@ -168,7 +182,7 @@ app.whenReady().then(async () => {
       : (encryption ? 'os_keyring' : 'basic_text');
   });
   ipcMain.on('ormi:hubLabel', e => { e.returnValue = loadRemoteFile()?.relayUrl ?? socketPath(); });
-  ipcMain.on('ormi:win:min', () => { if (win) void fadeOut(win).then(() => { win?.minimize(); win?.setOpacity(1); }); });
+  ipcMain.on('ormi:win:min', () => { if (win) void minimizeAnimated(win); });
   ipcMain.on('ormi:win:max', () => { if (win) toggleMax(win); });
   ipcMain.on('ormi:win:close', () => { if (win) void fadeOut(win).then(() => win?.close()); });
 
