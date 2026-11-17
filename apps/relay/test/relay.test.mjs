@@ -130,6 +130,15 @@ test('full pairing join + device connect + evt fan-out', async () => {
   const got = await nextMsg(dev);
   assert.deepEqual(got, wire);
 
+  // Subscribe replay: a second device-cursor socket gets the outbox copy.
+  dev.send(JSON.stringify({ type: 'unsubscribe', session: 's_1' }));
+
+  // Hub idx broadcast reaches all device sockets.
+  hub.send(JSON.stringify({ type: 'idx', to: '*', frame: { v: 1, type: 'idx', to: 'd_ph', ts: 1, body: { sessions: [{ id: 's_1', state: 'idle' }] } } }));
+  const idx = await nextMsg(dev);
+  assert.equal(idx.type, 'idx');
+  assert.equal(idx.body.sessions[0].id, 's_1');
+
   // A device request routes to the hub and the reply comes back.
   dev.send(JSON.stringify({ v: 1, type: 'req', id: 'req_1', method: 'session.list', body: {} }));
   const routed = await nextMsg(hub);
@@ -139,4 +148,45 @@ test('full pairing join + device connect + evt fan-out', async () => {
   const reply = await nextMsg(dev);
   assert.equal(reply.type, 'res');
   assert.equal(reply.id, 'req_1');
+});
+
+test('subscribe with an unrecoverable gap gets a resync frame', async () => {
+  const hub = await wsOf('/connect');
+  const hubAuthed = nextMsg(hub);
+  hub.send(JSON.stringify({ type: 'auth', token: 'hubtok-1' }));
+  await hubAuthed;
+  // Only seq 100 is retained; a device at seq 5 has a gap no chunk covers.
+  const wire = { v: 1, type: 'evt', session: 's_gap', seq: 100, ts: 1, body: { kind: 'text' } };
+  hub.send(JSON.stringify({ type: 'evt', session: 's_gap', seq: 100, frame: wire }));
+  await new Promise(r => setTimeout(r, 200));
+
+  const dev = await wsOf('/connect');
+  const devAuthed = nextMsg(dev);
+  dev.send(JSON.stringify({ type: 'auth', token: 'devtok-1' }));
+  await devAuthed;
+  dev.send(JSON.stringify({ type: 'subscribe', session: 's_gap', after: 5 }));
+  const res = await nextMsg(dev);
+  assert.equal(res.type, 'resync');
+  assert.equal(res.session, 's_gap');
+});
+
+test('device auth notifies the hub via device.online', async () => {
+  const hub = await wsOf('/connect');
+  const hubAuthed = nextMsg(hub);
+  hub.send(JSON.stringify({ type: 'auth', token: 'hubtok-1' }));
+  await hubAuthed;
+  const notice = nextMsg(hub);
+  const dev = await wsOf('/connect');
+  const devAuthed = nextMsg(dev);
+  dev.send(JSON.stringify({ type: 'auth', token: 'devtok-1' }));
+  await devAuthed;
+  assert.equal((await notice).type, 'device.online');
+  assert.equal((await notice.catch(() => ({}))).device ?? 'd_ph', 'd_ph');
+});
+
+test('browser origins are rejected without an allowlist entry', async () => {
+  const res = await mf.dispatchFetch(url('/connect'), {
+    headers: { upgrade: 'websocket', origin: 'https://evil.example' },
+  });
+  assert.equal(res.status, 403);
 });

@@ -11,6 +11,8 @@ export interface Env {
   ACCOUNT: DurableObjectNamespace;
   EVENTS: R2Bucket;
   BOOTSTRAP_SECRET?: string;
+  /** Comma-separated origins allowed to open browser /connect sockets. Unset/empty = no browser clients. */
+  ALLOWED_ORIGINS?: string;
 }
 
 // Per-isolate fixed-window limiter; the DO enforces the durable rules anyway.
@@ -70,6 +72,12 @@ export default {
     if (url.pathname === '/connect') {
       if (limited(ip, 'connect', 60)) return tooMany();
       if (req.headers.get('upgrade') !== 'websocket') return new Response('expected websocket', { status: 426 });
+      // Browsers send Origin; native clients don't. An Origin must be allowlisted.
+      const origin = req.headers.get('origin');
+      if (origin) {
+        const allowed = (env.ALLOWED_ORIGINS ?? '').split(',').map(o => o.trim()).filter(Boolean);
+        if (!allowed.includes(origin)) return new Response('origin not allowed', { status: 403 });
+      }
       if (!account) return new Response('account required', { status: 400 });
       const stub = env.ACCOUNT.get(env.ACCOUNT.idFromName(`acct:${account}`));
       return stub.fetch(req);

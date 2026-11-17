@@ -6,6 +6,8 @@
  * lives in attachments, durable state in storage.
  */
 
+import { Spooler, type SpoolEnv, REPLAY_LIMIT } from './spool.ts';
+
 interface Attachment { role: 'pending' | 'hub' | 'device'; device?: string }
 
 const sha256hex = async (input: string): Promise<string> => {
@@ -13,15 +15,20 @@ const sha256hex = async (input: string): Promise<string> => {
   return Array.from(new Uint8Array(d), b => b.toString(16).padStart(2, '0')).join('');
 };
 const eq = (a: string, b: string) => { if (a.length !== b.length) return false; let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0; };
-const OUTBOX_CAP = 1000; // frames kept per session; deeper history comes from the hub
+const OUTBOX_CAP = 5000; // frames kept per session; deeper history spools to R2 chunks
 const JOIN_TTL_MS = 30_000;
+const MAX_SUBS = 200; // per device
+const MAX_FPS = 50;   // live fan-out per session per second; outbox keeps the rest
 
 export class AccountDO implements DurableObject {
   private joins = new Map<string, (res: Response) => void>();
   private ctx: DurableObjectState;
+  private spool: Spooler;
+  private fps = new Map<string, { sec: number; count: number }>();
 
-  constructor(ctx: DurableObjectState) {
+  constructor(ctx: DurableObjectState, env: SpoolEnv) {
     this.ctx = ctx;
+    this.spool = new Spooler(ctx.storage.sql, env, ms => void ctx.storage.setAlarm(ms));
     ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT);
       CREATE TABLE IF NOT EXISTS devices(id TEXT PRIMARY KEY, name TEXT, token_hash TEXT UNIQUE, revoked INTEGER DEFAULT 0);
@@ -30,6 +37,7 @@ export class AccountDO implements DurableObject {
       CREATE TABLE IF NOT EXISTS subs(device TEXT, session TEXT, PRIMARY KEY(device, session));
       CREATE TABLE IF NOT EXISTS outbox(session TEXT, seq INTEGER, frame TEXT, PRIMARY KEY(session, seq));
       CREATE TABLE IF NOT EXISTS requests(id TEXT PRIMARY KEY, device TEXT);
+      CREATE TABLE IF NOT EXISTS chunks(session TEXT, first INTEGER, last INTEGER, key TEXT, PRIMARY KEY(session, first));
     `);
   }
 
@@ -138,6 +146,9 @@ export class AccountDO implements DurableObject {
       if (next.role === 'pending') { ws.close(4004, 'unknown token'); return; }
       ws.serializeAttachment(next);
       ws.send(JSON.stringify({ type: 'authed', role: next.role, ...(next.device ? { device: next.device } : {}) }));
+      // Tell the hub a device came online so it can push an idx summary.
+      if (next.role === 'device')
+        for (const hub of this.sockets('hub')) hub.send(JSON.stringify({ type: 'device.online', device: next.device }));
       return;
     }
 
@@ -154,10 +165,21 @@ export class AccountDO implements DurableObject {
     switch (msg.type) {
       case 'subscribe': {
         if (!session) return;
+        const subs = Number(this.sql.exec('SELECT COUNT(*) AS n FROM subs WHERE device = ?', device).one()?.n ?? 0);
+        if (subs >= MAX_SUBS) { ws.send(JSON.stringify({ type: 'err', code: 'relay.sub_limit', session })); return; }
         this.sql.exec('INSERT OR IGNORE INTO subs(device, session) VALUES (?, ?)', device, session);
         const after = typeof msg.after === 'number' ? msg.after : 0;
         this.sql.exec('INSERT OR REPLACE INTO cursors(device, session, seq) VALUES (?, ?, ?)', device, session, after);
-        for (const row of this.sql.exec('SELECT seq, frame FROM outbox WHERE session = ? AND seq > ? ORDER BY seq', session, after)) {
+        const rows = this.sql.exec('SELECT seq, frame FROM outbox WHERE session = ? AND seq > ? ORDER BY seq', session, after).toArray();
+        // Gap between the cursor and the oldest retained frame: recover from
+        // R2 chunks if possible, otherwise tell the device to resync via the hub.
+        const floor = Number(this.sql.exec('SELECT MIN(seq) AS m FROM outbox WHERE session = ?', session).one()?.m ?? 0);
+        if (after > 0 && floor > after + 1) {
+          const { frames, tooFar } = await this.spool.missing(session, after);
+          if (tooFar || frames.length === 0) { ws.send(JSON.stringify({ type: 'resync', session })); return; }
+          for (const f of frames) ws.send(f);
+        } else if (rows.length > REPLAY_LIMIT) { ws.send(JSON.stringify({ type: 'resync', session })); return; }
+        for (const row of rows) {
           ws.send(row.frame as string);
           this.sql.exec('INSERT OR REPLACE INTO cursors(device, session, seq) VALUES (?, ?, ?)', device, session, row.seq as number);
         }
@@ -187,7 +209,14 @@ export class AccountDO implements DurableObject {
         const session = String(msg.session); const seq = Number(msg.seq);
         const frame = JSON.stringify(msg.frame ?? msg);
         this.sql.exec('INSERT OR REPLACE INTO outbox(session, seq, frame) VALUES (?, ?, ?)', session, seq, frame);
-        this.sql.exec('DELETE FROM outbox WHERE session = ? AND seq <= ? - 5000', session, seq);
+        this.sql.exec('DELETE FROM outbox WHERE session = ? AND seq <= ? - ?', session, seq, OUTBOX_CAP);
+        this.spool.add(session, seq, frame);
+        // >50 frames/s: the outbox keeps everything; live fan-out is throttled.
+        const sec = Math.floor(Date.now() / 1000);
+        const f = this.fps.get(session);
+        const count = f && f.sec === sec ? f.count + 1 : 1;
+        this.fps.set(session, { sec, count });
+        if (count > MAX_FPS) return;
         for (const d of this.subscribed(session)) {
           for (const sock of this.sockets('device', d)) {
             try { sock.send(frame); this.sql.exec('INSERT OR REPLACE INTO cursors(device, session, seq) VALUES (?, ?, ?)', d, session, seq); }
@@ -223,6 +252,13 @@ export class AccountDO implements DurableObject {
         const id = String(msg.device);
         this.sql.exec('UPDATE devices SET revoked = 1 WHERE id = ?', id);
         for (const sock of this.sockets('device', id)) sock.close(4001, 'revoked');
+        return;
+      }
+      case 'idx': {
+        // Hub -> one device session-list summary (freshness without transcripts).
+        const to = String(msg.to);
+        const out = JSON.stringify(msg.frame ?? msg);
+        for (const sock of to === '*' ? this.sockets('device') : this.sockets('device', to)) sock.send(out);
         return;
       }
       default: return;

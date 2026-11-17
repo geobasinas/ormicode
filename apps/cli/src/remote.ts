@@ -119,7 +119,10 @@ export function connectRemote(config: RemoteConfig): Promise<WsLink> {
     link.onRelayMessage = msg => {
       if (msg.type === 'authed') {
         link.send({ v: 1, type: 'hello', role: 'client', proto: 1, device: config.device });
-        link.onRelayMessage = undefined;
+        link.onRelayMessage = m => {
+          if (m.type === 'resync') console.error(`relay: ${m.session} too far behind — resync required`);
+          else if (m.type === 'err') console.error(`relay: ${m.code ?? 'error'}`);
+        };
         resolve(link);
       }
     };

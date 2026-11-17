@@ -13,6 +13,8 @@ export interface RelayHooks {
   onPairJoin(join: string, code: string, name: string): void;
   /** A remote device sent a request frame. */
   onRequest(link: ClientLink, frame: Frame): void;
+  /** A device authenticated against the relay; push it an idx summary. */
+  onDeviceOnline?(device: string): void;
   onState?(connected: boolean): void;
 }
 
@@ -32,6 +34,8 @@ export class RelayClient {
   private timer: NodeJS.Timeout | undefined;
   private stopped = false;
   lastError: string | undefined;
+
+  private pendingRevokes = new Set<string>();
 
   private config: HubConfig;
   private hooks: RelayHooks;
@@ -62,8 +66,12 @@ export class RelayClient {
   private onMessage(raw: string): void {
     let msg: Record<string, unknown>;
     try { msg = JSON.parse(raw); } catch { return; }
-    if (msg.type === 'authed') { this.hooks.onState?.(true); return; }
+    if (msg.type === 'authed') {
+      for (const d of this.pendingRevokes) this.send({ type: 'device.revoke', device: d });
+      this.hooks.onState?.(true); return;
+    }
     if (msg.type === 'pair.join') { this.hooks.onPairJoin(String(msg.join), String(msg.code), String(msg.name)); return; }
+    if (msg.type === 'device.online' && typeof msg.device === 'string') { this.hooks.onDeviceOnline?.(msg.device); return; }
     if ((msg.type === 'req' || msg.type === 'evt' || msg.type === 'ack') && typeof msg.device === 'string') {
       const link = new RemoteLink(this, msg.device);
       const { device: _, ...frame } = msg;
@@ -89,12 +97,18 @@ export class RelayClient {
   }
 
   deviceRevoke(device: string): void {
+    this.pendingRevokes.add(device);
     this.send({ type: 'device.revoke', device });
     // Also tell the relay over HTTP so revocation lands even if the socket is down.
     void fetch(`${this.config.relayUrl}/revoke?account=${encodeURIComponent(this.config.account)}`, {
       method: 'POST', headers: { authorization: `Bearer ${this.config.token}`, 'content-type': 'application/json' },
       body: JSON.stringify({ device }),
     }).catch(() => undefined);
+  }
+
+  /** Session-list summary for one device ('*' broadcasts to all devices). */
+  sendIdx(to: string, sessions: Record<string, unknown>[]): void {
+    this.send({ type: 'idx', to, frame: { v: 1, type: 'idx', to, ts: Date.now(), body: { sessions } } });
   }
 
   /** Register a live pairing code hash with the relay (HTTP, hub-token authed). */

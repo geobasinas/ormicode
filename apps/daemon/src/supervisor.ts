@@ -3,7 +3,7 @@ import { rmSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Frame } from '@ormicode/protocol';
-import { openStore, getSession, setState, setWorkerPid, setNativeId, type SessionState } from '@ormicode/session-store';
+import { openStore, getSession, setState, setWorkerPid, setNativeId, listSessions, type SessionState } from '@ormicode/session-store';
 import { killTree } from './proctree.ts';
 import { recoverSessions, resumePolicy, sweepLogs } from './recovery.ts';
 import { handoffBrief } from './handoff.ts';
@@ -149,6 +149,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
         const frameOut = JSON.stringify({ v: 1, type: 'evt', session, seq, ts: Number(body.ts) || Date.now(), body: { kind, ...(body.payload as Record<string, unknown>) } });
         fanout(session, frameOut);
         relay?.sendEvt(session, seq, JSON.parse(frameOut));
+        idxSoon();
         const payload = body.payload as Record<string, unknown>;
         const mapped = stateFor[kind];
         if (mapped) {
@@ -259,6 +260,17 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     pairing, relay: () => relay,
   };
 
+  // idx summaries keep remote session lists fresh without streaming transcripts.
+  let idxTimer: NodeJS.Timeout | undefined;
+  const pushIdx = (to: string) => {
+    relay?.sendIdx(to, listSessions(db).map(s => ({ id: s.id, state: s.state, title: s.title, updatedAt: s.updated_at })));
+  };
+  const idxSoon = () => {
+    if (idxTimer) return;
+    idxTimer = setTimeout(() => { idxTimer = undefined; pushIdx('*'); }, 1_000);
+    idxTimer.unref();
+  };
+
   const hubConfig = loadHubConfig();
   if (hubConfig) {
     relay = new RelayClient(hubConfig, {
@@ -271,6 +283,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
         const client: Client = { link, subscriptions: new Set(), device: (link as RemoteLink).device ?? 'remote' };
         void onClientFrame(dispatchCtx, client, frame);
       },
+      onDeviceOnline: device => pushIdx(device),
       onState: connected => { if (!connected) lastError ??= 'relay disconnected'; },
     });
     relay.start();
