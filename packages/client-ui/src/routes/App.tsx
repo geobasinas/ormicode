@@ -38,16 +38,24 @@ function Titlebar({ platform }: { platform: ClientPlatform }) {
 function Tab({ id, active, onSelect, onClose }: { id: string; active: boolean; onSelect: () => void; onClose?: () => void }) {
   const details = useSession(id === 'now' ? undefined : id);
   const label = id === 'now' ? 'Home' : (details?.title || id.slice(0, 14));
+  const R = 12;
+  const fillet = (side: 'left' | 'right') => (
+    <span aria-hidden style={{
+      position: 'absolute', bottom: 0, [side === 'right' ? 'left' : 'right']: '100%', width: R, height: R, pointerEvents: 'none',
+      background: `radial-gradient(circle at ${side === 'right' ? '100%' : '0'} 0, transparent ${R - 0.5}px, var(--bg-main) ${R}px)`,
+    }} />
+  );
   return (
     <span className={active ? undefined : 'hv'} style={{
-      display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13,
-      padding: '6px 14px 7px', borderRadius: '9px 9px 0 0', cursor: 'pointer', whiteSpace: 'nowrap',
-      border: '1px solid', borderBottom: 'none', borderColor: active ? 'var(--line-pane)' : 'transparent',
+      position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: active ? 500 : 400,
+      padding: '8px 18px 10px', borderRadius: `${R}px ${R}px 0 0`, cursor: 'pointer', whiteSpace: 'nowrap',
       background: active ? 'var(--bg-main)' : 'transparent',
-      color: active ? 'var(--text-active)' : 'var(--text-secondary)',
+      color: active ? 'var(--text-title)' : 'var(--text-secondary)',
     }} onClick={onSelect}>
       {label}
       {onClose ? <X size={12} style={{ color: 'var(--text-hint)' }} onClick={e => { e.stopPropagation(); onClose(); }} /> : null}
+      {active ? fillet('right') : null}
+      {active && id !== 'now' ? fillet('left') : null}
     </span>
   );
 }
@@ -191,8 +199,8 @@ export function App({ platform, theme = 'dark', layout }: { platform: ClientPlat
               {tabs.map(t => <Tab key={t} id={t} active={route === t} onSelect={() => setRoute(t)} onClose={() => close(t)} />)}
             </div>
             <div style={{
-              flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg-main)', border: '1px solid var(--line-pane)',
-              borderRadius: (route === 'now' || route === tabs[0]) ? '0 10px 10px 10px' : 10,
+              flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg-main)',
+              borderRadius: route === 'now' ? '0 12px 12px 12px' : 12,
             }}>
               {route === 'now' ? <Now onOpen={open} state={state} /> : <SessionView key={route} session={route} rail={rail} onRail={setRail} />}
             </div>
