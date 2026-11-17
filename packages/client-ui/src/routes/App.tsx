@@ -7,7 +7,7 @@ import { PlatformContext } from '../lib/platform.ts';
 import { applyTheme, themeByName } from '../lib/theme.ts';
 import { defaultLayout, applyLayout, validateLayout } from '../lib/layout.ts';
 import type { LayoutDescriptor } from '../lib/layout.ts';
-import { PanelLeft, Minus, Square, X, Search, Plus } from 'lucide-react';
+import { PanelLeft, Minus, Square, X, Search, SquarePen, Settings } from 'lucide-react';
 import { SessionList } from '../features/session/SessionList.tsx';
 import { useSession } from '../features/session/useSession.ts';
 import { Now } from './Now.tsx';
@@ -66,6 +66,16 @@ export function App({ platform, theme = 'dark', layout }: { platform: ClientPlat
   }, [layout]);
 
   useEffect(() => { applyTheme(themeByName(theme)); }, [theme]);
+  const searchRef = useMemo(() => ({ current: null as HTMLInputElement | null }), []);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      if (e.key === 'k' || e.key === 'K') { e.preventDefault(); searchRef.current?.focus(); }
+      if (e.key === 'n' || e.key === 'N') { e.preventDefault(); setRoute('now'); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [searchRef]);
   useEffect(() => {
     platform.transport.onState = setState;
     platform.transport.onState?.(state);
@@ -94,7 +104,7 @@ export function App({ platform, theme = 'dark', layout }: { platform: ClientPlat
             }}>
               <div style={{ height: 30, display: 'flex', alignItems: 'center', gap: 9, padding: '0 10px', background: 'var(--bg-card)', borderRadius: 8, border: '1px solid var(--line-divider)' }}>
                 <Search size={15} style={{ color: 'var(--text-label)', flexShrink: 0 }} />
-                <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search"
+                <input ref={el => { searchRef.current = el; }} value={query} onChange={e => setQuery(e.target.value)} placeholder="Search"
                   style={{ flex: 1, font: 'inherit', fontSize: 13, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text-label)' }} />
                 <span style={{ fontSize: 10, color: '#5e5e5e' }}>Ctrl K</span>
               </div>
@@ -103,7 +113,7 @@ export function App({ platform, theme = 'dark', layout }: { platform: ClientPlat
                 font: 'inherit', fontSize: 13, cursor: 'pointer', background: 'transparent', border: 'none',
                 borderRadius: 8, color: 'var(--text-title)', textAlign: 'left',
               }}>
-                <Plus size={15} style={{ color: 'var(--text-title)', flexShrink: 0 }} />
+                <SquarePen size={15} style={{ color: 'var(--text-title)', flexShrink: 0 }} />
                 <span style={{ flex: 1 }}>New session</span>
                 <span style={{ fontSize: 10, color: '#5e5e5e' }}>Ctrl N</span>
               </button>
@@ -126,7 +136,11 @@ export function App({ platform, theme = 'dark', layout }: { platform: ClientPlat
                   <div style={{ padding: '0 var(--space-3)', color: 'var(--text-hint)', fontSize: 13 }}>no bots yet</div>
                 )}
               </div>
-              <div style={{ padding: '8px 10px 0', fontSize: 11, color: 'var(--text-hint)', borderTop: '1px solid var(--line-pane)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ padding: '8px 10px 0', borderTop: '1px solid var(--line-pane)', display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Settings size={15} style={{ color: 'var(--text-label)', flexShrink: 0 }} />
+                <span style={{ fontSize: 13, color: 'var(--text-label)' }}>Settings</span>
+              </div>
+              <div style={{ padding: '6px 10px 0', fontSize: 11, color: 'var(--text-hint)', display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: state === 'online' ? 'var(--accent-mint)' : 'var(--accent-amber)' }} title={state} />
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{platform.hubLabel}</span>
               </div>

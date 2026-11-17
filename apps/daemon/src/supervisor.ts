@@ -129,7 +129,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
               record(session, 'handoff_brief', { text: brief });
               // No native transcript exists, so the brief is the context: send
               // it as the first prompt so the fresh agent picks up the thread.
-              void sendPrompt(session, `You are resuming work after a hub restart. Context recap:\n${brief}\nContinue where the session left off.`);
+              void sendPrompt(session, `You are resuming work after a hub restart. Context recap:\n${brief}\nContinue where the session left off.`, undefined, { journal: false });
             }
           }
         }
@@ -231,11 +231,14 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     poll();
   });
 
-  const sendPrompt = async (session: string, text: string, images?: unknown[]): Promise<boolean> => {
+  const sendPrompt = async (session: string, text: string, images?: unknown[], opts?: { journal?: boolean }): Promise<boolean> => {
     await ensureWorker(session);
     const res = await toWorker(session, 'worker.prompt', { text, ...(images ? { images } : {}) });
     if (!res || res.type === 'err') return false;
     lastPrompt.set(session, { text, ...(images ? { images } : {}) });
+    // Real user prompts are journaled so transcripts can show them as bubbles;
+    // internal replays (recaps, retries, handoff briefs) pass journal:false.
+    if (opts?.journal !== false) record(session, 'prompt', { text });
     return true;
   };
 
@@ -249,7 +252,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
       retryTimers.delete(session);
       const last = lastPrompt.get(session);
       if (last && getSession(db, session)?.state === 'paused_rate_limited') {
-        void sendPrompt(session, last.text, last.images).then(ok => { if (!ok) setState(db, session, 'interrupted', 'resume_failed'); });
+        void sendPrompt(session, last.text, last.images, { journal: false }).then(ok => { if (!ok) setState(db, session, 'interrupted', 'resume_failed'); });
       }
     }, Math.max(0, resetAt - Date.now())).unref());
   };

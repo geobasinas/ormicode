@@ -38,7 +38,7 @@ export interface DispatchCtx {
   handoffsInTurn: Map<string, number>;
   spawnWorker(session: string): void;
   toWorker(session: string, method: string, body: Record<string, unknown>): Promise<Frame | undefined>;
-  sendPrompt(session: string, text: string, images?: unknown[]): Promise<boolean>;
+  sendPrompt(session: string, text: string, images?: unknown[], opts?: { journal?: boolean }): Promise<boolean>;
   pairing: Pairing;
   relay(): RelayClient | undefined;
 }
@@ -153,7 +153,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         const session = String(body.session);
         const last = ctx.lastPrompt.get(session);
         if (!last) return client.link.replyError(id, 'session.not_found', 'no prompt to retry');
-        return await ctx.sendPrompt(session, last.text, last.images)
+        return await ctx.sendPrompt(session, last.text, last.images, { journal: false })
           ? client.link.reply(id, { accepted: true })
           : client.link.replyError(id, 'agent.failed', 'worker rejected retry');
       }
@@ -239,7 +239,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
             db.prepare(`UPDATE sessions SET handed_off = 0, state = 'idle' WHERE id = ?`).run(session);
           } catch { /* daemon closing */ }
         };
-        void ctx.sendPrompt(child, `You are taking over this task${reason ? ` — ${reason}` : ''}. Handoff brief:\n${brief}\nContinue where the previous session left off.`)
+        void ctx.sendPrompt(child, `You are taking over this task${reason ? ` — ${reason}` : ''}. Handoff brief:\n${brief}\nContinue where the previous session left off.`, undefined, { journal: false })
           .then(ok => { if (!ok) rollback(); })
           .catch(rollback);
         return client.link.reply(id, { session: child, brief, parent: s.id });

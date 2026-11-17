@@ -7,6 +7,7 @@ const nonEmpty = z.string().check(z.minLength(1));
 const count = z.number().check(z.int(), z.gte(0));
 const quantity = z.number().check(z.gte(0));
 export const eventBodies = {
+  prompt: z.looseObject({ kind: z.literal('prompt'), text }),
   turn_start: z.looseObject({ kind: z.literal('turn_start') }),
   turn_end: z.looseObject({ kind: z.literal('turn_end') }),
   text: z.looseObject({ kind: z.literal('text'), text }),
