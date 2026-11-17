@@ -10,12 +10,13 @@ export async function sessionCommand(verb: string, args: string[]): Promise<numb
     switch (verb) {
       case 'start': {
         const vendor = args[0];
-        if (!vendor) { console.error('usage: ormi session start <vendor> [--transport t] [--project p] [--model m] [--effort e] [--mode m] [--agentCommand c]'); return 2; }
+        if (!vendor) { console.error('usage: ormi session start <vendor> [--transport t] [--project p] [--scratch] [--model m] [--effort e] [--mode m] [--agentCommand c]'); return 2; }
+        const scratch = args.includes('--scratch');
         const res = await link.request('session.start', {
-          machine: newId('m'), project: flag(args, '--project') ?? process.cwd(),
+          machine: newId('m'), project: scratch ? 'scratch' : flag(args, '--project') ?? process.cwd(),
           vendor, transport: flag(args, '--transport') ?? 'cli',
           model: flag(args, '--model') ?? 'default', effort: flag(args, '--effort') ?? 'default', mode: flag(args, '--mode') ?? 'default',
-          workspace: { kind: 'current' },
+          workspace: { kind: scratch ? 'scratch' : 'current' },
           ...(flag(args, '--agentCommand') ? { agentCommand: flag(args, '--agentCommand') } : {}),
         });
         if (res.type === 'err') return fail(res);

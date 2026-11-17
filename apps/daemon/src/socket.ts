@@ -11,7 +11,7 @@ export function defaultSocketPath(): string {
 }
 
 export function ormicodeDir(): string {
-  const dir = join(homedir(), '.ormicode');
+  const dir = process.env.ORMICODE_HOME ?? join(homedir(), '.ormicode');
   mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -104,11 +104,15 @@ function tcpTarget(path: string): { host: string; port: number } | undefined {
   return hp ? { host: '127.0.0.1', port: Number(hp[1] ?? hp[2]) } : undefined;
 }
 
-export function connect(path: string): Promise<Link> {
+export function connect(path: string, hello?: Record<string, unknown>): Promise<Link> {
   return new Promise((resolve, reject) => {
     const target = tcpTarget(path);
     const socket = target ? net.connect(target.port, target.host) : net.connect(path);
-    socket.once('connect', () => resolve(new Link(socket)));
+    socket.once('connect', () => {
+      const link = new Link(socket);
+      if (hello) link.send(hello);
+      resolve(link);
+    });
     socket.once('error', reject);
   });
 }

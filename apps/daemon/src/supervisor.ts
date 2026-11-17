@@ -44,6 +44,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   // Boot: interrupt in-flight sessions, expire pending interactions, reap stale
   // pids; auto-resume candidates are spawned once spawnWorker exists below.
   const resuming = new Set<string>();
+  const recapPending = new Set<string>();
   const recovery = recoverSessions(db, resumePolicy());
 
   const fanout = (session: string, frame: string) => {
@@ -113,7 +114,10 @@ export async function startDaemon(opts: DaemonOptions = {}) {
         const w = workers.get(session);
         if (w) {
           w.ready = true; w.pid = Number(body.pid) || w.pid; setWorkerPid(db, session, w.pid ?? null); setState(db, session, 'idle'); armIdle(session, 'idle'); enforcePool();
-          if (resuming.delete(session)) record(session, 'resumed', {});
+          if (resuming.delete(session)) {
+            record(session, 'resumed', {});
+            if (recapPending.delete(session)) record(session, 'handoff_brief', { text: handoffBrief(db, session) });
+          }
         }
         answer({ ok: true });
         break;
@@ -247,6 +251,11 @@ export async function startDaemon(opts: DaemonOptions = {}) {
         onWorkerFrame(link, frame);
       } else {
         let client = [...clients].find(c => c.link === link);
+        if (frame.type === 'hello') {
+          if (!client) { client = { link, subscriptions: new Set(), device: 'cli' }; clients.add(client); }
+          if (typeof frame.device === 'string' && frame.device) client.device = frame.device;
+          return;
+        }
         if (!client) { client = { link, subscriptions: new Set(), device: 'cli' }; clients.add(client); }
         void onClientFrame(dispatchCtx, client, frame);
       }
@@ -261,7 +270,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   const addr = server.address();
   if (typeof addr === 'object' && addr) socketPath = `127.0.0.1:${addr.port}`;
   // Resume spawns only after the socket is bound — workers connect on start.
-  for (const s of recovery.autoResume) { resuming.add(s.id); spawnWorker(s.id); }
+  for (const c of recovery.autoResume) { resuming.add(c.s.id); if (c.recapOnly) recapPending.add(c.s.id); spawnWorker(c.s.id); }
   for (const r of recovery.rateLimited) scheduleRateRetry(r.id, r.resetAt);
   return {
     socketPath, storePath, db, workers,

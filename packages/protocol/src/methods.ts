@@ -11,6 +11,8 @@ const workspaceSchema = z.union([
   z.object({ kind: z.literal('current') }),
   z.object({ kind: z.literal('branch'), branch: nonEmpty }),
   z.object({ kind: z.literal('worktree'), branch: nonEmpty }),
+  // No project folder: the session gets ~/.ormicode/scratch/<id> as its cwd.
+  z.object({ kind: z.literal('scratch') }),
 ]);
 const summarySchema = z.object({
   id: sessionIdSchema, title: z.nullable(z.string()), state: sessionStateSchema,

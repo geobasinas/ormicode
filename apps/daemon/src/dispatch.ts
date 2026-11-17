@@ -2,7 +2,10 @@ import type { Frame } from '@ormicode/protocol';
 import { parseRequestBody, newId } from '@ormicode/protocol';
 import { getSession, listSessions, setState, listNotes, setNote, deleteNote, archiveSession, createSession, type Store } from '@ormicode/session-store';
 import { replay, setCursor } from '@ormicode/journal';
+import { join } from 'node:path';
+import { mkdirSync, rmSync } from 'node:fs';
 import type { Link } from './socket.ts';
+import { ormicodeDir } from './socket.ts';
 import { acquireWorkspace, releaseForSession } from './leases.ts';
 import { hasTransport } from './registry.ts';
 
@@ -43,7 +46,11 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         const vendor = String(body.vendor); const transport = String(body.transport);
         if (!hasTransport(vendor, transport)) return client.link.replyError(id, 'agent.unsupported', `${vendor}/${transport}`);
         const sessionId = newId('s');
-        const cwd = process.cwd();
+        const workspace = body.workspace as { kind?: string } | undefined;
+        const cwd = workspace?.kind === 'scratch'
+          ? join(ormicodeDir(), 'scratch', sessionId)
+          : process.cwd();
+        if (workspace?.kind === 'scratch') mkdirSync(cwd, { recursive: true });
         const lease = acquireWorkspace(db, cwd, sessionId, String(body.machine ?? 'm_local'));
         if (lease.conflict) return client.link.replyError(id, 'lease.conflict', `workspace held by ${lease.conflict}`);
         createSession(db, {
@@ -118,8 +125,15 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
           : client.link.replyError(id, 'agent.failed', 'worker rejected retry');
       }
       case 'session.delete': case 'session.archive': {
-        archiveSession(db, String(body.session));
-        releaseForSession(db, String(body.session));
+        const session = String(body.session);
+        archiveSession(db, session);
+        releaseForSession(db, session);
+        // Scratch sessions own their folder; delete removes it (archive keeps it).
+        const row = getSession(db, session);
+        const scratchRoot = join(ormicodeDir(), 'scratch');
+        if (method === 'session.delete' && row?.cwd.startsWith(scratchRoot)) {
+          try { rmSync(row.cwd, { recursive: true, force: true }); } catch { /* best effort */ }
+        }
         return client.link.reply(id, method === 'session.delete' ? { deleted: true } : { archived: true });
       }
       case 'session.setModel': case 'session.setEffort': case 'session.setMode': case 'session.setOption': {

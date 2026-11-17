@@ -27,7 +27,8 @@ function expirePending(db: Store, session: string): void {
  * policy allows auto-resuming — 'safe' resumes completed sessions with native
  * resume support, 'all' also retries interrupted ones, 'wait' resumes nothing.
  */
-export interface Recovery { autoResume: SessionRow[]; rateLimited: { id: string; resetAt: number }[] }
+export interface ResumeCandidate { s: SessionRow; recapOnly: boolean }
+export interface Recovery { autoResume: ResumeCandidate[]; rateLimited: { id: string; resetAt: number }[] }
 
 export function recoverSessions(db: Store, policy: ResumePolicy): Recovery {
   db.exec('DELETE FROM leases');
@@ -49,7 +50,10 @@ export function recoverSessions(db: Store, policy: ResumePolicy): Recovery {
   });
   if (policy === 'wait') return { autoResume: [], rateLimited };
   const states = policy === 'all' ? ['idle', 'done', 'interrupted'] : ['idle', 'done'];
-  const autoResume = listSessions(db).filter(s =>
-    s.native_id && states.includes(s.state) && resumable(s.vendor, s.transport));
+  // 'all' also picks sessions with no usable native resume; those respawn fresh
+  // and get a journaled handoff_brief recap instead of their transcript.
+  const autoResume = listSessions(db)
+    .filter(s => policy === 'all' ? states.includes(s.state) : s.native_id && states.includes(s.state) && resumable(s.vendor, s.transport))
+    .map(s => ({ s, recapOnly: !(s.native_id && resumable(s.vendor, s.transport)) }));
   return { autoResume, rateLimited };
 }

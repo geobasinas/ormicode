@@ -43,7 +43,7 @@ test('safe policy resumes only completed sessions with a resumable transport', (
     setNativeId(db, 's_vibecli', 'native-2');
     createSession(db, { id: 's_nonative', machine: 'm', project: 'p', vendor: 'pi', transport: 'cli', cwd: '/tmp' });
     setState(db, 's_nonative', 'idle');
-    const safe = recoverSessions(db, 'safe').autoResume.map(s => s.id);
+    const safe = recoverSessions(db, 'safe').autoResume.map(c => c.s.id);
     assert.deepEqual(safe, ['s_done']);
     db.close();
     const { db: db2, dir: dir2 } = setup();
@@ -53,7 +53,7 @@ test('safe policy resumes only completed sessions with a resumable transport', (
       setNativeId(db2, 's_intr', 'native-3');
       assert.deepEqual(recoverSessions(db2, 'safe').autoResume.length, 0, 'safe skips interrupted');
       // interrupted state isn't in the inFlight list, so 'all' picks it up
-      assert.deepEqual(recoverSessions(db2, 'all').autoResume.map(s => s.id), ['s_intr']);
+      assert.deepEqual(recoverSessions(db2, 'all').autoResume.map(c => c.s.id), ['s_intr']);
       assert.deepEqual(recoverSessions(db2, 'wait').autoResume.length, 0, 'wait resumes nothing');
     } finally { db2.close(); rmSync(dir2, { recursive: true, force: true }); }
   } finally { rmSync(dir, { recursive: true, force: true }); }

@@ -1,9 +1,22 @@
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import * as daemonSocket from '@ormicode/daemon';
+import { newId } from '@ormicode/protocol';
 
 const socketPath = () => process.env.ORMICODE_SOCKET ?? daemonSocket.defaultSocketPath();
 
+// Persistent CLI identity so device cursors survive reconnects.
+function deviceId(): string {
+  const file = join(daemonSocket.ormicodeDir(), 'device-id');
+  try { return readFileSync(file, 'utf8').trim(); } catch { /* create below */ }
+  const id = newId('d');
+  try { mkdirSync(daemonSocket.ormicodeDir(), { recursive: true }); writeFileSync(file, id); } catch { /* stateless */ }
+  return id;
+}
+
 export async function withDaemon<T>(fn: (link: daemonSocket.Link) => Promise<T>): Promise<T> {
-  const link = await daemonSocket.connect(socketPath()).catch(() => {
+  const hello = { v: 1, type: 'hello', role: 'client', proto: 1, device: deviceId() };
+  const link = await daemonSocket.connect(socketPath(), hello).catch(() => {
     console.error(`no daemon on ${socketPath()} — start one with \`ormi daemon\``);
     process.exit(2);
   });

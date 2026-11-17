@@ -139,3 +139,49 @@ test('a completed session auto-resumes on daemon restart under the safe policy',
   await daemon2.close();
   rmSync(dir, { recursive: true, force: true });
 });
+
+test('hello device identity drives ack cursors per device', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ormi-daemon-test-'));
+  const { getCursor } = await import('@ormicode/journal');
+  const daemon = await startDaemon({ socketPath: '127.0.0.1:0', storePath: join(dir, 'store.db') });
+  const hello = { v: 1, type: 'hello', role: 'client', proto: 1, device: 'd_testbox' };
+  const client = await connect(daemon.socketPath, hello);
+  const res = await client.request('session.start', { machine: newId('m'), project: 'p_t', vendor: 'fake', transport: 'cli', model: 'x', effort: 'x', mode: 'x', workspace: { kind: 'current' } });
+  const session = res.body.session;
+  await client.request('session.subscribe', { session });
+  await client.request('session.prompt', { session, text: 'hi' });
+  const deadline = Date.now() + 10_000;
+  let seq = 0;
+  while (Date.now() < deadline && !seq) {
+    const frame = await client.next();
+    if (frame?.type === 'evt' && frame.session === session && typeof frame.seq === 'number') seq = frame.seq;
+  }
+  assert.ok(seq > 0, 'got a journaled event');
+  client.send({ v: 1, type: 'ack', session, seq });
+  await new Promise(r => setTimeout(r, 50));
+  assert.equal(getCursor(daemon.db, 'd_testbox', session), seq, 'ack recorded under hello device');
+  assert.equal(getCursor(daemon.db, 'cli', session), 0, 'not under the default device');
+  await daemon.close(); client.close();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('scratch sessions get a scratchpad cwd that session.delete removes', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ormi-daemon-test-'));
+  process.env.ORMICODE_HOME = join(dir, 'home');
+  try {
+    const daemon = await startDaemon({ socketPath: '127.0.0.1:0', storePath: join(dir, 'store.db') });
+    const client = await connect(daemon.socketPath);
+    const res = await client.request('session.start', { machine: newId('m'), project: 'scratch', vendor: 'fake', transport: 'cli', model: 'x', effort: 'x', mode: 'x', workspace: { kind: 'scratch' } });
+    const session = res.body.session;
+    const row = getSession(daemon.db, session);
+    assert.ok(row?.cwd.startsWith(join(dir, 'home', 'scratch')), `cwd under scratchpad, got ${row?.cwd}`);
+    const { existsSync } = await import('node:fs');
+    assert.ok(existsSync(row.cwd), 'scratchpad created');
+    await client.request('session.delete', { session });
+    assert.equal(existsSync(row.cwd), false, 'delete removes the scratchpad');
+    await daemon.close(); client.close();
+  } finally {
+    delete process.env.ORMICODE_HOME;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

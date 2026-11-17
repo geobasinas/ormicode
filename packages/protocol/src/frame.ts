@@ -12,7 +12,7 @@ const durableKind = z.string().check(z.refine((kind) => kind !== 'text_delta' &&
 const event = z.looseObject({ ...base, type: z.literal('evt'), session: sessionIdSchema, seq: sequenceSchema, ts: timestampSchema, body: z.looseObject({ kind: durableKind.check(z.minLength(1)) }) });
 const delta = z.looseObject({ ...base, type: z.literal('evt'), session: sessionIdSchema, ts: timestampSchema, body: z.looseObject({ kind: z.enum(['text_delta', 'thinking_delta']), text: z.string() }) }).check(z.refine((frame) => !Object.hasOwn(frame, 'seq')));
 const ack = z.looseObject({ ...base, type: z.literal('ack'), session: sessionIdSchema, seq: sequenceSchema });
-const hello = z.looseObject({ ...base, type: z.literal('hello'), role: z.enum(['hub', 'node', 'client', 'worker']), proto: sequenceSchema, daemon: z.optional(z.string()) });
+const hello = z.looseObject({ ...base, type: z.literal('hello'), role: z.enum(['hub', 'node', 'client', 'worker']), proto: sequenceSchema, daemon: z.optional(z.string()), device: z.optional(z.string()) });
 const index = z.looseObject({ ...base, type: z.literal('idx'), to: deviceIdSchema, ts: timestampSchema, body: jsonObjectSchema });
 const hook = z.looseObject({ ...base, type: z.literal('hook'), account: z.string(), delivery: z.string(), body: jsonObjectSchema });
 export const frameSchema = z.union([request, response, error, event, delta, ack, hello, index, hook]);
