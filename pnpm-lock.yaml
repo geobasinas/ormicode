@@ -15,6 +15,12 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
 
+  apps/cli:
+    dependencies:
+      '@ormicode/agent-core':
+        specifier: workspace:*
+        version: link:../../packages/agent-core
+
   packages/agent-acp:
     dependencies:
       '@ormicode/agent-core':
