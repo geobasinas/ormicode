@@ -22,10 +22,21 @@ export interface ProtocolTransport {
   onState: ((state: string) => void) | undefined;
 }
 
+/** Desktop-only extras, exposed by the Electron preload bridge. */
+export interface DesktopExtras {
+  /** safeStorage backend — 'basic_text' means no OS keyring (warn the user). */
+  storageBackend(): string;
+  /** Paired relay endpoint without the token, or null when unpaired. */
+  remote(): { relayUrl: string; account: string; device: string; name: string } | null;
+  pair(args: { relay: string; account: string; code: string; name?: string }): Promise<{ device: string }>;
+  unpair(): Promise<void>;
+}
+
 export interface ClientPlatform {
   readonly kind: 'desktop' | 'web';
   readonly transport: ProtocolTransport;
   readonly tokens: TokenStore;
   /** Human-readable hub address for status surfaces. */
   readonly hubLabel: string;
+  readonly desktop?: DesktopExtras;
 }

@@ -29,6 +29,9 @@ importers:
       '@ormicode/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
+      '@ormicode/relay-client':
+        specifier: workspace:*
+        version: link:../../packages/relay-client
 
   apps/daemon:
     dependencies:
@@ -101,6 +104,9 @@ importers:
       '@ormicode/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
+      '@ormicode/relay-client':
+        specifier: workspace:*
+        version: link:../../packages/relay-client
       '@ormicode/ui-tokens':
         specifier: workspace:*
         version: link:../../packages/ui-tokens
@@ -392,6 +398,12 @@ importers:
       zod:
         specifier: 4.6.7
         version: 4.6.7
+
+  packages/relay-client:
+    dependencies:
+      '@ormicode/protocol':
+        specifier: workspace:*
+        version: link:../protocol
 
   packages/session-store:
     dependencies:

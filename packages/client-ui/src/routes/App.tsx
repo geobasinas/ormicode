@@ -55,11 +55,16 @@ export function App({ platform, theme = 'dark', layout }: { platform: ClientPlat
             </div>
             <div style={{ padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-xs)', color: 'var(--text-hint)', borderTop: '1px solid var(--line-pane)' }}>
               {platform.hubLabel}
+              {platform.desktop?.storageBackend() === 'basic_text' ? (
+                <div style={{ color: 'var(--accent-amber)', marginTop: 'var(--space-1)' }}>
+                  no OS keyring — device token is only obfuscated
+                </div>
+              ) : null}
             </div>
           </aside>
         ) : null}
         <main style={{ flex: 1, minWidth: 0 }}>
-          {route === 'now' ? <Now onOpen={open} /> : <SessionView session={route} />}
+          {route === 'now' ? <Now onOpen={open} state={state} /> : <SessionView session={route} />}
         </main>
       </div>
     </PlatformContext.Provider>

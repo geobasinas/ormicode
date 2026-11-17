@@ -4,5 +4,5 @@
   "private": true,
   "type": "module",
   "exports": { ".": "./src/ormi.ts" },
-  "dependencies": { "@ormicode/agent-core": "workspace:*", "@ormicode/daemon": "workspace:*", "@ormicode/protocol": "workspace:*", "@ormicode/crypto": "workspace:*" }
+  "dependencies": { "@ormicode/agent-core": "workspace:*", "@ormicode/daemon": "workspace:*", "@ormicode/protocol": "workspace:*", "@ormicode/crypto": "workspace:*", "@ormicode/relay-client": "workspace:*" }
 }

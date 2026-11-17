@@ -2,35 +2,39 @@
  * Electron main: window, daemon link and token store. All protocol
  * traffic lives here — the preload only forwards request/subscribe/
  * unsubscribe, and the renderer never touches sockets or tokens.
+ *
+ * Transport order: local daemon socket first; if a paired remote exists
+ * (~/.ormicode/desktop/remote.json + safeStorage token), fall back to
+ * the relay WebSocket. Pairing goes through `ormi:pair` IPC.
  */
 import { app, BrowserWindow, ipcMain, safeStorage } from 'electron';
 import { join } from 'node:path';
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync } from 'node:fs';
 import * as daemonSocket from '@ormicode/daemon/socket';
+import { connectRemote, joinRemote } from '@ormicode/relay-client';
+import type { WsLink } from '@ormicode/relay-client';
 import type { Link } from '@ormicode/daemon/socket';
 import type { Frame } from '@ormicode/protocol';
 
 const socketPath = () => process.env.ORMICODE_SOCKET ?? daemonSocket.defaultSocketPath();
-const tokenFile = join(daemonSocket.ormicodeDir(), 'desktop', 'device.token');
+const desktopDir = join(daemonSocket.ormicodeDir(), 'desktop');
+const tokenFile = join(desktopDir, 'device.token');
+const remoteFile = join(desktopDir, 'remote.json');
 
-let link: Link | undefined;
+interface RemoteFile { relayUrl: string; account: string; device: string; name: string }
+type AnyLink = Link | WsLink;
+
+let link: AnyLink | undefined;
 let win: BrowserWindow | undefined;
 
 const send = (channel: string, payload: unknown) => { if (!win?.isDestroyed()) win?.webContents.send(channel, payload); };
+const state = (s: string) => send('ormi:state', s);
 
-async function connectDaemon(): Promise<void> {
-  send('ormi:state', 'connecting');
+function loadRemoteFile(): RemoteFile | undefined {
   try {
-    link = await daemonSocket.connect(socketPath(), { v: 1, type: 'hello', role: 'client', proto: 1, device: 'desktop' });
-  } catch {
-    link = undefined;
-    send('ormi:state', 'offline');
-    setTimeout(() => void connectDaemon(), 5_000);
-    return;
-  }
-  send('ormi:state', 'online');
-  link.onFrame = frame => send('ormi:event', frame);
-  link.onClose = () => { send('ormi:state', 'offline'); setTimeout(() => void connectDaemon(), 5_000); };
+    const c = JSON.parse(readFileSync(remoteFile, 'utf8')) as RemoteFile;
+    return c.relayUrl && c.account && c.device ? c : undefined;
+  } catch { return undefined; }
 }
 
 function readToken(): string | undefined {
@@ -40,9 +44,33 @@ function readToken(): string | undefined {
   } catch { return undefined; }
 }
 function writeToken(token: string): void {
-  mkdirSync(join(daemonSocket.ormicodeDir(), 'desktop'), { recursive: true });
+  mkdirSync(desktopDir, { recursive: true });
   const data = safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(token) : Buffer.from(token, 'utf8');
   writeFileSync(tokenFile, data, { mode: 0o600 });
+}
+
+function attachLink(l: AnyLink): void {
+  link = l;
+  state('online');
+  l.onFrame = frame => send('ormi:event', frame);
+  l.onClose = () => { state('offline'); setTimeout(() => void connectDaemon(), 5_000); };
+}
+
+async function connectDaemon(): Promise<void> {
+  state('connecting');
+  try {
+    attachLink(await daemonSocket.connect(socketPath(), { v: 1, type: 'hello', role: 'client', proto: 1, device: 'desktop' }));
+    return;
+  } catch { /* no local daemon — try the relay */ }
+  const remote = loadRemoteFile();
+  const token = readToken();
+  if (!remote || !token) { state(remote ? 'unpaired' : 'offline'); setTimeout(() => void connectDaemon(), 15_000); return; }
+  try {
+    attachLink(await connectRemote({ ...remote, token }, m => send('ormi:relayError', m)));
+  } catch {
+    state('offline');
+    setTimeout(() => void connectDaemon(), 15_000);
+  }
 }
 
 function createWindow(): void {
@@ -77,8 +105,24 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('ormi:token:get', () => readToken());
   ipcMain.handle('ormi:token:set', (_e, token: string) => writeToken(token));
-  ipcMain.handle('ormi:token:clear', () => { try { writeFileSync(tokenFile, '', { mode: 0o600 }); } catch { /* absent */ } });
-  ipcMain.on('ormi:hubLabel', e => { e.returnValue = socketPath(); });
+  ipcMain.handle('ormi:pair', async (_e, args: { relay: string; account: string; code: string; name?: string }) => {
+    const { device, token } = await joinRemote(args.relay, args.account, args.code, args.name ?? 'desktop');
+    mkdirSync(desktopDir, { recursive: true });
+    writeToken(token);
+    writeFileSync(remoteFile, JSON.stringify({ relayUrl: args.relay, account: args.account, device, name: args.name ?? 'desktop' }, null, 2), { mode: 0o600 });
+    link?.close();
+    void connectDaemon();
+    return { device };
+  });
+  ipcMain.handle('ormi:unpair', () => {
+    try { rmSync(remoteFile); } catch { /* absent */ }
+    try { rmSync(tokenFile); } catch { /* absent */ }
+    link?.close();
+    void connectDaemon();
+  });
+  ipcMain.on('ormi:remote:get', e => { e.returnValue = loadRemoteFile() ?? null; });
+  ipcMain.on('ormi:storageBackend', e => { e.returnValue = safeStorage.getSelectedStorageBackend(); });
+  ipcMain.on('ormi:hubLabel', e => { e.returnValue = loadRemoteFile()?.relayUrl ?? socketPath(); });
 
   createWindow();
   void connectDaemon();

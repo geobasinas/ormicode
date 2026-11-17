@@ -6,6 +6,8 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { Frame } from '@ormicode/protocol';
 
+export interface RemoteInfo { relayUrl: string; account: string; device: string; name: string }
+
 const bridge = {
   request: (method: string, body?: Record<string, unknown>): Promise<Frame> =>
     ipcRenderer.invoke('ormi:request', method, body),
@@ -13,9 +15,14 @@ const bridge = {
   unsubscribe: (session: string) => ipcRenderer.send('ormi:unsubscribe', session),
   onEvent: (cb: (frame: Frame) => void) => ipcRenderer.on('ormi:event', (_e, frame: Frame) => cb(frame)),
   onState: (cb: (state: string) => void) => ipcRenderer.on('ormi:state', (_e, state: string) => cb(state)),
+  onRelayError: (cb: (msg: string) => void) => ipcRenderer.on('ormi:relayError', (_e, msg: string) => cb(msg)),
   tokenGet: (): Promise<string | undefined> => ipcRenderer.invoke('ormi:token:get'),
   tokenSet: (token: string): Promise<void> => ipcRenderer.invoke('ormi:token:set', token),
-  tokenClear: (): Promise<void> => ipcRenderer.invoke('ormi:token:clear'),
+  pair: (args: { relay: string; account: string; code: string; name?: string }): Promise<{ device: string }> =>
+    ipcRenderer.invoke('ormi:pair', args),
+  unpair: (): Promise<void> => ipcRenderer.invoke('ormi:unpair'),
+  remote: (): RemoteInfo | null => ipcRenderer.sendSync('ormi:remote:get'),
+  storageBackend: (): string => ipcRenderer.sendSync('ormi:storageBackend'),
   hubLabel: (): string => ipcRenderer.sendSync('ormi:hubLabel'),
 };
 

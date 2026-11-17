@@ -21,7 +21,7 @@ export async function withDaemon<T>(fn: (link: AnyLink) => Promise<T>): Promise<
   const remote = process.env.ORMICODE_REMOTE !== '0' ? loadRemote() : undefined;
   const hello = { v: 1, type: 'hello', role: 'client', proto: 1, device: remote?.device ?? deviceId() };
   const link: AnyLink | undefined = remote
-    ? await connectRemote(remote).catch(e => { console.error(`relay unreachable: ${e.message}`); return undefined; })
+    ? await connectRemote(remote, m => console.error(`relay: ${m}`)).catch(e => { console.error(`relay unreachable: ${e.message}`); return undefined; })
     : await daemonSocket.connect(socketPath(), hello).catch(() => {
       console.error(`no daemon on ${socketPath()} — start one with \`ormi daemon\``);
       process.exit(2);

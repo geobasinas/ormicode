@@ -15,6 +15,10 @@ interface OrmiBridge {
   tokenGet(): Promise<string | undefined>;
   tokenSet(token: string): Promise<void>;
   tokenClear(): Promise<void>;
+  pair(args: { relay: string; account: string; code: string; name?: string }): Promise<{ device: string }>;
+  unpair(): Promise<void>;
+  remote(): { relayUrl: string; account: string; device: string; name: string } | null;
+  storageBackend(): string;
   hubLabel(): string;
 }
 
@@ -43,5 +47,13 @@ export function electronPlatform(): ClientPlatform {
     set: t => b.tokenSet(t),
     clear: () => b.tokenClear(),
   };
-  return { kind: 'desktop', transport, tokens, hubLabel: b.hubLabel() };
+  return {
+    kind: 'desktop', transport, tokens, hubLabel: b.hubLabel(),
+    desktop: {
+      storageBackend: () => b.storageBackend(),
+      remote: () => b.remote(),
+      pair: args => b.pair(args),
+      unpair: () => b.unpair(),
+    },
+  };
 }

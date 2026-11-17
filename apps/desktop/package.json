@@ -16,6 +16,7 @@
     "@ormicode/ui-tokens": "workspace:*",
     "@ormicode/protocol": "workspace:*",
     "@ormicode/daemon": "workspace:*",
+    "@ormicode/relay-client": "workspace:*",
     "react": "19.3.1",
     "react-dom": "19.3.1"
   },
