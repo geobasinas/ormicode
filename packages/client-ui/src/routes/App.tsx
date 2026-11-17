@@ -154,8 +154,17 @@ export function App({ platform, theme = 'dark', layout }: { platform: ClientPlat
               <Tab id="now" active={route === 'now'} onSelect={() => setRoute('now')} />
               {tabs.map(t => <Tab key={t} id={t} active={route === t} onSelect={() => setRoute(t)} onClose={() => close(t)} />)}
             </div>
-            <div style={{ flex: 1, minHeight: 0 }}>
-              {route === 'now' ? <Now onOpen={open} state={state} /> : <SessionView key={route} session={route} />}
+            <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {route === 'now' ? <Now onOpen={open} state={state} /> : <SessionView key={route} session={route} />}
+              </div>
+              {route === 'now' ? (
+                <div style={{
+                  width: 44, flexShrink: 0, borderLeft: '1px solid var(--line-pane)',
+                  background: 'var(--bg-window)', display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', padding: 'var(--space-2) 0', gap: 2,
+                }} />
+              ) : null}
             </div>
           </main>
         </div>
