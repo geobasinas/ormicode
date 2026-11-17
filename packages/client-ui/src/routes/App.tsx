@@ -41,7 +41,8 @@ function Tab({ id, active, onSelect, onClose }: { id: string; active: boolean; o
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13,
-      padding: '5px 14px', borderRadius: '8px 8px 0 0', cursor: 'pointer', whiteSpace: 'nowrap',
+      padding: '6px 14px 7px', borderRadius: '9px 9px 0 0', cursor: 'pointer', whiteSpace: 'nowrap',
+      border: '1px solid', borderBottom: 'none', borderColor: active ? 'var(--line-pane)' : 'transparent',
       background: active ? 'var(--bg-main)' : 'transparent',
       color: active ? 'var(--text-active)' : 'var(--text-secondary)',
     }} onClick={onSelect}>
@@ -184,12 +185,15 @@ export function App({ platform, theme = 'dark', layout }: { platform: ClientPlat
               ) : null}
             </aside>
           ) : null}
-          <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg-main)', borderRadius: '10px 10px 10px 10px', border: '1px solid var(--line-pane)', margin: '0 0 10px', overflow: 'hidden' }}>
-            <div style={{ display: 'flex', gap: 2, padding: '6px 10px 0', overflowX: 'auto', flexShrink: 0 }}>
+          <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', margin: '0 0 10px' }}>
+            <div style={{ display: 'flex', gap: 2, flexShrink: 0, position: 'relative', zIndex: 1, marginBottom: -1 }}>
               <Tab id="now" active={route === 'now'} onSelect={() => setRoute('now')} />
               {tabs.map(t => <Tab key={t} id={t} active={route === t} onSelect={() => setRoute(t)} onClose={() => close(t)} />)}
             </div>
-            <div style={{ flex: 1, minHeight: 0 }}>
+            <div style={{
+              flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg-main)', border: '1px solid var(--line-pane)',
+              borderRadius: (route === 'now' || route === tabs[0]) ? '0 10px 10px 10px' : 10,
+            }}>
               {route === 'now' ? <Now onOpen={open} state={state} /> : <SessionView key={route} session={route} rail={rail} onRail={setRail} />}
             </div>
           </main>

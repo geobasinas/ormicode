@@ -82,6 +82,7 @@ function line(e: TranscriptEvent) {
       return null;
     case 'agent_version':
     case 'usage':
+    case 'evicted':
       return null;
     default:
       return <div style={{ ...mono, ...small, color: 'var(--text-hint)', display: 'flex', gap: 6, alignItems: 'center' }}><ChevronRight size={11} />{e.kind}</div>;
