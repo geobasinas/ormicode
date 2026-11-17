@@ -26,6 +26,7 @@ type AnyLink = Link | WsLink;
 
 let link: AnyLink | undefined;
 let win: BrowserWindow | undefined;
+let encryption = false;
 
 const send = (channel: string, payload: unknown) => { if (!win?.isDestroyed()) win?.webContents.send(channel, payload); };
 const state = (s: string) => send('ormi:state', s);
@@ -40,12 +41,12 @@ function loadRemoteFile(): RemoteFile | undefined {
 function readToken(): string | undefined {
   try {
     const raw = readFileSync(tokenFile);
-    return safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(raw) : raw.toString('utf8');
+    return encryption ? safeStorage.decryptString(raw) : raw.toString('utf8');
   } catch { return undefined; }
 }
 function writeToken(token: string): void {
   mkdirSync(desktopDir, { recursive: true });
-  const data = safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(token) : Buffer.from(token, 'utf8');
+  const data = encryption ? safeStorage.encryptString(token) : Buffer.from(token, 'utf8');
   writeFileSync(tokenFile, data, { mode: 0o600 });
 }
 
@@ -91,7 +92,11 @@ function createWindow(): void {
   else void win.loadFile(join(__dirname, '../renderer/index.html'));
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  const ss = safeStorage as unknown as { isAsyncEncryptionAvailable?: () => Promise<boolean>; isEncryptionAvailable?: () => boolean };
+  encryption = typeof ss.isAsyncEncryptionAvailable === 'function'
+    ? await ss.isAsyncEncryptionAvailable().catch(() => false)
+    : (ss.isEncryptionAvailable?.() ?? false);
   ipcMain.handle('ormi:request', async (_e, method: string, body?: Record<string, unknown>) => {
     if (!link) return { v: 1, type: 'err', id: 'local', code: 'daemon.offline', message: 'no daemon connection' } satisfies Partial<Frame>;
     try { return await link.request(method, body ?? {}); }
@@ -121,7 +126,13 @@ app.whenReady().then(() => {
     void connectDaemon();
   });
   ipcMain.on('ormi:remote:get', e => { e.returnValue = loadRemoteFile() ?? null; });
-  ipcMain.on('ormi:storageBackend', e => { e.returnValue = safeStorage.getSelectedStorageBackend(); });
+  ipcMain.on('ormi:storageBackend', e => {
+    // getSelectedStorageBackend is newer; fall back to the availability probe.
+    const b = safeStorage as unknown as { getSelectedStorageBackend?: () => string };
+    e.returnValue = typeof b.getSelectedStorageBackend === 'function'
+      ? b.getSelectedStorageBackend()
+      : (encryption ? 'os_keyring' : 'basic_text');
+  });
   ipcMain.on('ormi:hubLabel', e => { e.returnValue = loadRemoteFile()?.relayUrl ?? socketPath(); });
 
   createWindow();

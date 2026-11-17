@@ -9,6 +9,7 @@ function line(e: TranscriptEvent) {
   switch (e.kind) {
     case 'text': return <div style={{ color: 'var(--text-active)', padding: '2px 0' }}>{String(b.text)}</div>;
     case 'thinking': return <div style={{ ...mono, color: 'var(--text-hint)', fontSize: 'var(--text-sm)' }}>{String(b.text)}</div>;
+    case 'plan': return <div style={{ ...mono, color: 'var(--text-secondary)', fontSize: 'var(--text-sm)', fontStyle: 'italic' }}>{String(b.text)}</div>;
     case 'tool_call': return <div style={{ ...mono, color: 'var(--accent-amber)', fontSize: 'var(--text-sm)' }}>▸ {String(b.name)} {JSON.stringify(b.input ?? '')}</div>;
     case 'tool_result': return <div style={{ ...mono, color: 'var(--text-secondary)', fontSize: 'var(--text-sm)' }}>◂ {String(b.output ?? b.text ?? '').slice(0, 400)}</div>;
     case 'error': return <div style={{ color: 'var(--accent-red)' }}>✗ {String(b.message ?? b.code)}</div>;
