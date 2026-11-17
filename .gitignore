@@ -9,3 +9,4 @@ coverage/
 *.log
 apps/relay/.wrangler/
 apps/relay/dist/
+out/

@@ -2283,7 +2283,7 @@ CLI is for you and scripts; the built-in MCP server is for models. Both use the 
 
 ## Desktop and web layout
 
-> **Status:** next · **Needs:** [First screens](#first-screens)
+> **Status:** next — descriptor validation + merge implemented in `packages/client-ui/src/lib/layout.ts` (version check, region rules, approval can never be hidden); editing UX, history and agent-applied layouts still ahead. · **Needs:** [First screens](#first-screens)
 
 **One renderer (`packages/client-ui`) in two shells: Electron on desktop, Worker static assets in the browser.**
 
@@ -2450,7 +2450,7 @@ Network denied unless a domain is listed (requests go through a logging host pro
 
 ## First screens
 
-> **Status:** next (desktop first, then web) · **Needs:** [CLI](#cli), [Relay](#relay)
+> **Status:** now — base scaffold built: `apps/desktop` (Electron main + CJS preload + restricted `window.ormi` IPC, `safeStorage` token store, daemon socket via `@ormicode/daemon/socket`), `packages/client-ui` (App shell, Now + session routes, SessionList/Transcript/Approvals/Composer skeletons, layout descriptor), `packages/client-platform` (Electron + browser `ClientPlatform`), `packages/ui-tokens` (dark theme from the source palette). The screens exist and render; they are not yet at the full spec below. · **Needs:** [CLI](#cli), [Relay](#relay)
 
 **The first screens to build, for desktop and web: Now, Sessions, transcript, approvals, layout.** Both shells render them from `client-ui`.
 

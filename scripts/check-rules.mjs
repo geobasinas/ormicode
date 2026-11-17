@@ -21,7 +21,7 @@ export function checkLayout(base, layout) {
 
 function checkSourceSize(base, group) {
   const errors = [];
-  const skip = new Set(['.wrangler', 'dist', 'node_modules', '.turbo', 'coverage']);
+  const skip = new Set(['.wrangler', 'dist', 'out', 'node_modules', '.turbo', 'coverage']);
   function visit(path) {
     for (const entry of readdirSync(path, { withFileTypes: true })) {
       const child = join(path, entry.name);

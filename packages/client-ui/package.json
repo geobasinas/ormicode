@@ -1,0 +1,14 @@
+{
+  "name": "@ormicode/client-ui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@ormicode/protocol": "workspace:*",
+    "@ormicode/client-platform": "workspace:*",
+    "@ormicode/ui-tokens": "workspace:*",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  }
+}

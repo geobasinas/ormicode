@@ -6,4 +6,10 @@ allowBuilds:
   protobufjs: false
   better-sqlite3: true
   workerd: true
+  electron: true
+  electron-builder: true
+  app-builder-bin: true
+  esbuild: true
+  node-pty: true
+  electron-winstaller: false
 nodeLinker: hoisted
