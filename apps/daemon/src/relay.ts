@@ -83,6 +83,11 @@ export class RelayClient {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(msg));
   }
 
+  /** Ephemeral delta (text/thinking): fanned out live, never stored. */
+  sendDelta(session: string, kind: string, text: string): void {
+    this.send({ type: 'evt', session, live: true, frame: { v: 1, type: 'evt', session, ts: Date.now(), body: { kind, text } } });
+  }
+
   /** A journaled session event fanned out to subscribed devices. */
   sendEvt(session: string, seq: number, frame: Record<string, unknown>): void {
     this.send({ type: 'evt', session, seq, frame });

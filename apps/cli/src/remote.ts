@@ -36,6 +36,8 @@ export class WsLink {
   private queue: Frame[] = [];
   private waiting: ((frame: Frame | undefined) => void) | undefined;
   private pending = new Map<string, { resolve: (frame: Frame) => void; timer: NodeJS.Timeout }>();
+  private lastSeq = new Map<string, number>(); // dedupe DO-outbox vs hub-journal replays
+  lastSub: { session: string; after: number } | undefined; // last subscribe for resync replay
   closed = false;
   private _onFrame: ((frame: Frame) => void) | undefined;
   /** Late-assigned handler drains frames queued before it was set (e.g. subscribe replay). */
@@ -63,8 +65,10 @@ export class WsLink {
     const id = newId('req');
     // Subscription state lives in the DO so it can filter fan-out and replay
     // the outbox; the protocol req still reaches the hub for bookkeeping.
-    if (method === 'session.subscribe')
-      this.send({ type: 'subscribe', session: body.session, after: typeof body.after === 'number' ? body.after : 0 });
+    if (method === 'session.subscribe') {
+      this.lastSub = { session: String(body.session), after: typeof body.after === 'number' ? body.after : 0 };
+      this.send({ type: 'subscribe', session: body.session, after: this.lastSub.after });
+    }
     if (method === 'session.unsubscribe') this.send({ type: 'unsubscribe', session: body.session });
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`${method}: timed out`)); }, timeoutMs);
@@ -83,6 +87,11 @@ export class WsLink {
     const parsed = parseWireFrame(raw);
     if (!parsed.success) { this.wake(undefined); return; }
     const frame = parsed.data;
+    if (frame.type === 'evt' && 'seq' in frame && typeof frame.seq === 'number') {
+      const prev = this.lastSeq.get(frame.session) ?? 0;
+      if (frame.seq <= prev) return; // already delivered via the other replay path
+      this.lastSeq.set(frame.session, frame.seq);
+    }
     if ((frame.type === 'res' || frame.type === 'err') && this.pending.has(frame.id)) {
       const p = this.pending.get(frame.id)!;
       this.pending.delete(frame.id);
@@ -120,8 +129,13 @@ export function connectRemote(config: RemoteConfig): Promise<WsLink> {
       if (msg.type === 'authed') {
         link.send({ v: 1, type: 'hello', role: 'client', proto: 1, device: config.device });
         link.onRelayMessage = m => {
-          if (m.type === 'resync') console.error(`relay: ${m.session} too far behind — resync required`);
-          else if (m.type === 'err') console.error(`relay: ${m.code ?? 'error'}`);
+          if (m.type === 'resync') {
+            // Re-ask the hub for the full journal from our cursor; dedupe
+            // drops whatever the DO outbox already delivered.
+            const sub = link.lastSub;
+            if (sub && sub.session === m.session) void link.request('session.subscribe', { session: sub.session, after: sub.after });
+            else console.error(`relay: ${m.session} too far behind — resync required`);
+          } else if (m.type === 'err') console.error(`relay: ${m.code ?? 'error'}`);
         };
         resolve(link);
       }

@@ -25,6 +25,7 @@ export class AccountDO implements DurableObject {
   private ctx: DurableObjectState;
   private spool: Spooler;
   private fps = new Map<string, { sec: number; count: number }>();
+  private merged = new Map<string, { kind: string; text: string }>();
 
   constructor(ctx: DurableObjectState, env: SpoolEnv) {
     this.ctx = ctx;
@@ -208,18 +209,46 @@ export class AccountDO implements DurableObject {
       case 'evt': {
         const session = String(msg.session); const seq = Number(msg.seq);
         const frame = JSON.stringify(msg.frame ?? msg);
-        this.sql.exec('INSERT OR REPLACE INTO outbox(session, seq, frame) VALUES (?, ?, ?)', session, seq, frame);
-        this.sql.exec('DELETE FROM outbox WHERE session = ? AND seq <= ? - ?', session, seq, OUTBOX_CAP);
-        this.spool.add(session, seq, frame);
-        // >50 frames/s: the outbox keeps everything; live fan-out is throttled.
+        if (typeof msg.device === 'string') {
+          // Targeted journal replay (resync); already stored, deliver only.
+          for (const sock of this.sockets('device', msg.device)) sock.send(frame);
+          return;
+        }
+        // `live` frames (deltas) are ephemeral: fan-out only, never stored.
+        const live = msg.live === true;
+        if (!live) {
+          this.sql.exec('INSERT OR REPLACE INTO outbox(session, seq, frame) VALUES (?, ?, ?)', session, seq, frame);
+          this.sql.exec('DELETE FROM outbox WHERE session = ? AND seq <= ? - ?', session, seq, OUTBOX_CAP);
+          this.spool.add(session, seq, frame);
+        }
+        // >50 frames/s: durable evts stay in the outbox; live deltas merge.
         const sec = Math.floor(Date.now() / 1000);
         const f = this.fps.get(session);
         const count = f && f.sec === sec ? f.count + 1 : 1;
         this.fps.set(session, { sec, count });
-        if (count > MAX_FPS) return;
+        if (count > MAX_FPS) {
+          if (live) {
+            try {
+              const b = (JSON.parse(frame) as { body?: { kind?: string; text?: string } }).body;
+              if (b?.kind && typeof b.text === 'string') {
+                const m = this.merged.get(session) ?? { kind: b.kind, text: '' };
+                m.text += b.text; this.merged.set(session, m);
+              }
+            } catch { /* unparseable delta; drop */ }
+          }
+          return;
+        }
+        // Any merged delta flushes ahead of this frame, in order.
+        const m = this.merged.get(session);
+        if (m) {
+          this.merged.delete(session);
+          const mergedFrame = JSON.stringify({ v: 1, type: 'evt', session, ts: Date.now(), body: { kind: m.kind, text: m.text } });
+          for (const d of this.subscribed(session))
+            for (const sock of this.sockets('device', d)) { try { sock.send(mergedFrame); } catch { /* drop */ } }
+        }
         for (const d of this.subscribed(session)) {
           for (const sock of this.sockets('device', d)) {
-            try { sock.send(frame); this.sql.exec('INSERT OR REPLACE INTO cursors(device, session, seq) VALUES (?, ?, ?)', d, session, seq); }
+            try { sock.send(frame); if (!live) this.sql.exec('INSERT OR REPLACE INTO cursors(device, session, seq) VALUES (?, ?, ?)', d, session, seq); }
             catch { /* dropped socket; cursor stays so it resyncs */ }
           }
         }

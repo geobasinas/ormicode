@@ -56,6 +56,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   const delta = (session: string, kind: string, text: string) => {
     for (const c of clients) if (c.subscriptions.has(session) && !c.link.closed)
       c.link.send({ v: 1, type: 'evt', session, ts: Date.now(), body: { kind, text } });
+    relay?.sendDelta(session, kind, text);
   };
 
   const record = (session: string, kind: string, payload: Record<string, unknown>, ts?: number, origin?: string) => {
