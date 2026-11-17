@@ -15,7 +15,10 @@ export function usage(code: number): never {
   ormi session set <id> model|effort|mode|option <value>
   ormi session note <id> <title> [body]
   ormi session notes <id>
-  ormi session tail <id>                          stream live + replayed events`);
+  ormi session tail <id>                          stream live + replayed events
+  ormi pair                                       mint a pairing code on the hub
+  ormi connect <relay-url> --account <a> --code <c> [--name <n>]   pair this device to a remote hub
+  ormi devices [list|rename <id> <name>|revoke <id> <name>]        manage paired devices`);
   process.exit(code);
 }
 

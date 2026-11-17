@@ -1,0 +1,20 @@
+name = "ormi-relay"
+main = "src/index.ts"
+compatibility_date = "2025-11-17"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+routes = [{ pattern = "relay.ormi.codes/*", zone_name = "ormi.codes" }]
+
+[durable_objects]
+bindings = [{ name = "ACCOUNT", class_name = "AccountDO" }]
+
+[[r2_buckets]]
+binding = "EVENTS"
+bucket_name = "ormi-events"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["AccountDO"]
+
+[vars]
+# BOOTSTRAP_SECRET is a wrangler secret, not a var: `wrangler secret put BOOTSTRAP_SECRET`

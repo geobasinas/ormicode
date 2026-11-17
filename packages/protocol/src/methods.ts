@@ -64,6 +64,14 @@ export const requestBodies = {
   'session.unsubscribe': z.object(session),
   'session.decide': z.object({ ...session, request: requestIdSchema, option: nonEmpty }),
   'session.answer': z.object({ ...session, request: requestIdSchema, answers: z.record(nonEmpty, nonEmpty) }),
+  'devices.list': z.object({}),
+  'devices.rename': z.object({ device: nonEmpty, name: nonEmpty }),
+  // confirm must equal the device name, so a revoke can't fire by accident.
+  'devices.revoke': z.object({ device: nonEmpty, confirm: nonEmpty }),
+  // Hub-side pairing: returns a one-shot 12-digit code the new device enters.
+  'pair.create': z.object({}),
+  // A device exchanges a live code for a device token (raw token returned once).
+  'pair.join': z.object({ code: nonEmpty, name: nonEmpty }),
 } as const;
 
 export const responseBodies = {
@@ -90,6 +98,11 @@ export const responseBodies = {
   'session.unsubscribe': z.object({ unsubscribed: z.literal(true) }),
   'session.decide': z.object({ decided: z.literal(true) }),
   'session.answer': z.object({ answered: z.literal(true) }),
+  'devices.list': z.object({ devices: z.array(z.object({ id: nonEmpty, name: nonEmpty, trustedAt: timestampSchema })) }),
+  'devices.rename': z.object({ renamed: z.literal(true) }),
+  'devices.revoke': z.object({ revoked: z.literal(true), relaySynced: z.boolean() }),
+  'pair.create': z.object({ code: nonEmpty, expiresAt: timestampSchema, link: nonEmpty }),
+  'pair.join': z.object({ device: nonEmpty, token: nonEmpty }),
 } as const;
 
 export type ImplementedMethod = keyof typeof requestBodies;

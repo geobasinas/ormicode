@@ -8,6 +8,8 @@ import { killTree } from './proctree.ts';
 import { recoverSessions, resumePolicy, sweepLogs } from './recovery.ts';
 import { handoffBrief } from './handoff.ts';
 import { onClientFrame, type Client, type DispatchCtx } from './dispatch.ts';
+import { Pairing, loadHubConfig, handleJoin } from './pair.ts';
+import { RelayClient, RemoteLink } from './relay.ts';
 import { append } from '@ormicode/journal';
 import { serve, defaultSocketPath, ormicodeDir, sessionLogDir, type Link } from './socket.ts';
 
@@ -146,6 +148,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
         const { seq } = append(db, session, { kind, payload: { kind, ...(body.payload as Record<string, unknown>) }, ts: Number(body.ts) || Date.now() });
         const frameOut = JSON.stringify({ v: 1, type: 'evt', session, seq, ts: Number(body.ts) || Date.now(), body: { kind, ...(body.payload as Record<string, unknown>) } });
         fanout(session, frameOut);
+        relay?.sendEvt(session, seq, JSON.parse(frameOut));
         const payload = body.payload as Record<string, unknown>;
         const mapped = stateFor[kind];
         if (mapped) {
@@ -247,11 +250,31 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     }, Math.max(0, resetAt - Date.now())).unref());
   };
 
+  const pairing = new Pairing();
+  let relay: RelayClient | undefined;
   const dispatchCtx: DispatchCtx = {
     db, notesDir, startedAt, paused, heldPrompts, lastPrompt,
     lastError: () => lastError, liveWorkers: () => workers.size,
     spawnWorker, toWorker, sendPrompt,
+    pairing, relay: () => relay,
   };
+
+  const hubConfig = loadHubConfig();
+  if (hubConfig) {
+    relay = new RelayClient(hubConfig, {
+      onPairJoin: (join, code, name) => {
+        void handleJoin(pairing, db, code, name).then(r => {
+          relay?.pairResult(join, r.ok ? { ok: true, device: r.device, name: r.name, tokenHash: r.tokenHash, token: r.token, codeHash: r.codeHash } : { ok: false });
+        });
+      },
+      onRequest: (link, frame) => {
+        const client: Client = { link, subscriptions: new Set(), device: (link as RemoteLink).device ?? 'remote' };
+        void onClientFrame(dispatchCtx, client, frame);
+      },
+      onState: connected => { if (!connected) lastError ??= 'relay disconnected'; },
+    });
+    relay.start();
+  }
 
   const server = await serve(socketPath, link => {
     link.onFrame = frame => {
@@ -298,6 +321,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
       }
       for (const c of clients) c.link.close();
       for (const link of workerLinks.values()) link.close();
+      relay?.close();
       server.close();
       db.close();
     },

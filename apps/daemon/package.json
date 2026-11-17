@@ -6,6 +6,7 @@
   "exports": { ".": "./src/index.ts" },
   "dependencies": {
     "@ormicode/protocol": "workspace:*",
+    "@ormicode/crypto": "workspace:*",
     "@ormicode/agent-core": "workspace:*",
     "@ormicode/session-store": "workspace:*",
     "@ormicode/journal": "workspace:*",

@@ -2,9 +2,12 @@ import type { Frame } from '@ormicode/protocol';
 import { parseRequestBody, newId } from '@ormicode/protocol';
 import { getSession, listSessions, sessionsInStates, setState, listNotes, setNote, deleteNote, archiveSession, createSession, type Store } from '@ormicode/session-store';
 import { replay, setCursor } from '@ormicode/journal';
+import { listDevices, renameDevice, revokeDevice } from '@ormicode/session-store';
+import { handleJoin, type Pairing } from './pair.ts';
+import type { RelayClient } from './relay.ts';
 import { join } from 'node:path';
 import { mkdirSync, rmSync } from 'node:fs';
-import type { Link } from './socket.ts';
+
 import { ormicodeDir, sessionLogDir } from './socket.ts';
 import { acquireWorkspace, releaseForSession } from './leases.ts';
 import { hasTransport } from './registry.ts';
@@ -12,7 +15,15 @@ import { resolveWorkspace, type WorkspaceChoice } from './git.ts';
 
 const LIVE_STATES = ['idle', 'starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying', 'paused_rate_limited', 'interrupted'] as const;
 
-export interface Client { link: Link; subscriptions: Set<string>; device: string }
+/** What a client transport must do: send frames and answer requests. */
+export interface ClientLink {
+  send(frame: Frame | Record<string, unknown>): void;
+  reply(id: string, body: Record<string, unknown>): void;
+  replyError(id: string, code: string, message: string): void;
+  closed: boolean;
+  close(): void;
+}
+export interface Client { link: ClientLink; subscriptions: Set<string>; device: string }
 export interface DispatchCtx {
   db: Store;
   notesDir: string;
@@ -25,6 +36,8 @@ export interface DispatchCtx {
   spawnWorker(session: string): void;
   toWorker(session: string, method: string, body: Record<string, unknown>): Promise<Frame | undefined>;
   sendPrompt(session: string, text: string, images?: unknown[]): Promise<boolean>;
+  pairing: Pairing;
+  relay(): RelayClient | undefined;
 }
 
 /** Client-facing session.* / daemon.* request dispatch. */
@@ -44,7 +57,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
   try {
     switch (method) {
       case 'daemon.status':
-        return client.link.reply(id, { version: '0.0.0', uptimeMs: Date.now() - ctx.startedAt, liveWorkers: ctx.liveWorkers(), relay: 'disconnected', lastError: ctx.lastError() });
+        return client.link.reply(id, { version: '0.0.0', uptimeMs: Date.now() - ctx.startedAt, liveWorkers: ctx.liveWorkers(), relay: ctx.relay()?.connected() ? 'connected' : 'disconnected', lastError: ctx.lastError() });
       case 'session.start': {
         const vendor = String(body.vendor); const transport = String(body.transport);
         if (!hasTransport(vendor, transport)) return client.link.replyError(id, 'agent.unsupported', `${vendor}/${transport}`);
@@ -201,6 +214,35 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
       case 'session.unsubscribe':
         client.subscriptions.delete(String(body.session));
         return client.link.reply(id, { unsubscribed: true });
+      case 'pair.create': {
+        const { code, codeHash, expiresAt } = await ctx.pairing.createCode();
+        ctx.relay()?.pushCode(codeHash, expiresAt);
+        return client.link.reply(id, { code, expiresAt, link: `ormi://pair?c=${code.replace(/\s/g, '')}` });
+      }
+      case 'pair.join': {
+        const r = await handleJoin(ctx.pairing, db, String(body.code), String(body.name));
+        if (!r.ok) return client.link.replyError(id, `pairing.${r.reason === 'invalid' ? 'invalid_code' : r.reason}`, `pairing ${r.reason}`);
+        ctx.relay()?.deviceAdd(r.device, r.name, r.tokenHash);
+        return client.link.reply(id, { device: r.device, token: r.token });
+      }
+      case 'devices.list': {
+        const devices = listDevices(db).map(d => ({ id: d.id, name: d.name, trustedAt: d.trusted_at }));
+        return client.link.reply(id, { devices });
+      }
+      case 'devices.rename': {
+        return renameDevice(db, String(body.device), String(body.name))
+          ? client.link.reply(id, { renamed: true })
+          : client.link.replyError(id, 'devices.not_found', String(body.device));
+      }
+      case 'devices.revoke': {
+        const target = listDevices(db).find(d => d.id === String(body.device));
+        if (!target) return client.link.replyError(id, 'devices.not_found', String(body.device));
+        if (body.confirm !== target.name) return client.link.replyError(id, 'devices.confirm_mismatch', 'confirm must equal the device name');
+        revokeDevice(db, target.id);
+        const relay = ctx.relay();
+        relay?.deviceRevoke(target.id);
+        return client.link.reply(id, { revoked: true, relaySynced: relay?.connected() ?? false });
+      }
       default:
         return client.link.replyError(id, 'protocol.unimplemented', method);
     }

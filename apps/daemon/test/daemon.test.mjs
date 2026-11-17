@@ -263,3 +263,48 @@ test("session.start treats 'default' placeholders as unset", async () => {
   assert.equal(row.mode, null);
   await daemon.close(); client.close();
 });
+
+test('pair.create + pair.join mint a device token; revoke needs the name', async () => {
+  const { daemon, client } = await boot();
+  const created = await client.request('pair.create', {});
+  assert.equal(created.type, 'res');
+  const { code, expiresAt, link } = created.body;
+  assert.match(code, /^\d{4} \d{4} \d{4}$/);
+  assert.ok(expiresAt > Date.now());
+  assert.ok(link.startsWith('ormi://pair?c='));
+
+  const joined = await client.request('pair.join', { code, name: 'test phone' });
+  assert.equal(joined.type, 'res');
+  assert.match(joined.body.device, /^d_/);
+  assert.equal(joined.body.token.length > 30, true);
+
+  // The code is burned after one use.
+  const again = await client.request('pair.join', { code, name: 'second' });
+  assert.equal(again.type, 'err');
+
+  const list = await client.request('devices.list', {});
+  assert.equal(list.body.devices.length, 1);
+  assert.equal(list.body.devices[0].name, 'test phone');
+
+  const badConfirm = await client.request('devices.revoke', { device: joined.body.device, confirm: 'wrong name' });
+  assert.equal(badConfirm.type, 'err');
+  assert.equal(badConfirm.code, 'devices.confirm_mismatch');
+
+  const revoked = await client.request('devices.revoke', { device: joined.body.device, confirm: 'test phone' });
+  assert.equal(revoked.type, 'res');
+  assert.equal(revoked.body.revoked, true);
+
+  const empty = await client.request('devices.list', {});
+  assert.equal(empty.body.devices.length, 0);
+  await daemon.close();
+});
+
+test('pair.join rejects malformed and unknown codes', async () => {
+  const { daemon, client } = await boot();
+  const bad = await client.request('pair.join', { code: 'not a code', name: 'x' });
+  assert.equal(bad.type, 'err');
+  assert.equal(bad.code, 'pairing.invalid_code');
+  const unknown = await client.request('pair.join', { code: '1234 5678 9012', name: 'x' });
+  assert.equal(unknown.type, 'err');
+  await daemon.close();
+});
