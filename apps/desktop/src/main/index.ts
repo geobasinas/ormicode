@@ -52,7 +52,7 @@ function createWindow(): void {
     title: 'ormicode',
     autoHideMenuBar: true,
     webPreferences: {
-      preload: join(import.meta.dirname, '../preload/index.cjs'),
+      preload: join(__dirname, '../preload/index.cjs'),
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
@@ -60,7 +60,7 @@ function createWindow(): void {
   });
   const devUrl = process.env.ELECTRON_RENDERER_URL;
   if (devUrl) void win.loadURL(devUrl);
-  else void win.loadFile(join(import.meta.dirname, '../renderer/index.html'));
+  else void win.loadFile(join(__dirname, '../renderer/index.html'));
 }
 
 app.whenReady().then(() => {

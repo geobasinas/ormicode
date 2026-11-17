@@ -3,7 +3,10 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   main: {
-    build: { outDir: 'out/main' },
+    build: {
+      outDir: 'out/main',
+      rollupOptions: { output: { format: 'cjs' } },
+    },
   },
   preload: {
     build: {
