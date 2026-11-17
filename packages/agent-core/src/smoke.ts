@@ -132,6 +132,10 @@ export async function smokeAdapter(vendor: string, transport: string, options: S
       if (killHandle) await adapter.dispose(killHandle).catch(() => undefined);
     }
 
+    // Resume models reopening a session after the original is gone — some agents
+    // (vibe-acp) refuse session/load while another process holds the session open.
+    await adapter.dispose(handle);
+
     if (typeof adapter.resume === 'function' && nativeId === undefined) unverified('resume', 'adapter reported no native session id');
     else if (typeof adapter.resume === 'function') {
       try {
@@ -146,8 +150,6 @@ export async function smokeAdapter(vendor: string, transport: string, options: S
         adapter.capabilities.resume ? fail('resume', reason) : unverified('resume', `native reload unsupported: ${reason}`);
       }
     } else unverified('resume', 'adapter does not implement resume');
-
-    await adapter.dispose(handle);
   } catch (error) {
     fail('session', error instanceof Error ? error.message : String(error));
   } finally {
