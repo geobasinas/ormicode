@@ -31,7 +31,9 @@ export class CodexSdkAdapter implements AgentAdapter {
     if (!spec.cwd) throw new Error('cwd is required');
     if (spec.mode && spec.mode !== 'read-only' && spec.mode !== 'workspace-write') throw new Error('Unsupported or unsafe sandbox mode');
     if (spec.effort && !['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra', 'persistent'].includes(spec.effort)) throw new Error('Unsupported Codex effort');
-    const options: ThreadOptions = { workingDirectory: spec.cwd, approvalPolicy: 'never', sandboxMode: spec.mode as ThreadOptions['sandboxMode'] ?? 'read-only', ...(spec.model ? { model: spec.model } : {}), ...(spec.effort ? { modelReasoningEffort: spec.effort as ThreadOptions['modelReasoningEffort'] } : {}) };
+    // Sessions are not guaranteed a git checkout (bot jobs, no project folder), and
+    // Ormicode owns the sandbox boundary anyway — codex's git-trust check must not gate start.
+    const options: ThreadOptions = { workingDirectory: spec.cwd, approvalPolicy: 'never', sandboxMode: spec.mode as ThreadOptions['sandboxMode'] ?? 'read-only', skipGitRepoCheck: true, ...(spec.model ? { model: spec.model } : {}), ...(spec.effort ? { modelReasoningEffort: spec.effort as ThreadOptions['modelReasoningEffort'] } : {}) };
     const thread = nativeId ? this.client.resumeThread(nativeId, options) : this.client.startThread(options);
     const handle = Object.freeze({ id: `codex-sdk-${++this.serial}` });
     this.sessions.set(handle, { thread, nativeId, queue: new EventQueue(), active: false, disposed: false, interrupted: false });

@@ -25,7 +25,7 @@ export class VibeCliAdapter implements AgentAdapter {
   async detect() {
     try {
       const { stdout } = await execFileAsync(this.options.executable ?? 'vibe', ['--version'], { timeout: 5000, windowsHide: true });
-      const version = /\b(\d+\.\d+\.\d+)\b/.exec(stdout)?.[1];
+      const version = /(\d+\.\d+\.\d+)/.exec(stdout)?.[1];
       return { available: Boolean(version), ...(version ? { version } : {}), reason: 'Authentication not checked' };
     } catch { return { available: false, reason: 'Vibe CLI not found or version check failed' }; }
   }
