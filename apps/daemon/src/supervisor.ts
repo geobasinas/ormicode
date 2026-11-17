@@ -6,6 +6,7 @@ import type { Frame } from '@ormicode/protocol';
 import { openStore, getSession, setState, setWorkerPid, setNativeId, type SessionState } from '@ormicode/session-store';
 import { killTree } from './proctree.ts';
 import { recoverSessions, resumePolicy } from './recovery.ts';
+import { handoffBrief } from './handoff.ts';
 import { onClientFrame, type Client, type DispatchCtx } from './dispatch.ts';
 import { append } from '@ormicode/journal';
 import { serve, defaultSocketPath, ormicodeDir, type Link } from './socket.ts';
@@ -82,7 +83,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     setState(db, session, 'starting');
     proc.on('exit', code => {
       if (closing) return;
-      resuming.delete(session);
+      const wasResuming = resuming.delete(session);
       const retryTimer = retryTimers.get(session);
       if (retryTimer) { clearTimeout(retryTimer); retryTimers.delete(session); }
       workers.delete(session);
@@ -90,6 +91,11 @@ export async function startDaemon(opts: DaemonOptions = {}) {
       const current = getSession(db, session);
       if (current && ['starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying'].includes(current.state)) {
         record(session, 'interrupted', { reason: code === 0 ? 'stream_ended' : 'worker_crash' });
+      }
+      // A resume candidate whose worker died before ready leaves a recap so the
+      // session is continuable by handoff even though the native load failed.
+      if (wasResuming && getSession(db, session)?.state === 'interrupted') {
+        record(session, 'handoff_brief', { text: handoffBrief(db, session) });
       }
     });
     proc.on('error', e => { lastError = String(e); });
@@ -233,9 +239,6 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     spawnWorker, toWorker, sendPrompt,
   };
 
-  for (const s of recovery.autoResume) { resuming.add(s.id); spawnWorker(s.id); }
-  for (const r of recovery.rateLimited) scheduleRateRetry(r.id, r.resetAt);
-
   const server = await serve(socketPath, link => {
     link.onFrame = frame => {
       if (frame.type === 'req' && typeof frame.method === 'string' && frame.method.startsWith('worker.')) {
@@ -257,6 +260,9 @@ export async function startDaemon(opts: DaemonOptions = {}) {
 
   const addr = server.address();
   if (typeof addr === 'object' && addr) socketPath = `127.0.0.1:${addr.port}`;
+  // Resume spawns only after the socket is bound — workers connect on start.
+  for (const s of recovery.autoResume) { resuming.add(s.id); spawnWorker(s.id); }
+  for (const r of recovery.rateLimited) scheduleRateRetry(r.id, r.resetAt);
   return {
     socketPath, storePath, db, workers,
     async close() {

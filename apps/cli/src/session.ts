@@ -72,6 +72,7 @@ export async function sessionCommand(verb: string, args: string[]): Promise<numb
             const body = frame.body as Record<string, unknown>;
             const seq = 'seq' in frame ? `#${frame.seq} ` : '';
             console.log(`${seq}${body.kind}${body.text ? ` ${body.text}` : ''}${body.reason ? ` (${body.reason})` : ''}`);
+            if (typeof frame.seq === 'number') link.send({ v: 1, type: 'ack', session: frame.session, seq: frame.seq });
           }
         };
         await new Promise(() => undefined); // tail until Ctrl+C

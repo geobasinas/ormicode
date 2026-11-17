@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startDaemon, connect } from '../src/index.ts';
@@ -59,7 +59,9 @@ test('events survive a daemon restart with seq continuity', async () => {
   const socketPath = daemon.socketPath;
   await daemon.close();
 
+  process.env.ORMICODE_RESUME_POLICY = 'wait';
   const daemon2 = await startDaemon({ socketPath, storePath: join(dir, 'store.db') });
+  delete process.env.ORMICODE_RESUME_POLICY;
   const s = getSession(daemon2.db, session);
   assert.equal(s?.state, 'idle');
   assert.ok((s?.last_seq ?? 0) >= 3);
@@ -109,4 +111,31 @@ test('daemon.status and unknown methods respond correctly', async () => {
   const bogus = await client.request('bogus.method', {});
   assert.equal(bogus.type, 'err');
   await daemon.close();
+});
+
+test('a completed session auto-resumes on daemon restart under the safe policy', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ormi-daemon-test-'));
+  const storePath = join(dir, 'store.db');
+  const daemon = await startDaemon({ socketPath: '127.0.0.1:0', storePath });
+  const client = await connect(daemon.socketPath);
+  const res = await client.request('session.start', { machine: newId('m'), project: 'p_t', vendor: 'fake', transport: 'cli', model: 'x', effort: 'x', mode: 'x', workspace: { kind: 'current' } });
+  const session = res.body.session;
+  await client.request('session.prompt', { session, text: 'hi' });
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline && getSession(daemon.db, session)?.state !== 'idle')
+    await new Promise(r => setTimeout(r, 25));
+  assert.equal(getSession(daemon.db, session)?.state, 'idle');
+  assert.ok(getSession(daemon.db, session)?.native_id, 'native id recorded');
+  await daemon.close(); client.close();
+
+  // Second daemon on the same store: the safe policy respawns the session and
+  // journals 'resumed' once the reloaded worker reports ready.
+  const daemon2 = await startDaemon({ socketPath: '127.0.0.1:0', storePath });
+  const deadline2 = Date.now() + 15_000;
+  while (Date.now() < deadline2 && !replay(daemon2.db, session).some(r => r.kind === 'resumed'))
+    await new Promise(r => setTimeout(r, 25));
+  assert.ok(replay(daemon2.db, session).some(r => r.kind === 'resumed'), 'resumed journaled');
+  assert.equal(getSession(daemon2.db, session)?.state, 'idle');
+  await daemon2.close();
+  rmSync(dir, { recursive: true, force: true });
 });

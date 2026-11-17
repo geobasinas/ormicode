@@ -26,6 +26,8 @@ export function hasTransport(vendor: string, transport: string): boolean {
 const RESUMABLE = new Set([
   'claude/sdk', 'claude/cli', 'codex/sdk', 'grok/cli', 'grok/acp',
   'opencode/cli', 'opencode/sdk', 'opencode/acp', 'pi/cli', 'pi/sdk', 'vibe/acp',
+  // The deterministic fake implements a no-op resume to drive restart tests.
+  'fake/cli',
 ]);
 export function resumable(vendor: string, transport: string): boolean {
   return RESUMABLE.has(`${vendor}/${transport}`);

@@ -1,7 +1,7 @@
 import type { Frame } from '@ormicode/protocol';
 import { parseRequestBody, newId } from '@ormicode/protocol';
 import { getSession, listSessions, setState, listNotes, setNote, deleteNote, archiveSession, createSession, type Store } from '@ormicode/session-store';
-import { replay } from '@ormicode/journal';
+import { replay, setCursor } from '@ormicode/journal';
 import type { Link } from './socket.ts';
 import { acquireWorkspace, releaseForSession } from './leases.ts';
 import { hasTransport } from './registry.ts';
@@ -23,10 +23,15 @@ export interface DispatchCtx {
 
 /** Client-facing session.* / daemon.* request dispatch. */
 export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Frame): Promise<void> {
-  if (frame.type === 'ack') { /* device cursor tracking lands with devices */ return; }
+  const { db } = ctx;
+  if (frame.type === 'ack') {
+    // Per-device replay cursor: the client has durably seen up to seq.
+    if (typeof frame.session === 'string' && typeof frame.seq === 'number')
+      setCursor(db, client.device, frame.session, frame.seq);
+    return;
+  }
   if (frame.type !== 'req') return;
   const { id, method } = frame;
-  const { db } = ctx;
   const parsed = parseRequestBody(method, frame.body);
   if (!parsed.success) return client.link.replyError(id, parsed.error, method);
   const body = parsed.data as Record<string, unknown>;

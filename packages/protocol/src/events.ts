@@ -31,6 +31,7 @@ export const eventBodies = {
   error: z.looseObject({ kind: z.literal('error'), code: nonEmpty, message: text }),
   interrupted: z.looseObject({ kind: z.literal('interrupted'), reason: nonEmpty }),
   resumed: z.looseObject({ kind: z.literal('resumed') }),
+  handoff_brief: z.looseObject({ kind: z.literal('handoff_brief'), text }),
   evicted: z.looseObject({ kind: z.literal('evicted'), reason: nonEmpty, idleMs: count }),
   compacted: z.looseObject({ kind: z.literal('compacted') }),
   agent_version: z.looseObject({ kind: z.literal('agent_version'), version: nonEmpty }),

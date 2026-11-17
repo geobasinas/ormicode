@@ -16,7 +16,7 @@ type Session = {
 export class FakeAdapter implements AgentAdapter {
   readonly id = 'fake';
   readonly transport = 'cli' as const;
-  readonly capabilities = NO_CAPABILITIES;
+  readonly capabilities = { ...NO_CAPABILITIES, resume: true };
   private sessions = new Map<Handle, Session>();
   private nextId = 0;
   private readonly script?: FakeScript;
@@ -38,6 +38,8 @@ export class FakeAdapter implements AgentAdapter {
     return handle;
   }
   nativeId(handle: Handle): string { return this.requireSession(handle).nativeId; }
+  /** Deterministic no-op resume: a fresh handle standing in for a reloaded session. */
+  async resume(ref: { id: string; cwd: string }): Promise<Handle> { return this.start({ cwd: ref.cwd }); }
   async prompt(handle: Handle, input: PromptInput): Promise<void> {
     if (!input.text) throw new Error('prompt must not be empty');
     const session = this.requireSession(handle);
