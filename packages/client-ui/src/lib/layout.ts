@@ -15,7 +15,7 @@ export interface LayoutDescriptor { version: 1; regions: Partial<Record<RegionId
 export const defaultLayout: LayoutDescriptor = {
   version: 1,
   regions: {
-    sidebar: { order: 0, size: 260 },
+    sidebar: { order: 0, size: 268 },
     main: { order: 1 },
     composer: { order: 2 },
     rightRail: { order: 3, collapsed: true },

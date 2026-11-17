@@ -79,9 +79,9 @@ export function Now({ onOpen, state }: { onOpen: (session: string) => void; stat
   const recent = [...sessions].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)).slice(0, 5);
   const right = [...needs, ...live].slice(0, 5);
   return (
-    <div style={{ overflow: 'auto', height: '100%', display: 'flex', justifyContent: 'center' }}>
-      <div style={{ width: '100%', maxWidth: 780, padding: '14vh var(--space-5) var(--space-6)' }}>
-        <h1 style={{ fontSize: 26, color: 'var(--text-title)', margin: '0 0 var(--space-4)', fontWeight: 600, letterSpacing: -0.3 }}>{greeting()}</h1>
+    <div style={{ overflow: 'auto', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+      <div style={{ width: '100%', maxWidth: 792, padding: '0 var(--space-5)' }}>
+        <h1 style={{ fontSize: 22, color: 'var(--text-title)', margin: '0 0 var(--space-4)', fontWeight: 600, letterSpacing: -0.3 }}>{greeting()}</h1>
         {state === 'unpaired' ? <PairCard /> : null}
         <NewSession onStarted={onOpen} />
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)', marginTop: 'var(--space-5)' }}>

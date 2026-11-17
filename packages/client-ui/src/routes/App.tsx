@@ -47,12 +47,12 @@ function Tab({ id, active, onSelect, onClose }: { id: string; active: boolean; o
   );
   return (
     <span style={{
-      position: 'relative', display: 'inline-flex', alignItems: 'center', fontSize: 13, fontWeight: active ? 500 : 400,
-      padding: '4px 6px 6px', borderRadius: `${R}px ${R}px 0 0`, cursor: 'pointer', whiteSpace: 'nowrap',
+      position: 'relative', display: 'inline-flex', alignItems: 'center', fontSize: 11.5, fontWeight: active ? 600 : 400,
+      padding: '2px 0 4px', borderRadius: `${R}px ${R}px 0 0`, cursor: 'pointer', whiteSpace: 'nowrap',
       background: active ? 'var(--bg-main)' : 'transparent',
       color: active ? 'var(--text-title)' : 'var(--text-secondary)',
     }} onClick={onSelect}>
-      <span className={active ? undefined : 'hv-tab'} style={{ position: 'relative', zIndex: 2, display: 'inline-flex', alignItems: 'center', gap: 8, padding: '5px 12px', borderRadius: 8 }}>
+      <span className={active ? undefined : 'hv-tab'} style={{ position: 'relative', zIndex: 2, display: 'inline-flex', alignItems: 'center', gap: 8, padding: '4px 11px', borderRadius: 8 }}>
         {label}
         {onClose ? <X size={12} className="hv-x" style={{ color: 'var(--text-hint)', borderRadius: 4 }} onClick={e => { e.stopPropagation(); onClose(); }} /> : null}
       </span>
@@ -76,8 +76,8 @@ function Rail({ route, rail, onRail }: { route: string; rail: string; onRail: (r
   const isSession = route !== 'now';
   return (
     <div style={{
-      width: 52, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center',
-      padding: '4px 0 0', gap: 4, background: 'var(--bg-window)', alignSelf: 'flex-start',
+      width: 56, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center',
+      padding: '12px 0 0', gap: 4, background: 'var(--bg-window)', alignSelf: 'flex-start',
     }}>
       {RAIL_ICONS.map(({ id, icon: Icon, label, soon }) => {
         const enabled = id === 'notes' ? isSession : !soon;
@@ -195,7 +195,7 @@ export function App({ platform, theme = 'dark', layout }: { platform: ClientPlat
               ) : null}
             </aside>
           ) : null}
-          <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', margin: '0 0 10px' }}>
+          <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', margin: '12px 0 18px 18px' }}>
             <div style={{ display: 'flex', gap: 10, flexShrink: 0, position: 'relative', zIndex: 1, marginBottom: -1 }}>
               <Tab id="now" active={route === 'now'} onSelect={() => setRoute('now')} />
               {tabs.map(t => <Tab key={t} id={t} active={route === t} onSelect={() => setRoute(t)} onClose={() => close(t)} />)}
