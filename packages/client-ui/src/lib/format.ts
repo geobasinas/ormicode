@@ -11,6 +11,13 @@ export function ago(ts: number, now = Date.now()): string {
   return `${Math.floor(h / 24)}d`;
 }
 
+/** Display name for a project path — basename for paths, as-is otherwise. */
+export function projectName(project: string): string {
+  const trimmed = project.replace(/[\\/]+$/, '');
+  const base = trimmed.split(/[\\/]/).filter(Boolean).pop();
+  return base || project;
+}
+
 export function greeting(now = new Date()): string {
   const h = now.getHours();
   if (h < 5) return 'Up late';

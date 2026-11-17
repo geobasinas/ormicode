@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Ellipsis, Laptop } from 'lucide-react';
 import { usePlatform } from '../../lib/platform.ts';
+import { projectName } from '../../lib/format.ts';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '../../components/ui/dropdown-menu.tsx';
@@ -56,7 +57,7 @@ export function SessionHeader({ session, details }: { session: string; details: 
         color: pillColor[state] ?? 'var(--text-hint)', border: `1px solid ${pillColor[state] ?? 'var(--line-card)'}`,
       }}>{stateLabel[state] ?? state}</span>
       <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-hint)' }}>
-        {[details?.project, details?.vendor, details?.model, details?.effort].filter(Boolean).join(' · ')}
+        {[details?.project && projectName(details.project), details?.vendor, details?.model, details?.effort].filter(Boolean).join(' · ')}
       </span>
       <span style={{ flex: 1 }} />
       <span style={{

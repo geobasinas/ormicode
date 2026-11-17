@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { Play, LoaderCircle, CircleAlert, Pause, CircleX, Moon, Check, Archive, Folder, ChevronDown, ChevronRight, type LucideIcon } from 'lucide-react';
 import { useSessions, type SessionSummary } from './useSessions.ts';
-import { ago } from '../../lib/format.ts';
+import { ago, projectName } from '../../lib/format.ts';
 
 const stateIcon: Record<string, { icon: LucideIcon; color: string }> = {
   running: { icon: Play, color: 'var(--accent-mint)' },
@@ -79,7 +79,7 @@ export function SessionList({ active, onSelect, query }: { active?: string; onSe
               fontSize: 13, fontWeight: 600, color: 'var(--text-label)',
             }}>
               <Folder size={12} style={{ color: 'var(--text-hint)', flexShrink: 0 }} />
-              {project}
+              {projectName(project)}
               <span style={{ flex: 1 }} />
               <span style={{ fontWeight: 400, color: 'var(--text-hint)', fontSize: 11 }}>{list.length}</span>
             </div>

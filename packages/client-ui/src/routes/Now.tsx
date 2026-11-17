@@ -4,7 +4,7 @@ import { Play, CircleAlert, LoaderCircle, GitBranch, Folder, type LucideIcon } f
 import { useSessions, type SessionSummary } from '../features/session/useSessions.ts';
 import { NewSession } from '../features/session/NewSession.tsx';
 import { PairCard } from '../features/pair/PairCard.tsx';
-import { ago, greeting } from '../lib/format.ts';
+import { ago, greeting, projectName } from '../lib/format.ts';
 
 const attention = ['awaiting_approval', 'awaiting_input', 'paused_rate_limited', 'interrupted', 'failed'];
 const working = ['running', 'starting', 'retrying'];
@@ -39,7 +39,7 @@ function SessionRow({ s, onOpen }: { s: SessionSummary; onOpen: (id: string) => 
       <span style={{ flex: 1, minWidth: 0 }}>
         <span style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--text-active)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title || s.id.slice(0, 14)}</span>
         <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text-hint)', marginTop: 1 }}>
-          <Folder size={10} />{s.project}
+          <Folder size={10} />{projectName(s.project)}
           <GitBranch size={10} style={{ marginLeft: 4 }} />{s.state}
         </span>
       </span>

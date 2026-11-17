@@ -1,6 +1,6 @@
 import type { Frame } from '@ormicode/protocol';
 import { parseRequestBody, newId } from '@ormicode/protocol';
-import { getSession, listSessions, sessionsInStates, setState, listNotes, setNote, deleteNote, archiveSession, createSession, type Store } from '@ormicode/session-store';
+import { getSession, listSessions, sessionsInStates, setState, setTitle, listNotes, setNote, deleteNote, archiveSession, createSession, type Store } from '@ormicode/session-store';
 import { replay, setCursor } from '@ormicode/journal';
 import { listDevices, renameDevice, revokeDevice } from '@ormicode/session-store';
 import { handleJoin, type Pairing } from './pair.ts';
@@ -124,6 +124,11 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
           held.push({ text: String(body.text), ...(body.images ? { images: body.images as unknown[] } : {}) });
           ctx.heldPrompts.set(session, held);
           return client.link.reply(id, { accepted: true });
+        }
+        // Untitled sessions pick up the first real prompt as their title.
+        if (!s.title) {
+          const first = String(body.text).split('\n').map(l => l.trim()).find(Boolean) ?? '';
+          if (first) setTitle(ctx.db, session, first.length > 60 ? `${first.slice(0, 57)}…` : first);
         }
         const sent = await ctx.sendPrompt(session, String(body.text), body.images as unknown[] | undefined);
         return sent ? client.link.reply(id, { accepted: true }) : client.link.replyError(id, 'agent.failed', 'worker rejected prompt');
