@@ -30,7 +30,7 @@ const head = { fontSize: 11, color: 'var(--text-hint)', letterSpacing: 1.2, marg
 function SessionRow({ s, onOpen }: { s: SessionSummary; onOpen: (id: string) => void }) {
   const { icon: Icon, color } = rowIcon(s);
   return (
-    <button onClick={() => onOpen(s.id)} style={{
+    <button className="hv-sub" onClick={() => onOpen(s.id)} style={{
       textAlign: 'left', font: 'inherit', cursor: 'pointer', width: '100%',
       padding: '8px 12px', background: 'transparent', border: 'none',
       borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', gap: 10,
@@ -51,7 +51,7 @@ function SessionRow({ s, onOpen }: { s: SessionSummary; onOpen: (id: string) => 
 function AttentionRow({ s, n, onOpen }: { s: SessionSummary; n: number; onOpen: (id: string) => void }) {
   const needs = attention.includes(s.state);
   return (
-    <button onClick={() => onOpen(s.id)} style={{
+    <button className="hv-sub" onClick={() => onOpen(s.id)} style={{
       textAlign: 'left', font: 'inherit', cursor: 'pointer', width: '100%',
       padding: '8px 12px', background: 'transparent', border: 'none',
       borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', gap: 10,

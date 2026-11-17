@@ -26,9 +26,9 @@ function Titlebar({ platform }: { platform: ClientPlatform }) {
       <span style={{ flex: 1 }} />
       {d ? (
         <span style={{ display: 'flex' }}>
-          <button style={btn} onClick={() => d.winMin()} title="Minimize"><Minus size={15} style={{ display: 'block', margin: 'auto' }} /></button>
-          <button style={btn} onClick={() => d.winMax()} title="Maximize"><Square size={13} style={{ display: 'block', margin: 'auto' }} /></button>
-          <button style={btn} onClick={() => d.winClose()} title="Close"><X size={16} style={{ display: 'block', margin: 'auto' }} /></button>
+          <button className="hv" style={btn} onClick={() => d.winMin()} title="Minimize"><Minus size={15} style={{ display: 'block', margin: 'auto' }} /></button>
+          <button className="hv" style={btn} onClick={() => d.winMax()} title="Maximize"><Square size={13} style={{ display: 'block', margin: 'auto' }} /></button>
+          <button className="hv hv-close" style={btn} onClick={() => d.winClose()} title="Close"><X size={16} style={{ display: 'block', margin: 'auto' }} /></button>
         </span>
       ) : null}
     </div>
@@ -39,7 +39,7 @@ function Tab({ id, active, onSelect, onClose }: { id: string; active: boolean; o
   const details = useSession(id === 'now' ? undefined : id);
   const label = id === 'now' ? 'Home' : (details?.title || id.slice(0, 14));
   return (
-    <span style={{
+    <span className={active ? undefined : 'hv'} style={{
       display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13,
       padding: '6px 14px 7px', borderRadius: '9px 9px 0 0', cursor: 'pointer', whiteSpace: 'nowrap',
       border: '1px solid', borderBottom: 'none', borderColor: active ? 'var(--line-pane)' : 'transparent',
@@ -73,7 +73,7 @@ function Rail({ route, rail, onRail }: { route: string; rail: string; onRail: (r
         const enabled = id === 'notes' ? isSession : !soon;
         const active = id === 'notes' && rail === 'notes';
         return (
-          <button key={id} title={enabled ? label : `${label} — soon`} aria-disabled={!enabled}
+          <button key={id} className={enabled && !active ? 'hv' : undefined} title={enabled ? label : `${label} — soon`} aria-disabled={!enabled}
             onClick={() => enabled && id === 'notes' && onRail(rail === 'notes' ? 'none' : 'notes')}
             style={{
               width: 32, height: 32, border: 'none', borderRadius: 8, cursor: enabled ? 'pointer' : 'default',
@@ -144,7 +144,7 @@ export function App({ platform, theme = 'dark', layout }: { platform: ClientPlat
                   style={{ flex: 1, font: 'inherit', fontSize: 13, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text-label)' }} />
                 <span style={{ fontSize: 10, color: '#5e5e5e' }}>Ctrl K</span>
               </div>
-              <button onClick={() => setRoute('now')} style={{
+              <button className="hv-sub" onClick={() => setRoute('now')} style={{
                 height: 30, marginTop: 6, display: 'flex', alignItems: 'center', gap: 10, padding: '0 10px',
                 font: 'inherit', fontSize: 13, cursor: 'pointer', background: 'transparent', border: 'none',
                 borderRadius: 8, color: 'var(--text-title)', textAlign: 'left',

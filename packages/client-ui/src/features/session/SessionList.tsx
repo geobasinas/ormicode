@@ -27,7 +27,7 @@ const today = (s: SessionSummary) => finished.has(s.state) && Date.now() - (s.up
 function Row({ s, active, onSelect }: { s: SessionSummary; active?: string; onSelect: (id: string) => void }) {
   const ic = stateIcon[s.state] ?? stateIcon.idle!;
   return (
-    <button onClick={() => onSelect(s.id)} style={{
+    <button className="hv-sub" onClick={() => onSelect(s.id)} style={{
       textAlign: 'left', width: '100%', padding: '6px 10px',
       border: 'none', cursor: 'pointer', font: 'inherit',
       background: s.id === active ? 'var(--bg-card)' : 'transparent', color: 'var(--text-label)',
@@ -98,7 +98,7 @@ function FinishedGroup({ done, active, onSelect }: { done: SessionSummary[]; act
   const Chevron = expanded ? ChevronDown : ChevronRight;
   return (
     <div>
-      <button onClick={() => setExpanded(!expanded)} style={{
+      <button className="hv-sub" onClick={() => setExpanded(!expanded)} style={{
         textAlign: 'left', width: '100%', padding: '5px 10px', border: 'none', cursor: 'pointer',
         font: 'inherit', background: 'transparent', color: 'var(--text-secondary)',
         borderRadius: 7, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13,
