@@ -10,7 +10,7 @@ import type { AgentAdapter, Handle, NativeRef, PromptInput, StartSpec } from '@o
 import { VibeCliMapper } from './map.ts';
 
 type Spawn = (command: string, args: string[], options: SpawnOptionsWithoutStdio) => ChildProcessWithoutNullStreams;
-type Session = { spec: StartSpec; nativeId?: string; queue: EventQueue; log?: RawLog; active: boolean; disposed: boolean; needsRecovery: boolean; process?: ChildProcessWithoutNullStreams; running?: Promise<void>; interrupted: boolean };
+type Session = { spec: StartSpec; model?: string; mode?: string; nativeId?: string; queue: EventQueue; log?: RawLog; active: boolean; disposed: boolean; needsRecovery: boolean; process?: ChildProcessWithoutNullStreams; running?: Promise<void>; interrupted: boolean };
 const execFileAsync = promisify(execFile);
 const limit = 1024 * 1024;
 
@@ -18,7 +18,7 @@ const limit = 1024 * 1024;
 export class VibeCliAdapter implements AgentAdapter {
   readonly id = 'vibe';
   readonly transport = 'cli' as const;
-  readonly capabilities = NO_CAPABILITIES;
+  readonly capabilities = { ...NO_CAPABILITIES, resume: true, model: true, modes: true };
   private sessions = new Map<Handle, Session>();
   private options: { executable?: string; spawn?: Spawn; onNativeId?: (handle: Handle, id: string) => void };
   constructor(options: { executable?: string; spawn?: Spawn; onNativeId?: (handle: Handle, id: string) => void } = {}) { this.options = options; }
@@ -39,7 +39,7 @@ export class VibeCliAdapter implements AgentAdapter {
     if (!spec.cwd) throw new Error('cwd is required');
     if (spec.effort) throw new Error('Vibe CLI effort is not supported');
     const handle = Object.freeze({ id: `vibe-cli-${randomUUID()}` });
-    this.sessions.set(handle, { spec: { ...spec }, nativeId, log: spec.logDir ? new RawLog(spec.logDir) : undefined, queue: new EventQueue(), active: false, disposed: false, needsRecovery: false, interrupted: false });
+    this.sessions.set(handle, { spec: { ...spec }, nativeId, model: spec.model, mode: spec.mode, log: spec.logDir ? new RawLog(spec.logDir) : undefined, queue: new EventQueue(), active: false, disposed: false, needsRecovery: false, interrupted: false });
     return handle;
   }
   async prompt(handle: Handle, input: PromptInput): Promise<void> {
@@ -63,8 +63,8 @@ export class VibeCliAdapter implements AgentAdapter {
       const args = ['--prompt-file', promptFile, '--output', 'streaming'];
       if (session.nativeId) args.push('--resume', session.nativeId);
       else {
-        if (session.spec.model) args.push('--model', session.spec.model);
-        if (session.spec.mode) args.push('--agent', session.spec.mode);
+        if (session.model) args.push('--model', session.model);
+        if (session.mode) args.push('--agent', session.mode);
       }
       child = (this.options.spawn ?? spawn)(this.options.executable ?? 'vibe', args, { cwd: session.spec.cwd, windowsHide: true, shell: false });
       session.process = child; child.stdin.end();
@@ -125,6 +125,14 @@ export class VibeCliAdapter implements AgentAdapter {
       session.process = undefined; session.active = false;
       if (completed && !session.disposed) { try { session.queue.push([{ kind: 'turn_end' }]); } catch { session.queue.close(); } }
     }
+  }
+  async setModel(handle: Handle, model: string): Promise<void> {
+    const session = this.get(handle); session.model = model;
+    session.queue.push([{ kind: 'model_changed', model }]);
+  }
+  async setMode(handle: Handle, mode: string): Promise<void> {
+    const session = this.get(handle); session.mode = mode;
+    session.queue.push([{ kind: 'mode_changed', mode }]);
   }
   async interrupt(handle: Handle): Promise<void> {
     const session = this.get(handle);

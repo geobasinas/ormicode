@@ -16,7 +16,7 @@ const execFileAsync = promisify(execFile);
 export class OpenCodeAcpAdapter implements AgentAdapter {
   readonly id = 'opencode';
   readonly transport = 'acp' as const;
-  readonly capabilities = { ...NO_CAPABILITIES, resume: true };
+  readonly capabilities = { ...NO_CAPABILITIES, approvals: true, resume: true };
   private readonly sessions = new Map<Handle, Session>();
   private readonly options: { executable?: string; spawn?: Spawn; onNativeId?: (handle: Handle, id: string) => void };
   constructor(options: { executable?: string; spawn?: Spawn; onNativeId?: (handle: Handle, id: string) => void } = {}) { this.options = options; }

@@ -1,17 +1,23 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Codex } from '@openai/codex-sdk';
-import type { Thread, ThreadOptions } from '@openai/codex-sdk';
+import type { CyberAccessProgram, Input, Thread, ThreadOptions, TurnOptions } from '@openai/codex-sdk';
 import { EventQueue, NO_CAPABILITIES, RawLog } from '@ormicode/agent-core';
 import type { AgentAdapter, Handle, NativeRef, PromptInput, StartSpec } from '@ormicode/agent-core';
 import { CodexEventMapper } from './map.ts';
 
+const CYBER_PROGRAMS = new Set(['standard', 'daybreak_blue', 'daybreak_red']);
+const MIME_EXT: Record<string, string> = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif' };
+
 interface CodexClient { startThread(options?: ThreadOptions): Thread; resumeThread(id: string, options?: ThreadOptions): Thread }
-interface Session { thread: Thread; queue: EventQueue; log?: RawLog; nativeId?: string; active: boolean; disposed: boolean; interrupted: boolean; abort?: AbortController; running?: Promise<void> }
+interface Session { thread: Thread; queue: EventQueue; log?: RawLog; nativeId?: string; active: boolean; disposed: boolean; interrupted: boolean; abort?: AbortController; running?: Promise<void>; imageDir?: string; outputSchema?: unknown; cyberAccessProgram?: CyberAccessProgram }
 
 /** SDK runs through codex exec. No approval forwarding or mid-turn steering is exposed. */
 export class CodexSdkAdapter implements AgentAdapter {
   readonly id = 'codex';
   readonly transport = 'sdk' as const;
-  readonly capabilities = { ...NO_CAPABILITIES, resume: true };
+  readonly capabilities = { ...NO_CAPABILITIES, resume: true, images: true, configOptions: true };
   private readonly sessions = new Map<Handle, Session>();
   private readonly client: CodexClient;
   private readonly onNativeId?: (handle: Handle, id: string) => void;
@@ -48,12 +54,25 @@ export class CodexSdkAdapter implements AgentAdapter {
     if (!input.text) throw new Error('prompt must not be empty');
     session.active = true;
     const abort = new AbortController(); session.abort = abort;
-    session.running = this.run(handle, session, input.text, abort);
+    session.running = this.run(handle, session, this.buildInput(session, input), abort);
   }
-  private async run(handle: Handle, session: Session, text: string, abort: AbortController): Promise<void> {
+  private buildInput(session: Session, input: PromptInput): Input {
+    if (!input.images?.length) return input.text;
+    session.imageDir ??= mkdtempSync(join(tmpdir(), 'ormi-codex-'));
+    const items = input.images.map((image, index) => {
+      const path = join(session.imageDir as string, `img${index}${MIME_EXT[image.mimeType] ?? '.img'}`);
+      writeFileSync(path, Buffer.from(image.data, 'base64'));
+      return { type: 'local_image' as const, path };
+    });
+    return [...items, { type: 'text' as const, text: input.text }];
+  }
+  private async run(handle: Handle, session: Session, input: Input, abort: AbortController): Promise<void> {
     let terminal = false; let started = false;
     try {
-      const { events } = await session.thread.runStreamed(text, { signal: abort.signal });
+      const turn: TurnOptions = { signal: abort.signal };
+      if (session.outputSchema !== undefined) turn.outputSchema = session.outputSchema;
+      if (session.cyberAccessProgram) turn.cyberAccessProgram = session.cyberAccessProgram;
+      const { events } = await session.thread.runStreamed(input, turn);
       const mapper = new CodexEventMapper();
       for await (const event of events) {
         session.log?.out(JSON.stringify(event) + '\n');
@@ -89,10 +108,28 @@ export class CodexSdkAdapter implements AgentAdapter {
     if (!session.active || !session.abort) throw new Error('Codex session has no active turn');
     session.abort.abort(); await session.running;
   }
+  /** 'outputSchema' takes a JSON schema string for the next turn; 'cyberAccessProgram' an enum name. */
+  async setOption(handle: Handle, id: string, value: string | boolean): Promise<void> {
+    const session = this.get(handle);
+    if (id === 'outputSchema') {
+      if (typeof value === 'boolean') throw new Error('outputSchema requires a JSON schema string');
+      try { session.outputSchema = value ? JSON.parse(value) : undefined; } catch { throw new Error('outputSchema must be valid JSON'); }
+      session.queue.push([{ kind: 'config_option', id, value: session.outputSchema === undefined ? '' : value }]);
+      return;
+    }
+    if (id === 'cyberAccessProgram') {
+      if (typeof value === 'boolean' || !CYBER_PROGRAMS.has(value)) throw new Error(`cyberAccessProgram must be one of ${[...CYBER_PROGRAMS].join(', ')}`);
+      session.cyberAccessProgram = value as CyberAccessProgram;
+      session.queue.push([{ kind: 'config_option', id, value }]);
+      return;
+    }
+    throw new Error(`Unknown Codex option: ${id}`);
+  }
   events(handle: Handle) { return this.get(handle).queue.subscribe(); }
   async dispose(handle: Handle): Promise<void> {
     const session = this.sessions.get(handle); if (!session) return;
     session.disposed = true; session.abort?.abort(); await session.running; session.queue.close(); this.sessions.delete(handle);
+    if (session.imageDir) try { rmSync(session.imageDir, { recursive: true, force: true }); } catch { /* best effort */ }
   }
   private get(handle: Handle): Session {
     const session = this.sessions.get(handle);

@@ -7,7 +7,7 @@ import { usage, flag } from './usage.ts';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const transports: Record<string, string[]> = {
   claude: ['sdk', 'cli'],
-  codex: ['sdk'],
+  codex: ['sdk', 'cli'],
   opencode: ['sdk', 'cli', 'acp'],
   pi: ['sdk', 'cli'],
   grok: ['cli', 'acp'],

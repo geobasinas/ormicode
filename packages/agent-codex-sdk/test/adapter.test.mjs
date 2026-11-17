@@ -72,3 +72,29 @@ test('SDK stops at fatal stream errors and requires recovery', async () => {
   await assert.rejects(adapter.prompt(handle, { text: 'again' }), /recovery/);
   await adapter.dispose(handle);
 });
+
+test('SDK stages prompt images as local_image items and turns options into TurnOptions', async () => {
+  const inputs = []; const turns = [];
+  const adapter = new CodexSdkAdapter({ client: client(() => ({ runStreamed: async (input, opts) => {
+    inputs.push(input); turns.push(opts);
+    return { events: (async function* () {
+      yield { type: 'thread.started', thread_id: 't' }; yield { type: 'turn.started' };
+      yield { type: 'turn.completed', usage };
+    })() };
+  } })) });
+  const handle = await adapter.start({ cwd: '/repo' });
+  await assert.rejects(adapter.setOption(handle, 'outputSchema', '{bad'), /valid JSON/);
+  await assert.rejects(adapter.setOption(handle, 'cyberAccessProgram', 'nope'), /cyberAccessProgram/);
+  await assert.rejects(adapter.setOption(handle, 'mystery', 'x'), /Unknown Codex option/);
+  await adapter.setOption(handle, 'outputSchema', '{"type":"object"}');
+  await adapter.setOption(handle, 'cyberAccessProgram', 'daybreak_blue');
+  const stream = adapter.events(handle)[Symbol.asyncIterator]();
+  await adapter.prompt(handle, { text: 'look', images: [{ data: Buffer.from('png').toString('base64'), mimeType: 'image/png' }] });
+  for (;;) { const item = await stream.next(); if (item.value.kind === 'turn_end') break; }
+  assert.equal(Array.isArray(inputs[0]), true);
+  assert.equal(inputs[0][0].type, 'local_image');
+  assert.equal(inputs[0][1].text, 'look');
+  assert.deepEqual(turns[0].outputSchema, { type: 'object' });
+  assert.equal(turns[0].cyberAccessProgram, 'daybreak_blue');
+  await adapter.dispose(handle);
+});

@@ -90,7 +90,7 @@ export class AcpAdapter implements AgentAdapter {
       if (endpoint.agentInfo.version) session.agentVersion = endpoint.agentInfo.version;
       if (spec?.model || spec?.mode || spec?.effort) {
         // Best-effort initial configuration through config options when advertised.
-        for (const [category, value] of [['mode', spec.mode], ['model', spec.model], ['thought_level', spec.effort]] as const) {
+        for (const [category, value] of [['mode', spec.mode], ['model', spec.model], [['thought_level', 'thinking'] as const, spec.effort]] as const) {
           if (value) await this.applyOption(handle, category, value).catch(() => { throw new Error(`Agent did not accept ${category} option`); });
         }
       }
@@ -137,20 +137,21 @@ export class AcpAdapter implements AgentAdapter {
     session.cancelRequested = true; session.broker.expireAll('cancelled'); session.profile.cancel(session.peer, session.nativeId);
   }
   async approve(handle: Handle, requestId: string, optionId: string): Promise<void> { this.get(handle).broker.decide(requestId, optionId); }
-  private async applyOption(handle: Handle, category: string, value: string): Promise<void> {
+  private async applyOption(handle: Handle, category: string | readonly string[], value: string): Promise<void> {
     const session = this.get(handle);
     if (session.active) throw new Error('ACP session has an active turn');
-    const option = session.options.find(entry => entry.category === category);
+    const categories = Array.isArray(category) ? category : [category];
+    const option = session.options.find(entry => entry.category !== undefined && categories.includes(entry.category));
     if (option) {
       session.options = await session.profile.setConfigOption(session.peer, session.nativeId, option, value);
       return;
     }
-    if (category === 'mode' && session.modes.length) {
+    if (categories.includes('mode') && session.modes.length) {
       await session.profile.setMode(session.peer, session.nativeId, value);
       session.currentMode = value;
       return;
     }
-    throw new Error(`Agent did not advertise a ${category} config option`);
+    throw new Error(`Agent did not advertise a ${categories[0]} config option`);
   }
   async setOption(handle: Handle, id: string, value: string | boolean): Promise<void> {
     const session = this.get(handle);
@@ -169,7 +170,7 @@ export class AcpAdapter implements AgentAdapter {
     this.get(handle).queue.push([{ kind: 'model_changed', model }]);
   }
   async setEffort(handle: Handle, effort: string): Promise<void> {
-    await this.applyOption(handle, 'thought_level', effort);
+    await this.applyOption(handle, ['thought_level', 'thinking'], effort);
     this.get(handle).queue.push([{ kind: 'effort_changed', effort }]);
   }
   /** Negotiated protocol version for this session (1 or 2), stored and shown per the README. */

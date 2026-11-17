@@ -6,6 +6,7 @@ const REGISTRY: Record<string, { pkg: string; cls: string }> = {
   'claude/sdk': { pkg: '@ormicode/agent-claude-sdk', cls: 'ClaudeSdkAdapter' },
   'claude/cli': { pkg: '@ormicode/agent-claude-cli', cls: 'ClaudeCliAdapter' },
   'codex/sdk': { pkg: '@ormicode/agent-codex-sdk', cls: 'CodexSdkAdapter' },
+  'codex/cli': { pkg: '@ormicode/agent-codex-cli', cls: 'CodexCliAdapter' },
   'grok/acp': { pkg: '@ormicode/agent-grok-acp', cls: 'GrokAcpAdapter' },
   'grok/cli': { pkg: '@ormicode/agent-grok-cli', cls: 'GrokCliAdapter' },
   'opencode/acp': { pkg: '@ormicode/agent-opencode-acp', cls: 'OpenCodeAcpAdapter' },
@@ -24,7 +25,7 @@ export function hasTransport(vendor: string, transport: string): boolean {
 // Transports whose native resume passed `ormi agent smoke`. Static so the
 // supervisor can plan restart recovery without spawning adapter modules.
 const RESUMABLE = new Set([
-  'claude/sdk', 'claude/cli', 'codex/sdk', 'grok/cli', 'grok/acp',
+  'claude/sdk', 'claude/cli', 'codex/sdk', 'codex/cli', 'grok/cli', 'grok/acp',
   'opencode/cli', 'opencode/sdk', 'opencode/acp', 'pi/cli', 'pi/sdk', 'vibe/acp',
   // The deterministic fake implements a no-op resume to drive restart tests.
   'fake/cli',

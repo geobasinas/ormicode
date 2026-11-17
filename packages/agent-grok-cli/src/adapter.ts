@@ -10,7 +10,7 @@ import type { AgentAdapter, Handle, NativeRef, PromptInput, StartSpec } from '@o
 import { GrokCliMapper } from './map.ts';
 
 type Spawn = (command: string, args: string[], options: SpawnOptionsWithoutStdio) => ChildProcessWithoutNullStreams;
-type Session = { spec: StartSpec; log?: RawLog; nativeId?: string; queue: EventQueue; active: boolean; disposed: boolean; needsRecovery: boolean; process?: ChildProcessWithoutNullStreams; running?: Promise<void>; interrupted: boolean };
+type Session = { spec: StartSpec; log?: RawLog; model?: string; effort?: string; outputSchema?: string; nativeId?: string; queue: EventQueue; active: boolean; disposed: boolean; needsRecovery: boolean; process?: ChildProcessWithoutNullStreams; running?: Promise<void>; interrupted: boolean };
 const execFileAsync = promisify(execFile);
 const limit = 1024 * 1024;
 
@@ -18,7 +18,7 @@ const limit = 1024 * 1024;
 export class GrokCliAdapter implements AgentAdapter {
   readonly id = 'grok';
   readonly transport = 'cli' as const;
-  readonly capabilities = { ...NO_CAPABILITIES, resume: true };
+  readonly capabilities = { ...NO_CAPABILITIES, resume: true, model: true, effort: true, configOptions: true };
   private sessions = new Map<Handle, Session>();
   private options: { executable?: string; spawn?: Spawn; onNativeId?: (handle: Handle, id: string) => void };
   constructor(options: { executable?: string; spawn?: Spawn; onNativeId?: (handle: Handle, id: string) => void } = {}) { this.options = options; }
@@ -29,7 +29,12 @@ export class GrokCliAdapter implements AgentAdapter {
       return { available: Boolean(version), ...(version ? { version } : {}), reason: 'Authentication not checked' };
     } catch { return { available: false, reason: 'Grok CLI not found or version check failed' }; }
   }
-  async models() { return []; }
+  async models() {
+    try {
+      const { stdout } = await execFileAsync(this.options.executable ?? 'grok', ['models'], { timeout: 15_000, windowsHide: true });
+      return stdout.split('\n').map(line => /^\s*[-*]\s+(\S+)/.exec(line)?.[1]).filter((id): id is string => Boolean(id)).map(id => ({ id }));
+    } catch { return []; }
+  }
   async start(spec: StartSpec): Promise<Handle> { return this.create(spec); }
   async resume(ref: NativeRef): Promise<Handle> {
     if (!ref.id) throw new Error('native session ID is required');
@@ -37,9 +42,9 @@ export class GrokCliAdapter implements AgentAdapter {
   }
   private create(spec: StartSpec, nativeId?: string): Handle {
     if (!spec.cwd) throw new Error('cwd is required');
-    if (spec.mode || spec.effort) throw new Error('Grok CLI modes and effort are not yet supported');
+    if (spec.mode) throw new Error('Grok CLI modes are not supported');
     const handle = Object.freeze({ id: `grok-cli-${randomUUID()}` });
-    this.sessions.set(handle, { spec: { ...spec }, log: spec.logDir ? new RawLog(spec.logDir) : undefined, nativeId, queue: new EventQueue(), active: false, disposed: false, needsRecovery: false, interrupted: false });
+    this.sessions.set(handle, { model: spec.model, effort: spec.effort, spec: { ...spec }, log: spec.logDir ? new RawLog(spec.logDir) : undefined, nativeId, queue: new EventQueue(), active: false, disposed: false, needsRecovery: false, interrupted: false });
     return handle;
   }
   async prompt(handle: Handle, input: PromptInput): Promise<void> {
@@ -61,7 +66,9 @@ export class GrokCliAdapter implements AgentAdapter {
       if (session.interrupted) { session.queue.push([{ kind: 'interrupted', reason: 'user_abort' }]); return; }
       const args = ['--no-auto-update', '--permission-mode', 'dontAsk', '--output-format', 'streaming-json', '--prompt-file', promptFile];
       if (session.nativeId) args.push('--resume', session.nativeId);
-      if (session.spec.model) args.push('--model', session.spec.model);
+      if (session.model) args.push('--model', session.model);
+      if (session.effort) args.push('--reasoning-effort', session.effort);
+      if (session.outputSchema) args.push('--json-schema', session.outputSchema);
       child = (this.options.spawn ?? spawn)(this.options.executable ?? 'grok', args, { cwd: session.spec.cwd, windowsHide: true, shell: false });
       session.process = child; child.stdin.end();
       attachRawLog(child, session.log, this.options.executable ?? 'grok', session.spec.cwd);
@@ -117,6 +124,22 @@ export class GrokCliAdapter implements AgentAdapter {
       session.process = undefined; session.active = false;
       if (completed && !session.disposed) { try { session.queue.push([{ kind: 'turn_end' }]); } catch { session.queue.close(); } }
     }
+  }
+  async setModel(handle: Handle, model: string): Promise<void> {
+    const session = this.get(handle); session.model = model;
+    session.queue.push([{ kind: 'model_changed', model }]);
+  }
+  async setEffort(handle: Handle, effort: string): Promise<void> {
+    const session = this.get(handle); session.effort = effort;
+    session.queue.push([{ kind: 'effort_changed', effort }]);
+  }
+  /** 'outputSchema' takes a JSON schema string for --json-schema on the next turn. */
+  async setOption(handle: Handle, id: string, value: string | boolean): Promise<void> {
+    const session = this.get(handle);
+    if (id !== 'outputSchema' || typeof value === 'boolean') throw new Error('Unknown Grok option');
+    if (value) try { JSON.parse(value); } catch { throw new Error('outputSchema must be valid JSON'); }
+    session.outputSchema = value || undefined;
+    session.queue.push([{ kind: 'config_option', id, value }]);
   }
   async interrupt(handle: Handle): Promise<void> {
     const session = this.get(handle);

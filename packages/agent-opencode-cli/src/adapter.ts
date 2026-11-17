@@ -1,21 +1,25 @@
 import { spawn, execFile } from 'node:child_process';
 import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { EventQueue, NO_CAPABILITIES, RawLog, attachRawLog } from '@ormicode/agent-core';
 import type { AgentAdapter, Handle, NativeRef, PromptInput, StartSpec } from '@ormicode/agent-core';
 import { OpenCodeCliMapper } from './map.ts';
 
 type Spawn = (command: string, args: string[], options: SpawnOptionsWithoutStdio) => ChildProcessWithoutNullStreams;
-type Session = { spec: StartSpec; log?: RawLog; nativeId?: string; queue: EventQueue; active: boolean; disposed: boolean; needsRecovery: boolean; process?: ChildProcessWithoutNullStreams; running?: Promise<void>; interrupted: boolean };
+type Session = { spec: StartSpec; log?: RawLog; model?: string; effort?: string; mode?: string; imageDir?: string; pendingImages?: string[]; nativeId?: string; queue: EventQueue; active: boolean; disposed: boolean; needsRecovery: boolean; process?: ChildProcessWithoutNullStreams; running?: Promise<void>; interrupted: boolean };
 const execFileAsync = promisify(execFile);
 const limit = 1024 * 1024;
+const MIME_EXT: Record<string, string> = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif' };
 
 /** One `opencode run` process per turn on a private standalone server. Headless permission requests cannot be answered. */
 export class OpenCodeCliAdapter implements AgentAdapter {
   readonly id = 'opencode';
   readonly transport = 'cli' as const;
-  readonly capabilities = { ...NO_CAPABILITIES, resume: true };
+  readonly capabilities = { ...NO_CAPABILITIES, resume: true, model: true, effort: true, modes: true, images: true };
   private sessions = new Map<Handle, Session>();
   private options: { executable?: string; spawn?: Spawn; onNativeId?: (handle: Handle, id: string) => void };
   constructor(options: { executable?: string; spawn?: Spawn; onNativeId?: (handle: Handle, id: string) => void } = {}) { this.options = options; }
@@ -34,9 +38,8 @@ export class OpenCodeCliAdapter implements AgentAdapter {
   }
   private create(spec: StartSpec, nativeId?: string): Handle {
     if (!spec.cwd) throw new Error('cwd is required');
-    if (spec.effort) throw new Error('OpenCode CLI effort is not yet supported');
     const handle = Object.freeze({ id: `opencode-cli-${randomUUID()}` });
-    this.sessions.set(handle, { spec: { ...spec }, nativeId, log: spec.logDir ? new RawLog(spec.logDir) : undefined, queue: new EventQueue(), active: false, disposed: false, needsRecovery: false, interrupted: false });
+    this.sessions.set(handle, { spec: { ...spec }, nativeId, model: spec.model, effort: spec.effort, mode: spec.mode, log: spec.logDir ? new RawLog(spec.logDir) : undefined, queue: new EventQueue(), active: false, disposed: false, needsRecovery: false, interrupted: false });
     return handle;
   }
   async prompt(handle: Handle, input: PromptInput): Promise<void> {
@@ -44,6 +47,14 @@ export class OpenCodeCliAdapter implements AgentAdapter {
     if (session.needsRecovery) throw new Error('OpenCode session requires explicit recovery');
     if (session.active) throw new Error('OpenCode session already has an active turn');
     if (!input.text) throw new Error('prompt must not be empty');
+    if (input.images?.length) {
+      session.imageDir ??= mkdtempSync(join(tmpdir(), 'ormi-opencode-'));
+      session.pendingImages = input.images.map((image, index) => {
+        const path = join(session.imageDir as string, `img${index}${MIME_EXT[image.mimeType] ?? '.img'}`);
+        writeFileSync(path, Buffer.from(image.data, 'base64'));
+        return path;
+      });
+    }
     session.queue.push([{ kind: 'turn_start' }]); session.active = true; session.interrupted = false;
     session.running = this.run(handle, session, input.text);
   }
@@ -56,8 +67,11 @@ export class OpenCodeCliAdapter implements AgentAdapter {
       if (session.interrupted) { session.queue.push([{ kind: 'interrupted', reason: 'user_abort' }]); return; }
       const args = ['run', '--format', 'json', '--standalone'];
       if (session.nativeId) args.push('--session', session.nativeId);
-      if (session.spec.model) args.push('--model', session.spec.model);
-      if (session.spec.mode) args.push('--agent', session.spec.mode);
+      if (session.model) args.push('--model', session.effort ? `${session.model}#${session.effort}` : session.model);
+      if (session.mode) args.push('--agent', session.mode);
+      const images = session.pendingImages ?? [];
+      session.pendingImages = [];
+      for (const image of images) args.push('--file', image);
       args.push('--', text);
       child = (this.options.spawn ?? spawn)(this.options.executable ?? 'opencode', args, { cwd: session.spec.cwd, windowsHide: true, shell: false });
       session.process = child; child.stdin.end();
@@ -112,6 +126,19 @@ export class OpenCodeCliAdapter implements AgentAdapter {
       if (completed && !session.disposed) { try { session.queue.push([{ kind: 'turn_end' }]); } catch { session.queue.close(); } }
     }
   }
+  async setModel(handle: Handle, model: string): Promise<void> {
+    const session = this.get(handle); session.model = model;
+    session.queue.push([{ kind: 'model_changed', model }]);
+  }
+  /** Stored and passed as the model#variant suffix on the next turn. */
+  async setEffort(handle: Handle, effort: string): Promise<void> {
+    const session = this.get(handle); session.effort = effort;
+    session.queue.push([{ kind: 'effort_changed', effort }]);
+  }
+  async setMode(handle: Handle, mode: string): Promise<void> {
+    const session = this.get(handle); session.mode = mode;
+    session.queue.push([{ kind: 'mode_changed', mode }]);
+  }
   async interrupt(handle: Handle): Promise<void> {
     const session = this.get(handle);
     if (!session.active) throw new Error('OpenCode session has no active turn');
@@ -122,6 +149,7 @@ export class OpenCodeCliAdapter implements AgentAdapter {
   async dispose(handle: Handle): Promise<void> {
     const session = this.sessions.get(handle); if (!session) return;
     session.disposed = true; session.process?.kill(); await session.running; session.queue.close(); this.sessions.delete(handle);
+    if (session.imageDir) try { rmSync(session.imageDir, { recursive: true, force: true }); } catch { /* best effort */ }
   }
   private get(handle: Handle): Session {
     const session = this.sessions.get(handle);

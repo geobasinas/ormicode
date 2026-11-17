@@ -36,7 +36,7 @@ const defaultCreate: PiCreateSession = async options => {
 export class PiSdkAdapter implements AgentAdapter {
   readonly id = 'pi';
   readonly transport = 'sdk' as const;
-  readonly capabilities = { ...NO_CAPABILITIES, resume: true };
+  readonly capabilities = { ...NO_CAPABILITIES, steer: true, resume: true, model: true, effort: true };
   private readonly sessions = new Map<Handle, Session>();
   private readonly create: PiCreateSession;
   private readonly onNativeId?: (handle: Handle, id: string) => void;

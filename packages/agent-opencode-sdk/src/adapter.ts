@@ -15,7 +15,7 @@ type Session = {
   sessionId: string; spec: StartSpec; queue: EventQueue; broker: OpenCodePermissionBroker;
   mapper: OpenCodeEventMapper; active: boolean; disposed: boolean; needsRecovery: boolean;
   interruptRequested: boolean; abort: AbortController; listening: Promise<void>;
-  running?: Promise<void>; finish?: Finish;
+  running?: Promise<void>; finish?: Finish; model?: string; effort?: string;
 };
 const execFileAsync = promisify(execFile);
 const modelRef = z.looseObject({ id: z.string().check(z.minLength(1)), modelID: z.optional(z.string()), providerID: z.string().check(z.minLength(1)), name: z.optional(z.string()), variants: z.optional(z.array(z.looseObject({ id: z.string() }))) });
@@ -24,7 +24,7 @@ const modelRef = z.looseObject({ id: z.string().check(z.minLength(1)), modelID: 
 export class OpenCodeSdkAdapter implements AgentAdapter {
   readonly id = 'opencode';
   readonly transport = 'sdk' as const;
-  readonly capabilities = { ...NO_CAPABILITIES, resume: true };
+  readonly capabilities = { ...NO_CAPABILITIES, approvals: true, steer: true, resume: true, model: true, effort: true, modes: true };
   private readonly sessions = new Map<Handle, Session>();
   private server?: OpenCodeServer;
   private starting?: Promise<OpenCodeServer>;
@@ -53,10 +53,11 @@ export class OpenCodeSdkAdapter implements AgentAdapter {
   }
   async start(spec: StartSpec): Promise<Handle> {
     if (!spec.cwd) throw new Error('cwd is required');
-    if (spec.effort) throw new Error('OpenCode effort selection is not yet supported');
     const server = await this.ensureServer();
     const sessionId = await server.createSession(spec.cwd);
     const handle = this.attach(spec, sessionId);
+    const session = this.sessions.get(handle)!;
+    if (spec.effort) session.effort = spec.effort;
     if (spec.model) await this.setModel(handle, spec.model);
     if (spec.mode) await this.setMode(handle, spec.mode);
     return handle;
@@ -65,7 +66,10 @@ export class OpenCodeSdkAdapter implements AgentAdapter {
     if (!ref.id || !ref.cwd) throw new Error('native session ID and cwd are required');
     const server = await this.ensureServer();
     await server.getSession(ref.id);
-    return this.attach({ cwd: ref.cwd }, ref.id);
+    const handle = this.attach(ref, ref.id);
+    if (ref.model) await this.setModel(handle, ref.model);
+    if (ref.mode) await this.setMode(handle, ref.mode);
+    return handle;
   }
   private attach(spec: StartSpec, sessionId: string): Handle {
     const server = this.server!;
@@ -77,6 +81,7 @@ export class OpenCodeSdkAdapter implements AgentAdapter {
       broker: OpenCodePermissionBroker.create(event => queue.push([event]), server.client),
       active: false, disposed: false, needsRecovery: false, interruptRequested: false,
       abort, listening: Promise.resolve(),
+      ...(spec.model ? { model: spec.model } : {}), ...(spec.effort ? { effort: spec.effort } : {}),
     };
     session.listening = this.listen(session, server, abort.signal);
     this.sessions.set(handle, session);
@@ -167,8 +172,21 @@ export class OpenCodeSdkAdapter implements AgentAdapter {
     if (session.active) throw new Error('OpenCode session has an active turn');
     const slash = model.indexOf('/');
     if (slash < 1 || slash === model.length - 1) throw new Error('model must be provider/model');
-    await this.server!.client.session.switchModel({ sessionID: session.sessionId, model: { providerID: model.slice(0, slash), id: model.slice(slash + 1) } });
+    await this.server!.client.session.switchModel({ sessionID: session.sessionId, model: { providerID: model.slice(0, slash), id: model.slice(slash + 1), ...(session.effort ? { variant: session.effort } : {}) } });
+    session.model = model;
     session.queue.push([{ kind: 'model_changed', model }]);
+  }
+  /** Effort maps to an OpenCode model variant; it applies once a model is known. */
+  async setEffort(handle: Handle, effort: string): Promise<void> {
+    const session = this.get(handle);
+    if (session.active) throw new Error('OpenCode session has an active turn');
+    if (!effort) throw new Error('effort is required');
+    session.effort = effort;
+    if (session.model) {
+      const slash = session.model.indexOf('/');
+      await this.server!.client.session.switchModel({ sessionID: session.sessionId, model: { providerID: session.model.slice(0, slash), id: session.model.slice(slash + 1), variant: effort } });
+    }
+    session.queue.push([{ kind: 'effort_changed', effort }]);
   }
   async setMode(handle: Handle, mode: string): Promise<void> {
     const session = this.get(handle);
