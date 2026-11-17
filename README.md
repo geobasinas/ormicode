@@ -2759,6 +2759,18 @@ Lots of useful testing is behind a login that a fresh browser can't reach.
 | `tint.red` | `#2A1D1D` | Red accent background |
 | `text.onAccent` | `#181818` | Button text on accents |
 
+**Source palette** — the complete swatch set from the designs; the tokens above draw from it and the spare shades stay available for new tokens (borders, hover states, secondary accents):
+
+```
+#CBCBCB  #F2F2F2  #B7B7B7  #BBBBBB  #202020  #888888  #9ACBAF  #909090
+#9C9C9C  #242424  #D69C98  #2E2E2E  #E7E7E7  #ABABAB  #1B1B1B  #D9B878
+#878787  #FAFAFA  #292929  #8A8A8A  #2B2B2B  #101010  #181818  #2A2A2A
+#171717  #222222  #D2D2D2  #3A3A3A  #383838  #333333  #2C2C2C  #373737
+#C7C7C7  #262626  #000000  #6A6E76  #2F2F2F  #7B7B7B  #4A4A4A  #BFE0CD
+#303030  #D9B1AD  #A3A3A3  #353535  #2A332D  #252525  #141414  #111111
+#B0B0B0  #7FB69D  #7F7F7F  #242E28
+```
+
 **Agent-made themes**
 - An agent writes the JSON through a tool, the app shows a preview, you keep it or throw it away. Kept themes appear in the normal list.
 - Rules: tokens only, no external assets, only installed fonts, text contrast must be at least 4.5:1 (anything under 7:1 is reported). Failures go back to the agent to fix.
