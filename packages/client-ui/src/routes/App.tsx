@@ -77,7 +77,7 @@ function Rail({ route, rail, onRail }: { route: string; rail: string; onRail: (r
   return (
     <div style={{
       width: 52, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center',
-      padding: '10px 0', gap: 4, background: 'var(--bg-window)',
+      padding: '4px 0 0', gap: 4, background: 'var(--bg-window)', alignSelf: 'flex-start',
     }}>
       {RAIL_ICONS.map(({ id, icon: Icon, label, soon }) => {
         const enabled = id === 'notes' ? isSession : !soon;

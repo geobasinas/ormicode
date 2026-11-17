@@ -110,3 +110,6 @@
 .hv-tab { transition: background-color 120ms, color 120ms; }
 .hv-tab:hover { background-color: var(--bg-card); color: var(--text-label); }
 .hv-x:hover { background-color: var(--bg-raised); color: var(--text-active) !important; }
+
+button:focus { outline: none; }
+button:focus-visible { outline: 1px solid var(--line-card); outline-offset: -1px; }
