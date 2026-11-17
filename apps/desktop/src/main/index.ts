@@ -77,9 +77,9 @@ async function connectDaemon(): Promise<void> {
 function createWindow(): void {
   win = new BrowserWindow({
     width: 1280, height: 800, minWidth: 720, minHeight: 480,
-    backgroundColor: '#101010',
     title: 'ormicode',
     frame: false,
+    transparent: true,
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.cjs'),

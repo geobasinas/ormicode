@@ -44,7 +44,6 @@ function Tab({ id, active, onSelect, onClose }: { id: string; active: boolean; o
       padding: '5px 14px', borderRadius: '8px 8px 0 0', cursor: 'pointer', whiteSpace: 'nowrap',
       background: active ? 'var(--bg-card)' : 'transparent',
       color: active ? 'var(--text-active)' : 'var(--text-secondary)',
-      borderBottom: active ? '2px solid var(--accent-mint)' : '2px solid transparent',
     }} onClick={onSelect}>
       {label}
       {onClose ? <X size={12} style={{ color: 'var(--text-hint)' }} onClick={e => { e.stopPropagation(); onClose(); }} /> : null}
@@ -73,8 +72,8 @@ function Rail({ route, rail, onRail }: { route: string; rail: string; onRail: (r
         const enabled = id === 'notes' ? isSession : !soon;
         const active = id === 'notes' && rail === 'notes';
         return (
-          <button key={id} title={enabled ? label : `${label} — soon`} disabled={!enabled}
-            onClick={() => id === 'notes' && onRail(rail === 'notes' ? 'none' : 'notes')}
+          <button key={id} title={enabled ? label : `${label} — soon`} aria-disabled={!enabled}
+            onClick={() => enabled && id === 'notes' && onRail(rail === 'notes' ? 'none' : 'notes')}
             style={{
               width: 32, height: 32, border: 'none', borderRadius: 8, cursor: enabled ? 'pointer' : 'default',
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
@@ -130,7 +129,7 @@ export function App({ platform, theme = 'dark', layout }: { platform: ClientPlat
 
   return (
     <PlatformContext.Provider value={platform}>
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-window)', color: 'var(--text-label)', fontFamily: 'var(--font-ui)', fontSize: 14 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-window)', color: 'var(--text-label)', fontFamily: 'var(--font-ui)', fontSize: 14, borderRadius: 14, overflow: 'hidden' }}>
         <Titlebar platform={platform} />
         <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
           {sidebar?.visible !== false ? (
