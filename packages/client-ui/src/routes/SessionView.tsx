@@ -1,7 +1,5 @@
 /** Session route: header, transcript, approvals surface, composer, and
- * the right icon rail — only panels that exist get an icon (Notes first). */
-import { useState } from 'react';
-import { NotebookPen, type LucideIcon } from 'lucide-react';
+ * side panels toggled from the app-level right rail (Notes first). */
 import { useTranscript } from '../features/session/useTranscript.ts';
 import { useSession } from '../features/session/useSession.ts';
 import { SessionHeader } from '../features/session/SessionHeader.tsx';
@@ -10,19 +8,9 @@ import { Approvals } from '../features/session/Approvals.tsx';
 import { Composer } from '../features/session/Composer.tsx';
 import { NotesPanel } from '../features/notes/NotesPanel.tsx';
 
-export function SessionView({ session }: { session: string }) {
+export function SessionView({ session, rail = 'none' }: { session: string; rail?: 'none' | 'notes'; onRail?: (r: 'none' | 'notes') => void }) {
   const { events, approvals } = useTranscript(session);
   const details = useSession(session);
-  const [rail, setRail] = useState<'none' | 'notes'>('none');
-  const icon = (label: string, Icon: LucideIcon, active: boolean, onClick: () => void) => (
-    <button key={label} title={label} onClick={onClick} style={{
-      width: 34, height: 34, font: 'inherit', cursor: 'pointer',
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      color: active ? 'var(--text-active)' : 'var(--text-hint)',
-      background: active ? 'var(--bg-raised)' : 'transparent',
-      border: 'none', borderRadius: 'var(--radius-sm)',
-    }}><Icon size={16} /></button>
-  );
   return (
     <div style={{ display: 'flex', height: '100%', background: 'var(--bg-main)' }}>
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
@@ -36,13 +24,6 @@ export function SessionView({ session }: { session: string }) {
           <NotesPanel session={session} />
         </div>
       ) : null}
-      <div style={{
-        display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0,
-        padding: 'var(--space-2) var(--space-1)', borderLeft: '1px solid var(--line-pane)',
-        background: 'var(--bg-window)', alignItems: 'center',
-      }}>
-        {icon('notes', NotebookPen, rail === 'notes', () => setRail(rail === 'notes' ? 'none' : 'notes'))}
-      </div>
     </div>
   );
 }

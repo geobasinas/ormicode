@@ -7,7 +7,7 @@ import { PlatformContext } from '../lib/platform.ts';
 import { applyTheme, themeByName } from '../lib/theme.ts';
 import { defaultLayout, applyLayout, validateLayout } from '../lib/layout.ts';
 import type { LayoutDescriptor } from '../lib/layout.ts';
-import { PanelLeft, Minus, Square, X, Search, SquarePen, Settings } from 'lucide-react';
+import { PanelLeft, Minus, Square, X, Search, SquarePen, Settings, GitBranch, FolderOpen, SquareTerminal, NotebookPen, Globe, type LucideIcon } from 'lucide-react';
 import { SessionList } from '../features/session/SessionList.tsx';
 import { useSession } from '../features/session/useSession.ts';
 import { Now } from './Now.tsx';
@@ -41,9 +41,10 @@ function Tab({ id, active, onSelect, onClose }: { id: string; active: boolean; o
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13,
-      padding: '4px 12px', borderRadius: 7, cursor: 'pointer', whiteSpace: 'nowrap',
-      background: active ? 'var(--bg-raised)' : 'transparent',
+      padding: '5px 14px', borderRadius: '8px 8px 0 0', cursor: 'pointer', whiteSpace: 'nowrap',
+      background: active ? 'var(--bg-card)' : 'transparent',
       color: active ? 'var(--text-active)' : 'var(--text-secondary)',
+      borderBottom: active ? '2px solid var(--accent-mint)' : '2px solid transparent',
     }} onClick={onSelect}>
       {label}
       {onClose ? <X size={12} style={{ color: 'var(--text-hint)' }} onClick={e => { e.stopPropagation(); onClose(); }} /> : null}
@@ -53,11 +54,46 @@ function Tab({ id, active, onSelect, onClose }: { id: string; active: boolean; o
 
 const FILTER_TABS = ['All', 'Sessions', 'Bots'] as const;
 
+const RAIL_ICONS: { id: string; icon: LucideIcon; label: string; soon?: boolean }[] = [
+  { id: 'git', icon: GitBranch, label: 'git — soon', soon: true },
+  { id: 'files', icon: FolderOpen, label: 'files — soon', soon: true },
+  { id: 'terminal', icon: SquareTerminal, label: 'terminal — soon', soon: true },
+  { id: 'notes', icon: NotebookPen, label: 'notes' },
+  { id: 'web', icon: Globe, label: 'web — soon', soon: true },
+];
+
+function Rail({ route, rail, onRail }: { route: string; rail: string; onRail: (r: 'none' | 'notes') => void }) {
+  const isSession = route !== 'now';
+  return (
+    <div style={{
+      width: 44, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center',
+      padding: '10px 0', gap: 4, background: 'var(--bg-window)',
+    }}>
+      {RAIL_ICONS.map(({ id, icon: Icon, label, soon }) => {
+        const enabled = id === 'notes' ? isSession : !soon;
+        const active = id === 'notes' && rail === 'notes';
+        return (
+          <button key={id} title={enabled ? label : `${label} — soon`} disabled={!enabled}
+            onClick={() => id === 'notes' && onRail(rail === 'notes' ? 'none' : 'notes')}
+            style={{
+              width: 32, height: 32, border: 'none', borderRadius: 8, cursor: enabled ? 'pointer' : 'default',
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              background: active ? 'var(--bg-raised)' : 'transparent',
+              color: active ? 'var(--text-active)' : 'var(--text-hint)',
+              opacity: enabled ? 1 : 0.45,
+            }}><Icon size={16} /></button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function App({ platform, theme = 'dark', layout }: { platform: ClientPlatform; theme?: string; layout?: LayoutDescriptor }) {
   const [tabs, setTabs] = useState<string[]>([]);
   const [route, setRoute] = useState<string>('now');
   const [state, setState] = useState<string>('connecting');
   const [query, setQuery] = useState('');
+  const [rail, setRail] = useState<'none' | 'notes'>('none');
   const [filter, setFilter] = useState<(typeof FILTER_TABS)[number]>('All');
   const resolved = useMemo(() => {
     if (!layout) return defaultLayout;
@@ -150,23 +186,15 @@ export function App({ platform, theme = 'dark', layout }: { platform: ClientPlat
             </aside>
           ) : null}
           <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg-main)', borderTopLeftRadius: 10, border: '1px solid var(--line-pane)', borderRight: 'none', borderBottom: 'none', overflow: 'hidden' }}>
-            <div style={{ display: 'flex', gap: 4, padding: '6px 10px', borderBottom: '1px solid var(--line-pane)', overflowX: 'auto', flexShrink: 0 }}>
+            <div style={{ display: 'flex', gap: 2, padding: '6px 10px 0', overflowX: 'auto', flexShrink: 0 }}>
               <Tab id="now" active={route === 'now'} onSelect={() => setRoute('now')} />
               {tabs.map(t => <Tab key={t} id={t} active={route === t} onSelect={() => setRoute(t)} onClose={() => close(t)} />)}
             </div>
-            <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                {route === 'now' ? <Now onOpen={open} state={state} /> : <SessionView key={route} session={route} />}
-              </div>
-              {route === 'now' ? (
-                <div style={{
-                  width: 44, flexShrink: 0, borderLeft: '1px solid var(--line-pane)',
-                  background: 'var(--bg-window)', display: 'flex', flexDirection: 'column',
-                  alignItems: 'center', padding: 'var(--space-2) 0', gap: 2,
-                }} />
-              ) : null}
+            <div style={{ flex: 1, minHeight: 0 }}>
+              {route === 'now' ? <Now onOpen={open} state={state} /> : <SessionView key={route} session={route} rail={rail} onRail={setRail} />}
             </div>
           </main>
+          <Rail route={route} rail={rail} onRail={setRail} />
         </div>
       </div>
     </PlatformContext.Provider>
