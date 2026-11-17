@@ -106,3 +106,7 @@
 .hv:hover { background-color: var(--bg-raised) !important; color: var(--text-active) !important; }
 .hv-close:hover { background-color: var(--tint-red) !important; color: var(--accent-red) !important; }
 .hv-sub:hover { background-color: var(--bg-card) !important; }
+
+.hv-tab { transition: background-color 120ms, color 120ms; }
+.hv-tab:hover { background-color: var(--bg-card); color: var(--text-label); }
+.hv-x:hover { background-color: var(--bg-raised); color: var(--text-active) !important; }
