@@ -74,7 +74,7 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
         </span>
         <button onClick={() => void send()} disabled={!text.trim() || busy} title="start session" style={{
           width: 30, height: 30, borderRadius: '50%', border: 'none', cursor: 'pointer',
-          background: 'var(--accent-mint)', color: 'var(--text-onAccent)', opacity: text.trim() ? 1 : 0.4,
+          background: 'var(--text-title)', color: 'var(--text-onAccent)', opacity: text.trim() ? 1 : 0.4,
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
         }}><ArrowUp size={16} strokeWidth={2.5} /></button>
       </div>

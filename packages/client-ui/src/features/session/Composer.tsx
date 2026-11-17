@@ -18,7 +18,7 @@ export function Composer({ session, details }: { session: string; details?: Sess
   return (
     <div style={{ padding: 'var(--space-3)', display: 'flex', justifyContent: 'center' }}>
       <div style={{
-        width: '100%', maxWidth: 720, background: 'var(--bg-card)', border: '1px solid var(--line-card)',
+        width: '100%', background: 'var(--bg-card)', border: '1px solid var(--line-card)',
         borderRadius: 'var(--radius-md)', padding: 'var(--space-2) var(--space-3)',
       }}>
         <input
@@ -39,7 +39,7 @@ export function Composer({ session, details }: { session: string; details?: Sess
           {details?.model ? <span style={chip}>{details.model}{details.effort ? ` ${details.effort}` : ''}</span> : null}
           <button onClick={send} title="send" style={{
             width: 26, height: 26, borderRadius: '50%', border: 'none', cursor: 'pointer',
-            background: 'var(--accent-mint)', color: 'var(--text-onAccent)', opacity: text.trim() ? 1 : 0.4,
+            background: 'var(--text-title)', color: 'var(--text-onAccent)', opacity: text.trim() ? 1 : 0.4,
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           }}><ArrowUp size={14} strokeWidth={2.5} /></button>
         </div>

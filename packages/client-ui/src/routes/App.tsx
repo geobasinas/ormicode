@@ -42,7 +42,7 @@ function Tab({ id, active, onSelect, onClose }: { id: string; active: boolean; o
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13,
       padding: '5px 14px', borderRadius: '8px 8px 0 0', cursor: 'pointer', whiteSpace: 'nowrap',
-      background: active ? 'var(--bg-card)' : 'transparent',
+      background: active ? 'var(--bg-main)' : 'transparent',
       color: active ? 'var(--text-active)' : 'var(--text-secondary)',
     }} onClick={onSelect}>
       {label}
@@ -65,7 +65,7 @@ function Rail({ route, rail, onRail }: { route: string; rail: string; onRail: (r
   const isSession = route !== 'now';
   return (
     <div style={{
-      width: 44, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center',
+      width: 52, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center',
       padding: '10px 0', gap: 4, background: 'var(--bg-window)',
     }}>
       {RAIL_ICONS.map(({ id, icon: Icon, label, soon }) => {
@@ -184,7 +184,7 @@ export function App({ platform, theme = 'dark', layout }: { platform: ClientPlat
               ) : null}
             </aside>
           ) : null}
-          <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg-main)', borderTopLeftRadius: 10, border: '1px solid var(--line-pane)', borderRight: 'none', borderBottom: 'none', overflow: 'hidden' }}>
+          <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg-main)', borderRadius: '10px 10px 10px 10px', border: '1px solid var(--line-pane)', margin: '0 0 10px', overflow: 'hidden' }}>
             <div style={{ display: 'flex', gap: 2, padding: '6px 10px 0', overflowX: 'auto', flexShrink: 0 }}>
               <Tab id="now" active={route === 'now'} onSelect={() => setRoute('now')} />
               {tabs.map(t => <Tab key={t} id={t} active={route === t} onSelect={() => setRoute(t)} onClose={() => close(t)} />)}

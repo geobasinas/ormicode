@@ -49,7 +49,7 @@ function line(e: TranscriptEvent) {
         </div>
       );
     case 'text':
-      return <div style={{ color: 'var(--text-active)', padding: '2px 0', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{String(b.text)}</div>;
+      return <div style={{ color: 'var(--text-label)', fontSize: 'var(--text-md)', lineHeight: 1.55, padding: '2px 0', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{String(b.text)}</div>;
     case 'thinking':
       return <div style={{ ...mono, ...small, color: 'var(--text-hint)' }}>{String(b.text)}</div>;
     case 'plan':
@@ -79,6 +79,9 @@ function line(e: TranscriptEvent) {
     case 'interrupted':
       return <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--accent-amber)', ...small }}><Pause size={12} /> interrupted{typeof b.reason === 'string' ? ` — ${b.reason}` : ''}</div>;
     case 'state':
+      return null;
+    case 'agent_version':
+    case 'usage':
       return null;
     default:
       return <div style={{ ...mono, ...small, color: 'var(--text-hint)', display: 'flex', gap: 6, alignItems: 'center' }}><ChevronRight size={11} />{e.kind}</div>;

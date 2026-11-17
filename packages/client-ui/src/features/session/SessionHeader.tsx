@@ -41,8 +41,7 @@ export function SessionHeader({ session, details }: { session: string; details: 
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 'var(--space-3)',
-      padding: 'var(--space-2) var(--space-3)', borderBottom: '1px solid var(--line-card)',
-      background: 'var(--bg-window)', flexShrink: 0,
+      padding: 'var(--space-2) var(--space-3)', background: 'var(--bg-main)', flexShrink: 0,
     }}>
       <span style={{
         width: 20, height: 20, borderRadius: 6, flexShrink: 0, display: 'inline-flex',
