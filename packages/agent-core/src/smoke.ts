@@ -139,7 +139,12 @@ export async function smokeAdapter(vendor: string, transport: string, options: S
         const again = await collectTurn(adapter, resumed, prompt, { timeoutMs, approve: options.approve, seen: steps });
         await adapter.dispose(resumed);
         again.failed ? fail('resume', again.failed) : ok('resume');
-      } catch (error) { fail('resume', error instanceof Error ? error.message : String(error)); }
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        // A resume failure on an adapter that claims resume is a regression; on one
+        // that doesn't it's evidence the vendor can't reload sessions — not a defect.
+        adapter.capabilities.resume ? fail('resume', reason) : unverified('resume', `native reload unsupported: ${reason}`);
+      }
     } else unverified('resume', 'adapter does not implement resume');
 
     await adapter.dispose(handle);

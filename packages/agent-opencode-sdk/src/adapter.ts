@@ -24,7 +24,7 @@ const modelRef = z.looseObject({ id: z.string().check(z.minLength(1)), modelID: 
 export class OpenCodeSdkAdapter implements AgentAdapter {
   readonly id = 'opencode';
   readonly transport = 'sdk' as const;
-  readonly capabilities = NO_CAPABILITIES;
+  readonly capabilities = { ...NO_CAPABILITIES, resume: true };
   private readonly sessions = new Map<Handle, Session>();
   private server?: OpenCodeServer;
   private starting?: Promise<OpenCodeServer>;

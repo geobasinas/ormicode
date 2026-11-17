@@ -32,7 +32,7 @@ export function checkClaudeVersion(output: string): { supported: boolean; versio
 export class ClaudeCliAdapter implements AgentAdapter {
   readonly id = 'claude';
   readonly transport = 'cli' as const;
-  readonly capabilities = NO_CAPABILITIES;
+  readonly capabilities = { ...NO_CAPABILITIES, resume: true };
   private readonly sessions = new Map<Handle, Session>();
   private readonly options: { executable?: string; spawn?: Spawn; readVersion?: () => Promise<string>; approvalBridge?: boolean; onNativeId?: (handle: Handle, id: string) => void };
   constructor(options: { executable?: string; spawn?: Spawn; readVersion?: () => Promise<string>; approvalBridge?: boolean; onNativeId?: (handle: Handle, id: string) => void } = {}) { this.options = options; }

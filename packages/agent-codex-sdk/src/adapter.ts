@@ -11,7 +11,7 @@ interface Session { thread: Thread; queue: EventQueue; nativeId?: string; active
 export class CodexSdkAdapter implements AgentAdapter {
   readonly id = 'codex';
   readonly transport = 'sdk' as const;
-  readonly capabilities = NO_CAPABILITIES;
+  readonly capabilities = { ...NO_CAPABILITIES, resume: true };
   private readonly sessions = new Map<Handle, Session>();
   private readonly client: CodexClient;
   private readonly onNativeId?: (handle: Handle, id: string) => void;

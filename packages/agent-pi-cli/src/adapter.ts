@@ -15,7 +15,7 @@ const limit = 1024 * 1024;
 export class PiCliAdapter implements AgentAdapter {
   readonly id = 'pi';
   readonly transport = 'cli' as const;
-  readonly capabilities = NO_CAPABILITIES;
+  readonly capabilities = { ...NO_CAPABILITIES, resume: true };
   private sessions = new Map<Handle, Session>();
   private options: { executable?: string; spawn?: Spawn; onNativeId?: (handle: Handle, id: string) => void };
   constructor(options: { executable?: string; spawn?: Spawn; onNativeId?: (handle: Handle, id: string) => void } = {}) { this.options = options; }

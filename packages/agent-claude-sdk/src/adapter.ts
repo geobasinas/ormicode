@@ -29,7 +29,7 @@ export class ClaudeSdkAdapter implements AgentAdapter {
   readonly id = 'claude';
   readonly transport = 'sdk' as const;
   // Capabilities stay conservative until exercised against a real authenticated SDK session.
-  readonly capabilities = NO_CAPABILITIES;
+  readonly capabilities = { ...NO_CAPABILITIES, resume: true };
   private sessions = new Map<Handle, Session>();
   private readonly options: { query?: QueryFactory; onNativeId?: (handle: Handle, nativeId: string) => void };
   constructor(options: { query?: QueryFactory; onNativeId?: (handle: Handle, nativeId: string) => void } = {}) { this.options = options; }
