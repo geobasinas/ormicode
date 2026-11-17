@@ -10,3 +10,4 @@ coverage/
 apps/relay/.wrangler/
 apps/relay/dist/
 out/
+.ui-out/
