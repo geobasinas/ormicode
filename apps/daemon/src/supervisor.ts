@@ -6,8 +6,9 @@ import type { Frame } from '@ormicode/protocol';
 import { parseRequestBody, newId } from '@ormicode/protocol';
 import { openStore, createSession, getSession, listSessions, setState, setWorkerPid, setNativeId, listNotes, setNote, deleteNote, archiveSession, type Store, type SessionState } from '@ormicode/session-store';
 import { acquireWorkspace, releaseForSession } from './leases.ts';
-import { killTree, killTreePid } from './proctree.ts';
-import { append, replay, checkTail } from '@ormicode/journal';
+import { killTree } from './proctree.ts';
+import { recoverSessions, resumePolicy } from './recovery.ts';
+import { append, replay } from '@ormicode/journal';
 import { serve, defaultSocketPath, ormicodeDir, type Link } from './socket.ts';
 import { hasTransport } from './registry.ts';
 
@@ -42,19 +43,10 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   const idleTimers = new Map<string, NodeJS.Timeout>();
   const idleTimeoutMs = Number(process.env.ORMICODE_IDLE_TIMEOUT_MS ?? 20 * 60_000);
   const poolMax = Number(process.env.ORMICODE_POOL_MAX ?? 8);
-  // Leases are dropped on every boot.
-  db.exec('DELETE FROM leases');
-
-  // Boot: mark any previously-live sessions interrupted; no orphans are adopted.
-  const inFlight = ['starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying', 'paused_rate_limited'];
-  for (const s of listSessions(db).filter(s => [...inFlight, 'interrupted'].includes(s.state))) {
-    checkTail(db, s.id);
-    if (inFlight.includes(s.state)) {
-      append(db, s.id, { kind: 'interrupted', payload: { reason: 'host_restart' } });
-      setState(db, s.id, 'interrupted', 'host_restart');
-    }
-    if (s.worker_pid) { try { process.kill(s.worker_pid, 0); killTreePid(s.worker_pid); } catch { /* gone */ } setWorkerPid(db, s.id, null); }
-  }
+  // Boot: interrupt in-flight sessions, expire pending interactions, reap stale
+  // pids; auto-resume candidates are spawned once spawnWorker exists below.
+  const resuming = new Set<string>();
+  const resumeCandidates = recoverSessions(db, resumePolicy());
 
   const fanout = (session: string, frame: string) => {
     for (const c of clients) if (c.subscriptions.has(session) && !c.link.closed) c.link.send(JSON.parse(frame));
@@ -93,6 +85,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     setState(db, session, 'starting');
     proc.on('exit', code => {
       if (closing) return;
+      resuming.delete(session);
       workers.delete(session);
       setWorkerPid(db, session, null);
       const current = getSession(db, session);
@@ -113,7 +106,10 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     switch (method) {
       case 'worker.ready': {
         const w = workers.get(session);
-        if (w) { w.ready = true; w.pid = Number(body.pid) || w.pid; setWorkerPid(db, session, w.pid ?? null); setState(db, session, 'idle'); armIdle(session, 'idle'); enforcePool(); }
+        if (w) {
+          w.ready = true; w.pid = Number(body.pid) || w.pid; setWorkerPid(db, session, w.pid ?? null); setState(db, session, 'idle'); armIdle(session, 'idle'); enforcePool();
+          if (resuming.delete(session)) record(session, 'resumed', {});
+        }
         answer({ ok: true });
         break;
       }
@@ -357,6 +353,8 @@ export async function startDaemon(opts: DaemonOptions = {}) {
       return client.link.replyError(id, 'daemon.error', error instanceof Error ? error.message : String(error));
     }
   };
+
+  for (const s of resumeCandidates) { resuming.add(s.id); spawnWorker(s.id); }
 
   const server = await serve(socketPath, link => {
     link.onFrame = frame => {

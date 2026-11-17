@@ -21,6 +21,16 @@ export function hasTransport(vendor: string, transport: string): boolean {
   return vendor === 'fake' || vendor === 'acp' || Boolean(REGISTRY[`${vendor}/${transport}`]);
 }
 
+// Transports whose native resume passed `ormi agent smoke`. Static so the
+// supervisor can plan restart recovery without spawning adapter modules.
+const RESUMABLE = new Set([
+  'claude/sdk', 'claude/cli', 'codex/sdk', 'grok/cli', 'grok/acp',
+  'opencode/cli', 'opencode/sdk', 'opencode/acp', 'pi/cli', 'pi/sdk', 'vibe/acp',
+]);
+export function resumable(vendor: string, transport: string): boolean {
+  return RESUMABLE.has(`${vendor}/${transport}`);
+}
+
 export async function createAdapter(vendor: string, transport: string, opts: {
   agentCommand?: string; agentArgs?: string[]; onNativeId?: (id: string) => void;
 }): Promise<AgentAdapter> {

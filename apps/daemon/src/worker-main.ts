@@ -101,13 +101,13 @@ link.onFrame = async (frame: Frame) => {
 };
 link.onClose = () => process.exit(2);
 
+const resumeId = process.env.ORMICODE_RESUME;
 try {
   adapter = await createAdapter(vendor, transport, {
     ...(process.env.ORMICODE_AGENT_COMMAND ? { agentCommand: process.env.ORMICODE_AGENT_COMMAND } : {}),
     ...(process.env.ORMICODE_AGENT_ARGS_JSON ? { agentArgs: JSON.parse(process.env.ORMICODE_AGENT_ARGS_JSON) as string[] } : {}),
     onNativeId: id => { void send('worker.native', { session, nativeId: id }); },
   });
-  const resumeId = process.env.ORMICODE_RESUME;
   handle = resumeId && adapter.resume
     ? await adapter.resume({ id: resumeId, cwd })
     : await adapter.start({ cwd, ...(process.env.ORMICODE_MODEL ? { model: process.env.ORMICODE_MODEL } : {}) });
@@ -118,6 +118,7 @@ try {
   await send('worker.ready', { session, pid: process.pid });
   setInterval(() => { void send('worker.health', { pid: process.pid, rssBytes: process.memoryUsage().rss }).catch(() => undefined); }, 10_000).unref();
 } catch (error) {
+  if (resumeId && adapter?.resume) await send('worker.event', { session, kind: 'interrupted', payload: { reason: 'resume_failed' }, ts: Date.now() }).catch(() => undefined);
   await send('worker.event', { session, kind: 'error', payload: { code: 'worker.start_failed', message: error instanceof Error ? error.message : String(error) }, ts: Date.now() }).catch(() => undefined);
   process.exit(1);
 }
