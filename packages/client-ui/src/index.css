@@ -1,0 +1,101 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/*
+ * shadcn theme bound to our design tokens. applyTheme() sets the
+ * token vars (bg.window, accent.mint, …) on documentElement at
+ * runtime; the shadcn names below resolve through them lazily, so
+ * theme switching and agent-made themes restyle every vendored
+ * component for free.
+ */
+:root {
+  --background: var(--bg-window);
+  --foreground: var(--text-label);
+  --card: var(--bg-card);
+  --card-foreground: var(--text-label);
+  --popover: var(--bg-raised);
+  --popover-foreground: var(--text-label);
+  --primary: var(--accent-mint);
+  --primary-foreground: var(--text-onAccent);
+  --secondary: var(--bg-raised);
+  --secondary-foreground: var(--text-label);
+  --muted: var(--bg-inset);
+  --muted-foreground: var(--text-secondary);
+  --accent: var(--bg-raised);
+  --accent-foreground: var(--text-active);
+  --destructive: var(--accent-red);
+  --destructive-foreground: var(--text-onAccent);
+  --border: var(--line-card);
+  --input: var(--line-card);
+  --ring: var(--accent-mint);
+  --radius: 0.5rem;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --chart-1: var(--accent-mint);
+  --chart-2: var(--accent-amber);
+  --chart-3: var(--accent-red);
+  --chart-4: var(--text-secondary);
+  --chart-5: var(--text-hint);
+  --sidebar: var(--bg-window);
+  --sidebar-foreground: var(--text-label);
+  --sidebar-primary: var(--accent-mint);
+  --sidebar-primary-foreground: var(--text-onAccent);
+  --sidebar-accent: var(--bg-card);
+  --sidebar-accent-foreground: var(--text-active);
+  --sidebar-border: var(--line-pane);
+  --sidebar-ring: var(--accent-mint);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --font-sans: var(--font-ui);
+  --font-mono: var(--font-mono);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-ui);
+  }
+}

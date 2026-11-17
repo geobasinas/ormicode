@@ -1,15 +1,10 @@
-/** Minimal button primitive — themed via CSS vars. Real component
- * primitives (shadcn vendored set) land in components/ui/ later. */
+/** Shared button — thin variant map over the vendored shadcn button in
+ * components/ui/. Feature code uses this, never the ui/ path directly,
+ * so restyles land in one place. */
 import type { ButtonHTMLAttributes } from 'react';
+import { Button as ShButton } from './ui/button.tsx';
 
-export function Button({ variant, style, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'ghost' | 'danger' }) {
-  const colors = variant === 'danger'
-    ? { background: 'var(--tint-red)', color: 'var(--accent-red)', border: '1px solid var(--accent-red)' }
-    : variant === 'primary'
-      ? { background: 'var(--accent-mint)', color: 'var(--text-onAccent)', border: '1px solid transparent' }
-      : { background: 'transparent', color: 'var(--text-label)', border: '1px solid var(--line-card)' };
-  return <button {...rest} style={{
-    font: 'inherit', fontSize: 'var(--text-sm)', padding: '4px 10px',
-    borderRadius: 'var(--radius-sm)', cursor: 'pointer', ...colors, ...style,
-  }} />;
+export function Button({ variant, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'ghost' | 'danger' }) {
+  const v = variant === 'danger' ? 'destructive' : variant === 'primary' ? 'default' : 'outline';
+  return <ShButton variant={v} size="sm" {...rest} />;
 }

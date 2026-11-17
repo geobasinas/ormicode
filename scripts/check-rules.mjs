@@ -25,7 +25,9 @@ function checkSourceSize(base, group) {
   function visit(path) {
     for (const entry of readdirSync(path, { withFileTypes: true })) {
       const child = join(path, entry.name);
-      if (entry.isDirectory()) { if (!skip.has(entry.name)) visit(child); continue; }
+      // Vendored shadcn components keep upstream sizes — the 400-line
+      // rule applies to code we write, not code we vendor.
+      if (entry.isDirectory()) { if (!skip.has(entry.name) && !child.endsWith(join('components', 'ui'))) visit(child); continue; }
       else if (/\.(ts|tsx|js|mjs)$/.test(entry.name)) {
         const lines = readFileSync(child, 'utf8').split(/\r?\n/).length;
         if (lines > 400) errors.push(`${child}: ${lines} lines exceeds 400`);

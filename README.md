@@ -3159,9 +3159,11 @@ client-ui/
 ├─ features/        session, layout, git, review, files, teams, design
 │  └─ session/      components, hooks and selectors for one feature
 ├─ components/      shared primitives that know nothing about features
+│  └─ ui/           vendored shadcn components (do not hand-edit; update via the shadcn CLI)
 └─ lib/             formatting and platform shims
 ```
 - Routes import features, never the reverse. A feature never reaches into another's internals. Shared things go to `components`, `data-hooks` or `client-platform`.
+- **shadcn** components are vendored (copy-in code, not a library dep) into `components/ui/` via `pnpm dlx shadcn add` run inside `packages/client-ui`. Feature code never imports `components/ui` directly — it goes through a thin wrapper in `components/` (e.g. `Button.tsx`) so palette and variant choices stay in one place. Styling is Tailwind v4; `src/index.css` maps every shadcn var (`--background`, `--primary`, `--ring`, …) onto our `ui-tokens` vars, so `applyTheme()` and agent-made themes restyle the vendored set automatically. The 400-line rule doesn't apply to `components/ui/` (vendored upstream files keep their size).
 - No barrel files except each package's `index.ts`.
 - `apps/desktop` and `apps/web` are only shells (Electron main and preload, or the Worker entry).
 
@@ -3198,6 +3200,7 @@ client-ui/
 | Electron | 45 (Chromium 156, Node 24); 46 due 2027-01 |
 | electron-vite / electron-builder | 6 (supports Vite 8) / 26.x |
 | Zod | 4 (`zod/mini` on clients) |
+| Tailwind / shadcn | Tailwind v4 (`@tailwindcss/vite`) / shadcn vendored into `client-ui/components/ui` via the shadcn CLI |
 | Expo | SDK 58 / React Native 0.88 / Hermes V1 (default) |
 | MCP spec | 2026-07-28 (proxy also speaks 2025-11-25) |
 | ACP | v1 stable; v2 draft (`v2.0.0-alpha.N`) |

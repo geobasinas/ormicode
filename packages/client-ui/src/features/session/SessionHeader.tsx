@@ -1,7 +1,11 @@
 /** Session header: title + machine, state pill, vendor/model/effort, and a
  * session menu containing only actions the protocol supports today. */
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { usePlatform } from '../../lib/platform.ts';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from '../../components/ui/dropdown-menu.tsx';
+import { Button } from '../../components/Button.tsx';
 import type { SessionDetails } from './useSession.ts';
 
 const pillColor: Record<string, string> = {
@@ -17,29 +21,12 @@ const stateLabel: Record<string, string> = {
 
 export function SessionHeader({ session, details }: { session: string; details: SessionDetails | undefined }) {
   const { transport } = usePlatform();
-  const [menu, setMenu] = useState(false);
   const [copied, setCopied] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
   const state = details?.state ?? '…';
   const canPause = state === 'running' || state === 'retrying';
   const canResume = state === 'interrupted' || state === 'paused_rate_limited';
   const canStop = ['running', 'starting', 'retrying', 'awaiting_approval', 'awaiting_input', 'paused_rate_limited'].includes(state);
-  const act = (m: string) => { setMenu(false); void transport.request(m, { session }); };
-
-  useEffect(() => {
-    if (!menu) return;
-    const close = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setMenu(false); };
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
-  }, [menu]);
-
-  const item = (label: string, fn: () => void, danger = false) => (
-    <button onClick={fn} style={{
-      display: 'block', width: '100%', textAlign: 'left', font: 'inherit', fontSize: 'var(--text-sm)',
-      padding: '6px var(--space-3)', background: 'none', border: 'none', cursor: 'pointer',
-      color: danger ? 'var(--accent-red)' : 'var(--text-label)',
-    }}>{label}</button>
-  );
+  const act = (m: string) => void transport.request(m, { session });
 
   return (
     <div style={{
@@ -59,25 +46,20 @@ export function SessionHeader({ session, details }: { session: string; details: 
         {[details?.vendor, details?.model, details?.effort].filter(Boolean).join(' · ')}
       </span>
       <span style={{ flex: 1 }} />
-      <div ref={ref} style={{ position: 'relative' }}>
-        <button onClick={() => setMenu(m => !m)} style={{
-          font: 'inherit', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)',
-          background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px',
-        }}>⋯</button>
-        {menu ? (
-          <div style={{
-            position: 'absolute', right: 0, top: '100%', zIndex: 10, minWidth: 190,
-            background: 'var(--bg-raised)', border: '1px solid var(--line-card)',
-            borderRadius: 'var(--radius-md)', padding: 'var(--space-1)', boxShadow: '0 8px 24px rgba(0,0,0,.5)',
-          }}>
-            {canPause ? item('Pause session', () => act('session.pause')) : null}
-            {canResume ? item('Resume session', () => act('session.resume')) : null}
-            {item(copied ? 'Copied!' : 'Copy session id', () => { void navigator.clipboard.writeText(session); setCopied(true); setTimeout(() => setCopied(false), 1200); })}
-            {item('Archive session', () => act('session.archive'))}
-            {canStop ? item('Stop session', () => act('session.abort'), true) : null}
-          </div>
-        ) : null}
-      </div>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild><Button aria-label="session menu">⋯</Button></DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {canPause ? <DropdownMenuItem onClick={() => act('session.pause')}>Pause session</DropdownMenuItem> : null}
+          {canResume ? <DropdownMenuItem onClick={() => act('session.resume')}>Resume session</DropdownMenuItem> : null}
+          <DropdownMenuItem onClick={() => {
+            void navigator.clipboard.writeText(session);
+            setCopied(true); setTimeout(() => setCopied(false), 1200);
+          }}>{copied ? 'Copied!' : 'Copy session id'}</DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => act('session.archive')}>Archive session</DropdownMenuItem>
+          {canStop ? <DropdownMenuItem variant="destructive" onClick={() => act('session.abort')}>Stop session</DropdownMenuItem> : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }
