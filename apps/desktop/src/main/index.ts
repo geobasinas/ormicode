@@ -7,7 +7,7 @@
  * (~/.ormicode/desktop/remote.json + safeStorage token), fall back to
  * the relay WebSocket. Pairing goes through `ormi:pair` IPC.
  */
-import { app, BrowserWindow, ipcMain, safeStorage } from 'electron';
+import { app, BrowserWindow, ipcMain, safeStorage, screen } from 'electron';
 import { join } from 'node:path';
 import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync } from 'node:fs';
 import * as daemonSocket from '@ormicode/daemon/socket';
@@ -74,6 +74,39 @@ async function connectDaemon(): Promise<void> {
   }
 }
 
+let restoreBounds: Electron.Rectangle | undefined;
+let animTimer: ReturnType<typeof setInterval> | undefined;
+
+function animateBounds(w: BrowserWindow, to: Electron.Rectangle, ms = 200): void {
+  clearInterval(animTimer);
+  const from = w.getBounds();
+  const t0 = Date.now();
+  animTimer = setInterval(() => {
+    const p = Math.min(1, (Date.now() - t0) / ms);
+    const e = 1 - Math.pow(1 - p, 3);
+    const l = (a: number, b: number) => Math.round(a + (b - a) * e);
+    w.setBounds({ x: l(from.x, to.x), y: l(from.y, to.y), width: l(from.width, to.width), height: l(from.height, to.height) });
+    if (p === 1) clearInterval(animTimer);
+  }, 8);
+}
+
+function toggleMax(w: BrowserWindow): void {
+  if (restoreBounds) { animateBounds(w, restoreBounds); restoreBounds = undefined; return; }
+  restoreBounds = w.getBounds();
+  animateBounds(w, screen.getDisplayMatching(restoreBounds).workArea);
+}
+
+function fadeOut(w: BrowserWindow, ms = 120): Promise<void> {
+  return new Promise(resolve => {
+    const t0 = Date.now();
+    const id = setInterval(() => {
+      const p = Math.min(1, (Date.now() - t0) / ms);
+      w.setOpacity(1 - p);
+      if (p === 1) { clearInterval(id); resolve(); }
+    }, 8);
+  });
+}
+
 function createWindow(): void {
   win = new BrowserWindow({
     width: 1280, height: 800, minWidth: 720, minHeight: 480,
@@ -135,9 +168,9 @@ app.whenReady().then(async () => {
       : (encryption ? 'os_keyring' : 'basic_text');
   });
   ipcMain.on('ormi:hubLabel', e => { e.returnValue = loadRemoteFile()?.relayUrl ?? socketPath(); });
-  ipcMain.on('ormi:win:min', () => win?.minimize());
-  ipcMain.on('ormi:win:max', () => { if (win?.isMaximized()) win.unmaximize(); else win?.maximize(); });
-  ipcMain.on('ormi:win:close', () => win?.close());
+  ipcMain.on('ormi:win:min', () => { if (win) void fadeOut(win).then(() => { win?.minimize(); win?.setOpacity(1); }); });
+  ipcMain.on('ormi:win:max', () => { if (win) toggleMax(win); });
+  ipcMain.on('ormi:win:close', () => { if (win) void fadeOut(win).then(() => win?.close()); });
 
   createWindow();
   void connectDaemon();
