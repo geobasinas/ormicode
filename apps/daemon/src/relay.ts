@@ -91,7 +91,7 @@ export class RelayClient {
   deviceRevoke(device: string): void {
     this.send({ type: 'device.revoke', device });
     // Also tell the relay over HTTP so revocation lands even if the socket is down.
-    void fetch(`${this.config.relayUrl}/revoke`, {
+    void fetch(`${this.config.relayUrl}/revoke?account=${encodeURIComponent(this.config.account)}`, {
       method: 'POST', headers: { authorization: `Bearer ${this.config.token}`, 'content-type': 'application/json' },
       body: JSON.stringify({ device }),
     }).catch(() => undefined);
@@ -99,7 +99,7 @@ export class RelayClient {
 
   /** Register a live pairing code hash with the relay (HTTP, hub-token authed). */
   pushCode(codeHash: string, expiresAt: number): void {
-    void fetch(`${this.config.relayUrl}/pair`, {
+    void fetch(`${this.config.relayUrl}/pair?account=${encodeURIComponent(this.config.account)}`, {
       method: 'POST', headers: { authorization: `Bearer ${this.config.token}`, 'content-type': 'application/json' },
       body: JSON.stringify({ codeHash, expiresAt }),
     }).catch(e => { this.lastError = String(e); });

@@ -21,10 +21,11 @@ export function checkLayout(base, layout) {
 
 function checkSourceSize(base, group) {
   const errors = [];
+  const skip = new Set(['.wrangler', 'dist', 'node_modules', '.turbo', 'coverage']);
   function visit(path) {
     for (const entry of readdirSync(path, { withFileTypes: true })) {
       const child = join(path, entry.name);
-      if (entry.isDirectory()) visit(child);
+      if (entry.isDirectory()) { if (!skip.has(entry.name)) visit(child); continue; }
       else if (/\.(ts|tsx|js|mjs)$/.test(entry.name)) {
         const lines = readFileSync(child, 'utf8').split(/\r?\n/).length;
         if (lines > 400) errors.push(`${child}: ${lines} lines exceeds 400`);

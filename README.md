@@ -260,7 +260,7 @@ flowchart LR
 
 ## Pairing
 
-> **Status:** next · **Needs:** [Relay](#relay), [Tokens and transport](#tokens-and-transport)
+> **Status:** built — `ormi pair`, `pair.create`/`pair.join`, `devices.list`/`rename`/`revoke`, `ormi connect`; verified end-to-end locally through the relay. · **Needs:** [Relay](#relay), [Tokens and transport](#tokens-and-transport)
 
 **A 12-digit code, 10 minutes, one use. Enter it on the new device and it gets a device token.**
 
@@ -285,7 +285,7 @@ Later devices pair the same way. With exactly one hub, the client connects on la
 
 ## Tokens and transport
 
-> **Status:** next · **Needs:** [Relay](#relay)
+> **Status:** built — `packages/crypto` (WebCrypto SHA-256, constant-time compare), token-first-message ws auth, hashes-only on the relay. · **Needs:** [Relay](#relay)
 
 **TLS for transport, random tokens for auth. No custom crypto.**
 
@@ -1702,7 +1702,7 @@ WantedBy=default.target
 
 **Local dev:** `wrangler dev` with a local DO and Miniflare R2; daemon pointed at `ws://localhost:8787`. Pairing must work fully offline.
 
-**Relay implementation status:** `apps/relay` is live on Cloudflare — Worker (`src/index.ts`: routes, per-IP fixed-window rate limits, R2 `/blob/<id>` PUT hub-token/GET any-token) + one `AccountDO` per account (`src/account.ts`: DO SQLite for token hashes, pairing-code TTLs, per-device cursors, subscriptions, request routing, bounded 1000-frame per-session outbox; hibernation-friendly via `acceptWebSocket` + `serializeAttachment`). Deployed at `https://ormi-relay.geobasinas-141.workers.dev` (workers.dev URL); the `relay.ormi.codes/*` route is live too (AAAA `100::` proxied, added via the DNS API — wrangler OAuth lacks `dns:write`). Miniflare tests (`apps/relay/test/relay.test.mjs`, run through `pnpm test` after a `tsc -p tsconfig.build.json` emit) cover register/pair/join/auth rejection/hub-offline and the full join → device connect → evt fan-out → request routing path. `BOOTSTRAP_SECRET` is unset in dev (open `/register`); set it via `wrangler secret put` before relying on account isolation. Still missing vs. spec: R2 event-chunk spooling for >24h catch-up, `idx` summary frames, resync-on-lag (>5000), and origin allowlisting for browser clients.
+**Relay implementation status:** `apps/relay` is live on Cloudflare at `https://relay.ormi.codes` (custom domain; `https://ormi-relay.geobasinas-141.workers.dev` fallback) — Worker (`src/index.ts`: routes, per-IP fixed-window rate limits, R2 `/blob/<id>` PUT hub-token/GET any-token, `BOOTSTRAP_SECRET`-gated `/register`, set in production) + one `AccountDO` per account (`src/account.ts`: DO SQLite for token hashes, pairing-code TTLs, per-device cursors, subscriptions, request routing, bounded 5000-frame per-session outbox; hibernation-friendly via `acceptWebSocket` + `serializeAttachment`). Hub bootstrap: `ormi relay register --account <name> --relay <url> [--secret <s>]` mints a 32-byte hub token, registers its SHA-256 with the relay, writes `~/.ormicode/hub.json` (0600) — then the daemon's `RelayClient` keeps one outbound `wss` per account and pushes every journaled evt. Devices pair via `ormi pair` then `ormi connect <relay> --account <a> --code <c>`; `remote.json` then routes every `ormi session *` over `wss://` (`ORMICODE_REMOTE=0` forces local). Miniflare tests cover register/pair/join/auth rejection/hub-offline and join to device connect to evt fan-out to request routing; a full local e2e (daemon + `wrangler dev` relay: register, pair, connect, remote `session list`/`prompt`/`tail` with outbox replay) passed. Still missing vs. spec: R2 event-chunk spooling for >24h catch-up, `idx` summary frames, `resync` on >5000-frame lag, origin allowlisting for browser clients, per-device subscription caps (200) and the 50 frames/s/session limit.
 
 **Cost:** fits the free plans (Workers: 100k requests/day, 13,000 GB-s DO duration, 5 GB DO storage; R2: 10 GB-months, 1M Class A, 10M Class B ops, free egress). But free limits fail closed until 00:00 UTC, and sockets without hibernation bill the whole connection. Move to Workers Paid ($5/month) before you depend on it. Billing details that shape the design: outgoing WebSocket messages and protocol pings are free, incoming messages count as requests at 20:1, and a free-plan SQLite DO is capped at 1 GB, so keep the outbox per account and trim it ([DO pricing](https://developers.cloudflare.com/durable-objects/platform/pricing/), [limits](https://developers.cloudflare.com/durable-objects/platform/limits/)).
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { usage } from './usage.ts';
 import { agentSmoke } from './smoke.ts';
-import { daemonMain, statusMain, pairMain, connectMain, devicesMain } from './daemon.ts';
+import { daemonMain, statusMain, pairMain, connectMain, devicesMain, relayMain } from './daemon.ts';
 import { sessionCommand } from './session.ts';
 
 const [group, command, ...rest] = process.argv.slice(2);
@@ -19,6 +19,8 @@ if (group === 'agent' && command === 'smoke') {
   process.exit(await pairMain());
 } else if (group === 'connect' && command) {
   process.exit(await connectMain([command, ...rest]));
+} else if (group === 'relay') {
+  process.exit(await relayMain(command ? [command, ...rest] : []));
 } else if (group === 'devices') {
   process.exit(await devicesMain(command ? [command, ...rest] : []));
 } else if (!group || group === '--help' || group === '-h') usage(0);

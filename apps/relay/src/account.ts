@@ -186,6 +186,8 @@ export class AccountDO implements DurableObject {
       case 'evt': {
         const session = String(msg.session); const seq = Number(msg.seq);
         const frame = JSON.stringify(msg.frame ?? msg);
+        this.sql.exec('INSERT OR REPLACE INTO outbox(session, seq, frame) VALUES (?, ?, ?)', session, seq, frame);
+        this.sql.exec('DELETE FROM outbox WHERE session = ? AND seq <= ? - 5000', session, seq);
         for (const d of this.subscribed(session)) {
           for (const sock of this.sockets('device', d)) {
             try { sock.send(frame); this.sql.exec('INSERT OR REPLACE INTO cursors(device, session, seq) VALUES (?, ?, ?)', d, session, seq); }

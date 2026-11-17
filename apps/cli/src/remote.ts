@@ -37,7 +37,13 @@ export class WsLink {
   private waiting: ((frame: Frame | undefined) => void) | undefined;
   private pending = new Map<string, { resolve: (frame: Frame) => void; timer: NodeJS.Timeout }>();
   closed = false;
-  onFrame: ((frame: Frame) => void) | undefined;
+  private _onFrame: ((frame: Frame) => void) | undefined;
+  /** Late-assigned handler drains frames queued before it was set (e.g. subscribe replay). */
+  set onFrame(fn: ((frame: Frame) => void) | undefined) {
+    this._onFrame = fn;
+    while (fn && this.queue.length) fn(this.queue.shift()!);
+  }
+  get onFrame(): ((frame: Frame) => void) | undefined { return this._onFrame; }
   /** Non-protocol relay frames (e.g. `authed`) land here instead of the parser. */
   onRelayMessage: ((msg: Record<string, unknown>) => void) | undefined;
   onClose: (() => void) | undefined;
@@ -55,6 +61,11 @@ export class WsLink {
 
   request(method: string, body: Record<string, unknown>, timeoutMs = 30_000): Promise<Frame> {
     const id = newId('req');
+    // Subscription state lives in the DO so it can filter fan-out and replay
+    // the outbox; the protocol req still reaches the hub for bookkeeping.
+    if (method === 'session.subscribe')
+      this.send({ type: 'subscribe', session: body.session, after: typeof body.after === 'number' ? body.after : 0 });
+    if (method === 'session.unsubscribe') this.send({ type: 'unsubscribe', session: body.session });
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`${method}: timed out`)); }, timeoutMs);
       this.pending.set(id, { resolve, timer });
@@ -79,7 +90,7 @@ export class WsLink {
       p.resolve(frame);
       return;
     }
-    if (this.onFrame) this.onFrame(frame); else this.wake(frame);
+    if (this._onFrame) this._onFrame(frame); else this.wake(frame);
   }
 
   private wake(frame: Frame | undefined): void {

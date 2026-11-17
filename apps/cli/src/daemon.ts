@@ -109,3 +109,35 @@ export async function devicesMain(args: string[]): Promise<number> {
     return 2;
   });
 }
+
+/** `ormi relay register --account <a> [--relay <url>] [--secret <s>]` — bootstrap this hub. */
+export async function relayMain(args: string[]): Promise<number> {
+  const flag = (n: string) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : undefined; };
+  const sub = args[0];
+  if (sub !== 'register') {
+    console.error('usage: ormi relay register --account <name> [--relay <url>] [--secret <bootstrap secret>]');
+    return 2;
+  }
+  const account = flag('--account');
+  const relayUrl = flag('--relay') ?? 'https://relay.ormi.codes';
+  const secret = flag('--secret');
+  if (!account) { console.error('--account is required'); return 2; }
+  const { randomToken } = await import('@ormicode/crypto');
+  const { saveHubConfig, loadHubConfig } = await import('@ormicode/daemon');
+  const existing = loadHubConfig();
+  if (existing && existing.account === account && existing.relayUrl === relayUrl) {
+    console.log(`hub already registered as ${account} on ${relayUrl}`);
+    return 0;
+  }
+  const token = randomToken();
+  try {
+    const res = await fetch(`${relayUrl.replace(/\/$/, '')}/register?account=${encodeURIComponent(account)}`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ hubToken: token, ...(secret ? { secret } : {}) }),
+    });
+    if (!res.ok) { console.error(`register failed (${res.status}): ${await res.text()}`); return 1; }
+    saveHubConfig({ account, token, relayUrl });
+    console.log(`hub registered as ${account} on ${relayUrl} — hub.json written; (re)start the daemon to connect`);
+    return 0;
+  } catch (e) { console.error(`register failed: ${e instanceof Error ? e.message : e}`); return 1; }
+}

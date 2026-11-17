@@ -20,6 +20,9 @@ importers:
       '@ormicode/agent-core':
         specifier: workspace:*
         version: link:../../packages/agent-core
+      '@ormicode/crypto':
+        specifier: workspace:*
+        version: link:../../packages/crypto
       '@ormicode/daemon':
         specifier: workspace:*
         version: link:../daemon

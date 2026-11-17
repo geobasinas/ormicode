@@ -7,3 +7,5 @@ coverage/
 .env.*
 !.env.example
 *.log
+apps/relay/.wrangler/
+apps/relay/dist/
