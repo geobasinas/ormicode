@@ -1,7 +1,7 @@
 /** App shell: custom titlebar (frameless window), sidebar with search /
  * new-session / All|Sessions|Bots filter / grouped session list, and the
  * pinned Now tab + session tabs from the layout descriptor. */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ClientPlatform } from '@ormicode/client-platform';
 import { PlatformContext } from '../lib/platform.ts';
 import { applyTheme, themeByName } from '../lib/theme.ts';
@@ -38,15 +38,16 @@ function Titlebar({ platform }: { platform: ClientPlatform }) {
 function Tab({ id, active, onSelect, onClose }: { id: string; active: boolean; onSelect: () => void; onClose?: () => void }) {
   const details = useSession(id === 'now' ? undefined : id);
   const label = id === 'now' ? 'Home' : (details?.title || id.slice(0, 14));
-  const R = 12;
+  const R = 10;
+  const ref = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => { const el = ref.current; if (el) { el.style.minWidth = ''; el.style.minWidth = `${Math.ceil(el.getBoundingClientRect().width)}px`; } }, [label, active, onClose]);
   const fillet = (side: 'left' | 'right') => (
-    <span aria-hidden style={{
-      position: 'absolute', bottom: 0, [side === 'right' ? 'left' : 'right']: '100%', width: R, height: R, pointerEvents: 'none',
-      background: `radial-gradient(circle at ${side === 'right' ? '100%' : '0'} 0, transparent ${R - 0.5}px, var(--bg-main) ${R}px)`,
-    }} />
+    <svg aria-hidden width={R} height={R} viewBox={`0 0 ${R} ${R}`} style={{ position: 'absolute', bottom: 0, [side === 'right' ? 'left' : 'right']: '100%', pointerEvents: 'none', display: 'block' }}>
+      <path fill="var(--bg-main)" d={side === 'right' ? `M0 0V${R}H${R}A${R} ${R} 0 0 1 0 0Z` : `M${R} 0V${R}H0A${R} ${R} 0 0 0 ${R} 0Z`} />
+    </svg>
   );
   return (
-    <span style={{
+    <span ref={ref} style={{
       position: 'relative', display: 'inline-flex', alignItems: 'center', fontSize: 11.5, fontWeight: active ? 600 : 400,
       padding: '2px 0 4px', borderRadius: `${R}px ${R}px 0 0`, cursor: 'pointer', whiteSpace: 'nowrap',
       background: active ? 'var(--bg-main)' : 'transparent',
