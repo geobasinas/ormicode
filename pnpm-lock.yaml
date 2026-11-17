@@ -182,9 +182,6 @@ importers:
 
   packages/agent-grok-acp:
     dependencies:
-      '@ormicode/agent-acp':
-        specifier: workspace:*
-        version: link:../agent-acp
       '@ormicode/agent-core':
         specifier: workspace:*
         version: link:../agent-core
@@ -212,9 +209,6 @@ importers:
 
   packages/agent-opencode-acp:
     dependencies:
-      '@ormicode/agent-acp':
-        specifier: workspace:*
-        version: link:../agent-acp
       '@ormicode/agent-core':
         specifier: workspace:*
         version: link:../agent-core
@@ -287,9 +281,6 @@ importers:
 
   packages/agent-vibe-acp:
     dependencies:
-      '@ormicode/agent-acp':
-        specifier: workspace:*
-        version: link:../agent-acp
       '@ormicode/agent-core':
         specifier: workspace:*
         version: link:../agent-core

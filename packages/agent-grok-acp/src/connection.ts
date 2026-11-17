@@ -2,8 +2,8 @@ import { spawn } from 'node:child_process';
 import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from 'node:child_process';
 import * as z from 'zod/mini';
 import type { RawLog } from '@ormicode/agent-core';
-import { parseOptions, parseModes , type AcpMcpServer } from '@ormicode/agent-acp';
-import type { ConfigOption, Mode } from '@ormicode/agent-acp';
+import { parseOptions, parseModes , type AcpMcpServer } from './options.ts';
+import type { ConfigOption, Mode } from './options.ts';
 export interface AcpBootstrap { sessionId: string; options: ConfigOption[]; modes: Mode[]; currentMode?: string }
 import { attachRawLog } from '@ormicode/agent-core';
 

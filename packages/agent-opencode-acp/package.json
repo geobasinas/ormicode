@@ -10,7 +10,6 @@
     "zod": "4.6.7",
     "@ormicode/agent-core": "workspace:*",
     "@ormicode/protocol": "workspace:*",
-    "@ormicode/agent-acp": "workspace:*",
     "ulid": "3.0.2"
   }
 }

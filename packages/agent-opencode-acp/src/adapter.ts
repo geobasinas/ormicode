@@ -7,7 +7,7 @@ import { AcpConnection } from './connection.ts';
 import { OpenCodeTurnMapper } from './map.ts';
 import { OpenCodePermissionBroker } from './permissions.ts';
 import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from 'node:child_process';
-import { acpMcpServers } from '@ormicode/agent-acp';
+import { acpMcpServers } from './options.ts';
 
 type Spawn = (command: string, args: string[], options: SpawnOptionsWithoutStdio) => ChildProcessWithoutNullStreams;
 type Session = { connection: AcpConnection; nativeId: string; queue: EventQueue; broker: OpenCodePermissionBroker; active: boolean; disposed: boolean; needsRecovery: boolean; mapper?: OpenCodeTurnMapper; running?: Promise<void>; cancelRequested: boolean };

@@ -34,6 +34,8 @@ export interface DispatchCtx {
   paused: Set<string>;
   heldPrompts: Map<string, { text: string; images?: unknown[] }[]>;
   lastPrompt: Map<string, { text: string; images?: unknown[] }>;
+  /** Handoffs since the session's last turn_start — cleared by the supervisor. */
+  handoffsInTurn: Map<string, number>;
   spawnWorker(session: string): void;
   toWorker(session: string, method: string, body: Record<string, unknown>): Promise<Frame | undefined>;
   sendPrompt(session: string, text: string, images?: unknown[]): Promise<boolean>;
@@ -177,6 +179,11 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         const to = body.to as { vendor?: string; transport?: string; model?: string; effort?: string; branch?: string };
         const mode = String(body.mode);
         const reason = typeof body.reason === 'string' ? body.reason : undefined;
+        // At most one handoff per turn — the count only gates a session that
+        // is actually mid-turn; starting/idle/done sessions aren't in one.
+        const inTurn = ['running', 'awaiting_approval', 'awaiting_input', 'retrying', 'paused_rate_limited'].includes(s.state);
+        if (inTurn && (ctx.handoffsInTurn.get(session) ?? 0) >= 1)
+          return client.link.replyError(id, 'handoff.limit', 'one handoff per turn');
         if (mode === 'in_place') {
           // Same session, new model/effort — the worker stays put.
           for (const [kind, value] of [['model', to.model], ['effort', to.effort]] as const) {
@@ -184,6 +191,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
             const res = await ctx.toWorker(session, 'worker.configure', { kind, value });
             if (res?.type === 'res') db.prepare(`UPDATE sessions SET ${kind} = ? WHERE id = ?`).run(value, session);
           }
+          ctx.handoffsInTurn.set(session, (ctx.handoffsInTurn.get(session) ?? 0) + 1);
           return client.link.reply(id, { session: s.id, brief: '', parent: s.id });
         }
         // Guards: at most 3 handoffs per task chain, and no A→B→A bounce.
@@ -220,11 +228,20 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
           title: s.title ?? undefined, parent: s.id,
         });
         db.prepare('UPDATE sessions SET handed_off = 1, state = ? WHERE id = ?').run('done', session);
+        ctx.handoffsInTurn.set(session, (ctx.handoffsInTurn.get(session) ?? 0) + 1);
         ctx.spawnWorker(child);
         // The brief is the new agent's first prompt — same path as restart recaps.
+        // If the child never starts, roll back: mark it failed and hand the
+        // workspace lease + live flag back to the parent session.
+        const rollback = () => {
+          try {
+            setState(db, child, 'failed', 'handoff_failed');
+            db.prepare(`UPDATE sessions SET handed_off = 0, state = 'idle' WHERE id = ?`).run(session);
+          } catch { /* daemon closing */ }
+        };
         void ctx.sendPrompt(child, `You are taking over this task${reason ? ` — ${reason}` : ''}. Handoff brief:\n${brief}\nContinue where the previous session left off.`)
-          .then(ok => { if (!ok) setState(db, child, 'interrupted', 'handoff_failed'); })
-          .catch(() => { try { setState(db, child, 'interrupted', 'handoff_failed'); } catch { /* daemon closing */ } });
+          .then(ok => { if (!ok) rollback(); })
+          .catch(rollback);
         return client.link.reply(id, { session: child, brief, parent: s.id });
       }
       case 'session.setModel': case 'session.setEffort': case 'session.setMode': case 'session.setOption': {

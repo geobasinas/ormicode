@@ -85,6 +85,7 @@ export async function attachSession(link: Link, session: string): Promise<number
         else { buf += ch; process.stdout.write(ch); }
       }
     });
+    stdin.on('end', () => { if (!interactive) resolve(finish(0)); });
     link.onClose = () => resolve(finish(1));
     link.onFrame = frame => {
       if (frame.type !== 'evt') return;

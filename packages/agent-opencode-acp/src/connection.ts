@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from 'node:child_process';
 import * as z from 'zod/mini';
 import type { RawLog } from '@ormicode/agent-core';
-import type { AcpMcpServer } from '@ormicode/agent-acp';
+import type { AcpMcpServer } from './options.ts';
 import { attachRawLog } from '@ormicode/agent-core';
 
 type Spawn = (command: string, args: string[], options: SpawnOptionsWithoutStdio) => ChildProcessWithoutNullStreams;

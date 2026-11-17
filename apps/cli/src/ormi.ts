@@ -28,14 +28,19 @@ if (group === 'agent' && command === 'smoke') {
 } else if (group === 'attach' && command) {
   process.exit(await withDaemon(link => attachSession(link, command)));
 } else if (group === 'run' && command) {
-  // ormi run <vendor> [--transport t] [agent args...]: start + attach.
+  // ormi run <vendor> [--transport t] [--model m] [--effort e] [--mode m] [-- agent args…]
+  const sep = rest.indexOf('--');
+  const cliFlags = sep < 0 ? rest : rest.slice(0, sep);
+  const agentArgs = sep < 0 ? [] : rest.slice(sep + 1);
+  if (sep < 0 && cliFlags.some(a => !a.startsWith('--')))
+    console.error('note: bare agent args need `-- ` first, e.g. `ormi run claude -- --verbose`');
   process.exit(await withDaemon(async link => {
     const res = await link.request('session.start', {
       machine: newId('m'), project: process.cwd(), vendor: command,
-      transport: flag(rest, '--transport') ?? 'cli',
-      model: flag(rest, '--model') ?? 'default', effort: flag(rest, '--effort') ?? 'default',
-      mode: flag(rest, '--mode') ?? 'default', workspace: { kind: 'current' },
-      agentArgs: rest.filter((a, i) => !a.startsWith('--') && rest[i - 1] !== '--transport' && rest[i - 1] !== '--model' && rest[i - 1] !== '--effort' && rest[i - 1] !== '--mode'),
+      transport: flag(cliFlags, '--transport') ?? 'cli',
+      model: flag(cliFlags, '--model') ?? 'default', effort: flag(cliFlags, '--effort') ?? 'default',
+      mode: flag(cliFlags, '--mode') ?? 'default', workspace: { kind: 'current' },
+      agentArgs,
     });
     if (res.type === 'err') { console.error(`${res.code}: ${res.message}`); return 1; }
     const session = (res.body as { session: string }).session;

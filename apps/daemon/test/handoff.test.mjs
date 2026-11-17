@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { startDaemon, connect } from '../src/index.ts';
 import { newId } from '@ormicode/protocol';
-import { getSession } from '@ormicode/session-store';
+import { getSession, createSession } from '@ormicode/session-store';
 import { fileURLToPath } from 'node:url';
 
 const boot = async () => {
@@ -44,6 +44,43 @@ test('in_place handoff keeps the same session; guards cap the chain and block Aâ
   const s5r = await client.request('session.handoff', { session: s4, to: { vendor: 'fake' }, mode: 'rehydrate' });
   assert.equal(s5r.type, 'err'); // depth 3 reached
   assert.equal(s5r.code, 'handoff.limit');
+  await daemon.close();
+});
+
+test('a task cannot bounce back to the vendor it just left', async () => {
+  const { daemon, client } = await boot();
+  // Seed a session row on a different vendor; the hub only knows 'fake'
+  // transports, so hand it to fake, then try to hand the child back.
+  const other = newId('s');
+  createSession(daemon.db, { id: other, machine: newId('m'), project: 'p_t', vendor: 'other', transport: 'acp', cwd: daemon.storePath });
+  const s2 = (await client.request('session.handoff', { session: other, to: { vendor: 'fake', transport: 'cli' }, mode: 'rehydrate' })).body.session;
+  const bounce = await client.request('session.handoff', { session: s2, to: { vendor: 'other' }, mode: 'rehydrate' });
+  assert.equal(bounce.type, 'err');
+  assert.equal(bounce.code, 'handoff.bounce');
+  await daemon.close();
+});
+
+test('at most one handoff per turn â€” a running session gets exactly one', async () => {
+  const { daemon, client } = await boot();
+  process.env.ORMICODE_FAKE_SCRIPT = 'slow';
+  const s1 = (await startFake(client)).body.session;
+  delete process.env.ORMICODE_FAKE_SCRIPT;
+  await client.request('session.prompt', { session: s1, text: 'hold' });
+  const t0 = Date.now();
+  while (getSession(daemon.db, s1)?.state !== 'running' && Date.now() - t0 < 10_000)
+    await new Promise(r => setTimeout(r, 25));
+  const first = await client.request('session.handoff', { session: s1, to: { effort: 'deeper' }, mode: 'in_place' });
+  assert.equal(first.type, 'res');
+  const second = await client.request('session.handoff', { session: s1, to: { model: 'other' }, mode: 'in_place' });
+  assert.equal(second.type, 'err');
+  assert.equal(second.code, 'handoff.limit');
+  // The turn is over: not mid-turn any more, so a new handoff is allowed.
+  await client.request('session.abort', { session: s1 });
+  const t1 = Date.now();
+  while (getSession(daemon.db, s1)?.state === 'running' && Date.now() - t1 < 10_000)
+    await new Promise(r => setTimeout(r, 25));
+  const third = await client.request('session.handoff', { session: s1, to: { vendor: 'fake' }, mode: 'rehydrate' });
+  assert.equal(third.type, 'res');
   await daemon.close();
 });
 

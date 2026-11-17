@@ -147,6 +147,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
             && !['starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying'].includes(getSession(db, session)?.state ?? '')) {
           return answer({ seq: 0 });
         }
+        if (kind === 'turn_start') handoffsInTurn.delete(session);
         const { seq } = append(db, session, { kind, payload: { kind, ...(body.payload as Record<string, unknown>) }, ts: Number(body.ts) || Date.now() });
         const frameOut = JSON.stringify({ v: 1, type: 'evt', session, seq, ts: Number(body.ts) || Date.now(), body: { kind, ...(body.payload as Record<string, unknown>) } });
         fanout(session, frameOut);
@@ -225,7 +226,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
       if (workers.get(session)?.ready) return resolve();
       if (!workers.has(session)) return reject(new Error('worker exited before ready'));
       if (Date.now() > deadline) return reject(new Error('worker.ready timeout'));
-      setTimeout(poll, 25);
+      setTimeout(poll, 25).unref();
     };
     poll();
   });
@@ -254,9 +255,10 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   };
 
   const pairing = new Pairing();
+  const handoffsInTurn = new Map<string, number>();
   let relay: RelayClient | undefined;
   const dispatchCtx: DispatchCtx = {
-    db, notesDir, startedAt, paused, heldPrompts, lastPrompt,
+    db, notesDir, startedAt, paused, heldPrompts, lastPrompt, handoffsInTurn,
     lastError: () => lastError, liveWorkers: () => workers.size,
     spawnWorker, toWorker, sendPrompt,
     pairing, relay: () => relay,
