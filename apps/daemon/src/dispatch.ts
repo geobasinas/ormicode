@@ -71,9 +71,10 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
           vendor, transport, cwd,
           worktree: resolved.worktree, branch: resolved.branch,
           baseBranch: resolved.baseBranch, baseCommit: resolved.baseCommit,
-          ...(body.model ? { model: String(body.model) } : {}),
-          ...(body.effort ? { effort: String(body.effort) } : {}),
-          ...(body.mode ? { mode: String(body.mode) } : {}),
+          // 'default' is a client placeholder, not a vendor value — leave unset.
+          ...(body.model && body.model !== 'default' ? { model: String(body.model) } : {}),
+          ...(body.effort && body.effort !== 'default' ? { effort: String(body.effort) } : {}),
+          ...(body.mode && body.mode !== 'default' ? { mode: String(body.mode) } : {}),
           ...(body.agentCommand ? { agentCommand: String(body.agentCommand) } : {}),
           ...(body.agentArgs ? { agentArgs: body.agentArgs as string[] } : {}),
         });

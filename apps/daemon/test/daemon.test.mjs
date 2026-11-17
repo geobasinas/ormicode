@@ -219,3 +219,13 @@ test('reconnect with a cursor replays only newer events, no gaps or dupes', asyn
   await daemon.close(); client2.close(); client3.close();
   rmSync(dir, { recursive: true, force: true });
 });
+
+test("session.start treats 'default' placeholders as unset", async () => {
+  const { daemon, client } = await boot();
+  const res = await client.request('session.start', { machine: newId('m'), project: 'p_t', vendor: 'fake', transport: 'cli', model: 'default', effort: 'default', mode: 'default', workspace: { kind: 'current' } });
+  const row = getSession(daemon.db, res.body.session);
+  assert.equal(row.model, null);
+  assert.equal(row.effort, null);
+  assert.equal(row.mode, null);
+  await daemon.close(); client.close();
+});
