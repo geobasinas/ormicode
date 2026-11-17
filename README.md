@@ -356,6 +356,10 @@ Later devices pair the same way. With exactly one hub, the client connects on la
 - **Supervisor** — one per machine. Owns the relay connection, the store, the machine registry, the process pool and the local socket. Small and long-lived. **The only process that writes the store.**
 - **Session worker** — one per live session. Runs one agent process, sends its events to the supervisor, reports health. Never opens the store. A worker crash only kills its session.
 
+**Daemon implementation status:** `apps/daemon` runs the supervisor + worker pair: NDJSON-framed protocol on a named pipe / unix socket (or `127.0.0.1:<port>` when `ORMICODE_SOCKET` looks like `host:port`), `worker.*` RPC from `worker-main.ts`, session state machine, journal writes via `journal.append` (seq assigned in the supervisor, event+outbox+last_seq in one tx), ephemeral `text_delta`/`thinking_delta` forwarded to subscribers unjournaled, `worker.native`/`worker.health` handled, clean vs crashed stream-end distinguished, boot marks only in-flight sessions `interrupted`/`host_restart`. Client surface: `daemon.status`, `session.start/get/list/prompt/steer/abort/decide/subscribe/unsubscribe/archive`. `session.delete`, pause/resume/retry, notes and `setModel`/`setEffort`/`setMode`/`setOption`/`answer` reply `protocol.unimplemented` for now. Tests: real fake-agent turn through the socket, journal continuity across a supervisor restart, SIGKILL mid-turn → `interrupted` with committed events kept. Verified live through `ormi daemon` + `ormi session start/prompt/get/list` with the fake vendor.
+
+**Dev note:** this repo's `pnpm` resolves Node 26 (`v26.x` via vite-plus) while the Git Bash `node` is v24 — always run tests through `pnpm test`. `better-sqlite3` prebuilds match the *installing* node: after a Node-24 install, restore the Node 26 binary with `npx prebuild-install --target=26.x` inside `node_modules/better-sqlite3`.
+
 **Local socket**
 - `\\.\pipe\ormicode` on Windows, a unix socket on Linux.
 - Newline-delimited JSON with the same envelope as [Protocol](#protocol), opened by a `hello` with protocol version and role. A line over 1 MB or that doesn't parse closes the connection.
@@ -1009,6 +1013,7 @@ The experimental opt-in bridge binds to loopback, uses a random per-turn bearer 
 - **Recorded fixtures** in `test/fixtures` (vendor events in → normalized events out), replayed by `pnpm test` without credentials. Every first-party adapter has one.
 - **Smoke script** (`ormi agent smoke <vendor> --transport <sdk|cli|acp>`, one run per native transport): temp repo, fixed prompt, check a tool call and final state, kill mid-turn, resume, check transcript. Needs real logins, runs locally. It decides the capability flags.
 - **Last smoke results (2026-11-15):** Claude CLI 2.1.323 ✓ all; Claude SDK 0.3.325 ✓ incl. approval, steer, resume; Codex 0.169.0 CLI ✓ incl. approval and steer, SDK ✓ (no approval/steer); OpenCode 2.2.5 CLI ✓, SDK ✓ incl. steer; pi 1.5.2 CLI ✓, SDK ✓ incl. steer; Grok 1.0.77 CLI ✓ tool turn, ACP ✓ (permissions not exercised); Vibe CLI ✓, ACP ✓ incl. resume.
+- **Harness smoke results (2026-11-17, `ormi agent smoke`):** pi sdk+cli ✓ (turn/tool/resume; SDK models() returned 1636); claude sdk+cli ✓; grok cli+acp ✓ (turn/tool/resume); codex sdk ✗ `sdk_error` mid-turn + tool timeout; opencode all 3 ✗ at detect ("Authentication not checked" — auth probe too strict); vibe cli ✗ tool/resume `stream_ended` (Bitdefender kills spawned vibe on this machine), vibe acp ✓ turn+tool, ✗ resume "Session not found" (vibe-acp load quirk). Capability flags still off pending fixes.
 
 ## ACP
 

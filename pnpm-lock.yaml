@@ -20,6 +20,66 @@ importers:
       '@ormicode/agent-core':
         specifier: workspace:*
         version: link:../../packages/agent-core
+      '@ormicode/daemon':
+        specifier: workspace:*
+        version: link:../daemon
+      '@ormicode/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
+
+  apps/daemon:
+    dependencies:
+      '@ormicode/agent-acp':
+        specifier: workspace:*
+        version: link:../../packages/agent-acp
+      '@ormicode/agent-claude-cli':
+        specifier: workspace:*
+        version: link:../../packages/agent-claude-cli
+      '@ormicode/agent-claude-sdk':
+        specifier: workspace:*
+        version: link:../../packages/agent-claude-sdk
+      '@ormicode/agent-codex-sdk':
+        specifier: workspace:*
+        version: link:../../packages/agent-codex-sdk
+      '@ormicode/agent-core':
+        specifier: workspace:*
+        version: link:../../packages/agent-core
+      '@ormicode/agent-grok-acp':
+        specifier: workspace:*
+        version: link:../../packages/agent-grok-acp
+      '@ormicode/agent-grok-cli':
+        specifier: workspace:*
+        version: link:../../packages/agent-grok-cli
+      '@ormicode/agent-opencode-acp':
+        specifier: workspace:*
+        version: link:../../packages/agent-opencode-acp
+      '@ormicode/agent-opencode-cli':
+        specifier: workspace:*
+        version: link:../../packages/agent-opencode-cli
+      '@ormicode/agent-opencode-sdk':
+        specifier: workspace:*
+        version: link:../../packages/agent-opencode-sdk
+      '@ormicode/agent-pi-cli':
+        specifier: workspace:*
+        version: link:../../packages/agent-pi-cli
+      '@ormicode/agent-pi-sdk':
+        specifier: workspace:*
+        version: link:../../packages/agent-pi-sdk
+      '@ormicode/agent-vibe-acp':
+        specifier: workspace:*
+        version: link:../../packages/agent-vibe-acp
+      '@ormicode/agent-vibe-cli':
+        specifier: workspace:*
+        version: link:../../packages/agent-vibe-cli
+      '@ormicode/journal':
+        specifier: workspace:*
+        version: link:../../packages/journal
+      '@ormicode/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
+      '@ormicode/session-store':
+        specifier: workspace:*
+        version: link:../../packages/session-store
 
   packages/agent-acp:
     dependencies:

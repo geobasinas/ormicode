@@ -1,0 +1,26 @@
+{
+  "name": "@ormicode/daemon",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@ormicode/protocol": "workspace:*",
+    "@ormicode/agent-core": "workspace:*",
+    "@ormicode/session-store": "workspace:*",
+    "@ormicode/journal": "workspace:*",
+    "@ormicode/agent-claude-sdk": "workspace:*",
+    "@ormicode/agent-claude-cli": "workspace:*",
+    "@ormicode/agent-codex-sdk": "workspace:*",
+    "@ormicode/agent-grok-acp": "workspace:*",
+    "@ormicode/agent-grok-cli": "workspace:*",
+    "@ormicode/agent-opencode-acp": "workspace:*",
+    "@ormicode/agent-opencode-cli": "workspace:*",
+    "@ormicode/agent-opencode-sdk": "workspace:*",
+    "@ormicode/agent-pi-cli": "workspace:*",
+    "@ormicode/agent-pi-sdk": "workspace:*",
+    "@ormicode/agent-vibe-acp": "workspace:*",
+    "@ormicode/agent-vibe-cli": "workspace:*",
+    "@ormicode/agent-acp": "workspace:*"
+  }
+}

@@ -3,6 +3,8 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import * as daemonSocket from '@ormicode/daemon';
+import { newId } from '@ormicode/protocol';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const transports: Record<string, string[]> = {
@@ -17,7 +19,15 @@ const transports: Record<string, string[]> = {
 function usage(code: number): never {
   console.log(`usage:
   ormi agent smoke <vendor> [--transport sdk|cli|acp] [--repo <dir>] [--home <dir>] [--kill] [--approve <optionId>] [--keep]
-  ormi agent smoke <vendor> --command <acp-cmd> [--args "..."]   (third-party ACP agent)`);
+  ormi agent smoke <vendor> --command <acp-cmd> [--args "..."]   (third-party ACP agent)
+  ormi daemon                                     run the supervisor in the foreground
+  ormi status                                     daemon.status
+  ormi session start <vendor> [--transport t]     start a session, prints its id
+  ormi session list [--archived]
+  ormi session get <id>
+  ormi session prompt <id> <text>
+  ormi session abort <id>
+  ormi session tail <id>                          stream live + replayed events`);
   process.exit(code);
 }
 
@@ -84,10 +94,105 @@ async function agentSmoke(vendor: string, args: string[]): Promise<number> {
   return failed ? 1 : 0;
 }
 
+const socketPath = () => {
+  const { defaultSocketPath } = daemonSocket;
+  return process.env.ORMICODE_SOCKET ?? defaultSocketPath();
+};
+
+async function withDaemon<T>(fn: (link: import('@ormicode/daemon').Link) => Promise<T>): Promise<T> {
+  const link = await daemonSocket.connect(socketPath()).catch(() => {
+    console.error(`no daemon on ${socketPath()} — start one with \`ormi daemon\``);
+    process.exit(2);
+  });
+  try { return await fn(link); } finally { link.close(); }
+}
+
+async function daemonMain(): Promise<number> {
+  const { startDaemon } = await import('@ormicode/daemon');
+  const daemon = await startDaemon();
+  console.log(`ormicode daemon listening on ${daemon.socketPath}`);
+  await new Promise<void>(resolve => {
+    process.on('SIGINT', resolve); process.on('SIGTERM', resolve);
+  });
+  await daemon.close();
+  return 0;
+}
+
+async function sessionCommand(verb: string, args: string[]): Promise<number> {
+  const flag = (name: string) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
+  return withDaemon(async link => {
+    switch (verb) {
+      case 'start': {
+        const vendor = args[0];
+        if (!vendor) { console.error('usage: ormi session start <vendor> [--transport t] [--project p] [--model m] [--effort e] [--mode m] [--agentCommand c]'); return 2; }
+        const res = await link.request('session.start', {
+          machine: newId('m'), project: flag('--project') ?? process.cwd(),
+          vendor, transport: flag('--transport') ?? 'cli',
+          model: flag('--model') ?? 'default', effort: flag('--effort') ?? 'default', mode: flag('--mode') ?? 'default',
+          workspace: { kind: 'current' },
+          ...(flag('--agentCommand') ? { agentCommand: flag('--agentCommand') } : {}),
+        });
+        if (res.type === 'err') { console.error(`${res.code}: ${res.message}`); return 1; }
+        console.log((res.body as { session: string }).session);
+        return 0;
+      }
+      case 'list': {
+        const res = await link.request('session.list', { archived: args.includes('--archived') });
+        for (const s of (res.body as { sessions: { id: string; title: string | null; state: string; vendor: string; transport: string }[] }).sessions)
+          console.log(`${s.id}\t${s.state}\t${s.vendor}/${s.transport}\t${s.title ?? ''}`);
+        return 0;
+      }
+      case 'get': {
+        const res = await link.request('session.get', { session: args[0] });
+        if (res.type === 'err') { console.error(`${res.code}: ${res.message}`); return 1; }
+        console.log(JSON.stringify(res.body, null, 2));
+        return 0;
+      }
+      case 'prompt': {
+        const [session, ...words] = args;
+        const res = await link.request('session.prompt', { session, text: words.join(' ') });
+        if (res.type === 'err') { console.error(`${res.code}: ${res.message}`); return 1; }
+        return 0;
+      }
+      case 'abort': {
+        const res = await link.request('session.abort', { session: args[0] });
+        if (res.type === 'err') { console.error(`${res.code}: ${res.message}`); return 1; }
+        return 0;
+      }
+      case 'tail': {
+        const res = await link.request('session.subscribe', { session: args[0] });
+        if (res.type === 'err') { console.error(`${res.code}: ${res.message}`); return 1; }
+        link.onFrame = frame => {
+          if (frame.type === 'evt') {
+            const body = frame.body as Record<string, unknown>;
+            const seq = 'seq' in frame ? `#${frame.seq} ` : '';
+            console.log(`${seq}${body.kind}${body.text ? ` ${body.text}` : ''}${body.reason ? ` (${body.reason})` : ''}`);
+          }
+        };
+        await new Promise(() => undefined); // tail until Ctrl+C
+        return 0;
+      }
+      default:
+        console.error(`unknown session command ${verb}`);
+        return 2;
+    }
+  });
+}
+
 const [group, command, ...rest] = process.argv.slice(2);
 if (group === 'agent' && command === 'smoke') {
   const vendor = rest[0];
   if (!vendor || vendor.startsWith('--')) usage(2);
   process.exit(await agentSmoke(vendor, rest.slice(1)));
+} else if (group === 'daemon' && !command) {
+  process.exit(await daemonMain());
+} else if (group === 'session' && command) {
+  process.exit(await sessionCommand(command, rest));
+} else if (group === 'status' && !command) {
+  process.exit(await withDaemon(async link => {
+    const res = await link.request('daemon.status', {});
+    console.log(JSON.stringify(res.body));
+    return 0;
+  }));
 } else if (!group || group === '--help' || group === '-h') usage(0);
 else { console.error(`unknown command ${[group, command].filter(Boolean).join(' ')}`); usage(2); }
