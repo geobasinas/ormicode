@@ -5,3 +5,4 @@ export * from './fake.ts';
 export * from './smoke.ts';
 export * from './validate-turn.ts';
 export * from './event-queue.ts';
+export * from './destructive.ts';

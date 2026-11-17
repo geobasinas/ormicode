@@ -108,9 +108,16 @@ try {
     ...(process.env.ORMICODE_AGENT_ARGS_JSON ? { agentArgs: JSON.parse(process.env.ORMICODE_AGENT_ARGS_JSON) as string[] } : {}),
     onNativeId: id => { void send('worker.native', { session, nativeId: id }); },
   });
+  const spec = {
+    cwd,
+    ...(process.env.ORMICODE_MODEL ? { model: process.env.ORMICODE_MODEL } : {}),
+    ...(process.env.ORMICODE_EFFORT ? { effort: process.env.ORMICODE_EFFORT } : {}),
+    ...(process.env.ORMICODE_MODE ? { mode: process.env.ORMICODE_MODE } : {}),
+    ...(process.env.ORMICODE_LOG_DIR ? { logDir: process.env.ORMICODE_LOG_DIR } : {}),
+  };
   handle = resumeId && adapter.resume
-    ? await adapter.resume({ id: resumeId, cwd })
-    : await adapter.start({ cwd, ...(process.env.ORMICODE_MODEL ? { model: process.env.ORMICODE_MODEL } : {}) });
+    ? await adapter.resume({ id: resumeId, ...spec })
+    : await adapter.start(spec);
   // Adapters either push native ids via onNativeId or expose nativeId(handle).
   const probe = (adapter as { nativeId?: (h: Handle) => string }).nativeId;
   if (probe) { const id = probe.call(adapter, handle); if (id) void send('worker.native', { session, nativeId: id }); }

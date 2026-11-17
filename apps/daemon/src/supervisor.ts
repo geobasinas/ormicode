@@ -5,11 +5,11 @@ import { fileURLToPath } from 'node:url';
 import type { Frame } from '@ormicode/protocol';
 import { openStore, getSession, setState, setWorkerPid, setNativeId, type SessionState } from '@ormicode/session-store';
 import { killTree } from './proctree.ts';
-import { recoverSessions, resumePolicy } from './recovery.ts';
+import { recoverSessions, resumePolicy, sweepLogs } from './recovery.ts';
 import { handoffBrief } from './handoff.ts';
 import { onClientFrame, type Client, type DispatchCtx } from './dispatch.ts';
 import { append } from '@ormicode/journal';
-import { serve, defaultSocketPath, ormicodeDir, type Link } from './socket.ts';
+import { serve, defaultSocketPath, ormicodeDir, sessionLogDir, type Link } from './socket.ts';
 
 const WORKER_MAIN = join(dirname(fileURLToPath(import.meta.url)), 'worker-main.ts');
 const startedAt = Date.now();
@@ -45,6 +45,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   // pids; auto-resume candidates are spawned once spawnWorker exists below.
   const resuming = new Set<string>();
   const recapPending = new Set<string>();
+  sweepLogs();
   const recovery = recoverSessions(db, resumePolicy());
 
   const fanout = (session: string, frame: string) => {
@@ -73,7 +74,10 @@ export async function startDaemon(opts: DaemonOptions = {}) {
         ORMICODE_SOCKET: socketPath, ORMICODE_SESSION: session,
         ORMICODE_VENDOR: row.vendor, ORMICODE_TRANSPORT: row.transport,
         ORMICODE_CWD: row.cwd, ...(row.native_id ? { ORMICODE_RESUME: row.native_id } : {}),
+        ORMICODE_LOG_DIR: sessionLogDir(session),
         ...(row.model ? { ORMICODE_MODEL: row.model } : {}),
+        ...(row.effort ? { ORMICODE_EFFORT: row.effort } : {}),
+        ...(row.mode ? { ORMICODE_MODE: row.mode } : {}),
         ...(row.agent_command ? { ORMICODE_AGENT_COMMAND: row.agent_command } : {}),
         ...(row.agent_args ? { ORMICODE_AGENT_ARGS_JSON: row.agent_args } : {}),
       },

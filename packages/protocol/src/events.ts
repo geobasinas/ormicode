@@ -14,7 +14,7 @@ export const eventBodies = {
   plan: z.looseObject({ kind: z.literal('plan'), text }),
   tool_call: z.looseObject({ kind: z.literal('tool_call'), callId: nonEmpty, name: nonEmpty, input: z.json(), parent: z.optional(nonEmpty) }),
   tool_result: z.looseObject({ kind: z.literal('tool_result'), callId: nonEmpty, status: z.enum(['completed', 'failed', 'interrupted']), output: z.optional(z.json()), parent: z.optional(nonEmpty) }),
-  approval_request: z.looseObject({ kind: z.literal('approval_request'), request: requestIdSchema, options: z.array(z.looseObject({ id: nonEmpty, label: text })) }),
+  approval_request: z.looseObject({ kind: z.literal('approval_request'), request: requestIdSchema, options: z.array(z.looseObject({ id: nonEmpty, label: text })), destructive: z.optional(z.boolean()), rule: z.optional(text) }),
   approval_decision: z.looseObject({ kind: z.literal('approval_decision'), request: requestIdSchema, option: nonEmpty }),
   question_request: z.looseObject({ kind: z.literal('question_request'), request: requestIdSchema, questions: z.array(z.looseObject({ question: nonEmpty, header: text, options: z.array(z.looseObject({ label: nonEmpty, description: text })), multiSelect: z.boolean() })) }),
   question_answer: z.looseObject({ kind: z.literal('question_answer'), request: requestIdSchema, answers: z.record(z.string(), z.string()) }),

@@ -5,7 +5,7 @@ import { replay, setCursor } from '@ormicode/journal';
 import { join } from 'node:path';
 import { mkdirSync, rmSync } from 'node:fs';
 import type { Link } from './socket.ts';
-import { ormicodeDir } from './socket.ts';
+import { ormicodeDir, sessionLogDir } from './socket.ts';
 import { acquireWorkspace, releaseForSession } from './leases.ts';
 import { hasTransport } from './registry.ts';
 import { resolveWorkspace, type WorkspaceChoice } from './git.ts';
@@ -148,6 +148,9 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         const scratchRoot = join(ormicodeDir(), 'scratch');
         if (method === 'session.delete' && row?.cwd.startsWith(scratchRoot)) {
           try { rmSync(row.cwd, { recursive: true, force: true }); } catch { /* best effort */ }
+        }
+        if (method === 'session.delete') {
+          try { rmSync(sessionLogDir(session), { recursive: true, force: true }); } catch { /* best effort */ }
         }
         return client.link.reply(id, method === 'session.delete' ? { deleted: true } : { archived: true });
       }

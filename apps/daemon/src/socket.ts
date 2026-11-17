@@ -16,6 +16,11 @@ export function ormicodeDir(): string {
   return dir;
 }
 
+/** Raw agent logs per the README: ~/.ormicode/logs/sessions/<id>/. */
+export function sessionLogDir(session: string): string {
+  return join(ormicodeDir(), 'logs', 'sessions', session);
+}
+
 /** NDJSON framing over a net socket: one JSON frame per line, 256 KiB cap from the wire spec. */
 export class Link {
   private buffer = '';

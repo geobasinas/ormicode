@@ -2,6 +2,24 @@ import { listSessions, setState, setWorkerPid, type Store, type SessionRow } fro
 import { append, checkTail } from '@ormicode/journal';
 import { killTreePid } from './proctree.ts';
 import { resumable } from './registry.ts';
+import { readdirSync, statSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { ormicodeDir } from './socket.ts';
+
+/** Raw session logs are kept 7 days; called once at boot. */
+export function sweepLogs(root = join(ormicodeDir(), 'logs', 'sessions'), maxAgeMs = 7 * 24 * 3600 * 1000): number {
+  let removed = 0;
+  const cutoff = Date.now() - maxAgeMs;
+  let entries: string[] = [];
+  try { entries = readdirSync(root); } catch { return 0; }
+  for (const entry of entries) {
+    const dir = join(root, entry);
+    try {
+      if (statSync(dir).mtimeMs < cutoff) { rmSync(dir, { recursive: true, force: true }); removed++; }
+    } catch { /* best effort */ }
+  }
+  return removed;
+}
 
 export type ResumePolicy = 'wait' | 'safe' | 'all';
 export const resumePolicy = (): ResumePolicy => {

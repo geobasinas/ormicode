@@ -13,8 +13,8 @@ export const NO_CAPABILITIES: Readonly<Capabilities> = Object.freeze({
 export interface DetectResult { available: boolean; version?: string; reason?: string }
 export interface Model { id: string; name?: string; efforts?: readonly string[] }
 export type ModelList = readonly Model[];
-export interface StartSpec { cwd: string; model?: string; effort?: string; mode?: string }
-export interface NativeRef { id: string; cwd: string }
+export interface StartSpec { cwd: string; model?: string; effort?: string; mode?: string; logDir?: string }
+export interface NativeRef { id: string; cwd: string; model?: string; effort?: string; mode?: string; logDir?: string }
 export interface Handle { readonly id: string }
 export interface PromptInput { text: string; images?: { data: string; mimeType: string }[] }
 export interface HandoffState { summary: string }
