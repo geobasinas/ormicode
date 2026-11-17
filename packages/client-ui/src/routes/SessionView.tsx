@@ -1,6 +1,7 @@
 /** Session route: header, transcript, approvals surface, composer, and
  * the right icon rail — only panels that exist get an icon (Notes first). */
 import { useState } from 'react';
+import { NotebookPen, type LucideIcon } from 'lucide-react';
 import { useTranscript } from '../features/session/useTranscript.ts';
 import { useSession } from '../features/session/useSession.ts';
 import { SessionHeader } from '../features/session/SessionHeader.tsx';
@@ -13,13 +14,14 @@ export function SessionView({ session }: { session: string }) {
   const { events, approvals } = useTranscript(session);
   const details = useSession(session);
   const [rail, setRail] = useState<'none' | 'notes'>('none');
-  const icon = (label: string, glyph: string, active: boolean, onClick: () => void) => (
+  const icon = (label: string, Icon: LucideIcon, active: boolean, onClick: () => void) => (
     <button key={label} title={label} onClick={onClick} style={{
-      width: 34, height: 34, font: 'inherit', fontSize: 15, cursor: 'pointer',
+      width: 34, height: 34, font: 'inherit', cursor: 'pointer',
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
       color: active ? 'var(--text-active)' : 'var(--text-hint)',
       background: active ? 'var(--bg-raised)' : 'transparent',
       border: 'none', borderRadius: 'var(--radius-sm)',
-    }}>{glyph}</button>
+    }}><Icon size={16} /></button>
   );
   return (
     <div style={{ display: 'flex', height: '100%', background: 'var(--bg-main)' }}>
@@ -39,7 +41,7 @@ export function SessionView({ session }: { session: string }) {
         padding: 'var(--space-2) var(--space-1)', borderLeft: '1px solid var(--line-pane)',
         background: 'var(--bg-window)', alignItems: 'center',
       }}>
-        {icon('notes', '✎', rail === 'notes', () => setRail(rail === 'notes' ? 'none' : 'notes'))}
+        {icon('notes', NotebookPen, rail === 'notes', () => setRail(rail === 'notes' ? 'none' : 'notes'))}
       </div>
     </div>
   );

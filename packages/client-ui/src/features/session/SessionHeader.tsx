@@ -1,6 +1,7 @@
 /** Session header: title + machine, state pill, vendor/model/effort, and a
  * session menu containing only actions the protocol supports today. */
 import { useState } from 'react';
+import { Ellipsis } from 'lucide-react';
 import { usePlatform } from '../../lib/platform.ts';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -47,7 +48,7 @@ export function SessionHeader({ session, details }: { session: string; details: 
       </span>
       <span style={{ flex: 1 }} />
       <DropdownMenu>
-        <DropdownMenuTrigger asChild><Button aria-label="session menu">⋯</Button></DropdownMenuTrigger>
+        <DropdownMenuTrigger asChild><Button aria-label="session menu"><Ellipsis size={16} /></Button></DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           {canPause ? <DropdownMenuItem onClick={() => act('session.pause')}>Pause session</DropdownMenuItem> : null}
           {canResume ? <DropdownMenuItem onClick={() => act('session.resume')}>Resume session</DropdownMenuItem> : null}

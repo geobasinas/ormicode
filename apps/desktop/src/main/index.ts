@@ -79,6 +79,7 @@ function createWindow(): void {
     width: 1280, height: 800, minWidth: 720, minHeight: 480,
     backgroundColor: '#101010',
     title: 'ormicode',
+    frame: false,
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.cjs'),
@@ -134,6 +135,9 @@ app.whenReady().then(async () => {
       : (encryption ? 'os_keyring' : 'basic_text');
   });
   ipcMain.on('ormi:hubLabel', e => { e.returnValue = loadRemoteFile()?.relayUrl ?? socketPath(); });
+  ipcMain.on('ormi:win:min', () => win?.minimize());
+  ipcMain.on('ormi:win:max', () => { if (win?.isMaximized()) win.unmaximize(); else win?.maximize(); });
+  ipcMain.on('ormi:win:close', () => win?.close());
 
   createWindow();
   void connectDaemon();

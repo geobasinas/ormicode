@@ -1,6 +1,7 @@
 /** Notes rail: named notes per session — tab strip, debounced save,
  * one-tap-confirm delete, meta line with edit age and word count. */
 import { useState } from 'react';
+import { Plus } from 'lucide-react';
 import { ago } from '../../lib/format.ts';
 import { useNotes } from './useNotes.ts';
 
@@ -39,7 +40,7 @@ export function NotesPanel({ session }: { session: string }) {
         <span>{notes.length} note{notes.length === 1 ? '' : 's'}</span>
         <span style={{ flex: 1 }} />
         <button title="new note" onClick={() => { setDraft({ title: 'Untitled', body: '', isNew: true }); setOpenId(undefined); setConfirm(false); }}
-          style={{ font: 'inherit', fontSize: 14, background: 'none', border: 'none', color: 'var(--text-label)', cursor: 'pointer' }}>+</button>
+          style={{ font: 'inherit', background: 'none', border: 'none', color: 'var(--text-label)', cursor: 'pointer', display: 'inline-flex', padding: 2 }}><Plus size={15} /></button>
       </div>
       <div style={{ display: 'flex', overflowX: 'auto', borderBottom: '1px solid var(--line-card)', flexShrink: 0 }}>
         {notes.map(n => tab(n.title, (editing?.id ?? draft?.id) === n.id && !draft?.isNew, () => { setOpenId(n.id); setDraft(undefined); setConfirm(false); }))}

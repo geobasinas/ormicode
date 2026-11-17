@@ -30,6 +30,10 @@ export interface DesktopExtras {
   remote(): { relayUrl: string; account: string; device: string; name: string } | null;
   pair(args: { relay: string; account: string; code: string; name?: string }): Promise<{ device: string }>;
   unpair(): Promise<void>;
+  /** Frameless-window controls (desktop draws its own titlebar). */
+  winMin(): void;
+  winMax(): void;
+  winClose(): void;
 }
 
 export interface ClientPlatform {

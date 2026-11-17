@@ -1,21 +1,22 @@
 /** Sidebar session list, grouped by project — state icon + title + age,
  * carry-over and waiting sessions first (per the sessions-list spec). */
 import { useMemo } from 'react';
+import { Play, LoaderCircle, CircleAlert, Pause, CircleX, Moon, Check, Archive, Folder, type LucideIcon } from 'lucide-react';
 import { useSessions, type SessionSummary } from './useSessions.ts';
 import { ago } from '../../lib/format.ts';
 
-const stateIcon: Record<string, { glyph: string; color: string }> = {
-  running: { glyph: '▶', color: 'var(--accent-mint)' },
-  starting: { glyph: '▶', color: 'var(--accent-mint)' },
-  retrying: { glyph: '↻', color: 'var(--accent-amber)' },
-  awaiting_approval: { glyph: '●', color: 'var(--accent-amber)' },
-  awaiting_input: { glyph: '●', color: 'var(--accent-amber)' },
-  paused_rate_limited: { glyph: '⏸', color: 'var(--accent-amber)' },
-  interrupted: { glyph: '⏸', color: 'var(--accent-amber)' },
-  failed: { glyph: '✗', color: 'var(--accent-red)' },
-  idle: { glyph: '○', color: 'var(--text-hint)' },
-  done: { glyph: '✓', color: 'var(--text-secondary)' },
-  archived: { glyph: '■', color: 'var(--text-hint)' },
+const stateIcon: Record<string, { icon: LucideIcon; color: string }> = {
+  running: { icon: Play, color: 'var(--accent-mint)' },
+  starting: { icon: LoaderCircle, color: 'var(--accent-mint)' },
+  retrying: { icon: LoaderCircle, color: 'var(--accent-amber)' },
+  awaiting_approval: { icon: CircleAlert, color: 'var(--accent-amber)' },
+  awaiting_input: { icon: CircleAlert, color: 'var(--accent-amber)' },
+  paused_rate_limited: { icon: Pause, color: 'var(--accent-amber)' },
+  interrupted: { icon: Pause, color: 'var(--accent-amber)' },
+  failed: { icon: CircleX, color: 'var(--accent-red)' },
+  idle: { icon: Moon, color: 'var(--text-hint)' },
+  done: { icon: Check, color: 'var(--text-secondary)' },
+  archived: { icon: Archive, color: 'var(--text-hint)' },
 };
 const needsYou = new Set(['awaiting_approval', 'awaiting_input', 'interrupted', 'failed', 'paused_rate_limited']);
 const rank = (s: SessionSummary) => (needsYou.has(s.state) ? 0 : s.state === 'running' || s.state === 'starting' ? 1 : 2);
@@ -37,45 +38,47 @@ export function SessionList({ active, onSelect, query }: { active?: string; onSe
   }, [sessions, query]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto' }}>
-      {error ? <div style={{ padding: '0 var(--space-3)', color: 'var(--accent-red)', fontSize: 'var(--text-sm)' }}>{error}</div> : null}
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto', gap: 2 }}>
+      {error ? <div style={{ padding: '0 10px', color: 'var(--accent-red)', fontSize: 13 }}>{error}</div> : null}
       {groups.map(([project, list]) => (
-        <div key={project} style={{ marginBottom: 'var(--space-2)' }}>
+        <div key={project}>
           <div style={{
-            padding: 'var(--space-2) var(--space-3) var(--space-1)', fontSize: 'var(--text-xs)',
-            color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 6,
+            display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px 4px',
+            fontSize: 13, fontWeight: 600, color: 'var(--text-label)',
           }}>
-            <span style={{ color: 'var(--text-hint)' }}>▾</span>{project}
+            <Folder size={12} style={{ color: 'var(--text-hint)', flexShrink: 0 }} />
+            {project}
             <span style={{ flex: 1 }} />
-            <span style={{ color: 'var(--text-hint)' }}>{list.length}</span>
+            <span style={{ fontWeight: 400, color: 'var(--text-hint)', fontSize: 11 }}>{list.length}</span>
           </div>
           {list.map(s => {
             const ic = stateIcon[s.state] ?? stateIcon.idle!;
             return (
               <button key={s.id} onClick={() => onSelect(s.id)} style={{
-                textAlign: 'left', padding: '4px var(--space-3) 4px var(--space-4)',
+                textAlign: 'left', width: '100%', padding: '6px 10px',
                 border: 'none', cursor: 'pointer', font: 'inherit',
                 background: s.id === active ? 'var(--bg-card)' : 'transparent', color: 'var(--text-label)',
-                borderRadius: 'var(--radius-sm)', margin: '0 var(--space-2)', width: 'calc(100% - var(--space-4))',
-                display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+                borderRadius: 7, display: 'flex', alignItems: 'center', gap: 8,
               }}>
-                <span style={{ color: ic.color, fontSize: 'var(--text-xs)', width: 12 }}>{ic.glyph}</span>
+                <ic.icon size={13} style={{ color: ic.color, flexShrink: 0 }} />
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{
-                    display: 'block', fontSize: 'var(--text-sm)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    color: s.id === active ? 'var(--text-active)' : undefined,
-                  }}>{s.title || s.id.slice(0, 12)}</span>
-                  <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-hint)' }}>
+                    display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 500,
+                    color: s.id === active ? 'var(--text-active)' : '#bbbbbb',
+                  }}>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title || s.id.slice(0, 12)}</span>
+                    <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--text-hint)', flexShrink: 0, marginLeft: 8 }}>{ago(s.updatedAt ?? 0)}</span>
+                  </span>
+                  <span style={{ display: 'block', fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {s.state}{s.vendor ? ` · ${s.vendor}` : ''}
                   </span>
                 </span>
-                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-hint)', flexShrink: 0 }}>{ago(s.updatedAt ?? 0)}</span>
               </button>
             );
           })}
         </div>
       ))}
-      {!groups.length && !error ? <div style={{ padding: '0 var(--space-3)', color: 'var(--text-hint)', fontSize: 'var(--text-sm)' }}>no sessions</div> : null}
+      {!groups.length && !error ? <div style={{ padding: '0 10px', color: 'var(--text-hint)', fontSize: 13 }}>no sessions</div> : null}
     </div>
   );
 }

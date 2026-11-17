@@ -24,7 +24,8 @@ export function Now({ onOpen, state }: { onOpen: (session: string) => void; stat
     </button>
   );
   return (
-    <div style={{ padding: 'var(--space-5)', overflow: 'auto', height: '100%' }}>
+    <div style={{ overflow: 'auto', height: '100%', display: 'flex', justifyContent: 'center' }}>
+    <div style={{ width: '100%', maxWidth: 680, padding: 'var(--space-6) var(--space-5)' }}>
       <h1 style={{ fontSize: 'var(--text-2xl)', color: 'var(--text-title)', margin: '0 0 var(--space-4)', fontWeight: 500 }}>{greeting()}</h1>
       {state === 'unpaired' ? <PairCard /> : null}
       <NewSession onStarted={onOpen} />
@@ -55,6 +56,7 @@ export function Now({ onOpen, state }: { onOpen: (session: string) => void; stat
         ))}
         {!recent.length ? <div style={{ color: 'var(--text-hint)', fontSize: 'var(--text-sm)' }}>no sessions yet</div> : null}
       </div>
+    </div>
     </div>
   );
 }

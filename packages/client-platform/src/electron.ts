@@ -20,6 +20,9 @@ interface OrmiBridge {
   remote(): { relayUrl: string; account: string; device: string; name: string } | null;
   storageBackend(): string;
   hubLabel(): string;
+  winMin(): void;
+  winMax(): void;
+  winClose(): void;
 }
 
 declare global {
@@ -54,6 +57,9 @@ export function electronPlatform(): ClientPlatform {
       remote: () => b.remote(),
       pair: args => b.pair(args),
       unpair: () => b.unpair(),
+      winMin: () => b.winMin(),
+      winMax: () => b.winMax(),
+      winClose: () => b.winClose(),
     },
   };
 }

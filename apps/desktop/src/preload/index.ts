@@ -24,6 +24,9 @@ const bridge = {
   remote: (): RemoteInfo | null => ipcRenderer.sendSync('ormi:remote:get'),
   storageBackend: (): string => ipcRenderer.sendSync('ormi:storageBackend'),
   hubLabel: (): string => ipcRenderer.sendSync('ormi:hubLabel'),
+  winMin: () => ipcRenderer.send('ormi:win:min'),
+  winMax: () => ipcRenderer.send('ormi:win:max'),
+  winClose: () => ipcRenderer.send('ormi:win:close'),
 };
 
 contextBridge.exposeInMainWorld('ormi', bridge);
