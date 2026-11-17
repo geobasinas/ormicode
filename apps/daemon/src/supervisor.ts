@@ -245,6 +245,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
 
   const server = await serve(socketPath, link => {
     link.onFrame = frame => {
+      if (closing) return;
       if (frame.type === 'req' && typeof frame.method === 'string' && frame.method.startsWith('worker.')) {
         const session = String((frame.body as Record<string, unknown>).session ?? '');
         if (frame.method === 'worker.ready') { workerLinks.set(session, link); sessionByLink.set(link, session); }

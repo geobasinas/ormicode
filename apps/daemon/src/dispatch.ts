@@ -1,6 +1,6 @@
 import type { Frame } from '@ormicode/protocol';
 import { parseRequestBody, newId } from '@ormicode/protocol';
-import { getSession, listSessions, setState, listNotes, setNote, deleteNote, archiveSession, createSession, type Store } from '@ormicode/session-store';
+import { getSession, listSessions, sessionsInStates, setState, listNotes, setNote, deleteNote, archiveSession, createSession, type Store } from '@ormicode/session-store';
 import { replay, setCursor } from '@ormicode/journal';
 import { join } from 'node:path';
 import { mkdirSync, rmSync } from 'node:fs';
@@ -8,6 +8,9 @@ import type { Link } from './socket.ts';
 import { ormicodeDir } from './socket.ts';
 import { acquireWorkspace, releaseForSession } from './leases.ts';
 import { hasTransport } from './registry.ts';
+import { resolveWorkspace, type WorkspaceChoice } from './git.ts';
+
+const LIVE_STATES = ['idle', 'starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying', 'paused_rate_limited', 'interrupted'] as const;
 
 export interface Client { link: Link; subscriptions: Set<string>; device: string }
 export interface DispatchCtx {
@@ -46,16 +49,28 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         const vendor = String(body.vendor); const transport = String(body.transport);
         if (!hasTransport(vendor, transport)) return client.link.replyError(id, 'agent.unsupported', `${vendor}/${transport}`);
         const sessionId = newId('s');
-        const workspace = body.workspace as { kind?: string } | undefined;
-        const cwd = workspace?.kind === 'scratch'
-          ? join(ormicodeDir(), 'scratch', sessionId)
-          : process.cwd();
-        if (workspace?.kind === 'scratch') mkdirSync(cwd, { recursive: true });
+        const project = String(body.project);
+        const workspace = body.workspace as { kind: string; branch?: string };
+        let resolved: { cwd: string; worktree?: string; branch?: string; baseBranch?: string; baseCommit?: string };
+        if (workspace.kind === 'scratch') {
+          resolved = { cwd: join(ormicodeDir(), 'scratch', sessionId) };
+          mkdirSync(resolved.cwd, { recursive: true });
+        } else {
+          // Busy = another live session holds this project+branch already.
+          const busy = (branch: string) => sessionsInStates(db, LIVE_STATES)
+            .some(s => s.id !== sessionId && s.project === project && s.branch === branch);
+          const r = resolveWorkspace(project, workspace as WorkspaceChoice, body.workspaceName as string | undefined, sessionId, busy);
+          if ('err' in r) return client.link.replyError(id, r.err, r.detail ?? r.err);
+          resolved = r;
+        }
+        const cwd = resolved.cwd;
         const lease = acquireWorkspace(db, cwd, sessionId, String(body.machine ?? 'm_local'));
         if (lease.conflict) return client.link.replyError(id, 'lease.conflict', `workspace held by ${lease.conflict}`);
         createSession(db, {
-          id: sessionId, machine: String(body.machine ?? 'm_local'), project: String(body.project),
+          id: sessionId, machine: String(body.machine ?? 'm_local'), project,
           vendor, transport, cwd,
+          worktree: resolved.worktree, branch: resolved.branch,
+          baseBranch: resolved.baseBranch, baseCommit: resolved.baseCommit,
           ...(body.model ? { model: String(body.model) } : {}),
           ...(body.effort ? { effort: String(body.effort) } : {}),
           ...(body.mode ? { mode: String(body.mode) } : {}),

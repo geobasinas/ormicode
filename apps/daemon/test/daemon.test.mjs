@@ -185,3 +185,37 @@ test('scratch sessions get a scratchpad cwd that session.delete removes', async 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('reconnect with a cursor replays only newer events, no gaps or dupes', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ormi-daemon-test-'));
+  const daemon = await startDaemon({ socketPath: '127.0.0.1:0', storePath: join(dir, 'store.db') });
+  const client = await connect(daemon.socketPath);
+  const res = await client.request('session.start', { machine: newId('m'), project: 'p_t', vendor: 'fake', transport: 'cli', model: 'x', effort: 'x', mode: 'x', workspace: { kind: 'current' } });
+  const session = res.body.session;
+  await client.request('session.subscribe', { session });
+  await client.request('session.prompt', { session, text: 'hi' });
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline && getSession(daemon.db, session)?.state !== 'idle')
+    await new Promise(r => setTimeout(r, 25));
+  const rows = replay(daemon.db, session);
+  const cut = rows[rows.length - 2].seq; // seen all but the last durable event
+  client.close();
+
+  // Reconnect and resync from the cursor: only seq > cut arrives, in order.
+  const client2 = await connect(daemon.socketPath);
+  await client2.request('session.subscribe', { session, after: cut });
+  const deadline2 = Date.now() + 5_000;
+  const seen = [];
+  while (Date.now() < deadline2 && seen.length < rows.length - cut) {
+    const frame = await client2.next();
+    if (frame?.type === 'evt' && frame.session === session) seen.push(frame.seq);
+  }
+  assert.deepEqual(seen, rows.map(r => r.seq).filter(s => s > cut), 'gapless tail from the cursor');
+  // A cursor at the tail replays nothing.
+  const client3 = await connect(daemon.socketPath);
+  const sub = await client3.request('session.subscribe', { session, after: rows.at(-1).seq });
+  assert.equal(sub.type, 'res');
+  assert.equal(await Promise.race([client3.next(), new Promise(r => setTimeout(() => r('quiet'), 400))]), 'quiet');
+  await daemon.close(); client2.close(); client3.close();
+  rmSync(dir, { recursive: true, force: true });
+});
