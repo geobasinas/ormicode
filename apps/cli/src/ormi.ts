@@ -26,7 +26,13 @@ function usage(code: number): never {
   ormi session list [--archived]
   ormi session get <id>
   ormi session prompt <id> <text>
-  ormi session abort <id>
+  ormi session steer <id> <text>                  steer mid-turn
+  ormi session abort|pause|resume|retry|delete|archive <id>
+  ormi session decide <id> <requestId> <optionId>
+  ormi session answer <id> <requestId> '<json>'
+  ormi session set <id> model|effort|mode|option <value>
+  ormi session note <id> <title> [body]
+  ormi session notes <id>
   ormi session tail <id>                          stream live + replayed events`);
   process.exit(code);
 }
@@ -154,9 +160,45 @@ async function sessionCommand(verb: string, args: string[]): Promise<number> {
         if (res.type === 'err') { console.error(`${res.code}: ${res.message}`); return 1; }
         return 0;
       }
-      case 'abort': {
-        const res = await link.request('session.abort', { session: args[0] });
+      case 'abort': case 'pause': case 'resume': case 'retry': case 'delete': case 'archive': {
+        const res = await link.request(`session.${verb}`, { session: args[0] });
         if (res.type === 'err') { console.error(`${res.code}: ${res.message}`); return 1; }
+        return 0;
+      }
+      case 'steer': {
+        const [session, ...words] = args;
+        const res = await link.request('session.steer', { session, text: words.join(' ') });
+        if (res.type === 'err') { console.error(`${res.code}: ${res.message}`); return 1; }
+        return 0;
+      }
+      case 'decide': {
+        const res = await link.request('session.decide', { session: args[0], request: args[1], option: args[2] });
+        if (res.type === 'err') { console.error(`${res.code}: ${res.message}`); return 1; }
+        return 0;
+      }
+      case 'answer': {
+        const res = await link.request('session.answer', { session: args[0], request: args[1], answers: JSON.parse(args[2] ?? '{}') });
+        if (res.type === 'err') { console.error(`${res.code}: ${res.message}`); return 1; }
+        return 0;
+      }
+      case 'set': {
+        const [session, field, ...rest] = args;
+        const method = { model: 'session.setModel', effort: 'session.setEffort', mode: 'session.setMode', option: 'session.setOption' }[field];
+        if (!method) { console.error('usage: ormi session set <id> model|effort|mode|option <value>'); return 2; }
+        const res = await link.request(method, field === 'option' ? { session, id: rest[0], value: rest[1] } : { session, [field]: rest.join(' ') });
+        if (res.type === 'err') { console.error(`${res.code}: ${res.message}`); return 1; }
+        return 0;
+      }
+      case 'note': {
+        const [session, ...words] = args;
+        const res = await link.request('session.setNotes', { session, title: words[0] ?? 'note', body: words.slice(1).join(' ') });
+        if (res.type === 'err') { console.error(`${res.code}: ${res.message}`); return 1; }
+        return 0;
+      }
+      case 'notes': {
+        const res = await link.request('session.getNotes', { session: args[0] });
+        if (res.type === 'err') { console.error(`${res.code}: ${res.message}`); return 1; }
+        console.log(JSON.stringify(res.body, null, 2));
         return 0;
       }
       case 'tail': {

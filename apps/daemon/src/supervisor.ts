@@ -6,6 +6,7 @@ import type { Frame } from '@ormicode/protocol';
 import { parseRequestBody, newId } from '@ormicode/protocol';
 import { openStore, createSession, getSession, listSessions, setState, setWorkerPid, setNativeId, listNotes, setNote, deleteNote, archiveSession, type Store, type SessionState } from '@ormicode/session-store';
 import { acquireWorkspace, releaseForSession } from './leases.ts';
+import { killTree, killTreePid } from './proctree.ts';
 import { append, replay, checkTail } from '@ormicode/journal';
 import { serve, defaultSocketPath, ormicodeDir, type Link } from './socket.ts';
 import { hasTransport } from './registry.ts';
@@ -52,7 +53,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
       append(db, s.id, { kind: 'interrupted', payload: { reason: 'host_restart' } });
       setState(db, s.id, 'interrupted', 'host_restart');
     }
-    if (s.worker_pid) { try { process.kill(s.worker_pid, 0); process.kill(s.worker_pid); } catch { /* gone */ } setWorkerPid(db, s.id, null); }
+    if (s.worker_pid) { try { process.kill(s.worker_pid, 0); killTreePid(s.worker_pid); } catch { /* gone */ } setWorkerPid(db, s.id, null); }
   }
 
   const fanout = (session: string, frame: string) => {
@@ -85,7 +86,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
         ...(row.agent_command ? { ORMICODE_AGENT_COMMAND: row.agent_command } : {}),
         ...(row.agent_args ? { ORMICODE_AGENT_ARGS_JSON: row.agent_args } : {}),
       },
-      stdio: 'ignore', windowsHide: true,
+      stdio: 'ignore', windowsHide: true, detached: process.platform !== 'win32',
     });
     const worker: Worker = { proc, session, pid: proc.pid, ready: false };
     workers.set(session, worker);
@@ -158,11 +159,10 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     if (closing) return;
     const w = workers.get(session);
     const link = workerLinks.get(session);
-    if (link) { try { await link.request('worker.evict', { session }, 10_000); } catch { w?.proc.kill(); } }
-    else w?.proc.kill();
+    if (link) { try { await link.request('worker.evict', { session }, 10_000); } catch { if (w) killTree(w.proc); } }
+    else if (w) killTree(w.proc);
     workers.delete(session);
-    const idleMs = 0;
-    record(session, 'evicted', { reason, idleMs });
+    record(session, 'evicted', { reason, idleMs: 0 });
     setState(db, session, 'idle', reason);
   };
 
@@ -388,7 +388,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
       for (const w of workers.values()) {
         const link = workerLinks.get(w.session);
         try { await link?.request('worker.evict', { session: w.session }, 5_000); } catch { /* kill below */ }
-        try { w.proc.kill(); } catch { /* already dead */ }
+        try { killTree(w.proc); } catch { /* already dead */ }
       }
       for (const c of clients) c.link.close();
       for (const link of workerLinks.values()) link.close();

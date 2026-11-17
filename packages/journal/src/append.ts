@@ -26,15 +26,27 @@ const bumpSeq = (db: Store) => db.prepare(
  * the wire, so a crash cannot produce an event a client saw but the store lost.
  * Returns the assigned seq; the caller sends the frame after commit.
  */
-export function append(db: Store, session: string, event: JournalEvent): { seq: number; ts: number; frame: string } {
+/** Test-only fault injection: a hook that throws simulates a crash at that write phase. */
+export interface AppendHooks {
+  afterSeqAssign?(): void;
+  afterEventInsert?(): void;
+  afterOutboxInsert?(): void;
+  afterSeqBump?(): void;
+}
+
+export function append(db: Store, session: string, event: JournalEvent, hooks?: AppendHooks): { seq: number; ts: number; frame: string } {
   const ts = event.ts ?? Date.now();
   const row = db.transaction(() => {
     const seq = ((db.prepare('SELECT last_seq FROM sessions WHERE id = ?').get(session) as { last_seq: number } | undefined)?.last_seq ?? 0) + 1;
+    hooks?.afterSeqAssign?.();
     const payload = JSON.stringify(event.payload);
     insertEvent(db).run(session, seq, ts, event.kind, event.origin ?? null, payload, crc32c(payload));
+    hooks?.afterEventInsert?.();
     const frame = JSON.stringify({ v: 1, type: 'evt', session, seq, ts, body: { kind: event.kind, ...event.payload } });
     insertOutbox(db).run(session, seq, frame, ts);
+    hooks?.afterOutboxInsert?.();
     bumpSeq(db).run(seq, ts, session);
+    hooks?.afterSeqBump?.();
     return { seq, frame };
   })();
   return { seq: row.seq, ts, frame: row.frame };
