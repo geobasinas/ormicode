@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from 'node:child_process';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { EventQueue, NO_CAPABILITIES } from '@ormicode/agent-core';
+import { EventQueue, NO_CAPABILITIES, RawLog, attachRawLog } from '@ormicode/agent-core';
 import type { AgentAdapter, Handle, NativeRef, PromptInput, StartSpec } from '@ormicode/agent-core';
 import { monotonicFactory } from 'ulid';
 import { mapCliMessage } from './map.ts';
@@ -10,7 +10,7 @@ import { PermissionBroker } from './permissions.ts';
 import { startPermissionBridge } from './bridge.ts';
 
 type Spawn = (command: string, args: string[], options: SpawnOptionsWithoutStdio) => ChildProcessWithoutNullStreams;
-interface Session { spec: StartSpec; queue: EventQueue; nativeId?: string; process?: ChildProcessWithoutNullStreams; running?: Promise<void>; broker?: PermissionBroker; active: boolean; disposed: boolean; needsResumeId: boolean }
+interface Session { spec: StartSpec; queue: EventQueue; log?: RawLog; nativeId?: string; process?: ChildProcessWithoutNullStreams; running?: Promise<void>; broker?: PermissionBroker; active: boolean; disposed: boolean; needsResumeId: boolean }
 const newId = monotonicFactory();
 const modes = new Set(['default', 'acceptEdits', 'plan', 'dontAsk']);
 const efforts = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
@@ -47,13 +47,13 @@ export class ClaudeCliAdapter implements AgentAdapter {
   }
   async models() { return []; }
   async start(spec: StartSpec): Promise<Handle> { return this.create(spec); }
-  async resume(ref: NativeRef): Promise<Handle> { if (!ref.id) throw new Error('native session ID is required'); return this.create({ cwd: ref.cwd }, ref.id); }
+  async resume(ref: NativeRef): Promise<Handle> { if (!ref.id) throw new Error('native session ID is required'); return this.create({ ...ref }, ref.id); }
   private create(spec: StartSpec, nativeId?: string): Handle {
     if (!spec.cwd) throw new Error('cwd is required');
     if (spec.mode && !modes.has(spec.mode)) throw new Error('Unsupported or unsafe Claude permission mode');
     if (spec.effort && !efforts.has(spec.effort)) throw new Error('Unsupported Claude effort');
     const handle = Object.freeze({ id: `claude-cli-${newId()}` });
-    this.sessions.set(handle, { spec: { ...spec }, nativeId, queue: new EventQueue(), active: false, disposed: false, needsResumeId: false });
+    this.sessions.set(handle, { spec: { ...spec }, nativeId, log: spec.logDir ? new RawLog(spec.logDir) : undefined, queue: new EventQueue(), active: false, disposed: false, needsResumeId: false });
     return handle;
   }
   async prompt(handle: Handle, input: PromptInput): Promise<void> {
@@ -90,7 +90,8 @@ export class ClaudeCliAdapter implements AgentAdapter {
         child!.once('close', (code, signal) => resolve({ code, signal }));
       });
       // stderr may contain credentials or prompt content; drain it without forwarding it.
-      child.stderr.resume();
+      attachRawLog(child, session.log, this.options.executable ?? 'claude', session.spec.cwd);
+      if (!session.log) child.stderr.resume();
       let inputError: Error | undefined;
       child.stdin.on('error', (error) => { inputError = error; });
       child.stdin.end(prompt);
@@ -111,6 +112,7 @@ export class ClaudeCliAdapter implements AgentAdapter {
         if (mapped.events.length) session.queue.push(mapped.events);
       };
       for await (const chunk of child.stdout) {
+        session.log?.out(chunk);
         if (session.disposed) break;
         buffer = Buffer.concat([buffer, Buffer.from(chunk)]);
         let newline: number;

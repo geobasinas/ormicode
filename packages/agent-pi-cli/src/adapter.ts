@@ -2,12 +2,12 @@ import { spawn, execFile } from 'node:child_process';
 import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
-import { EventQueue, NO_CAPABILITIES } from '@ormicode/agent-core';
+import { EventQueue, NO_CAPABILITIES, RawLog, attachRawLog } from '@ormicode/agent-core';
 import type { AgentAdapter, Handle, NativeRef, PromptInput, StartSpec } from '@ormicode/agent-core';
 import { PiCliMapper } from './map.ts';
 
 type Spawn = (command: string, args: string[], options: SpawnOptionsWithoutStdio) => ChildProcessWithoutNullStreams;
-type Session = { spec: StartSpec; nativeId?: string; generatedId: boolean; queue: EventQueue; active: boolean; disposed: boolean; needsRecovery: boolean; process?: ChildProcessWithoutNullStreams; running?: Promise<void>; interrupted: boolean };
+type Session = { spec: StartSpec; log?: RawLog; nativeId?: string; generatedId: boolean; queue: EventQueue; active: boolean; disposed: boolean; needsRecovery: boolean; process?: ChildProcessWithoutNullStreams; running?: Promise<void>; interrupted: boolean };
 const execFileAsync = promisify(execFile);
 const limit = 1024 * 1024;
 
@@ -30,14 +30,14 @@ export class PiCliAdapter implements AgentAdapter {
   async start(spec: StartSpec): Promise<Handle> { return this.create(spec); }
   async resume(ref: NativeRef): Promise<Handle> {
     if (!ref.id) throw new Error('native session ID is required');
-    return this.create({ cwd: ref.cwd }, ref.id);
+    return this.create({ ...ref }, ref.id);
   }
   private create(spec: StartSpec, nativeId?: string): Handle {
     if (!spec.cwd) throw new Error('cwd is required');
     if (spec.mode) throw new Error('pi CLI modes are not supported');
     if (spec.effort && !['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(spec.effort)) throw new Error('Unsupported pi thinking level');
     const handle = Object.freeze({ id: `pi-cli-${randomUUID()}` });
-    this.sessions.set(handle, { spec: { ...spec }, nativeId: nativeId ?? randomUUID(), generatedId: !nativeId, queue: new EventQueue(), active: false, disposed: false, needsRecovery: false, interrupted: false });
+    this.sessions.set(handle, { spec: { ...spec }, log: spec.logDir ? new RawLog(spec.logDir) : undefined, nativeId: nativeId ?? randomUUID(), generatedId: !nativeId, queue: new EventQueue(), active: false, disposed: false, needsRecovery: false, interrupted: false });
     return handle;
   }
   async prompt(handle: Handle, input: PromptInput): Promise<void> {
@@ -61,7 +61,9 @@ export class PiCliAdapter implements AgentAdapter {
       if (session.spec.effort) args.push('--thinking', session.spec.effort);
       args.push('--', text);
       child = (this.options.spawn ?? spawn)(this.options.executable ?? 'pi', args, { cwd: session.spec.cwd, windowsHide: true, shell: false });
-      session.process = child; child.stdin.end(); child.stderr.resume();
+      session.process = child; child.stdin.end();
+      attachRawLog(child, session.log, this.options.executable ?? 'pi', session.spec.cwd);
+      if (!session.log) child.stderr.resume();
       let spawnError: Error | undefined;
       const exit = new Promise<number | null>(resolve => { child!.once('error', error => { spawnError = error; }); child!.once('close', code => resolve(code)); });
       let buffer = Buffer.alloc(0);
@@ -76,6 +78,7 @@ export class PiCliAdapter implements AgentAdapter {
         if (mapped.events.length) session.queue.push(mapped.events);
       };
       for await (const chunk of child.stdout) {
+        session.log?.out(chunk);
         if (session.disposed) break;
         buffer = Buffer.concat([buffer, Buffer.from(chunk)]);
         let newline: number;

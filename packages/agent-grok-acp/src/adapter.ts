@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
-import { EventQueue, NO_CAPABILITIES } from '@ormicode/agent-core';
+import { EventQueue, NO_CAPABILITIES, RawLog } from '@ormicode/agent-core';
 import type { AgentAdapter, Handle, NativeRef, PromptInput, StartSpec } from '@ormicode/agent-core';
 import { AcpConnection } from './connection.ts';
 import { GrokTurnMapper } from './map.ts';
@@ -30,16 +30,16 @@ export class GrokAcpAdapter implements AgentAdapter {
   async models() { return []; }
   async start(spec: StartSpec): Promise<Handle> {
     if (spec.model || spec.mode || spec.effort) throw new Error('Grok ACP configuration is not yet supported');
-    return this.create(spec.cwd);
+    return this.create(spec.cwd, undefined, spec.logDir);
   }
   async resume(ref: NativeRef): Promise<Handle> {
     if (!ref.id) throw new Error('native session ID is required');
-    return this.create(ref.cwd, ref.id);
+    return this.create(ref.cwd, ref.id, ref.logDir);
   }
-  private async create(cwd: string, existingId?: string): Promise<Handle> {
+  private async create(cwd: string, existingId?: string, logDir?: string): Promise<Handle> {
     if (!cwd) throw new Error('cwd is required');
     let session: Session | undefined;
-    const connection = await AcpConnection.start({ executable: this.options.executable ?? 'grok', args: ['--no-auto-update', 'agent', 'stdio'], cwd, spawn: this.options.spawn, onNotification: (method, params) => {
+    const connection = await AcpConnection.start({ executable: this.options.executable ?? 'grok', args: ['--no-auto-update', 'agent', 'stdio'], cwd, spawn: this.options.spawn, log: logDir ? new RawLog(logDir) : undefined, onNotification: (method, params) => {
       if (method === 'session/update' && session?.active && session.mapper) session.queue.push(session.mapper.update(params));
     }, onRequest: (_method, params) => session?.active ? session.broker.request(params, session.nativeId) : Promise.resolve({ outcome: { outcome: 'cancelled' } }) });
     try {

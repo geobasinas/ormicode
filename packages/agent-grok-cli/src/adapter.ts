@@ -5,12 +5,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
-import { EventQueue, NO_CAPABILITIES } from '@ormicode/agent-core';
+import { EventQueue, NO_CAPABILITIES, RawLog, attachRawLog } from '@ormicode/agent-core';
 import type { AgentAdapter, Handle, NativeRef, PromptInput, StartSpec } from '@ormicode/agent-core';
 import { GrokCliMapper } from './map.ts';
 
 type Spawn = (command: string, args: string[], options: SpawnOptionsWithoutStdio) => ChildProcessWithoutNullStreams;
-type Session = { spec: StartSpec; nativeId?: string; queue: EventQueue; active: boolean; disposed: boolean; needsRecovery: boolean; process?: ChildProcessWithoutNullStreams; running?: Promise<void>; interrupted: boolean };
+type Session = { spec: StartSpec; log?: RawLog; nativeId?: string; queue: EventQueue; active: boolean; disposed: boolean; needsRecovery: boolean; process?: ChildProcessWithoutNullStreams; running?: Promise<void>; interrupted: boolean };
 const execFileAsync = promisify(execFile);
 const limit = 1024 * 1024;
 
@@ -33,13 +33,13 @@ export class GrokCliAdapter implements AgentAdapter {
   async start(spec: StartSpec): Promise<Handle> { return this.create(spec); }
   async resume(ref: NativeRef): Promise<Handle> {
     if (!ref.id) throw new Error('native session ID is required');
-    return this.create({ cwd: ref.cwd }, ref.id);
+    return this.create({ ...ref }, ref.id);
   }
   private create(spec: StartSpec, nativeId?: string): Handle {
     if (!spec.cwd) throw new Error('cwd is required');
     if (spec.mode || spec.effort) throw new Error('Grok CLI modes and effort are not yet supported');
     const handle = Object.freeze({ id: `grok-cli-${randomUUID()}` });
-    this.sessions.set(handle, { spec: { ...spec }, nativeId, queue: new EventQueue(), active: false, disposed: false, needsRecovery: false, interrupted: false });
+    this.sessions.set(handle, { spec: { ...spec }, log: spec.logDir ? new RawLog(spec.logDir) : undefined, nativeId, queue: new EventQueue(), active: false, disposed: false, needsRecovery: false, interrupted: false });
     return handle;
   }
   async prompt(handle: Handle, input: PromptInput): Promise<void> {
@@ -63,7 +63,9 @@ export class GrokCliAdapter implements AgentAdapter {
       if (session.nativeId) args.push('--resume', session.nativeId);
       if (session.spec.model) args.push('--model', session.spec.model);
       child = (this.options.spawn ?? spawn)(this.options.executable ?? 'grok', args, { cwd: session.spec.cwd, windowsHide: true, shell: false });
-      session.process = child; child.stdin.end(); child.stderr.resume();
+      session.process = child; child.stdin.end();
+      attachRawLog(child, session.log, this.options.executable ?? 'grok', session.spec.cwd);
+      if (!session.log) child.stderr.resume();
       let spawnError: Error | undefined;
       const exit = new Promise<number | null>(resolve => { child!.once('error', error => { spawnError = error; }); child!.once('close', code => resolve(code)); });
       const mapper = new GrokCliMapper(); let buffer = Buffer.alloc(0);
@@ -78,6 +80,7 @@ export class GrokCliAdapter implements AgentAdapter {
         if (mapped.events.length) session.queue.push(mapped.events);
       };
       for await (const chunk of child.stdout) {
+        session.log?.out(chunk);
         if (session.disposed) break;
         buffer = Buffer.concat([buffer, Buffer.from(chunk)]);
         let newline: number;

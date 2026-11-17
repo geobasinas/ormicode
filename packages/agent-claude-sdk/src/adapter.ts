@@ -90,7 +90,7 @@ export class ClaudeSdkAdapter implements AgentAdapter {
   async detect() { return { available: true, reason: 'SDK package available; authentication not checked' }; }
   async models() { return []; }
   async start(spec: StartSpec): Promise<Handle> { return this.create(spec); }
-  async resume(ref: NativeRef): Promise<Handle> { return this.create({ cwd: ref.cwd }, ref.id); }
+  async resume(ref: NativeRef): Promise<Handle> { return this.create({ ...ref }, ref.id); }
   private create(spec: StartSpec, nativeId?: string): Handle {
     if (!spec.cwd) throw new Error('cwd is required');
     if (spec.mode && !modes.has(spec.mode)) throw new Error('Unsupported or unsafe Claude permission mode');

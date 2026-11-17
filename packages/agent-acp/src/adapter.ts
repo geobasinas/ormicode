@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { EventQueue, NO_CAPABILITIES } from '@ormicode/agent-core';
+import { EventQueue, NO_CAPABILITIES, RawLog } from '@ormicode/agent-core';
 import type { AgentAdapter, Handle, NativeRef, PromptInput, StartSpec } from '@ormicode/agent-core';
 import { AcpError, JsonRpcPeer } from './jsonrpc.ts';
 import type { Spawn } from './jsonrpc.ts';
@@ -14,7 +14,7 @@ type Session = SessionBootstrap & {
 };
 
 /** Negotiate v2 first; a v1 answer on the same connection selects v1. -32022 with a supported list respawns at the highest common version. */
-export async function connect(options: { executable: string; args: string[]; cwd?: string; spawn?: Spawn; onNotification?: (method: string, params: unknown) => void; onRequest?: (method: string, params: unknown) => Promise<unknown> }, profile: AcpProfile, fallback?: () => AcpProfile): Promise<AcpEndpoint> {
+export async function connect(options: { executable: string; args: string[]; cwd?: string; spawn?: Spawn; log?: RawLog; onNotification?: (method: string, params: unknown) => void; onRequest?: (method: string, params: unknown) => Promise<unknown> }, profile: AcpProfile, fallback?: () => AcpProfile): Promise<AcpEndpoint> {
   const peer = JsonRpcPeer.spawnPeer(options);
   try {
     const result = await peer.request('initialize', profile.initializeParams());
@@ -61,7 +61,7 @@ export class AcpAdapter implements AgentAdapter {
   }
   async resume(ref: NativeRef): Promise<Handle> {
     if (!ref.id || !ref.cwd) throw new Error('native session ID and cwd are required');
-    return this.create(ref.cwd, ref.id);
+    return this.create(ref.cwd, ref.id, ref);
   }
   private async create(cwd: string, existingId: string | undefined, spec?: StartSpec): Promise<Handle> {
     const { createV2Profile } = await import('./v2.ts');
@@ -70,6 +70,7 @@ export class AcpAdapter implements AgentAdapter {
     const primary = this.options.preferV1 ? createV1Profile() : createV2Profile();
     const endpoint = await connect({
       executable: this.options.command, args: this.options.args ?? [], cwd, spawn: this.options.spawn,
+      log: spec?.logDir ? new RawLog(spec.logDir) : undefined,
       onNotification: (method, params) => {
         if (method === 'session/update' && session?.active && session.mapper) session.queue.push(session.mapper.update(params));
       },

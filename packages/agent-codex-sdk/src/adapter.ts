@@ -1,11 +1,11 @@
 import { Codex } from '@openai/codex-sdk';
 import type { Thread, ThreadOptions } from '@openai/codex-sdk';
-import { EventQueue, NO_CAPABILITIES } from '@ormicode/agent-core';
+import { EventQueue, NO_CAPABILITIES, RawLog } from '@ormicode/agent-core';
 import type { AgentAdapter, Handle, NativeRef, PromptInput, StartSpec } from '@ormicode/agent-core';
 import { CodexEventMapper } from './map.ts';
 
 interface CodexClient { startThread(options?: ThreadOptions): Thread; resumeThread(id: string, options?: ThreadOptions): Thread }
-interface Session { thread: Thread; queue: EventQueue; nativeId?: string; active: boolean; disposed: boolean; interrupted: boolean; abort?: AbortController; running?: Promise<void> }
+interface Session { thread: Thread; queue: EventQueue; log?: RawLog; nativeId?: string; active: boolean; disposed: boolean; interrupted: boolean; abort?: AbortController; running?: Promise<void> }
 
 /** SDK runs through codex exec. No approval forwarding or mid-turn steering is exposed. */
 export class CodexSdkAdapter implements AgentAdapter {
@@ -25,7 +25,7 @@ export class CodexSdkAdapter implements AgentAdapter {
   async start(spec: StartSpec): Promise<Handle> { return this.create(spec); }
   async resume(ref: NativeRef): Promise<Handle> {
     if (!ref.id) throw new Error('native thread ID is required');
-    return this.create({ cwd: ref.cwd }, ref.id);
+    return this.create({ ...ref }, ref.id);
   }
   private create(spec: StartSpec, nativeId?: string): Handle {
     if (!spec.cwd) throw new Error('cwd is required');
@@ -35,8 +35,10 @@ export class CodexSdkAdapter implements AgentAdapter {
     // Ormicode owns the sandbox boundary anyway — codex's git-trust check must not gate start.
     const options: ThreadOptions = { workingDirectory: spec.cwd, approvalPolicy: 'never', sandboxMode: spec.mode as ThreadOptions['sandboxMode'] ?? 'read-only', skipGitRepoCheck: true, ...(spec.model ? { model: spec.model } : {}), ...(spec.effort ? { modelReasoningEffort: spec.effort as ThreadOptions['modelReasoningEffort'] } : {}) };
     const thread = nativeId ? this.client.resumeThread(nativeId, options) : this.client.startThread(options);
+    const log = spec.logDir ? new RawLog(spec.logDir) : undefined;
+    log?.meta({ command: 'codex-sdk', cwd: spec.cwd });
     const handle = Object.freeze({ id: `codex-sdk-${++this.serial}` });
-    this.sessions.set(handle, { thread, nativeId, queue: new EventQueue(), active: false, disposed: false, interrupted: false });
+    this.sessions.set(handle, { thread, log, nativeId, queue: new EventQueue(), active: false, disposed: false, interrupted: false });
     return handle;
   }
   async prompt(handle: Handle, input: PromptInput): Promise<void> {
@@ -54,6 +56,7 @@ export class CodexSdkAdapter implements AgentAdapter {
       const { events } = await session.thread.runStreamed(text, { signal: abort.signal });
       const mapper = new CodexEventMapper();
       for await (const event of events) {
+        session.log?.out(JSON.stringify(event) + '\n');
         if (session.disposed || abort.signal.aborted) break;
         const mapped = mapper.map(event);
         if (mapped.nativeId) {

@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from 'node:child_process';
+import type { RawLog } from '@ormicode/agent-core';
 import * as z from 'zod/mini';
 
 export type Spawn = (command: string, args: string[], options: SpawnOptionsWithoutStdio) => ChildProcessWithoutNullStreams;
@@ -24,20 +25,23 @@ export class JsonRpcPeer {
   private readonly child: ChildProcessWithoutNullStreams;
   private readonly onNotification?: (method: string, params: unknown) => void;
   private readonly onRequest?: (method: string, params: unknown) => Promise<unknown>;
+  private readonly log?: RawLog;
   private readonly pending = new Map<string | number, Pending>();
   private nextId = 0;
   private closed = false;
-  constructor(child: ChildProcessWithoutNullStreams, onNotification?: (method: string, params: unknown) => void, onRequest?: (method: string, params: unknown) => Promise<unknown>) {
-    this.child = child; this.onNotification = onNotification; this.onRequest = onRequest;
-    child.stderr.resume();
+  constructor(child: ChildProcessWithoutNullStreams, onNotification?: (method: string, params: unknown) => void, onRequest?: (method: string, params: unknown) => Promise<unknown>, log?: RawLog) {
+    this.child = child; this.onNotification = onNotification; this.onRequest = onRequest; this.log = log;
+    child.stderr.on('data', (chunk: Buffer) => this.log?.err(chunk));
+    if (!log) child.stderr.resume();
     child.stdin.on('error', () => this.close('ACP input failed'));
     child.once('error', () => this.close('ACP process failed'));
-    child.once('close', () => this.close('ACP process closed'));
+    child.once('close', code => { this.log?.meta({ exitCode: code }); this.close('ACP process closed'); });
     void this.read();
   }
-  static spawnPeer(options: { executable: string; args: string[]; cwd?: string; spawn?: Spawn; onNotification?: (method: string, params: unknown) => void; onRequest?: (method: string, params: unknown) => Promise<unknown> }): JsonRpcPeer {
+  static spawnPeer(options: { executable: string; args: string[]; cwd?: string; spawn?: Spawn; log?: RawLog; onNotification?: (method: string, params: unknown) => void; onRequest?: (method: string, params: unknown) => Promise<unknown> }): JsonRpcPeer {
     const child = (options.spawn ?? spawn)(options.executable, options.args, { cwd: options.cwd, windowsHide: true, shell: false });
-    return new JsonRpcPeer(child, options.onNotification, options.onRequest);
+    options.log?.meta({ command: [options.executable, ...options.args].join(' '), cwd: options.cwd });
+    return new JsonRpcPeer(child, options.onNotification, options.onRequest, options.log);
   }
   request(method: string, params: unknown, timeoutMs = 30_000): Promise<unknown> {
     if (this.closed) return Promise.reject(new Error('ACP connection is closed'));
@@ -82,6 +86,7 @@ export class JsonRpcPeer {
     let buffer = Buffer.alloc(0);
     try {
       for await (const chunk of this.child.stdout) {
+        this.log?.out(chunk);
         buffer = Buffer.concat([buffer, Buffer.from(chunk)]);
         let newline: number;
         while ((newline = buffer.indexOf(10)) !== -1) {

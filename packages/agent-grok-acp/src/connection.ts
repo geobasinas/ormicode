@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process';
 import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from 'node:child_process';
 import * as z from 'zod/mini';
+import type { RawLog } from '@ormicode/agent-core';
+import { attachRawLog } from '@ormicode/agent-core';
 
 type Spawn = (command: string, args: string[], options: SpawnOptionsWithoutStdio) => ChildProcessWithoutNullStreams;
 type Pending = { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> };
@@ -18,21 +20,23 @@ export class AcpConnection {
   private readonly child: ChildProcessWithoutNullStreams;
   private readonly onNotification?: (method: string, params: unknown) => void;
   private readonly onRequest?: (method: string, params: unknown) => Promise<unknown>;
+  private readonly log?: RawLog;
   private readonly pending = new Map<string | number, Pending>();
   private nextId = 0;
   private closed = false;
   private supportsLoadSession = false;
-  private constructor(child: ChildProcessWithoutNullStreams, onNotification?: (method: string, params: unknown) => void, onRequest?: (method: string, params: unknown) => Promise<unknown>) {
-    this.child = child; this.onNotification = onNotification; this.onRequest = onRequest;
-    child.stderr.resume();
+  private constructor(child: ChildProcessWithoutNullStreams, onNotification?: (method: string, params: unknown) => void, onRequest?: (method: string, params: unknown) => Promise<unknown>, log?: RawLog) {
+    this.child = child; this.onNotification = onNotification; this.onRequest = onRequest; this.log = log;
+    if (log) child.stderr.on('data', (chunk: Buffer) => log.err(chunk)); else child.stderr.resume();
     child.stdin.on('error', () => this.close('ACP input failed'));
     child.once('error', () => this.close('ACP process failed'));
     child.once('close', () => this.close('ACP process closed'));
     void this.read();
   }
-  static async start(options: { executable: string; args: string[]; cwd?: string; spawn?: Spawn; onNotification?: (method: string, params: unknown) => void; onRequest?: (method: string, params: unknown) => Promise<unknown> }): Promise<AcpConnection> {
+  static async start(options: { executable: string; args: string[]; cwd?: string; spawn?: Spawn; log?: RawLog; onNotification?: (method: string, params: unknown) => void; onRequest?: (method: string, params: unknown) => Promise<unknown> }): Promise<AcpConnection> {
     const child = (options.spawn ?? spawn)(options.executable, options.args, { cwd: options.cwd, windowsHide: true, shell: false });
-    const connection = new AcpConnection(child, options.onNotification, options.onRequest);
+    attachRawLog(child, options.log, [options.executable, ...options.args].join(' '), options.cwd);
+    const connection = new AcpConnection(child, options.onNotification, options.onRequest, options.log);
     try {
       const result = await connection.request('initialize', { protocolVersion: 1, clientCapabilities: {}, clientInfo: { name: 'ormicode', version: '0.0.0' } });
       const parsed = z.safeParse(z.looseObject({ protocolVersion: z.literal(1), agentCapabilities: z.optional(z.looseObject({ loadSession: z.optional(z.boolean()) })) }), result);
@@ -94,6 +98,7 @@ export class AcpConnection {
     let buffer = Buffer.alloc(0);
     try {
       for await (const chunk of this.child.stdout) {
+        this.log?.out(chunk);
         buffer = Buffer.concat([buffer, Buffer.from(chunk)]);
         let newline: number;
         while ((newline = buffer.indexOf(10)) !== -1) {

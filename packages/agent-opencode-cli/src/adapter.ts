@@ -2,12 +2,12 @@ import { spawn, execFile } from 'node:child_process';
 import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
-import { EventQueue, NO_CAPABILITIES } from '@ormicode/agent-core';
+import { EventQueue, NO_CAPABILITIES, RawLog, attachRawLog } from '@ormicode/agent-core';
 import type { AgentAdapter, Handle, NativeRef, PromptInput, StartSpec } from '@ormicode/agent-core';
 import { OpenCodeCliMapper } from './map.ts';
 
 type Spawn = (command: string, args: string[], options: SpawnOptionsWithoutStdio) => ChildProcessWithoutNullStreams;
-type Session = { spec: StartSpec; nativeId?: string; queue: EventQueue; active: boolean; disposed: boolean; needsRecovery: boolean; process?: ChildProcessWithoutNullStreams; running?: Promise<void>; interrupted: boolean };
+type Session = { spec: StartSpec; log?: RawLog; nativeId?: string; queue: EventQueue; active: boolean; disposed: boolean; needsRecovery: boolean; process?: ChildProcessWithoutNullStreams; running?: Promise<void>; interrupted: boolean };
 const execFileAsync = promisify(execFile);
 const limit = 1024 * 1024;
 
@@ -30,13 +30,13 @@ export class OpenCodeCliAdapter implements AgentAdapter {
   async start(spec: StartSpec): Promise<Handle> { return this.create(spec); }
   async resume(ref: NativeRef): Promise<Handle> {
     if (!ref.id) throw new Error('native session ID is required');
-    return this.create({ cwd: ref.cwd }, ref.id);
+    return this.create({ ...ref }, ref.id);
   }
   private create(spec: StartSpec, nativeId?: string): Handle {
     if (!spec.cwd) throw new Error('cwd is required');
     if (spec.effort) throw new Error('OpenCode CLI effort is not yet supported');
     const handle = Object.freeze({ id: `opencode-cli-${randomUUID()}` });
-    this.sessions.set(handle, { spec: { ...spec }, nativeId, queue: new EventQueue(), active: false, disposed: false, needsRecovery: false, interrupted: false });
+    this.sessions.set(handle, { spec: { ...spec }, nativeId, log: spec.logDir ? new RawLog(spec.logDir) : undefined, queue: new EventQueue(), active: false, disposed: false, needsRecovery: false, interrupted: false });
     return handle;
   }
   async prompt(handle: Handle, input: PromptInput): Promise<void> {
@@ -60,7 +60,9 @@ export class OpenCodeCliAdapter implements AgentAdapter {
       if (session.spec.mode) args.push('--agent', session.spec.mode);
       args.push('--', text);
       child = (this.options.spawn ?? spawn)(this.options.executable ?? 'opencode', args, { cwd: session.spec.cwd, windowsHide: true, shell: false });
-      session.process = child; child.stdin.end(); child.stderr.resume();
+      session.process = child; child.stdin.end();
+      attachRawLog(child, session.log, this.options.executable ?? 'opencode', session.spec.cwd);
+      if (!session.log) child.stderr.resume();
       let spawnError: Error | undefined;
       const exit = new Promise<number | null>(resolve => { child!.once('error', error => { spawnError = error; }); child!.once('close', code => resolve(code)); });
       let buffer = Buffer.alloc(0);
@@ -75,6 +77,7 @@ export class OpenCodeCliAdapter implements AgentAdapter {
         if (mapped.events.length) session.queue.push(mapped.events);
       };
       for await (const chunk of child.stdout) {
+        session.log?.out(chunk);
         if (session.disposed) break;
         buffer = Buffer.concat([buffer, Buffer.from(chunk)]);
         let newline: number;
