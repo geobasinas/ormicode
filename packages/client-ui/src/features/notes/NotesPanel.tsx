@@ -28,7 +28,7 @@ export function NotesPanel({ session }: { session: string }) {
   };
   const tab = (label: string, active: boolean, onClick: () => void) => (
     <button key={label} onClick={onClick} style={{
-      font: 'inherit', fontSize: 11.5, cursor: 'pointer', padding: '0 10px', height: 32, whiteSpace: 'nowrap', flexShrink: 0,
+      font: 'inherit', fontSize: 11.5, cursor: 'pointer', padding: '0 8px', height: 37, whiteSpace: 'nowrap', flexShrink: 0,
       border: 'none', borderBottom: active ? '1.5px solid var(--text-title)' : '1.5px solid transparent',
       background: 'none', color: active ? 'var(--text-title)' : 'var(--text-hint)', fontWeight: active ? 600 : 400,
     }}>{label}</button>

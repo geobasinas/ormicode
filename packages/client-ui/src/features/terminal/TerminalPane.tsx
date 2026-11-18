@@ -9,7 +9,7 @@ const iconBtn = { border: 'none', background: 'transparent', color: 'var(--text-
 export function TerminalPane({ session }: { session: string }) {
   const { tabs, active, setActive, open, close, markExited, error } = useTerminalTabs(session);
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '0 10px 10px', gap: 2 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '0 6px 8px', gap: 2 }}>
       <div className="ormi-tabs" style={{ display: 'flex', alignItems: 'center', gap: 4, height: 38, flexShrink: 0, overflowX: 'auto' }}>
         {tabs.map(t => {
           const on = t.terminal === active;

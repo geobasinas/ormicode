@@ -103,7 +103,7 @@ export function FilesPane({ session, onOpenSession }: { session: string; onOpenS
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 2, height: 38, flexShrink: 0, padding: '0 8px 0 12px' }}>
-        <span style={{ ...mono, fontSize: 11, display: 'flex', alignItems: 'center', gap: 5, minWidth: 0, flex: 1, overflow: 'hidden', whiteSpace: 'nowrap' }}>
+        <span style={{ ...mono, fontSize: 11, display: 'flex', alignItems: 'center', gap: 5, minWidth: 0, flex: 1, overflow: 'hidden', whiteSpace: 'nowrap', marginLeft: -3 }}>
           <button onClick={() => go('')} className="hv" style={{ ...crumb, color: cwd ? 'var(--text-hint)' : 'var(--text-title)', fontWeight: cwd ? 400 : 600 }}>{root ? baseName(root) : '…'}</button>
           {crumbs.map((c, i) => <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
             <span style={{ color: 'var(--text-hint)' }}>/</span>
@@ -125,7 +125,7 @@ export function FilesPane({ session, onOpenSession }: { session: string; onOpenS
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', height: 24, flexShrink: 0, padding: '0 12px 0 34px', fontSize: 10.5, color: 'var(--text-hint)', borderBottom: '1px solid var(--line-subtle)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', height: 24, flexShrink: 0, padding: '0 12px 0 49px', fontSize: 10.5, color: 'var(--text-hint)', borderBottom: '1px solid var(--line-subtle)' }}>
         <span style={{ flex: 1 }}>Name</span>
         <span className="ormi-pane-narrow-hide" style={{ width: cols.date }}>Date modified</span>
         <span className="ormi-pane-narrow-hide" style={{ width: cols.type }}>Type</span>

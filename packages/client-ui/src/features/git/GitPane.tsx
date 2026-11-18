@@ -26,7 +26,7 @@ export function GitPane({ session }: { session: string }) {
   ];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div className="ormi-tabs" style={{ display: 'flex', height: 38, boxSizing: 'border-box', borderBottom: '1px solid var(--line-subtle)', padding: '0 6px', flexShrink: 0, overflowX: 'auto' }}>
+      <div className="ormi-tabs" style={{ display: 'flex', height: 38, boxSizing: 'border-box', borderBottom: '1px solid var(--line-subtle)', padding: '0 4px', flexShrink: 0, overflowX: 'auto' }}>
         {TABS.map(({ id, label, icon: Icon, count, mint }) => (
           <button key={id} onClick={() => setTab(id)} style={{
             display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 8px', height: 37, flexShrink: 0, border: 'none', background: 'transparent', cursor: 'pointer', font: 'inherit', fontSize: 11.5, whiteSpace: 'nowrap',
