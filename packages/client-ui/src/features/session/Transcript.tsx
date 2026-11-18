@@ -5,7 +5,7 @@ import { Pencil, Wrench, CircleAlert, ArrowRight, RotateCw, Pause, ChevronRight,
 import type { TranscriptEvent } from './useTranscript.ts';
 
 const mono = { fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap' as const, wordBreak: 'break-word' as const };
-const small = { fontSize: 'var(--text-sm)' };
+const small = { fontSize: 10 };
 
 function toolCard(icon: React.ReactNode, label: string, detail?: string) {
   return (
@@ -13,7 +13,7 @@ function toolCard(icon: React.ReactNode, label: string, detail?: string) {
       display: 'flex', alignItems: 'center', gap: 'var(--space-2)', margin: '4px 0',
       padding: 'var(--space-2) var(--space-3)', background: 'var(--bg-card)',
       border: '1px solid var(--line-card)', borderRadius: 'var(--radius-sm)',
-      color: 'var(--text-secondary)', fontSize: 'var(--text-sm)',
+      color: 'var(--text-secondary)', fontSize: 10,
     }}>
       {icon}
       <span style={{ color: 'var(--text-active)', fontWeight: 500 }}>{label}</span>
@@ -44,12 +44,12 @@ function line(e: TranscriptEvent) {
           <div style={{
             maxWidth: '78%', padding: '8px 12px', background: 'var(--bg-raised)',
             border: '1px solid var(--line-card)', borderRadius: 'var(--radius-md)',
-            color: 'var(--text-active)', fontSize: 'var(--text-md)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+            color: 'var(--text-active)', fontSize: 10.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
           }}>{String(b.text)}</div>
         </div>
       );
     case 'text':
-      return <div style={{ color: 'var(--text-label)', fontSize: 'var(--text-md)', lineHeight: 1.55, padding: '2px 0', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{String(b.text)}</div>;
+      return <div style={{ color: 'var(--text-label)', fontSize: 10.5, lineHeight: 1.55, padding: '2px 0', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{String(b.text)}</div>;
     case 'thinking':
       return <div style={{ ...mono, ...small, color: 'var(--text-hint)' }}>{String(b.text)}</div>;
     case 'plan':
