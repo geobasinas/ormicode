@@ -2,7 +2,7 @@
  * model + effort (nested submenus), and one chip for the git workspace choice
  * (current branch / new branch / worktree from a branch). */
 import { useState, type ReactNode } from 'react';
-import { Check, ChevronDown, RefreshCw } from 'lucide-react';
+import { Check, ChevronDown, Cpu, Gauge, RefreshCw } from 'lucide-react';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
   DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent,
@@ -14,6 +14,28 @@ import type { ListedModel } from './useModels.ts';
 const chev = <ChevronDown size={11} style={{ color: 'var(--text-hint)', flexShrink: 0 }} />;
 const mark = (on: boolean) => <span style={{ width: 16, display: 'inline-flex' }}>{on ? <Check size={13} /> : null}</span>;
 const right = (text: string) => <span style={{ marginLeft: 'auto', paddingLeft: 16, color: 'var(--text-hint)', fontSize: 10 }} className="truncate">{text}</span>;
+
+const VENDOR_META: Record<string, { name: string; color: string }> = {
+  claude: { name: 'Claude', color: '#d97757' },
+  codex: { name: 'Codex', color: '#10a37f' },
+  grok: { name: 'Grok', color: '#9aa4b2' },
+  opencode: { name: 'OpenCode', color: '#7c6cf0' },
+  pi: { name: 'Pi', color: '#e8b23e' },
+  vibe: { name: 'Vibe', color: '#4cc3d9' },
+  fake: { name: 'Fake', color: '#6b7280' },
+};
+const TRANSPORT_DESC: Record<string, string> = { sdk: 'in-process', cli: 'command line', acp: 'agent protocol' };
+const meta = (vendor: string) => VENDOR_META[vendor] ?? { name: vendor, color: 'var(--text-hint)' };
+
+/** Colored letter tile identifying a vendor. */
+const tile = (vendor: string) => (
+  <span style={{
+    width: 18, height: 18, borderRadius: 5, flexShrink: 0,
+    background: `${meta(vendor).color}26`, color: meta(vendor).color,
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
+  }}>{vendor[0]}</span>
+);
 
 /** Effort levels a model advertises; falls back to a shared set when every
  * model lists the same levels (used when the model id is custom). */
@@ -47,17 +69,40 @@ export function AgentChip({ vendor, via, agents, onPick, model, models, onModel,
           {icon}<span className="ormi-chip-text">{pair}{model !== 'default' ? ` · ${current?.label ?? model}` : ''}</span>{chev}
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" style={{ width: 220, maxWidth: 'calc(100vw - 16px)' }}>
+      <DropdownMenuContent align="end" style={{ width: 248, maxWidth: 'calc(100vw - 16px)' }}>
         <DropdownMenuLabel>Agent</DropdownMenuLabel>
-        {agents.flatMap(a => a.transports.map(t => (
-          <DropdownMenuItem key={`${a.vendor} ${t}`} onSelect={() => onPick(a.vendor, t)} className="text-xs">
-            {mark(a.vendor === vendor && t === via)}
-            <span className="min-w-0 flex-1 truncate">{a.vendor} {t}</span>
+        {agents.map(a => a.transports.length === 1 ? (
+          <DropdownMenuItem key={a.vendor} onSelect={() => onPick(a.vendor, a.transports[0]!)} className="text-xs" style={{ paddingTop: 6, paddingBottom: 6 }}>
+            {mark(a.vendor === vendor)}
+            {tile(a.vendor)}
+            <span className="min-w-0 flex-1 truncate">{meta(a.vendor).name}</span>
+            {right(a.transports[0]!)}
           </DropdownMenuItem>
-        )))}
+        ) : (
+          <DropdownMenuSub key={a.vendor}>
+            <DropdownMenuSubTrigger className="text-xs" style={{ paddingTop: 6, paddingBottom: 6 }}>
+              {mark(a.vendor === vendor)}
+              {tile(a.vendor)}
+              <span className="min-w-0 flex-1 truncate">{meta(a.vendor).name}</span>
+              {a.vendor === vendor ? right(via) : right(a.transports.join(' · '))}
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent style={{ minWidth: 180 }}>
+              <DropdownMenuLabel>{meta(a.vendor).name}</DropdownMenuLabel>
+              {a.transports.map(t => (
+                <DropdownMenuItem key={t} onSelect={() => onPick(a.vendor, t)} className="text-xs">
+                  {mark(a.vendor === vendor && t === via)}
+                  <span>{t.toUpperCase()}</span>
+                  {right(TRANSPORT_DESC[t] ?? t)}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        ))}
         <DropdownMenuSeparator />
         <DropdownMenuSub>
-          <DropdownMenuSubTrigger className="text-xs"><span style={{ width: 16 }} />Model{right(current?.label ?? model)}</DropdownMenuSubTrigger>
+          <DropdownMenuSubTrigger className="text-xs" style={{ paddingTop: 6, paddingBottom: 6 }}>
+            <span style={{ width: 16 }} /><Cpu size={13} style={{ color: 'var(--text-hint)' }} /><span>Model</span>{right(current?.label ?? model)}
+          </DropdownMenuSubTrigger>
           <DropdownMenuSubContent style={{ width: 300, maxWidth: 'calc(100vw - 16px)', maxHeight: 420 }}>
             {list.length > 10 ? (
               <div style={{ padding: '2px 8px 8px' }}>
@@ -88,7 +133,9 @@ export function AgentChip({ vendor, via, agents, onPick, model, models, onModel,
           </DropdownMenuSubContent>
         </DropdownMenuSub>
         <DropdownMenuSub>
-          <DropdownMenuSubTrigger className="text-xs"><span style={{ width: 16 }} />Effort{right(effort)}</DropdownMenuSubTrigger>
+          <DropdownMenuSubTrigger className="text-xs" style={{ paddingTop: 6, paddingBottom: 6 }}>
+            <span style={{ width: 16 }} /><Gauge size={13} style={{ color: 'var(--text-hint)' }} /><span>Effort</span>{right(effort)}
+          </DropdownMenuSubTrigger>
           <DropdownMenuSubContent>
             {['default', ...efforts].map(c => (
               <DropdownMenuItem key={c} onSelect={() => onEffort(c)} className="text-xs">{mark(effort === c)}<span>{c === 'default' ? 'Default' : c}</span></DropdownMenuItem>
