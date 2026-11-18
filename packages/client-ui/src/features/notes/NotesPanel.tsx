@@ -1,7 +1,7 @@
 /** Notes rail: named notes per session — tab strip, debounced save,
  * one-tap-confirm delete, meta line with edit age and word count. */
 import { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { ago } from '../../lib/format.ts';
 import { useNotes } from './useNotes.ts';
 
@@ -28,9 +28,9 @@ export function NotesPanel({ session }: { session: string }) {
   };
   const tab = (label: string, active: boolean, onClick: () => void) => (
     <button key={label} onClick={onClick} style={{
-      font: 'inherit', fontSize: 'var(--text-xs)', cursor: 'pointer', padding: '4px 8px',
-      border: 'none', borderBottom: active ? '1px solid var(--accent-mint)' : '1px solid transparent',
-      background: 'none', color: active ? 'var(--text-active)' : 'var(--text-secondary)',
+      font: 'inherit', fontSize: 11.5, cursor: 'pointer', padding: '0 10px', height: 32, whiteSpace: 'nowrap', flexShrink: 0,
+      border: 'none', borderBottom: active ? '1.5px solid var(--text-title)' : '1.5px solid transparent',
+      background: 'none', color: active ? 'var(--text-title)' : 'var(--text-hint)', fontWeight: active ? 600 : 400,
     }}>{label}</button>
   );
 
@@ -40,14 +40,14 @@ export function NotesPanel({ session }: { session: string }) {
         <span>{notes.length} note{notes.length === 1 ? '' : 's'}</span>
         <span style={{ flex: 1 }} />
         <button title="new note" onClick={() => { setDraft({ title: 'Untitled', body: '', isNew: true }); setOpenId(undefined); setConfirm(false); }}
-          style={{ font: 'inherit', background: 'none', border: 'none', color: 'var(--text-label)', cursor: 'pointer', display: 'inline-flex', padding: 2 }}><Plus size={15} /></button>
+          className="hv" style={{ font: 'inherit', background: 'none', border: 'none', color: 'var(--text-label)', cursor: 'pointer', display: 'inline-flex', padding: 4, borderRadius: 6 }}><Plus size={14} /></button>
       </div>
-      <div style={{ display: 'flex', overflowX: 'auto', borderBottom: '1px solid var(--line-subtle)', flexShrink: 0 }}>
+      <div className="ormi-tabs" style={{ display: 'flex', overflowX: 'auto', borderBottom: '1px solid var(--line-subtle)', flexShrink: 0, padding: '0 4px' }}>
         {notes.map(n => tab(n.title, (editing?.id ?? draft?.id) === n.id && !draft?.isNew, () => { setOpenId(n.id); setDraft(undefined); setConfirm(false); }))}
         {draft?.isNew ? tab('new', true, () => undefined) : null}
       </div>
       {editing ? (
-        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, padding: 'var(--space-3)', gap: 'var(--space-2)' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, padding: '14px 14px 10px', gap: 6 }}>
           <input value={editing.title} onChange={e => patch({ title: e.target.value })} style={{
             font: 'inherit', fontSize: 'var(--text-lg)', fontWeight: 600, background: 'transparent',
             border: 'none', outline: 'none', color: 'var(--text-title)',
@@ -57,23 +57,23 @@ export function NotesPanel({ session }: { session: string }) {
               ? `Edited ${ago(notes.find(n => n.id === editing.id)!.updatedAt)} · ${words} words · ${changed ? 'saving…' : 'saved'}`
               : `${words} words · unsaved`}
           </div>
-          <textarea value={editing.body} onChange={e => patch({ body: e.target.value })} style={{
+          <textarea value={editing.body} placeholder="Write a note…" onChange={e => patch({ body: e.target.value })} style={{
             flex: 1, resize: 'none', font: 'inherit', fontSize: 'var(--text-sm)', lineHeight: 'var(--leading-loose)',
             background: 'transparent', border: 'none', outline: 'none', color: 'var(--text-label)',
           }} />
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             {confirm ? (
               <button onClick={() => { if (editing.id) remove(editing.id); setDraft(undefined); setOpenId(undefined); setConfirm(false); }}
-                style={{ font: 'inherit', fontSize: 'var(--text-xs)', color: 'var(--accent-red)', background: 'none', border: 'none', cursor: 'pointer' }}>confirm delete</button>
+                className="hv" style={{ font: 'inherit', fontSize: 11.5, color: 'var(--accent-red)', background: 'none', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, height: 26, padding: '0 8px', borderRadius: 7 }}><Trash2 size={12} />Confirm delete</button>
             ) : (
               <button onClick={() => setConfirm(true)} disabled={!editing.id}
-                style={{ font: 'inherit', fontSize: 'var(--text-xs)', color: 'var(--text-hint)', background: 'none', border: 'none', cursor: 'pointer' }}>delete</button>
+                className={editing.id ? 'hv' : undefined} style={{ font: 'inherit', fontSize: 11.5, color: 'var(--text-hint)', background: 'none', border: 'none', cursor: editing.id ? 'pointer' : 'default', opacity: editing.id ? 1 : 0.45, display: 'inline-flex', alignItems: 'center', gap: 6, height: 26, padding: '0 8px', borderRadius: 7 }}><Trash2 size={12} />Delete</button>
             )}
           </div>
         </div>
       ) : (
-        <div style={{ padding: 'var(--space-3)', fontSize: 'var(--text-sm)', color: 'var(--text-hint)' }}>
-          no notes yet — + to start one
+        <div style={{ padding: '14px', fontSize: 12, color: 'var(--text-hint)' }}>
+          No notes yet — press + to start one
         </div>
       )}
     </div>

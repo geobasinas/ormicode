@@ -66,7 +66,7 @@ export function ChangesTab({ session, diff, reloadDiff }: { session: string; dif
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 0', ...hint }}>
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', whiteSpace: 'nowrap' }}><input type="checkbox" checked={amend} onChange={e => setAmend(e.target.checked)} />Amend last commit</label>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', whiteSpace: 'nowrap' }}><input type="checkbox" className="ormi-check" checked={amend} onChange={e => setAmend(e.target.checked)} />Amend last commit</label>
           <span style={{ flex: 1 }} />{st?.branch ? <span style={{ ...mono, display: 'inline-flex', gap: 4, alignItems: 'center', minWidth: 0, whiteSpace: 'nowrap' }}><GitBranch size={11} style={{ flexShrink: 0 }} /><span className="ormi-chip-text">{st.branch}</span></span> : null}
         </div>
         {msg ? <div style={{ fontSize: 11, color: msg.tone === 'red' ? 'var(--accent-red)' : 'var(--text-hint)', paddingBottom: 6 }}>{msg.text}</div> : null}

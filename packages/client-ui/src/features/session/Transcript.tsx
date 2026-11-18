@@ -98,7 +98,7 @@ export function Transcript({ events, session }: { events: TranscriptEvent[]; ses
   }, [events, session]);
   useEffect(() => { end.current?.scrollIntoView({ block: 'end' }); }, [events.length]);
   return (
-    <div style={{ flex: 1, overflow: 'auto', display: 'flex', justifyContent: 'center' }}>
+    <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', display: 'flex', justifyContent: 'center' }}>
       <div style={{ width: '100%', maxWidth: 720, padding: 'var(--space-4) var(--space-5)' }}>
         {events.map((e, i) => <div key={e.seq > 0 ? e.seq : -i - 1}>{line(e, ctx)}</div>)}
         <div ref={end} />

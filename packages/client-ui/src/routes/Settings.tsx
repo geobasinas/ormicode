@@ -39,7 +39,7 @@ const label = { fontSize: 10, fontWeight: 600, color: 'var(--text-label)', lette
 const card = { background: 'var(--bg-card)', border: '1px solid var(--line-card)', borderRadius: 10, overflow: 'hidden' as const };
 const ctl = {
   font: 'inherit', fontSize: 11.5, color: 'var(--text-title)', background: 'transparent', border: '1px solid var(--line-card)',
-  borderRadius: 7, padding: '3px 8px', outline: 'none',
+  borderRadius: 7, padding: '0 10px', height: 26, outline: 'none', boxSizing: 'border-box' as const,
 };
 
 function Group({ title, children }: { title: string; children: ReactNode }) {
@@ -47,10 +47,10 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
 }
 function Row({ title, hint, children, mono }: { title: string; hint?: string; children?: ReactNode; mono?: boolean }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 31, padding: '6px 10px', borderTop: '1px solid var(--line-card)', marginTop: -1 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 44, padding: '7px 14px', boxSizing: 'border-box', borderTop: '1px solid var(--line-card)', marginTop: -1 }}>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 12, color: 'var(--text-title)' }}>{title}</div>
-        {hint ? <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', marginTop: 1, fontFamily: mono ? 'var(--font-mono)' : undefined }}>{hint}</div> : null}
+        <div style={{ fontSize: 13, color: 'var(--text-title)' }}>{title}</div>
+        {hint ? <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2, fontFamily: mono ? 'var(--font-mono)' : undefined }}>{hint}</div> : null}
       </div>
       {children}
     </div>
@@ -59,9 +59,9 @@ function Row({ title, hint, children, mono }: { title: string; hint?: string; ch
 function Switch({ on, onChange, disabled }: { on: boolean; onChange?: (v: boolean) => void; disabled?: boolean }) {
   return (
     <button role="switch" aria-checked={on} disabled={disabled} onClick={() => onChange?.(!on)} style={{
-      width: 26, height: 14, borderRadius: 999, border: 'none', padding: 2, cursor: disabled ? 'default' : 'pointer',
+      width: 30, height: 17, borderRadius: 999, border: 'none', padding: 2, flexShrink: 0, cursor: disabled ? 'default' : 'pointer',
       background: on ? 'var(--accent-mint)' : 'var(--bg-raised)', opacity: disabled ? 0.5 : 1, display: 'flex', justifyContent: on ? 'flex-end' : 'flex-start',
-    }}><span style={{ width: 10, height: 10, borderRadius: 999, background: on ? '#1b1b1b' : '#8a8a8a' }} /></button>
+    }}><span style={{ width: 13, height: 13, borderRadius: 999, background: on ? '#1b1b1b' : '#8a8a8a' }} /></button>
   );
 }
 const Soon = ({ what }: { what: string }) => <span style={{ fontSize: 10.5, color: 'var(--text-hint)' }}>{what}</span>;
@@ -118,22 +118,22 @@ export function SettingsView({ prefs, onPrefs, connection }: { prefs: Prefs; onP
   const [title, sub] = TITLES[section]!;
   return (
     <div style={{ display: 'flex', height: '100%' }}>
-      <nav style={{ width: 176, flexShrink: 0, borderRight: '1px solid var(--line-pane)', padding: '12px 6px', overflow: 'auto' }}>
+      <nav style={{ width: 216, flexShrink: 0, borderRight: '1px solid var(--line-pane)', padding: '14px 10px', overflow: 'auto' }}>
         {NAV.map(g => (
-          <div key={g.group} style={{ marginBottom: 10 }}>
+          <div key={g.group} style={{ marginBottom: 14 }}>
             <div style={{ ...label, padding: '4px 8px 5px' }}>{g.group}</div>
             {g.items.map(it => (
               <button key={it.id} className="hv-sub" onClick={() => setSection(it.id)} style={{
-                display: 'flex', alignItems: 'center', gap: 8, width: '100%', height: 22, padding: '0 8px', border: 'none', borderRadius: 6,
-                font: 'inherit', fontSize: 12, cursor: 'pointer', textAlign: 'left',
+                display: 'flex', alignItems: 'center', gap: 9, width: '100%', height: 29, padding: '0 9px', border: 'none', borderRadius: 7,
+                font: 'inherit', fontSize: 13, cursor: 'pointer', textAlign: 'left',
                 background: section === it.id ? 'var(--bg-card)' : 'transparent', color: section === it.id ? 'var(--text-title)' : '#bbbbbb',
-              }}><it.icon size={12} style={{ color: 'var(--text-secondary)' }} />{it.label}</button>
+              }}><it.icon size={14} style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />{it.label}</button>
             ))}
           </div>
         ))}
       </nav>
-      <div style={{ flex: 1, overflow: 'auto', padding: '18px 24px 24px' }}>
-        <div style={{ maxWidth: 612 }}>
+      <div style={{ flex: 1, overflow: 'auto', padding: '20px 28px 28px' }}>
+        <div style={{ maxWidth: 800 }}>
           <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--text-title)' }}>{title}</h2>
           <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>{sub}</div>
           {section === 'general' ? <>
@@ -160,7 +160,7 @@ export function SettingsView({ prefs, onPrefs, connection }: { prefs: Prefs; onP
           {section === 'defaults' ? (
             <Group title="NEW SESSIONS">
               <Row title="Agent" hint="Vendor picked in the Home composer">
-                <select aria-label="default agent" style={ctl} value={prefs.defaultVendor} onChange={e => set({ defaultVendor: e.target.value })}>
+                <select aria-label="default agent" className="ormi-select" style={ctl} value={prefs.defaultVendor} onChange={e => set({ defaultVendor: e.target.value })}>
                   {VENDORS.map(v => <option key={v} value={v}>{v}</option>)}
                 </select>
               </Row>
