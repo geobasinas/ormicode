@@ -34,6 +34,8 @@ export interface DesktopExtras {
   winMin(): void;
   winMax(): void;
   winClose(): void;
+  openPath(absPath: string): Promise<string>;
+  showItemInFolder(absPath: string): void;
 }
 
 export interface ClientPlatform {

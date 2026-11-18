@@ -80,6 +80,38 @@ test('session controls and notes use matching request and response contracts', (
   assert.equal(parseResponseBody('session.steer', { accepted: true }).success, false);
 });
 
+test('file methods validate their requests, responses and edit journal event', () => {
+  for (const method of ['file.list', 'file.read', 'file.write', 'file.search', 'file.blame', 'file.history']) {
+    const body = method === 'file.list' ? { session }
+      : method === 'file.read' ? { session, path: 'src/main.ts', ref: 'HEAD' }
+      : method === 'file.write' ? { session, path: 'src/main.ts', content: 'updated', baseMtime: 0 }
+      : method === 'file.search' ? { session, query: 'main', mode: 'name' }
+      : method === 'file.blame' ? { session, path: 'src/main.ts' }
+      : { session, path: 'src/main.ts', limit: 10 };
+    assert.equal(parseRequestBody(method, body).success, true, method);
+  }
+  assert.equal(parseRequestBody('file.search', { session, query: '', mode: 'name' }).success, false);
+  assert.equal(parseRequestBody('file.search', { session, query: 'x', mode: 'content', limit: 1001 }).success, false);
+
+  assert.equal(parseResponseBody('file.list', {
+    root: '/repo', path: '', entries: [{ name: 'src', path: 'src', kind: 'dir', size: 0, mtime: 1, git: 'modified' }], free: null,
+  }).success, true);
+  assert.equal(parseResponseBody('file.read', {
+    path: 'src/main.ts', size: 7, mtime: null, binary: false, mime: 'text/plain', encoding: 'utf8', content: 'updated', tooLarge: false,
+  }).success, true);
+  assert.equal(parseResponseBody('file.write', { path: 'src/main.ts', size: 7, mtime: 1, checkpoint: null }).success, true);
+  assert.equal(parseResponseBody('file.search', {
+    matches: [{ path: 'src/main.ts', line: 1, text: 'é value', ranges: [[2, 7]] }], truncated: false,
+  }).success, true);
+  assert.equal(parseResponseBody('file.blame', {
+    hunks: [{ start: 1, count: 1, sha: '0'.repeat(40) }],
+    commits: { ['0'.repeat(40)]: { author: 'Not committed yet', ts: 0, summary: '' } },
+  }).success, true);
+  const history = { commits: [], total: 0 };
+  assert.equal(parseResponseBody('file.history', history).success, true);
+  assert.equal(parseEventBody({ kind: 'file_edit', path: 'src/main.ts', size: 7, checkpoint: null }).success, true);
+});
+
 test('wire parser checks byte length, JSON and protocol version', async () => {
   const { parseWireFrame, MAX_FRAME_BYTES } = await import('../src/index.ts');
   assert.equal(parseWireFrame(JSON.stringify({ v: 1, type: 'ack', session, seq: 2 })).success, true);

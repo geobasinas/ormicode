@@ -27,6 +27,10 @@ const bridge = {
   winMin: () => ipcRenderer.send('ormi:win:min'),
   winMax: () => ipcRenderer.send('ormi:win:max'),
   winClose: () => ipcRenderer.send('ormi:win:close'),
+  openPath: (absPath: string): Promise<string> => ipcRenderer.invoke('ormi:openPath', absPath),
+  showItemInFolder: (absPath: string): void => {
+    void ipcRenderer.invoke('ormi:showItemInFolder', absPath).catch(() => undefined);
+  },
 };
 
 contextBridge.exposeInMainWorld('ormi', bridge);

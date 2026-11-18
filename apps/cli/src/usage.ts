@@ -20,6 +20,7 @@ export function usage(code: number): never {
   ormi cost totals [--since <ms>]                   stored token and price totals
   ormi secret set <NAME> [--project p] (value on stdin) | delete <NAME> [--project p] | status <project>
   ormi checkpoint list <id> | diff <id> <from> [to] | restore <id> <cp> [--conversation] | fork <id> <cp> [--branch b]
+  ormi file ls [path] | cat <path> | search <query> [--content] [--regex] | blame <path> | history <path> --session <id>
   ormi run <vendor> [--transport t] [agent args]   start a session and attach (Ctrl+] detaches)
   ormi attach <id>                                reattach a running session
   ormi relay register --account <a> [--relay <url>] [--secret <s>]   register this hub

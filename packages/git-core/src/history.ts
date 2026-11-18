@@ -4,13 +4,15 @@ import { git, resolveCommit } from './commands.ts';
 const PATCH_LIMIT = 256 * 1024;
 const fileStatus = { added: 'A', deleted: 'D', modified: 'M', renamed: 'R' } as const;
 
-export function log(cwd: string, opts: { ref?: string; limit?: number; skip?: number } = {}) {
+export function log(cwd: string, opts: { ref?: string; limit?: number; skip?: number; path?: string } = {}) {
   const ref = resolveCommit(cwd, opts.ref ?? 'HEAD');
   const limit = opts.limit ?? 50; const skip = opts.skip ?? 0;
-  const total = Number(git(cwd, 'rev-list', '--count', ref).trim());
+  const total = opts.path
+    ? git(cwd, 'log', '--follow', '--format=%H', ref, '--', opts.path).split(/\s+/).filter(Boolean).length
+    : Number(git(cwd, 'rev-list', '--count', ref).trim());
   const unpushed = new Set(git(cwd, 'rev-list', ref, '--not', '--remotes').split(/\s+/).filter(Boolean));
   const format = '%x1e%H%x00%s%x00%an%x00%ae%x00%at%x00%P%x00%D%x00%B%x00';
-  const raw = git(cwd, 'log', `--format=${format}`, `--max-count=${limit}`, `--skip=${skip}`, ref);
+  const raw = git(cwd, 'log', ...(opts.path ? ['--follow'] : []), `--format=${format}`, `--max-count=${limit}`, `--skip=${skip}`, ref, ...(opts.path ? ['--', opts.path] : []));
   const commits = raw.split('\x1e').filter(Boolean).map(row => {
     const [sha = '', subject = '', author = '', email = '', ts = '0', parents = '', decorations = '', ...rest] = row.split('\0');
     const body = rest.join('\0').replace(/\n$/, '');

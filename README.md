@@ -2019,7 +2019,7 @@ services:
 
 ## Files
 
-> **Status:** later · **Needs:** [Sessions](#sessions), [Checkpoints](#checkpoints)
+> **Status:** built-ish — `packages/files`, daemon/protocol methods, CLI commands and the restricted Electron file-opening bridge are in place; the desktop pane UI is being built in parallel. · **Needs:** [Sessions](#sessions), [Checkpoints](#checkpoints)
 
 **For when the agent is wrong about one line and writing a prompt about it is silly.**
 
@@ -2039,7 +2039,9 @@ services:
 - Writes only go to the session's own worktree. Never another session's, never the main checkout while a session is running there.
 - Images preview; other binaries show metadata and a download.
 
-**API:** `file.read`, `file.write`, `file.blame`, `file.search`. The editor is the only new client work.
+**Implementation status:** `packages/files` and `apps/daemon/src/file-methods.ts` provide `file.list`, `file.read`, `file.write`, `file.search`, `file.blame` and `file.history`. Paths are confined to the session cwd, `.git` is hidden, text reads are size-limited, image reads return base64 previews, and Git history follows renames. Writes are atomic, preserve mode, take a manual checkpoint first, and are refused while any session sharing that cwd is in a turn. `ormi file` exposes structured CLI output; the Electron bridge only opens validated existing absolute paths or reveals them in the file manager. The Files pane UI is in progress.
+
+**API:** `file.list`, `file.read`, `file.write`, `file.search`, `file.blame`, `file.history`; a successful write journals `file_edit`.
 
 ## Artifacts
 
@@ -2614,7 +2616,7 @@ Network denied unless a domain is listed (requests go through a logging host pro
 - **Stash:** message, branch, file count, `+N −N`, age; diff; Apply, Pop, Drop.
 - Every action is a protocol method; commit-message generation is a model call.
 
-**Files:** tree with Name, Date modified, Type, Size and git colours; status bar (selection count, free disk); path header with back/forward/up, refresh, search, overflow. Opening a file gives the [Files](#files) viewer/editor. Writes only to the session's worktree.
+**Files (backend built):** `file.list` returns one directory level, git status and free space; `file.read` supports bounded text, image previews and Git refs; `file.search` provides fuzzy names and ripgrep content matches; `file.blame` and `file.history` expose commit/session metadata and follow renames. `file.write` is atomic and checkpointed, and refuses writes while a session sharing that cwd is in a turn. The pane adds Name, Date modified, Type, Size and git colours; a selection/free-space status bar; lazy folder expansion; path navigation, refresh, search and overflow. Opening a file gives the [Files](#files) viewer/editor. Electron exposes only validated `openPath` and `showItemInFolder` operations.
 
 **Browser:** the [preview](#browser-preview) — URL bar with back/forward/reload, open externally, **Pick**, service portals from `.ormi/services.yaml`; console and network one tap from an error into the composer. (The mock's Tasks/Runs/Docs tabs are parked.)
 
@@ -3297,7 +3299,7 @@ Example request and response bodies (inside their corresponding envelopes):
 | Machines | `machine.list`, `status`, `projects`, `terminalOpen`, `terminalWrite`, `terminalResize`, `terminalClose` |
 | Git | Built: `git.status`, `stage`, `unstage`, `commit`, `push`, `log`, `show`, `branches`, `checkout`, `createBranch`, `deleteBranch`, `merge`, `cherryPick`, `revert`, `stash`, `prStatus`, `pr`, `prMerge`, `diff`. Planned: `worktrees`, `createWorktree`, `removeWorktree`, `graph`, `conflict`, `reflog`, `fetch`, `pull`, `rebase`, `tag` |
 | Review | `review.queue`, `comment`, `batch` |
-| Files | `file.read`, `tree`, `search`, `write`, `blame`, `history` |
+| Files | `file.list`, `file.read`, `file.write`, `file.search`, `file.blame`, `file.history` |
 | Artifacts | `artifact.list`, `get`, `publish`, `reject`, `blob.get` |
 | Preview | `preview.start`, `stop`, `urls`, `capture` |
 | Secrets | `secret.list`, `set`, `remove`, `import` |

@@ -17,6 +17,7 @@
     "@ormicode/secrets": "workspace:*",
     "@ormicode/pty-broker": "workspace:*",
     "@ormicode/git-core": "workspace:*",
+    "@ormicode/files": "workspace:*",
     "@ormicode/agent-claude-sdk": "workspace:*",
     "@ormicode/agent-claude-cli": "workspace:*",
     "@ormicode/agent-codex-sdk": "workspace:*",

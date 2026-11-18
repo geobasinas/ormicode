@@ -10,6 +10,20 @@ const costBucket = { tokens: count, usd: z.nullable(z.number()), unpriced: count
 const gitPath = z.object({ path: nonEmpty, oldPath: z.optional(nonEmpty), status: z.enum(['M', 'A', 'D', 'R', '?', 'U']), staged: z.boolean(), unstaged: z.boolean() });
 const gitFileStat = z.object({ path: nonEmpty, oldPath: z.optional(nonEmpty), status: z.enum(['M', 'A', 'D', 'R', '?', 'U']), binary: z.boolean(), added: count, removed: count });
 const stashItem = z.object({ index: count, ref: nonEmpty, message: z.string(), branch: z.nullable(z.string()), ts: timestampSchema, files: count, added: count, removed: count });
+const gitLogResponse = z.object({
+  commits: z.array(z.object({
+    sha: nonEmpty, subject: z.string(), author: z.string(), email: z.string(), ts: timestampSchema,
+    parents: z.array(nonEmpty), refs: z.array(z.string()), pushed: z.boolean(), session: z.optional(nonEmpty),
+  })), total: count,
+});
+const fileEntry = z.object({
+  name: nonEmpty, path: nonEmpty, kind: z.enum(['dir', 'file', 'symlink']), size: count, mtime: z.number(),
+  git: z.optional(z.enum(['modified', 'added', 'deleted', 'renamed', 'untracked', 'ignored', 'conflicted'])),
+});
+const fileSearchResponse = z.union([
+  z.object({ files: z.array(z.object({ path: nonEmpty, score: z.number(), positions: z.array(count) })), truncated: z.boolean() }),
+  z.object({ matches: z.array(z.object({ path: nonEmpty, line: count, text: z.string(), ranges: z.array(z.tuple([count, count])) })), truncated: z.boolean() }),
+]);
 const gitPr = z.object({
   number: count, title: z.string(), body: z.string(), state: z.enum(['open', 'closed', 'merged', 'draft']), url: nonEmpty,
   head: nonEmpty, base: nonEmpty, author: nonEmpty, createdAt: timestampSchema,
@@ -146,6 +160,15 @@ export const requestBodies = {
   'checkpoint.diff': z.object({ ...session, from: nonEmpty, to: z.optional(nonEmpty) }),
   'checkpoint.restore': z.object({ ...session, id: nonEmpty, mode: z.enum(['files', 'conversation']) }),
   'checkpoint.fork': z.object({ ...session, id: nonEmpty, branch: z.optional(nonEmpty) }),
+  'file.list': z.object({ ...session, path: z.optional(z.string()) }),
+  'file.read': z.object({ ...session, path: nonEmpty, ref: z.optional(nonEmpty), force: z.optional(z.boolean()) }),
+  'file.write': z.object({ ...session, path: nonEmpty, content: z.string(), baseMtime: z.optional(z.number()) }),
+  'file.search': z.object({
+    ...session, query: nonEmpty, mode: z.enum(['name', 'content']), regex: z.optional(z.boolean()),
+    limit: z.optional(z.number().check(z.int(), z.gte(1), z.lte(1000))),
+  }),
+  'file.blame': z.object({ ...session, path: nonEmpty }),
+  'file.history': z.object({ ...session, path: nonEmpty, limit: z.optional(limitSchema) }),
   'devices.list': z.object({}),
   'devices.rename': z.object({ device: nonEmpty, name: nonEmpty }),
   // confirm must equal the device name, so a revoke can't fire by accident.
@@ -222,12 +245,7 @@ export const responseBodies = {
   'git.unstage': z.object({}),
   'git.commit': z.object({ sha: nonEmpty }),
   'git.push': z.object({ branch: nonEmpty, upstream: nonEmpty }),
-  'git.log': z.object({
-    commits: z.array(z.object({
-      sha: nonEmpty, subject: z.string(), author: z.string(), email: z.string(), ts: timestampSchema,
-      parents: z.array(nonEmpty), refs: z.array(z.string()), pushed: z.boolean(), session: z.optional(nonEmpty),
-    })), total: count,
-  }),
+  'git.log': gitLogResponse,
   'git.show': z.object({
     sha: nonEmpty, subject: z.string(), body: z.string(), author: z.string(), ts: timestampSchema, parents: z.array(nonEmpty),
     files: z.array(gitFileStat), patch: z.string(), truncated: z.boolean(),
@@ -253,6 +271,19 @@ export const responseBodies = {
   'checkpoint.diff': z.object({ patch: z.string(), truncated: z.boolean() }),
   'checkpoint.restore': z.object({ restored: z.literal(true), id: nonEmpty }),
   'checkpoint.fork': z.object({ session: sessionIdSchema, branch: nonEmpty, cwd: nonEmpty, from: nonEmpty }),
+  'file.list': z.object({ root: nonEmpty, path: z.string(), entries: z.array(fileEntry), free: z.nullable(z.number()) }),
+  'file.read': z.object({
+    path: nonEmpty, size: count, mtime: z.nullable(z.number()), binary: z.boolean(),
+    mime: z.nullable(z.string()), encoding: z.nullable(z.enum(['utf8', 'base64'])),
+    content: z.nullable(z.string()), tooLarge: z.boolean(),
+  }),
+  'file.write': z.object({ path: nonEmpty, size: count, mtime: z.number(), checkpoint: z.nullable(nonEmpty) }),
+  'file.search': fileSearchResponse,
+  'file.blame': z.object({
+    hunks: z.array(z.object({ start: count, count, sha: nonEmpty })),
+    commits: z.record(z.string(), z.object({ author: z.string(), ts: timestampSchema, summary: z.string(), session: z.optional(nonEmpty) })),
+  }),
+  'file.history': gitLogResponse,
   'agents.list': z.object({ agents: z.array(z.object({ vendor: nonEmpty, transports: z.array(nonEmpty) })) }),
   'devices.list': z.object({ devices: z.array(z.object({ id: nonEmpty, name: nonEmpty, trustedAt: timestampSchema })) }),
   'devices.rename': z.object({ renamed: z.literal(true) }),

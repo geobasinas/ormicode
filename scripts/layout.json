@@ -18,6 +18,7 @@
     "leases",
     "eval",
     "git-core",
+    "files",
     "pty-broker",
     "platform",
     "config",

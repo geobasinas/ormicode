@@ -25,6 +25,7 @@ import { summarize as digestOf, rank as rankDigest } from '@ormicode/digest';
 import { checkpointMethod } from './checkpoint-methods.ts';
 import { costMethod } from './cost-methods.ts';
 import { gitMethod } from './git-methods.ts';
+import { fileMethod } from './file-methods.ts';
 
 const LIVE_STATES = ['idle', 'starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying', 'paused_rate_limited', 'interrupted'] as const;
 
@@ -384,6 +385,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         if (method.startsWith('terminal.')) return await ctx.terminals.method(client, id, method, body);
         if (method.startsWith('secret.')) return secretMethod(ctx, client, id, method, body);
         if (method.startsWith('checkpoint.')) return await checkpointMethod(ctx, client, id, method, body);
+        if (method.startsWith('file.')) return await fileMethod(ctx, client, id, method, body);
         return client.link.replyError(id, 'protocol.unimplemented', method);
     }
   } catch (error) {

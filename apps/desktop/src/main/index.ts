@@ -7,9 +7,9 @@
  * (~/.ormicode/desktop/remote.json + safeStorage token), fall back to
  * the relay WebSocket. Pairing goes through `ormi:pair` IPC.
  */
-import { app, BrowserWindow, ipcMain, safeStorage, screen } from 'electron';
-import { join } from 'node:path';
-import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync } from 'node:fs';
+import { app, BrowserWindow, ipcMain, safeStorage, screen, shell } from 'electron';
+import { isAbsolute, join } from 'node:path';
+import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, statSync } from 'node:fs';
 import * as daemonSocket from '@ormicode/daemon/socket';
 import { connectRemote, joinRemote } from '@ormicode/relay-client';
 import type { WsLink } from '@ormicode/relay-client';
@@ -48,6 +48,12 @@ function writeToken(token: string): void {
   mkdirSync(desktopDir, { recursive: true });
   const data = encryption ? safeStorage.encryptString(token) : Buffer.from(token, 'utf8');
   writeFileSync(tokenFile, data, { mode: 0o600 });
+}
+
+function checkedPath(value: unknown): string {
+  if (typeof value !== 'string' || !isAbsolute(value) || !existsSync(value))
+    throw new Error('An existing absolute path is required');
+  return value;
 }
 
 function attachLink(l: AnyLink): void {
@@ -150,6 +156,15 @@ app.whenReady().then(async () => {
     try { return await link.request(method, body ?? {}); }
     catch (e) { return { v: 1, type: 'err', id: 'local', code: 'daemon.error', message: String(e) } satisfies Partial<Frame>; }
   });
+  // Opening a file hands it to its default app; never hand over something that would run.
+  ipcMain.handle('ormi:openPath', (_e, absPath: unknown) => {
+    const path = checkedPath(absPath);
+    const st = statSync(path);
+    if (st.isFile() && (/\.(exe|bat|cmd|com|msi|ps1|vbs|js|jar|sh|command|app|desktop|appimage|scr|lnk)$/i.test(path) || (process.platform !== 'win32' && (st.mode & 0o111) !== 0)))
+      return 'Executable files are not opened from here';
+    return shell.openPath(path);
+  });
+  ipcMain.handle('ormi:showItemInFolder', (_e, absPath: unknown) => shell.showItemInFolder(checkedPath(absPath)));
   ipcMain.on('ormi:subscribe', (_e, session: string, after?: number) => {
     void link?.request('session.subscribe', { session, ...(after !== undefined ? { after } : {}) });
   });

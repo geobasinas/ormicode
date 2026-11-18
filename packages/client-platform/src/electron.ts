@@ -23,6 +23,8 @@ interface OrmiBridge {
   winMin(): void;
   winMax(): void;
   winClose(): void;
+  openPath(absPath: string): Promise<string>;
+  showItemInFolder(absPath: string): void;
 }
 
 declare global {
@@ -60,6 +62,8 @@ export function electronPlatform(): ClientPlatform {
       winMin: () => b.winMin(),
       winMax: () => b.winMax(),
       winClose: () => b.winClose(),
+      openPath: absPath => b.openPath(absPath),
+      showItemInFolder: absPath => b.showItemInFolder(absPath),
     },
   };
 }
