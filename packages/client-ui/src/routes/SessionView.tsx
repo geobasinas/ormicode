@@ -25,7 +25,7 @@ export function SessionView({ session, rail = 'none' }: { session: string; rail?
           <History size={11} />{[projectName(details.project), details.vendor, stateLabel(details.state)].join(' · ')}
         </div>
       </div> : null}
-      <Transcript events={events} />
+      <Transcript events={events} session={session} />
       <Approvals session={session} pending={approvals} />
       <Composer session={session} details={details} />
     </div>

@@ -134,3 +134,6 @@ button:focus-visible { outline: 1px solid var(--line-card); outline-offset: -1px
 .ormi-chip-text { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .ormi-tabs { scrollbar-width: none; }
 .ormi-tabs::-webkit-scrollbar { display: none; }
+/* Hover-only affordances (checkpoint icons, expand chevrons). */
+.ormi-hover-reveal { opacity: 0; transition: opacity 0.12s ease; }
+.ormi-hover-zone:hover .ormi-hover-reveal, .ormi-hover-reveal:focus-visible, .ormi-hover-reveal[data-state="open"], .ormi-hover-reveal[aria-expanded="true"] { opacity: 1; }
