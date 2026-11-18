@@ -19,7 +19,7 @@ export function useTranscript(session: string | undefined): { events: Transcript
       if (frame.type !== 'evt' || frame.session !== session) return;
       const body = frame.body as Record<string, unknown>;
       const evt = { seq: Number(frame.seq ?? 0), kind: String(body.kind), body };
-      if (evt.kind === 'approval_decision' || evt.kind === 'interaction_expired')
+      if (evt.kind === 'approval_decision' || evt.kind === 'question_answer' || evt.kind === 'interaction_expired')
         pendingRef.current = pendingRef.current.filter(p => p.body.request !== body.request);
       else if (evt.kind === 'approval_request' || evt.kind === 'question_request')
         pendingRef.current = [...pendingRef.current.filter(p => p.body.request !== body.request), evt];

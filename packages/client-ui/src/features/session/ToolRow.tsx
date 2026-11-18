@@ -15,7 +15,7 @@ const str = (v: unknown) => typeof v === 'string' ? v : Array.isArray(v) ? v.joi
 
 interface Shape { icon: ReactNode; verb: string; target?: string; detail?: string; added?: number; removed?: number }
 
-function shape(name: string, input: Record<string, unknown>): Shape {
+export function shape(name: string, input: Record<string, unknown>): Shape {
   const file = str(input.file_path ?? input.filePath ?? input.path ?? input.notebook_path);
   const ic = (I: typeof Pencil) => <I size={12} style={{ color: 'var(--text-hint)', flexShrink: 0, opacity: 0.8 }} />;
   const n = name.toLowerCase();
@@ -68,7 +68,7 @@ export function CheckpointMark({ session, cp, inline }: { session: string; cp: T
 const pretty = (v: unknown) => typeof v === 'string' ? v : JSON.stringify(v, null, 2);
 
 /** Expanded body: edits as a mini diff, commands as `$ cmd`, anything else as JSON. */
-function Detail({ name, input, raw }: { name: string; input: Record<string, unknown>; raw: unknown }) {
+export function Detail({ name, input, raw }: { name: string; input: Record<string, unknown>; raw: unknown }) {
   const n = name.toLowerCase();
   const edits = Array.isArray(input.edits) ? input.edits as Record<string, unknown>[] : [input];
   const oldOf = (e: Record<string, unknown>) => str(e.old_string ?? e.oldString); const newOf = (e: Record<string, unknown>) => str(e.new_string ?? e.newString);

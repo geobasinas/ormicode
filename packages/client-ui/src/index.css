@@ -146,3 +146,7 @@ button:focus-visible { outline: 1px solid var(--line-card); outline-offset: -1px
 .ormi-select { appearance: none; padding-right: 24px !important; cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23878787' stroke-width='2.5'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; }
 .ormi-select option { background: var(--bg-card); color: var(--text-title); }
 input::placeholder, textarea::placeholder { color: var(--text-hint); opacity: 0.8; }
+.ormi-choice { transition: background-color 120ms, color 120ms; }
+.ormi-choice:hover:not(:disabled) { background-color: var(--bg-hover) !important; color: var(--text-title) !important; }
+.ormi-choice-danger:hover:not(:disabled) { background-color: var(--tint-red) !important; color: var(--accent-red) !important; }
+.ormi-choice:disabled { opacity: 0.55; }

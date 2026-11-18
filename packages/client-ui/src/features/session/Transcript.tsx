@@ -2,7 +2,7 @@
  * tool calls as compact expandable rows (result folded in, checkpoint as a
  * hover-only icon), system events as muted lines. */
 import { useEffect, useMemo, useRef } from 'react';
-import { CircleAlert, ArrowRight, RotateCw, Pause, ChevronRight, History, ShieldQuestion, CircleCheck, CircleHelp, MessageCircle, Clock3 } from 'lucide-react';
+import { CircleAlert, ArrowRight, RotateCw, Pause, ChevronRight, History, CircleCheck, MessageCircle, Clock3 } from 'lucide-react';
 import { ToolRow, ThinkingRow, CheckpointMark } from './ToolRow.tsx';
 import type { TranscriptEvent } from './useTranscript.ts';
 
@@ -78,11 +78,10 @@ function line(e: TranscriptEvent, ctx: Ctx) {
         <History size={11} />Restored files to checkpoint <span style={mono}>{String(b.id ?? '').slice(0, 7)}</span>
       </div>;
     case 'approval_request':
-      return eventLine(<ShieldQuestion size={12} />, 'Asked for approval');
+    case 'question_request':
+      return null;
     case 'approval_decision':
       return eventLine(<CircleCheck size={12} />, b.option === 'deny' ? 'Denied' : 'Allowed');
-    case 'question_request':
-      return eventLine(<CircleHelp size={12} />, 'Asked a question');
     case 'question_answer':
       return eventLine(<MessageCircle size={12} />, 'Answered');
     case 'interaction_expired':

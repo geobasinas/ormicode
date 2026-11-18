@@ -48,7 +48,7 @@ export function SessionView({ session, rail = 'none' }: { session: string; rail?
         </div>
       </div> : null}
       <Transcript events={events} session={session} />
-      <Approvals session={session} pending={approvals} />
+      <Approvals session={session} pending={approvals} events={events} />
       <Composer session={session} details={details} />
     </div>
   );
