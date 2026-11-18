@@ -137,3 +137,4 @@ button:focus-visible { outline: 1px solid var(--line-card); outline-offset: -1px
 /* Hover-only affordances (checkpoint icons, expand chevrons). */
 .ormi-hover-reveal { opacity: 0; transition: opacity 0.12s ease; }
 .ormi-hover-zone:hover .ormi-hover-reveal, .ormi-hover-reveal:focus-visible, .ormi-hover-reveal[data-state="open"], .ormi-hover-reveal[aria-expanded="true"] { opacity: 1; }
+.ormi-tool-line:hover, .ormi-tool-line:hover span { color: var(--text-label) !important; }

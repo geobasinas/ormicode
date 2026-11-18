@@ -17,15 +17,15 @@ interface Shape { icon: ReactNode; verb: string; target?: string; detail?: strin
 
 function shape(name: string, input: Record<string, unknown>): Shape {
   const file = str(input.file_path ?? input.filePath ?? input.path ?? input.notebook_path);
-  const ic = (I: typeof Pencil, color = 'var(--text-hint)') => <I size={13} style={{ color, flexShrink: 0 }} />;
+  const ic = (I: typeof Pencil) => <I size={12} style={{ color: 'var(--text-hint)', flexShrink: 0, opacity: 0.8 }} />;
   const n = name.toLowerCase();
   if (['edit', 'multiedit', 'notebookedit', 'write', 'str_replace_based_edit_tool'].includes(n)) {
     const edits = Array.isArray(input.edits) ? input.edits as Record<string, unknown>[] : [input];
     const added = n === 'write' ? lines(input.content) : edits.reduce((a, e) => a + lines(e.new_string ?? e.newString), 0);
     const removed = n === 'write' ? 0 : edits.reduce((a, e) => a + lines(e.old_string ?? e.oldString), 0);
-    return { icon: ic(Pencil, 'var(--accent-mint)'), verb: n === 'write' ? 'Wrote' : 'Edited', target: base(file), added, removed };
+    return { icon: ic(Pencil), verb: n === 'write' ? 'Wrote' : 'Edited', target: base(file), added, removed };
   }
-  if (n === 'apply_patch') return { icon: ic(Pencil, 'var(--accent-mint)'), verb: 'Applied patch' };
+  if (n === 'apply_patch') return { icon: ic(Pencil), verb: 'Applied patch' };
   if (['bash', 'shell', 'exec_command', 'local_shell', 'run_terminal_cmd'].includes(n)) return { icon: ic(SquareTerminal), verb: 'Ran', detail: str(input.command ?? input.cmd) };
   if (['read', 'view', 'read_file'].includes(n)) return { icon: ic(FileText), verb: 'Read', target: base(file) };
   if (['grep', 'glob', 'search', 'ls'].includes(n)) return { icon: ic(Search), verb: n === 'ls' ? 'Listed' : 'Searched', detail: str(input.pattern ?? input.query ?? input.path) };
@@ -33,7 +33,7 @@ function shape(name: string, input: Record<string, unknown>): Shape {
   if (['todowrite', 'update_plan'].includes(n)) return { icon: ic(ListChecks), verb: 'Updated the plan' };
   if (['task', 'agent'].includes(n)) return { icon: ic(Sparkles), verb: 'Delegated', detail: str(input.description ?? input.prompt) };
   const summary = JSON.stringify(input);
-  return { icon: ic(Wrench, 'var(--accent-amber)'), verb: name, detail: summary === '{}' ? undefined : summary };
+  return { icon: ic(Wrench), verb: name, detail: summary === '{}' ? undefined : summary };
 }
 
 export function CheckpointMark({ session, cp, inline }: { session: string; cp: TranscriptEvent; inline?: boolean }) {
@@ -52,7 +52,7 @@ export function CheckpointMark({ session, cp, inline }: { session: string; cp: T
         <DropdownMenuTrigger asChild>
           <button className="ormi-hover-reveal hv-sub" title={`checkpoint ${id.slice(0, 7)}${inline ? '' : ' · before the first tool call'}`} aria-label="checkpoint" style={{
             border: 'none', background: 'transparent', color: 'var(--text-hint)', cursor: 'pointer', padding: 3, borderRadius: 5, display: 'inline-flex',
-          }}><History size={12} /></button>
+          }}><History size={11} /></button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuLabel>Checkpoint {id.slice(0, 7)}{typeof cp.body.overCap === 'number' ? ' · over the size cap' : ''}</DropdownMenuLabel>
@@ -94,25 +94,26 @@ export function ToolRow({ call, result, checkpoint, session }: { call: Transcrip
   const s = shape(String(call.body.name), input);
   const status = result ? String(result.body.status) : 'running';
   return (
-    <div className="ormi-hover-zone" style={{ margin: '3px 0', position: 'relative' }}>
+    <div className="ormi-hover-zone ormi-tool" style={{ margin: '1px 0', position: 'relative' }}>
       <div style={{ display: 'flex', alignItems: 'center' }}>
-        <div onClick={() => setOpen(o => !o)} className="hv-sub" style={{
-          flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderRadius: 7, cursor: 'pointer',
-          background: 'var(--bg-card)', fontSize: 12.5, color: 'var(--text-secondary)',
+        <div onClick={() => setOpen(o => !o)} className="ormi-tool-line" style={{
+          flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 7, padding: '2px 0', cursor: 'pointer',
+          fontSize: 12, lineHeight: '18px', color: 'var(--text-hint)',
         }}>
-          {status === 'running' ? <Loader2 size={13} className="animate-spin" style={{ color: 'var(--accent-amber)', flexShrink: 0 }} /> : s.icon}
-          <span style={{ color: 'var(--text-title)', fontWeight: 600, whiteSpace: 'nowrap' }}>{s.verb}{s.target ? ` ${s.target}` : ''}</span>
-          <span style={{ ...mono, ...hint, fontSize: 11.5, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.detail ?? ''}</span>
-          {s.added || s.removed ? <span style={{ ...mono, fontSize: 11.5, display: 'inline-flex', gap: 6, flexShrink: 0 }}>
+          {status === 'running' ? <Loader2 size={12} className="animate-spin" style={{ color: 'var(--text-hint)', flexShrink: 0 }} /> : s.icon}
+          <span style={{ whiteSpace: 'nowrap' }}><span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{s.verb}</span>{s.target ? ` ${s.target}` : ''}</span>
+          <span style={{ ...mono, fontSize: 11, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: 0.85 }}>{s.detail ?? ''}</span>
+          {s.added || s.removed ? <span style={{ ...mono, fontSize: 11, display: 'inline-flex', gap: 5, flexShrink: 0, opacity: 0.85 }}>
             {s.added ? <span style={{ color: 'var(--accent-mint)' }}>+{s.added}</span> : null}{s.removed ? <span style={{ color: 'var(--accent-red)' }}>−{s.removed}</span> : null}
           </span> : null}
-          {status === 'failed' ? <span style={{ color: 'var(--accent-red)', fontSize: 11.5, flexShrink: 0 }}>failed</span>
-            : status === 'interrupted' ? <span style={{ color: 'var(--accent-amber)', fontSize: 11.5, flexShrink: 0 }}>interrupted</span> : null}
-          {open ? <ChevronDown size={12} style={{ ...hint, flexShrink: 0 }} /> : <ChevronRight size={12} className="ormi-hover-reveal" style={{ ...hint, flexShrink: 0 }} />}
+          {status === 'failed' ? <span style={{ color: 'var(--accent-red)', fontSize: 11, flexShrink: 0, opacity: 0.85 }}>failed</span>
+            : status === 'interrupted' ? <span style={{ color: 'var(--accent-amber)', fontSize: 11, flexShrink: 0, opacity: 0.85 }}>interrupted</span> : null}
+          {open ? <ChevronDown size={11} style={{ ...hint, flexShrink: 0 }} /> : <ChevronRight size={11} className="ormi-hover-reveal" style={{ ...hint, flexShrink: 0 }} />}
+          <span style={{ flex: 1 }} />
         </div>
-        {checkpoint ? <span style={{ position: 'absolute', right: -26, top: 4, width: 22, display: 'inline-flex', justifyContent: 'center' }}><CheckpointMark session={session} cp={checkpoint} inline /></span> : null}
+        {checkpoint ? <span style={{ position: 'absolute', right: -26, top: -1, width: 22, display: 'inline-flex', justifyContent: 'center' }}><CheckpointMark session={session} cp={checkpoint} inline /></span> : null}
       </div>
-      {open ? <div style={{ margin: '4px 0 6px', padding: '8px 10px', borderRadius: 7, background: 'var(--bg-inset)', ...mono, fontSize: 11.5, color: 'var(--text-label)', maxHeight: 280, overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+      {open ? <div style={{ margin: '2px 0 6px 19px', padding: '6px 9px', borderRadius: 6, background: 'var(--bg-inset)', ...mono, fontSize: 11, color: 'var(--text-label)', maxHeight: 280, overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
         <Detail name={String(call.body.name)} input={input} raw={call.body.input} />
         {result?.body.output !== undefined ? <><div style={{ ...hint, margin: '10px 0 4px' }}>output</div>{pretty(result.body.output).slice(0, 20_000)}</> : null}
       </div> : null}
@@ -124,10 +125,10 @@ export function ThinkingRow({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
   return (
     <div style={{ margin: '3px 0' }}>
-      <div onClick={() => setOpen(o => !o)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, ...hint }}>
-        <Brain size={12} />Thinking{open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+      <div onClick={() => setOpen(o => !o)} className="ormi-tool-line" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: 12, lineHeight: '18px', padding: '2px 0', ...hint }}>
+        <Brain size={12} style={{ opacity: 0.8 }} />Thinking{open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
       </div>
-      {open ? <div style={{ ...mono, fontSize: 11.5, color: 'var(--text-hint)', whiteSpace: 'pre-wrap', padding: '4px 0 0 18px' }}>{text}</div> : null}
+      {open ? <div style={{ ...mono, fontSize: 11.5, color: 'var(--text-hint)', whiteSpace: 'pre-wrap', padding: '2px 0 0 19px' }}>{text}</div> : null}
     </div>
   );
 }
