@@ -43,7 +43,10 @@ export const sessionStateSchema = z.enum([
 const workspaceSchema = z.union([
   z.object({ kind: z.literal('current') }),
   z.object({ kind: z.literal('branch'), branch: nonEmpty }),
-  z.object({ kind: z.literal('worktree'), branch: nonEmpty }),
+  z.object({
+    kind: z.literal('worktree'), branch: nonEmpty, name: z.optional(nonEmpty), includeDirty: z.optional(z.boolean()),
+  }),
+  z.object({ kind: z.literal('existing'), path: nonEmpty }),
   // No project folder: the session gets ~/.ormicode/scratch/<id> as its cwd.
   z.object({ kind: z.literal('scratch') }),
 ]);
@@ -181,6 +184,7 @@ export const requestBodies = {
   'models.list': z.object({ agent: z.optional(nonEmpty), transport: z.optional(nonEmpty), refresh: z.optional(z.boolean()) }),
   // Branch catalog for a project dir before a session exists (composer workspace picker).
   'project.branches': z.object({ project: nonEmpty }),
+  'project.fetch': z.object({ project: nonEmpty }),
   // Hub-side pairing: returns a one-shot 12-digit code the new device enters.
   'pair.create': z.object({}),
   // A device exchanges a live code for a device token (raw token returned once).
@@ -267,8 +271,12 @@ export const responseBodies = {
   }),
   'git.branches': branchInfo,
   'project.branches': z.object({
-    isRepo: z.boolean(), detached: z.boolean(), dirty: count, busyBranches: z.array(nonEmpty), ...branchInfo.shape,
+    isRepo: z.boolean(), detached: z.boolean(), dirty: count, busyBranches: z.array(nonEmpty),
+    defaultBranch: z.nullable(nonEmpty),
+    worktrees: z.array(z.object({ path: nonEmpty, branch: z.nullable(z.string()), session: z.nullable(nonEmpty), state: z.nullable(z.string()) })),
+    ...branchInfo.shape,
   }),
+  'project.fetch': z.object({ ok: z.boolean(), error: z.optional(z.string()) }),
   'git.checkout': z.object({ branch: nonEmpty }),
   'git.createBranch': z.object({ branch: nonEmpty }),
   'git.deleteBranch': z.object({}),

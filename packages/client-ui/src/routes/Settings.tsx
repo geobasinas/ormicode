@@ -6,11 +6,11 @@ import { usePlatform } from '../lib/platform.ts';
 import { ago, compactTokens, formatUsd, projectName } from '../lib/format.ts';
 import { useSessions } from '../features/session/useSessions.ts';
 
-export interface Prefs { theme: string; defaultVendor: string; defaultProject: string; projects?: string[] }
+export interface Prefs { theme: string; defaultVendor: string; defaultProject: string; worktreeBranchPrefix?: string; projects?: string[] }
 const KEY = 'ormi.prefs';
 export const VENDORS = ['claude', 'codex', 'opencode', 'pi', 'grok', 'vibe', 'fake'];
 export function loadPrefs(theme = 'dark'): Prefs {
-  const base: Prefs = { theme, defaultVendor: 'claude', defaultProject: 'scratch' };
+  const base: Prefs = { theme, defaultVendor: 'claude', defaultProject: 'scratch', worktreeBranchPrefix: 'ormi/' };
   try { return { ...base, ...JSON.parse(globalThis.localStorage?.getItem(KEY) ?? '{}') as Partial<Prefs> }; } catch { return base; }
 }
 function savePrefs(p: Prefs) { try { globalThis.localStorage?.setItem(KEY, JSON.stringify(p)); } catch { /* private mode */ } }
@@ -285,6 +285,10 @@ export function SettingsView({ prefs, onPrefs, connection }: { prefs: Prefs; onP
             <Group title="WORKSPACE">
               <Row title="Default project folder" hint={prefs.defaultProject} mono>
                 <input aria-label="default project" style={{ ...ctl, width: 200, fontFamily: 'var(--font-mono)' }} value={prefs.defaultProject} onChange={e => set({ defaultProject: e.target.value || 'scratch' })} />
+              </Row>
+              <Row title="Worktree branch prefix" hint="Prefix for new worktree branches" monoTitle>
+                <input aria-label="Worktree branch prefix" style={{ ...ctl, width: 200, fontFamily: 'var(--font-mono)' }}
+                  value={prefs.worktreeBranchPrefix ?? 'ormi/'} onChange={e => set({ worktreeBranchPrefix: e.target.value })} />
               </Row>
               <Row title="Language" hint="Used for menus and messages"><Soon what="English" /></Row>
             </Group>

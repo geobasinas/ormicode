@@ -2,13 +2,13 @@
  * model + effort (nested submenus), and one chip for the git workspace choice
  * (current branch / new branch / worktree from a branch). */
 import { useState, type ReactNode } from 'react';
-import { Check, ChevronDown, Cpu, Gauge, RefreshCw } from 'lucide-react';
+import { Check, ChevronDown, Cpu, Gauge, GitBranch, Loader2, Pencil, RefreshCw, Search } from 'lucide-react';
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
+  DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
   DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent,
   DropdownMenuSubTrigger, DropdownMenuTrigger,
 } from '../../components/ui/dropdown-menu.tsx';
-import { chip, TextChip } from './composer-parts.tsx';
+import { chip } from './composer-parts.tsx';
 import { VendorIcon, vendorColor } from './vendor-icons.tsx';
 import type { ListedModel } from './useModels.ts';
 
@@ -149,92 +149,195 @@ export function AgentChip({ vendor, via, agents, onPick, model, models, onModel,
   );
 }
 
-export interface WorkspaceChoice { kind: 'current' | 'branch' | 'worktree'; branch?: string }
+export type WorkspaceChoice =
+  | { kind: 'current' }
+  | { kind: 'branch'; branch: string }
+  | { kind: 'worktree'; branch: string; name?: string; includeDirty?: boolean }
+  | { kind: 'existing'; path: string };
+export type WorkspaceMode = 'local' | 'worktree';
 export interface RepoInfo {
   current: string | null; detached: boolean; dirty: number; busyBranches: string[];
   local: { name: string; subject: string; ts: number; current: boolean }[];
+  remote: { name: string; subject: string; ts: number }[];
+  defaultBranch: string | null;
+  worktrees: { path: string; branch: string | null; session: string | null; state: string | null }[];
 }
 
-/** Git workspace picker: work on the current branch, on a new branch, or in a
- * fresh worktree cut from a listed branch. Only rendered for git projects. */
-export function GitChip({ value, onChange, info, icon, title, onOpen }: {
-  value: WorkspaceChoice; onChange: (w: WorkspaceChoice) => void;
-  info: RepoInfo; icon?: ReactNode; title?: string; onOpen?: () => void;
+const fieldStyle = {
+  height: 26, width: '100%', boxSizing: 'border-box' as const, outline: 'none',
+  border: '1px solid var(--line-card)', borderRadius: 6, background: 'var(--bg-main)',
+  color: 'var(--text-title)', font: 'inherit', fontSize: 11, padding: '0 7px',
+};
+
+/** Local/worktree segmented control and branch-base picker for Git projects. */
+export function GitChip({ value, onChange, info, mode, onModeChange, branchName, onBranchNameChange, icon, title, onOpen, onFetch }: {
+  value: WorkspaceChoice; onChange: (w: WorkspaceChoice) => void; info: RepoInfo;
+  mode: WorkspaceMode; onModeChange: (mode: WorkspaceMode) => void;
+  branchName: string; onBranchNameChange: (name: string) => void;
+  icon?: ReactNode; title?: string; onOpen?: () => void; onFetch: () => Promise<unknown>;
 }) {
-  const [naming, setNaming] = useState(false);
-  if (naming) {
-    return (
-      <TextChip autoEdit onDone={() => setNaming(false)} icon={icon} value="" placeholder="branch name" width={110}
-        title="new branch, checked out in the project"
-        onCommit={v => { if (v !== 'default') onChange({ kind: 'branch', branch: v }); }} />
-    );
-  }
-  const label = value.kind === 'current' ? (info.detached ? 'detached' : info.current ?? 'current')
-    : value.kind === 'branch' ? `+${value.branch}` : `wt:${value.branch}`;
-  const branches = [...info.local]
+  const [query, setQuery] = useState('');
+  const [editingName, setEditingName] = useState(false);
+  const [fetching, setFetching] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const currentBusy = Boolean(info.current && info.busyBranches.includes(info.current));
+  const selectedExisting = value.kind === 'existing' ? info.worktrees.find(item => item.path === value.path) : undefined;
+  const label = value.kind === 'existing' ? `in ${selectedExisting?.branch ?? 'worktree'}`
+    : mode === 'local' ? value.kind === 'branch' ? `new · ${value.branch}` : info.detached ? 'detached' : info.current ?? 'current'
+      : `from ${value.kind === 'worktree' ? value.branch : (info.defaultBranch ?? info.current ?? 'branch')}`;
+  const search = query.trim().toLocaleLowerCase();
+  const matches = (text: string) => !search || text.toLocaleLowerCase().includes(search);
+  const local = [...info.local]
     .sort((a, b) => Number(b.current) - Number(a.current) || b.ts - a.ts || a.name.localeCompare(b.name))
-    .slice(0, 50);
-  const dirtyHint = info.dirty > 0 && value.kind !== 'current'
-    ? value.kind === 'worktree'
-      ? `${info.dirty} uncommitted ${info.dirty === 1 ? 'change stays' : 'changes stay'} in the main checkout`
-      : `${info.dirty} uncommitted ${info.dirty === 1 ? 'change comes' : 'changes come'} along to the new branch`
-    : null;
+    .filter(b => matches(`${b.name} ${b.subject}`));
+  const remote = info.remote.filter(b => matches(`${b.name} ${b.subject}`));
+  const existing = info.worktrees.filter(w => matches(`${w.branch ?? ''} ${w.path} ${w.state ?? ''}`));
+  let remaining = Math.max(0, 100
+    - Number(Boolean(info.defaultBranch && matches(`${info.defaultBranch} latest remote`)))
+    - Number(Boolean(info.current && matches(`${info.current} current`)))
+    - Number(Boolean(info.current && info.dirty > 0 && matches(`${info.current} current`))));
+  const take = <T,>(items: T[]) => { const visible = items.slice(0, remaining); remaining -= visible.length; return visible; };
+  const localRows = take(local);
+  const remoteRows = take(remote);
+  const existingRows = take(existing);
+  const truncated = localRows.length < local.length || remoteRows.length < remote.length || existingRows.length < existing.length;
+  const activeBase = value.kind === 'worktree' && value.branch === info.current;
+  const chooseWorktree = (branch: string, includeDirty = false) =>
+    onChange({ kind: 'worktree', branch, name: branchName, ...(includeDirty ? { includeDirty: true } : {}) });
+  const fetch = async () => { setFetching(true); try { await onFetch(); } finally { setFetching(false); } };
+  const beginBranch = () => {
+    if (!branchName.trim()) return;
+    onChange({ kind: 'branch', branch: branchName.trim() });
+    setMenuOpen(false);
+  };
+  const segment = (label: string, selected: boolean, disabled: boolean, choose: () => void, reason?: string) => (
+    <button type="button" title={reason} disabled={disabled} onClick={choose} style={{
+      height: 20, border: 'none', borderRadius: 5, padding: '0 7px', font: 'inherit', fontSize: 10.5,
+      color: selected ? 'var(--text-title)' : 'var(--text-hint)', background: selected ? 'var(--bg-raised)' : 'transparent',
+      opacity: disabled ? 0.45 : 1, cursor: disabled ? 'default' : 'pointer', whiteSpace: 'nowrap',
+    }}>{label}</button>
+  );
   return (
-    <DropdownMenu onOpenChange={open => { if (open) onOpen?.(); }}>
-      <DropdownMenuTrigger asChild>
-        <button className="hv-sub" style={chip} title={title}>
-          {icon}
-          {info.detached && value.kind === 'current' ? <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-amber)', flexShrink: 0 }} /> : null}
-          <span className="ormi-chip-text">{label}</span>{chev}
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" style={{ width: 260, maxWidth: 'calc(100vw - 16px)' }}>
-        <DropdownMenuLabel>Workspace</DropdownMenuLabel>
-        <DropdownMenuItem
-          disabled={info.detached}
-          onSelect={() => onChange({ kind: 'current' })}
-          className="text-xs"
-          title={info.detached ? 'HEAD is detached — choose a new branch or a worktree' : 'work directly on the checked-out branch'}
-          style={{ alignItems: 'flex-start', paddingTop: 6, paddingBottom: 6 }}
-        >
-          {mark(value.kind === 'current')}
-          <span className="min-w-0 flex-1" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span>Current branch</span>
-              <span style={{ marginLeft: 'auto', color: 'var(--text-hint)', fontFamily: 'var(--font-mono)', fontSize: 10 }}>{info.current ?? 'detached'}</span>
-            </span>
-            {info.detached ? <span style={{ color: 'var(--text-hint)', fontSize: 10, whiteSpace: 'normal' }}>HEAD is detached — choose a new branch or a worktree</span>
-              : info.busyBranches.includes(info.current ?? '') ? <span style={{ color: 'var(--text-hint)', fontSize: 10, whiteSpace: 'normal' }}>In use by another session — a new worktree will be made</span> : null}
-          </span>
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => setNaming(true)} className="text-xs" title="create a branch in the project checkout">
-          {mark(value.kind === 'branch')}<span className="truncate">New branch…{value.kind === 'branch' ? ` ${value.branch}` : ''}</span>
-        </DropdownMenuItem>
-        {branches.length ? (
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger className="text-xs">
-              <span style={{ width: 16 }} />
-              <span>New worktree from</span>
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent style={{ minWidth: 260, maxWidth: 'calc(100vw - 16px)', maxHeight: 320, overflowY: 'auto' }}>
-              {branches.map(b => (
-                <DropdownMenuItem key={b.name} onSelect={() => onChange({ kind: 'worktree', branch: b.name })} className="text-xs"
-                  title={b.subject || 'fresh worktree under .ormi/worktrees, cut from this branch'}>
-                  {mark(value.kind === 'worktree' && value.branch === b.name)}
-                  <span className="min-w-0 flex-1 truncate" style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{b.name}</span>
-                  <span className="max-w-32 truncate" style={{ color: 'var(--text-hint)', fontSize: 10 }}>{b.subject}</span>
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
-        ) : null}
-        {dirtyHint ? (
-          <>
+    <>
+      <div role="group" aria-label="Workspace mode" style={{ height: 24, display: 'inline-flex', alignItems: 'center', gap: 1, padding: 2, borderRadius: 7, background: 'var(--bg-chip)', flexShrink: 0 }}>
+        {segment('Local', mode === 'local', info.detached || currentBusy, () => onModeChange('local'),
+          info.detached ? 'HEAD is detached — choose a worktree' : currentBusy ? 'Branch is in use by another session' : undefined)}
+        {segment('Worktree', mode === 'worktree', false, () => onModeChange('worktree'))}
+      </div>
+      <DropdownMenu open={menuOpen} onOpenChange={open => { setMenuOpen(open); if (open) { setQuery(''); onOpen?.(); } }}>
+        <DropdownMenuTrigger asChild>
+          <button className="hv-sub" style={{ ...chip, maxWidth: 160, minWidth: 0 }} title={title}>
+            {icon ?? <GitBranch size={12} style={{ color: 'var(--text-hint)' }} />}
+            {info.detached && mode === 'local' ? <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-amber)', flexShrink: 0 }} /> : null}
+            {mode === 'local' && info.dirty > 0 && !info.detached ? <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--text-hint)', flexShrink: 0 }} /> : null}
+            <span className="ormi-chip-text" style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{label}</span>{chev}
+          </button>
+        </DropdownMenuTrigger>
+        {mode === 'local' ? (
+          <DropdownMenuContent align="start" style={{ width: 280, maxWidth: 'calc(100vw - 16px)' }}>
+            <DropdownMenuLabel>Local branch</DropdownMenuLabel>
+            <DropdownMenuItem disabled={info.detached} onSelect={() => onChange({ kind: 'current' })} className="text-xs" style={{ alignItems: 'flex-start' }}>
+              {mark(value.kind === 'current')}
+              <span className="min-w-0 flex-1" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                <span style={{ display: 'flex', gap: 8 }}>Stay on <span className="ml-auto truncate" style={{ color: 'var(--text-hint)', fontFamily: 'var(--font-mono)', fontSize: 10 }}>{info.current ?? 'detached'}</span></span>
+                {info.detached ? <span style={{ color: 'var(--text-hint)', fontSize: 10, whiteSpace: 'normal' }}>HEAD is detached — choose a worktree</span>
+                  : currentBusy ? <span style={{ color: 'var(--text-hint)', fontSize: 10, whiteSpace: 'normal' }}>In use by another session — a new worktree will be made</span> : null}
+              </span>
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <div style={{ padding: '5px 10px', color: 'var(--text-hint)', fontSize: 10, whiteSpace: 'normal' }}>{dirtyHint}</div>
-          </>
-        ) : null}
-      </DropdownMenuContent>
-    </DropdownMenu>
+            <DropdownMenuLabel>New branch from {info.current ?? 'current commit'}</DropdownMenuLabel>
+            <div style={{ padding: '0 8px 7px' }}>
+              <input aria-label="New branch name" value={branchName} onChange={event => onBranchNameChange(event.target.value)}
+                onKeyDown={event => {
+                  event.stopPropagation();
+                  if (event.key === 'Enter') { event.preventDefault(); beginBranch(); }
+                  if (event.key === 'Escape') { event.preventDefault(); setMenuOpen(false); }
+                }}
+                placeholder="ormi/<from prompt>" style={fieldStyle} />
+            </div>
+            <DropdownMenuItem disabled={!branchName.trim()} onSelect={() => beginBranch()} className="text-xs">
+              {mark(value.kind === 'branch' && value.branch === branchName)}<span>Create branch</span>
+            </DropdownMenuItem>
+            {info.dirty > 0 && value.kind === 'branch' ? <div style={{ padding: '5px 10px', color: 'var(--text-hint)', fontSize: 10 }}>{info.dirty} uncommitted {info.dirty === 1 ? 'change comes' : 'changes come'} along to the new branch</div> : null}
+          </DropdownMenuContent>
+        ) : (
+          <DropdownMenuContent align="start" style={{
+            width: 300, maxWidth: 'calc(100vw - 16px)',
+            maxHeight: 'min(520px, var(--radix-dropdown-menu-content-available-height))', overflowY: 'auto',
+          }}>
+            <div style={{ padding: '3px 5px 7px', position: 'relative' }}>
+              <Search size={12} style={{ position: 'absolute', left: 12, top: 10, color: 'var(--text-hint)' }} />
+              <input aria-label="Search branches and worktrees" value={query} onChange={event => setQuery(event.target.value)}
+                onKeyDown={event => {
+                  event.stopPropagation();
+                  if (event.key === 'Escape') { event.preventDefault(); setMenuOpen(false); }
+                }} placeholder="Search branches…" style={{ ...fieldStyle, paddingLeft: 25 }} />
+            </div>
+            {info.defaultBranch && matches(`${info.defaultBranch} latest remote`) ? <>
+              <DropdownMenuLabel>Latest remote</DropdownMenuLabel>
+              <DropdownMenuItem onSelect={() => chooseWorktree(info.defaultBranch!)} className="text-xs">
+                {mark(value.kind === 'worktree' && value.branch === info.defaultBranch)}
+                <span className="min-w-0 flex-1 truncate" style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{info.defaultBranch}</span>{right('fetches first')}
+              </DropdownMenuItem>
+            </> : null}
+            {info.current && matches(`${info.current} current`) ? <>
+              <DropdownMenuSeparator /><DropdownMenuLabel>Current</DropdownMenuLabel>
+              <DropdownMenuItem onSelect={() => chooseWorktree(info.current!)} className="text-xs">
+                {mark(value.kind === 'worktree' && value.branch === info.current)}
+                <span className="min-w-0 flex-1 truncate" style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{info.current}</span>
+              </DropdownMenuItem>
+              {info.dirty > 0 ? <DropdownMenuCheckboxItem checked={Boolean(activeBase && value.kind === 'worktree' && value.includeDirty)}
+                disabled={!activeBase} onSelect={event => event.preventDefault()} onCheckedChange={checked => chooseWorktree(info.current!, checked)}
+                className="text-xs" style={{ paddingLeft: 32 }}>
+                Include {info.dirty} uncommitted {info.dirty === 1 ? 'change' : 'changes'}
+              </DropdownMenuCheckboxItem> : null}
+            </> : null}
+            {localRows.length ? <>
+              <DropdownMenuSeparator /><DropdownMenuLabel>Local branches</DropdownMenuLabel>
+              {localRows.map(branch => <DropdownMenuItem key={branch.name} onSelect={() => chooseWorktree(branch.name)} className="text-xs">
+                {mark(value.kind === 'worktree' && value.branch === branch.name)}
+                <span className="min-w-0 flex-1 truncate" style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{branch.name}</span>
+                {info.busyBranches.includes(branch.name) ? right('in use') : null}
+                <span className="max-w-24 truncate" style={{ color: 'var(--text-hint)', fontSize: 10 }}>{branch.subject}</span>
+              </DropdownMenuItem>)}
+            </> : null}
+            {remoteRows.length ? <>
+              <DropdownMenuSeparator /><DropdownMenuLabel>Remote branches</DropdownMenuLabel>
+              {remoteRows.map(branch => <DropdownMenuItem key={branch.name} onSelect={() => chooseWorktree(branch.name)} className="text-xs">
+                {mark(value.kind === 'worktree' && value.branch === branch.name)}
+                <span className="min-w-0 flex-1 truncate" style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{branch.name}</span>
+                <span className="max-w-24 truncate" style={{ color: 'var(--text-hint)', fontSize: 10 }}>{branch.subject}</span>
+              </DropdownMenuItem>)}
+            </> : null}
+            {existingRows.length ? <>
+              <DropdownMenuSeparator /><DropdownMenuLabel>Existing worktrees</DropdownMenuLabel>
+              {existingRows.map(worktree => <DropdownMenuItem key={worktree.path} onSelect={() => onChange({ kind: 'existing', path: worktree.path })} className="text-xs">
+                {mark(value.kind === 'existing' && value.path === worktree.path)}
+                <span className="min-w-0 flex-1 truncate" style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{worktree.branch ?? worktree.path}</span>
+                {right(worktree.state ?? 'unused')}
+              </DropdownMenuItem>)}
+            </> : null}
+            {truncated ? <div style={{ padding: '5px 10px', color: 'var(--text-hint)', fontSize: 10 }}>100 shown — refine search</div> : null}
+            {info.dirty > 0 && value.kind === 'worktree' ? <div style={{ padding: '4px 10px', color: 'var(--text-hint)', fontSize: 10 }}>{info.dirty} uncommitted {info.dirty === 1 ? 'change stays' : 'changes stay'} in the main checkout</div> : null}
+            <DropdownMenuSeparator />
+            {value.kind !== 'existing' ? <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '3px 7px' }}>
+              <span style={{ color: 'var(--text-hint)', fontSize: 10, flexShrink: 0 }}>Branch:</span>
+              {editingName ? <input aria-label="Worktree branch name" value={branchName} onChange={event => onBranchNameChange(event.target.value)}
+                onKeyDown={event => {
+                  event.stopPropagation();
+                  if (event.key === 'Escape') { event.preventDefault(); setMenuOpen(false); }
+                }} autoFocus style={{ ...fieldStyle, height: 23, minWidth: 0 }} />
+                : <span className="min-w-0 flex-1 truncate" style={{ color: 'var(--text-label)', fontFamily: 'var(--font-mono)', fontSize: 10 }}>{branchName}</span>}
+              <button type="button" aria-label="Edit branch name" title="Edit branch name" onClick={() => setEditingName(value => !value)}
+                style={{ border: 0, background: 'transparent', color: 'var(--text-hint)', cursor: 'pointer', padding: 2 }}><Pencil size={12} /></button>
+            </div> : null}
+            <DropdownMenuItem disabled={fetching} onSelect={event => { event.preventDefault(); void fetch(); }} className="text-xs">
+              {fetching ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+              <span>{fetching ? 'Fetching…' : 'Fetch'}</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        )}
+      </DropdownMenu>
+    </>
   );
 }

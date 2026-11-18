@@ -4,7 +4,7 @@ export function usage(code: number): never {
   ormi agent smoke <vendor> --command <acp-cmd> [--args "..."]   (third-party ACP agent)
   ormi daemon                                     run the supervisor in the foreground
   ormi status                                     daemon.status
-  ormi session start <vendor> [--transport t]     start a session, prints its id
+  ormi session start <vendor> [--transport t] [--worktree <base> [--branch-name <name>] [--include-dirty] | --existing <path>]
   ormi session list [--archived]
   ormi session get <id>
   ormi session prompt <id> <text>
@@ -17,7 +17,8 @@ export function usage(code: number): never {
   ormi session notes <id>
   ormi session tail <id>                          stream live + replayed events
   ormi models [--agent x] [--transport y] [--refresh]  list agent models and effort levels
-  ormi project branches <path>                     inspect a project's Git branches and workspace state
+  ormi project branches <path>                    inspect a project's Git branches and workspace state
+  ormi project fetch <path>                        fetch and prune all project remotes
   ormi pricing status | refresh | get <model>       OpenRouter price table (cached a day)
   ormi cost totals [--since <ms>]                   stored token and price totals
   ormi secret set <NAME> [--project p] (value on stdin) | delete <NAME> [--project p] | status <project>

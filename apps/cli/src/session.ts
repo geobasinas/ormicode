@@ -10,13 +10,33 @@ export async function sessionCommand(verb: string, args: string[]): Promise<numb
     switch (verb) {
       case 'start': {
         const vendor = args[0];
-        if (!vendor) { console.error('usage: ormi session start <vendor> [--transport t] [--project p] [--scratch] [--model m] [--effort e] [--mode m] [--agentCommand c]'); return 2; }
+        const usage = 'usage: ormi session start <vendor> [--transport t] [--project p] [--scratch] [--worktree <base> [--branch-name <name>] [--include-dirty] | --existing <path>] [--model m] [--effort e] [--mode m] [--agentCommand c]';
+        if (!vendor) { console.error(usage); return 2; }
         const scratch = args.includes('--scratch');
+        const worktree = flag(args, '--worktree');
+        const branchName = flag(args, '--branch-name');
+        const existing = flag(args, '--existing');
+        const includeDirty = args.includes('--include-dirty');
+        if ((args.includes('--worktree') && !worktree) || (args.includes('--branch-name') && !branchName)
+          || (args.includes('--existing') && !existing) || (worktree && existing)
+          || worktree?.startsWith('--') || branchName?.startsWith('--') || existing?.startsWith('--')
+          || ((branchName || includeDirty) && !worktree) || (scratch && (worktree || existing))) {
+          console.error(usage);
+          return 2;
+        }
+        const workspace = scratch ? { kind: 'scratch' as const }
+          : existing ? { kind: 'existing' as const, path: existing }
+            : worktree ? {
+              kind: 'worktree' as const, branch: worktree,
+              ...(branchName ? { name: branchName } : {}),
+              ...(includeDirty ? { includeDirty: true } : {}),
+            }
+              : { kind: 'current' as const };
         const res = await link.request('session.start', {
           machine: newId('m'), project: scratch ? 'scratch' : flag(args, '--project') ?? process.cwd(),
           vendor, transport: flag(args, '--transport') ?? 'cli',
           model: flag(args, '--model') ?? 'default', effort: flag(args, '--effort') ?? 'default', mode: flag(args, '--mode') ?? 'default',
-          workspace: { kind: scratch ? 'scratch' : 'current' },
+          workspace,
           ...(flag(args, '--agentCommand') ? { agentCommand: flag(args, '--agentCommand') } : {}),
         });
         if (res.type === 'err') return fail(res);

@@ -1,7 +1,7 @@
 /** Transcript view: prompts as right-aligned bubbles, assistant text left,
  * tool calls as compact expandable rows (result folded in, checkpoint as a
  * hover-only icon), system events as muted lines. */
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pencil, CircleAlert, ArrowRight, RotateCw, Pause, ChevronRight, History, CircleCheck, MessageCircle, Clock3 } from 'lucide-react';
 import { ToolRow, ThinkingRow, CheckpointMark } from './ToolRow.tsx';
 import type { TranscriptEvent } from './useTranscript.ts';
@@ -62,6 +62,8 @@ function line(e: TranscriptEvent, ctx: Ctx) {
       return <div style={{ height: 18 }} />;
     case 'turn_end':
       return null;
+    case 'workspace_step':
+      return null;
     case 'handoff_brief':
       return toolCard(<ArrowRight size={13} style={{ color: 'var(--accent-mint)', flexShrink: 0 }} />, 'handoff brief', String(b.text ?? ''));
     case 'resumed':
@@ -102,6 +104,43 @@ function line(e: TranscriptEvent, ctx: Ctx) {
   }
 }
 
+function WorkspaceStepsRow({ steps }: { steps: TranscriptEvent[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const warning = steps.some(step => step.body.status === 'warn');
+  const create = steps.find(step => step.body.step === 'create');
+  const detail = String(create?.body.detail ?? '');
+  const match = detail.match(/^created (.+) from (.+)$/);
+  const summary = match ? <>Prepared worktree <span style={mono}>{match[1]}</span> from <span style={mono}>{match[2]}</span></> : 'Prepared worktree';
+  const labels: Record<string, string> = { fetch: 'Fetch', create: 'Create', copy_dirty: 'Copy uncommitted changes', include: 'Include ignored files', setup: 'Setup' };
+  return (
+    <div style={{ margin: '4px 0', color: 'var(--text-hint)', fontSize: 12 }}>
+      <button type="button" aria-expanded={expanded} onClick={() => setExpanded(value => !value)} className="hv-sub" style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5, border: 0, background: 'transparent',
+        color: 'var(--text-hint)', font: 'inherit', fontSize: 12, padding: '2px 0', cursor: 'pointer',
+      }}>
+        <ChevronRight size={12} style={{ transform: expanded ? 'rotate(90deg)' : undefined, transition: 'transform 120ms' }} />
+        {warning ? <span style={{ color: 'var(--accent-amber)' }}>⚠</span> : null}
+        <span>{summary}</span>
+      </button>
+      {expanded ? <div style={{ margin: '3px 0 2px 17px', paddingLeft: 8, borderLeft: '1px solid var(--line-card)' }}>
+        {steps.map(step => (
+          <div key={step.seq} style={{ margin: '4px 0', fontSize: 11 }}>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
+              <span style={{ color: step.body.status === 'warn' ? 'var(--accent-amber)' : 'var(--text-label)' }}>{labels[String(step.body.step)] ?? String(step.body.step)}</span>
+              <span>{String(step.body.status)}</span>
+              {typeof step.body.detail === 'string' ? <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>{step.body.detail}</span> : null}
+            </div>
+            {typeof step.body.output === 'string' && step.body.output ? <pre style={{
+              ...mono, maxHeight: 240, overflow: 'auto', margin: '4px 0', padding: 7,
+              background: 'var(--bg-main)', border: '1px solid var(--line-card)', borderRadius: 5, fontSize: 10,
+            }}>{step.body.output}</pre> : null}
+          </div>
+        ))}
+      </div> : null}
+    </div>
+  );
+}
+
 export function Transcript({ events, session }: { events: TranscriptEvent[]; session: string }) {
   const end = useRef<HTMLDivElement>(null);
   const ctx = useMemo<Ctx>(() => {
@@ -118,7 +157,11 @@ export function Transcript({ events, session }: { events: TranscriptEvent[]; ses
   return (
     <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', display: 'flex', justifyContent: 'center' }}>
       <div style={{ width: '100%', maxWidth: 720, padding: 'var(--space-4) var(--space-5)' }}>
-        {events.map((e, i) => <div key={e.seq > 0 ? e.seq : -i - 1}>{line(e, ctx)}</div>)}
+        {events.map((e, i) => e.kind === 'workspace_step'
+          ? i === events.findIndex(event => event.kind === 'workspace_step')
+            ? <WorkspaceStepsRow key={e.seq > 0 ? e.seq : -i - 1} steps={events.filter(event => event.kind === 'workspace_step')} />
+            : null
+          : <div key={e.seq > 0 ? e.seq : -i - 1}>{line(e, ctx)}</div>)}
         <div ref={end} />
       </div>
     </div>

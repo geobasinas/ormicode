@@ -1,12 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, writeFileSync, existsSync, rmSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startDaemon, connect } from '../src/index.ts';
 import { getSession } from '@ormicode/session-store';
 import { newId } from '@ormicode/protocol';
+import { replay } from '@ormicode/journal';
 
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 
@@ -110,6 +111,12 @@ test('project.branches reports dirty, busy and detached state and empty non-repo
   const dir = repo();
   const storeDir = mkdtempSync(join(tmpdir(), 'ormi-project-branches-store-'));
   const nonRepo = mkdtempSync(join(tmpdir(), 'ormi-project-branches-nonrepo-'));
+  const origin = join(storeDir, 'origin.git');
+  execFileSync('git', ['init', '--bare', '-q', '-b', 'main', origin]);
+  git(dir, 'remote', 'add', 'origin', origin);
+  git(dir, 'push', '-u', 'origin', 'main');
+  git(dir, 'fetch', 'origin');
+  git(dir, 'remote', 'set-head', 'origin', '--auto');
   git(dir, 'switch', '-c', 'feature/recent');
   writeFileSync(join(dir, 'branch.txt'), 'branch\n');
   git(dir, 'add', '.'); git(dir, 'commit', '-m', 'feature');
@@ -128,6 +135,10 @@ test('project.branches reports dirty, busy and detached state and empty non-repo
     assert.ok(initial.body.local.some(branch => branch.name === 'feature/recent'));
     assert.equal(initial.body.dirty, 0);
     assert.deepEqual(initial.body.busyBranches, ['main']);
+    assert.equal(initial.body.defaultBranch, 'origin/main');
+    assert.deepEqual(initial.body.worktrees, []);
+    const fetched = await client.request('project.fetch', { project: dir });
+    assert.deepEqual(fetched.body, { ok: true });
 
     writeFileSync(join(dir, 'f.txt'), 'changed\n');
     writeFileSync(join(dir, 'untracked.txt'), 'untracked\n');
@@ -143,13 +154,51 @@ test('project.branches reports dirty, busy and detached state and empty non-repo
     assert.deepEqual({
       isRepo: other.body.isRepo, detached: other.body.detached, dirty: other.body.dirty,
       busyBranches: other.body.busyBranches, current: other.body.current, local: other.body.local, remote: other.body.remote,
-    }, { isRepo: false, detached: false, dirty: 0, busyBranches: [], current: null, local: [], remote: [] });
+      defaultBranch: other.body.defaultBranch, worktrees: other.body.worktrees,
+    }, { isRepo: false, detached: false, dirty: 0, busyBranches: [], current: null, local: [], remote: [], defaultBranch: null, worktrees: [] });
   } finally {
     await daemon.close();
     client.close();
     rmSync(dir, { recursive: true, force: true });
     rmSync(storeDir, { recursive: true, force: true });
     rmSync(nonRepo, { recursive: true, force: true });
+  }
+});
+
+test('session.start journals worktree preparation before spawn and existing busy worktrees conflict', async () => {
+  const dir = repo();
+  const storeDir = mkdtempSync(join(tmpdir(), 'ormi-worktree-events-store-'));
+  mkdirSync(join(dir, '.ormi'), { recursive: true });
+  const setup = process.platform === 'win32' ? '@echo setup complete\n' : 'printf "setup line one\\nsetup line two\\n"\n';
+  const setupPath = join(dir, '.ormi', process.platform === 'win32' ? 'setup.cmd' : 'setup');
+  writeFileSync(setupPath, setup);
+  const { daemon, client } = await boot(storeDir);
+  try {
+    const started = await start(client, dir, { kind: 'worktree', branch: 'main', name: 'ormi/prepared' });
+    assert.equal(started.type, 'res', JSON.stringify(started));
+    const row = getSession(daemon.db, started.body.session);
+    const events = replay(daemon.db, started.body.session).filter(event => event.kind === 'workspace_step');
+    const steps = events.map(event => JSON.parse(event.payload));
+    assert.deepEqual(steps.map(step => step.step), ['fetch', 'create', 'copy_dirty', 'include', 'setup']);
+    assert.equal(steps[0].status, 'skipped');
+    assert.equal(steps[1].status, 'ok');
+    assert.equal(steps.at(-1).status, 'ok');
+    assert.match(steps.at(-1).output, /setup line one|setup complete/);
+
+    const branches = await client.request('project.branches', { project: dir });
+    const listed = branches.body.worktrees.find(worktree => worktree.path === row.worktree);
+    assert.equal(listed.session, row.id);
+    assert.equal(listed.branch, row.branch);
+    assert.ok(listed.state);
+
+    const conflict = await start(client, dir, { kind: 'existing', path: row.worktree });
+    assert.equal(conflict.type, 'err');
+    assert.equal(conflict.code, 'lease.conflict');
+  } finally {
+    await daemon.close();
+    client.close();
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(storeDir, { recursive: true, force: true });
   }
 });
 

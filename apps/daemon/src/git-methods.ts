@@ -1,8 +1,10 @@
-import { getSession, setBranch } from '@ormicode/session-store';
+import { resolve } from 'node:path';
+import { getSession, listSessions, setBranch } from '@ormicode/session-store';
 import { busyBranches } from './branch-busy.ts';
 import {
   branches, checkout, createBranch, createPr, deleteBranch, isGitRepo, log, merge, mergePr,
   NothingToCommit, commit, prStatus, push, revert, show, stage, stash, status, unstage, cherryPick,
+  defaultBranch, fetchProject, listWorktrees,
 } from '@ormicode/git-core';
 import type { Client, DispatchCtx } from './dispatch.ts';
 
@@ -96,14 +98,33 @@ export function projectBranches(ctx: DispatchCtx, client: Client, id: string, bo
   if (project === 'scratch' || !isGitRepo(project)) {
     return client.link.reply(id, {
       isRepo: false, current: null, local: [], remote: [], detached: false, dirty: 0, busyBranches: [],
+      defaultBranch: null, worktrees: [],
     });
   }
   const info = branches(project);
   const local = info.local
     .sort((a, b) => Number(b.current) - Number(a.current) || b.ts - a.ts || a.name.localeCompare(b.name))
     .slice(0, 50);
+  const canonical = (path: string) => {
+    const normalized = resolve(path);
+    return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+  };
+  const sessions = listSessions(ctx.db);
+  const worktreeRows = listWorktrees(project)
+    .filter(worktree => canonical(worktree.path) !== canonical(project))
+    .map(worktree => {
+      const session = sessions.find(row =>
+        (row.worktree && canonical(row.worktree) === canonical(worktree.path))
+        || canonical(row.cwd) === canonical(worktree.path));
+      return { path: worktree.path, branch: worktree.branch, session: session?.id ?? null, state: session?.state ?? null };
+    });
   return client.link.reply(id, {
     isRepo: true, ...info, local, detached: info.current === null,
     dirty: status(project, null).files.length, busyBranches: busyBranches(ctx.db, project),
+    defaultBranch: defaultBranch(project), worktrees: worktreeRows,
   });
+}
+
+export async function projectFetch(_ctx: DispatchCtx, client: Client, id: string, body: Record<string, unknown>): Promise<void> {
+  return client.link.reply(id, await fetchProject(String(body.project)));
 }

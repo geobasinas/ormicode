@@ -462,7 +462,13 @@ States with several causes carry a `reason` (e.g. `interrupted`: `host_restart`,
 **Starting a session** takes: machine, project, vendor, transport, model, effort, mode, optional workspace name, and workspace choice (current branch / new branch / worktree from a branch). ACP sessions can also carry `agentCommand` and `agentArgs`.
 - `session.start` returns the id. `session.list`/`session.get` return id, title, state, project, vendor, transport, last update and branch (null for scratch/no-git); `get` also returns the current model, effort and `mode`.
 - No branch given → resolve and save the checked-out branch and exact starting commit. If HEAD is detached, require an explicit workspace choice.
-- If that branch is busy with another running session, atomically reserve a unique worktree and branch at the recorded commit. Never copy or move uncommitted changes into it. If creation fails, leave existing files untouched and do not start the agent.
+- A new worktree may start from a local or remote branch (for example, `origin/main`). Remote bases are fetched first; if fetch fails, the cached ref is used with a warning. The branch name can be supplied explicitly or generated as `ormi/<slug>`.
+- Dirty changes are never copied unless you ask with `includeDirty`; that option is allowed only when the worktree base is the main checkout's current branch. Tracked changes are applied unstaged, and untracked non-ignored files are copied, leaving the main checkout unchanged.
+- An `existing` choice starts in a registered linked worktree of this project, but not the main checkout or a worktree leased by another live session.
+- If `.worktreeinclude` exists, matching Git-ignore patterns opt ignored files into copying (files over 50 MB are skipped). Use this deliberately: it can include local configuration such as `.env`.
+- If `.ormi/setup` exists, it runs in the new worktree before the agent starts, with `ORMI_ROOT_PATH` and `ORMI_WORKTREE_PATH`. It has a ten-minute timeout; failure removes the new worktree and prevents the agent from starting.
+- Each preparation stage is journaled as `workspace_step` (`fetch`, `create`, `copy_dirty`, `include`, `setup`). If creation fails, leave existing files untouched and do not start the agent.
+- If the current branch is busy with another live session, a unique worktree and branch are reserved automatically at the recorded commit; this automatic path never copies dirty changes.
 
 **Workspace rules**
 - The main checkout has at most one live session; a worktree has exactly one.
@@ -546,7 +552,7 @@ bot_memory(bot TEXT, key TEXT, value TEXT, updated_at INTEGER, PRIMARY KEY(bot, 
 - Indexes: `sessions(machine, updated_at)`, `sessions(project, state)`, `events(session, seq)`, `tool_calls(session, started_at)`, `leases(session)`, `replay_frames(session, seq)`, `eval_runs(suite, started_at)`, `bot_memory(bot)`, `blobs(session)`.
 - Teams, automations, MCP, views and plugins add tables when they land. Never reuse a column; never edit a shipped migration.
 
-**Event kinds:** `turn_start`, `turn_end`, `text`, `thinking`, `plan`, `tool_call`, `tool_result`, `approval_request`, `approval_decision`, `question_request`, `question_answer`, `interaction_expired`, `state`, `model_changed`, `effort_changed`, `mode_changed`, `config_option`, `usage`, `rate_limited`, `retry_scheduled`, `error`, `interrupted`, `resumed`, `evicted`, `compacted`, `terminal_open`, `terminal_close`, `team_message`, `agent_spawned`, `agent_state`, `board_entry`, `automation_run`, `artifact_published`, `artifact_rejected`, `lease_conflict`, `lease_drift`, `digest_ready`, `handoff_brief`, `plugin_hook`, `bot_message`, `bot_started_session`, `bot_memory_changed`.
+**Event kinds:** `turn_start`, `turn_end`, `text`, `thinking`, `plan`, `tool_call`, `tool_result`, `approval_request`, `approval_decision`, `question_request`, `question_answer`, `interaction_expired`, `state`, `model_changed`, `effort_changed`, `mode_changed`, `config_option`, `usage`, `rate_limited`, `retry_scheduled`, `error`, `interrupted`, `resumed`, `workspace_step`, `evicted`, `compacted`, `terminal_open`, `terminal_close`, `team_message`, `agent_spawned`, `agent_state`, `board_entry`, `automation_run`, `artifact_published`, `artifact_rejected`, `lease_conflict`, `lease_drift`, `digest_ready`, `handoff_brief`, `plugin_hook`, `bot_message`, `bot_started_session`, `bot_memory_changed`.
 - Text deltas are merged into blocks before writing (no per-token rows).
 - **Live streaming is separate from the journal.** While a turn runs, the worker sends text and thinking deltas, which the supervisor forwards straight to subscribed clients as **ephemeral** frames (`evt` with `kind: "text_delta"` / `"thinking_delta"`, no `seq`, never journaled, never stored on the relay). When a block completes, the merged `text` / `thinking` event is journaled with a `seq` and sent normally. A client that missed deltas (offline, reconnecting) just gets the merged block. Clients replace provisional deltas with the durable block and discard unconfirmed deltas on reconnect. Deltas are throttled to the 50 frames/s cap.
 
@@ -1773,6 +1779,11 @@ The hub sends a short summary through the relay Worker to Firebase (FCM); the ap
 - In `<project>/.ormi/worktrees/<slug>` (setting can override). `.ormi/` is added to the repo's local exclude file, never the tracked `.gitignore`.
 - One session per worktree; one session per main checkout at a time.
 - Starting on a branch a live session holds creates a worktree automatically.
+- A worktree base may be local or remote; remote refs are fetched first. Dirty tracked and untracked files are never copied unless `includeDirty` is explicitly requested for the current branch.
+- Existing linked worktrees can be selected, except the main checkout or a worktree already leased by a live session.
+- `.worktreeinclude` uses Git-ignore patterns to opt ignored files into copying; files over 50 MB are skipped. Treat patterns that include `.env` or other credentials as an explicit local-data copy.
+- `.ormi/setup`, when present, runs in the new worktree before the agent starts with `ORMI_ROOT_PATH` and `ORMI_WORKTREE_PATH`; it times out after ten minutes and a nonzero exit prevents the agent from starting.
+- Preparation progress is recorded as `workspace_step` journal events.
 - Names from you or the title, slugified, numbered on collision.
 - Removing a worktree with uncommitted changes is refused unless forced.
 - Agents' own worktree features are always off.
@@ -1793,7 +1804,7 @@ The hub sends a short summary through the relay Worker to Firebase (FCM); the ap
 
 **Implementation status:** the daemon Git-pane API is built in `packages/git-core` and `apps/daemon/src/git-methods.ts`: `git.status`, stage/unstage/commit/push, `git.log`/`git.show`, `git.branches`, checkout/create/delete branch, merge/cherry-pick/revert, stash list/show/push/pop/apply/drop, and PR status/create/merge. Status includes staged/unstaged paths and staged numstat; history marks commits not reachable from remotes and reads `Ormi-Session`; show includes root-commit patches. Checkout and branch creation update the session's recorded branch. Mutations are blocked during an active turn, branch deletion requires the exact name as confirmation, and PR metadata is returned but not stored on the session. Larger patches are truncated inline; blob-backed patches are not built.
 
-**Credentials:** never stored, copied or injected. Uses the machine's git credential helper, SSH agent and `gh` auth. Missing credentials are reported by `ormi doctor`.
+**Credentials:** never stored or injected. Git uses the machine's credential helper, SSH agent and `gh` auth. `.worktreeinclude` is an explicit opt-in to copy ignored files, so do not include credential files unless you intend to copy them. Missing credentials are reported by `ormi doctor`.
 
 **Dirty state:** a dirty worktree at session end is fine. A dirty main checkout at start is allowed with a warning (a new worktree only carries committed state). Never auto-stash.
 

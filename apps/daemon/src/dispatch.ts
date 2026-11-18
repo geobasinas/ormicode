@@ -7,12 +7,14 @@ import { handleJoin, type Pairing } from './pair.ts';
 import { handoffBrief } from './handoff.ts';
 import type { RelayClient } from './relay.ts';
 import { join } from 'node:path';
-import { mkdirSync, rmSync } from 'node:fs';
+import { rmSync } from 'node:fs';
 
 import { ormicodeDir, sessionLogDir } from './socket.ts';
 import { acquireWorkspace, releaseForSession } from '@ormicode/leases';
 import { hasTransport, agentList } from './registry.ts';
-import { resolveWorkspace, diffPatch, DiffStatCache, type WorkspaceChoice } from '@ormicode/git-core';
+import {
+  resolveWorkspace, diffPatch, DiffStatCache,
+} from '@ormicode/git-core';
 
 const diffStats = new DiffStatCache();
 const PATCH_INLINE = 256 * 1024;
@@ -24,10 +26,10 @@ import { priceFor, type PriceBook } from '@ormicode/pricing';
 import { summarize as digestOf, rank as rankDigest } from '@ormicode/digest';
 import { checkpointMethod } from './checkpoint-methods.ts';
 import { costMethod } from './cost-methods.ts';
-import { gitMethod, projectBranches } from './git-methods.ts';
+import { gitMethod, projectBranches, projectFetch } from './git-methods.ts';
 import { fileMethod } from './file-methods.ts';
 import { listModels } from './models.ts';
-import { branchIsBusy } from './branch-busy.ts';
+import { startSession } from './session-start.ts';
 
 /** What a client transport must do: send frames and answer requests. */
 export interface ClientLink {
@@ -82,46 +84,10 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
       case 'models.list':
         return client.link.reply(id, await listModels(body as { agent?: string; transport?: string; refresh?: boolean }));
       case 'project.branches': return projectBranches(ctx, client, id, body);
+      case 'project.fetch': return await projectFetch(ctx, client, id, body);
       case 'daemon.status':
         return client.link.reply(id, { version: '0.0.0', uptimeMs: Date.now() - ctx.startedAt, liveWorkers: ctx.liveWorkers(), relay: ctx.relay()?.connected() ? 'connected' : 'disconnected', lastError: ctx.lastError() });
-      case 'session.start': {
-        const vendor = String(body.vendor); const transport = String(body.transport);
-        if (!hasTransport(vendor, transport)) return client.link.replyError(id, 'agent.unsupported', `${vendor}/${transport}`);
-        const sessionId = newId('s');
-        const project = String(body.project);
-        const missing = ctx.secrets.missing(project);
-        if (missing.length) return client.link.replyError(id, 'secrets.missing', `missing secrets: ${missing.join(', ')} (ormi secret set NAME --project ${project})`);
-        const workspace = body.workspace as { kind: string; branch?: string };
-        let resolved: { cwd: string; worktree?: string; branch?: string; baseBranch?: string; baseCommit?: string };
-        if (workspace.kind === 'scratch') {
-          resolved = { cwd: join(ormicodeDir(), 'scratch', sessionId) };
-          mkdirSync(resolved.cwd, { recursive: true });
-        } else {
-          // Busy = another live session holds this project+branch already.
-          const busy = (branch: string) => branchIsBusy(db, project, branch, sessionId);
-          const r = resolveWorkspace(project, workspace as WorkspaceChoice, body.workspaceName as string | undefined, sessionId, busy);
-          if ('err' in r) return client.link.replyError(id, r.err, r.detail ?? r.err);
-          resolved = r;
-        }
-        const cwd = resolved.cwd;
-        const lease = acquireWorkspace(db, cwd, sessionId, String(body.machine ?? 'm_local'));
-        if (lease.conflict) return client.link.replyError(id, 'lease.conflict', `workspace held by ${lease.conflict}`);
-        createSession(db, {
-          id: sessionId, machine: String(body.machine ?? 'm_local'), project,
-          vendor, transport, cwd,
-          worktree: resolved.worktree, branch: resolved.branch,
-          baseBranch: resolved.baseBranch, baseCommit: resolved.baseCommit,
-          // 'default' is a client placeholder, not a vendor value — leave unset.
-          ...(body.model && body.model !== 'default' ? { model: String(body.model) } : {}),
-          ...(body.effort && body.effort !== 'default' ? { effort: String(body.effort) } : {}),
-          ...(body.mode && body.mode !== 'default' ? { mode: String(body.mode) } : {}),
-          ...(body.agentCommand ? { agentCommand: String(body.agentCommand) } : {}),
-          ...(body.agentArgs ? { agentArgs: body.agentArgs as string[] } : {}),
-          ...(body.parent ? { parent: String(body.parent) } : {}),
-        });
-        ctx.spawnWorker(sessionId);
-        return client.link.reply(id, { session: sessionId });
-      }
+      case 'session.start': return await startSession(ctx, client, id, body);
       case 'session.list': {
         const sessions = listSessions(db, Boolean(body.archived)).map(s => ({
           id: s.id, title: s.title, state: s.state, project: s.project, vendor: s.vendor,
@@ -269,7 +235,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         // fork gets a new branch; rehydrate takes over the same workspace.
         let resolved = { cwd: s.cwd, worktree: s.worktree ?? undefined, branch: s.branch ?? undefined };
         if (mode === 'fork') {
-          const r = resolveWorkspace(s.project, { kind: 'branch', branch: to.branch ?? `handoff/${newId('s')}` }, undefined, session, () => false);
+          const r = await resolveWorkspace(s.project, { kind: 'branch', branch: to.branch ?? `handoff/${newId('s')}` }, undefined, session, () => false);
           if ('err' in r) return client.link.replyError(id, r.err, r.detail ?? r.err);
           resolved = { cwd: r.cwd, worktree: r.worktree, branch: r.branch };
         } else {

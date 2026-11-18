@@ -1,12 +1,12 @@
 /** New-session composer card: prompt + project/machine/agent chips → session.start.
  *  Enter sends, Shift+Enter newline; the textarea grows with the prompt. */
 import { useEffect, useRef, useState } from 'react';
-import { Plus, AtSign, Mic, ArrowUp, ChevronDown, Folder, Laptop, GitBranch } from 'lucide-react';
+import { Plus, AtSign, Mic, ArrowUp, ChevronDown, Folder, Laptop, GitBranch, Loader2 } from 'lucide-react';
 import { newId } from '@ormicode/protocol';
 import { usePlatform } from '../../lib/platform.ts';
 import { VENDORS, loadPrefs, rememberProject } from '../../routes/Settings.tsx';
 import { useImages, ImageStrip, ProjectChip, iconBtn } from './composer-parts.tsx';
-import { AgentChip, GitChip, type RepoInfo, type WorkspaceChoice } from './pickers.tsx';
+import { AgentChip, GitChip, type RepoInfo, type WorkspaceChoice, type WorkspaceMode } from './pickers.tsx';
 import { useModels } from './useModels.ts';
 
 const chip = {
@@ -14,6 +14,18 @@ const chip = {
   background: 'var(--bg-chip)', border: 'none',
   borderRadius: 7, padding: '0 8px', height: 24, display: 'inline-flex', alignItems: 'center', gap: 6,
 };
+const workspaceModeKey = (project: string) => `ormi.workspaceMode:${project}`;
+function savedWorkspaceMode(project: string): WorkspaceMode {
+  try { return globalThis.localStorage?.getItem(workspaceModeKey(project)) === 'worktree' ? 'worktree' : 'local'; } catch { return 'local'; }
+}
+function rememberWorkspaceMode(project: string, mode: WorkspaceMode) {
+  try { globalThis.localStorage?.setItem(workspaceModeKey(project), mode); } catch { /* private mode */ }
+}
+function branchNameFor(prompt: string, prefix: string) {
+  const words = prompt.trim().split(/\s+/).filter(Boolean).slice(0, 5).join(' ');
+  const slug = words.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+  return `${prefix}${slug || 'task'}`;
+}
 type Agent = { vendor: string; transports: string[] };
 const FALLBACK: Agent[] = VENDORS.map(vendor => ({ vendor, transports: ['cli'] }));
 
@@ -24,6 +36,10 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
   const [vendor, setVendor] = useState(() => loadPrefs().defaultVendor);
   const [project, setProject] = useState(() => loadPrefs().defaultProject);
   const [projects, setProjects] = useState<string[]>(() => loadPrefs().projects ?? []);
+  const [branchPrefix] = useState(() => loadPrefs().worktreeBranchPrefix ?? 'ormi/');
+  const [branchName, setBranchName] = useState(() => branchNameFor('', loadPrefs().worktreeBranchPrefix ?? 'ormi/'));
+  const branchNameEdited = useRef(false);
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>('local');
   const [agents, setAgents] = useState<Agent[]>(FALLBACK);
   const [agentsLoaded, setAgentsLoaded] = useState(false);
   const [via, setVia] = useState<string>();
@@ -33,6 +49,7 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
   const [error, setError] = useState<string>();
   const [workspace, setWorkspace] = useState<WorkspaceChoice>({ kind: 'current' });
   const [repo, setRepo] = useState<RepoInfo | null>(null);
+  const [repoLoading, setRepoLoading] = useState(project !== 'scratch');
   const projectRef = useRef(project);
   projectRef.current = project;
   const img = useImages();
@@ -63,28 +80,95 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
   useEffect(() => {
     setWorkspace({ kind: 'current' });
     setRepo(null);
-    if (project === 'scratch') return;
+    if (project === 'scratch') { setRepoLoading(false); setWorkspaceMode('local'); return; }
     let alive = true;
+    setRepoLoading(true);
     transport.request('project.branches', { project }).then(r => {
-      if (!alive || r.type !== 'res') return;
+      if (!alive) return;
+      setRepoLoading(false);
+      if (r.type !== 'res') return;
       const b = r.body as unknown as { isRepo: boolean } & RepoInfo;
-      if (b.isRepo) setRepo(b);
-    }).catch(() => {});
+      if (!b.isRepo) return;
+      setRepo(b);
+      const currentBusy = Boolean(b.current && b.busyBranches.includes(b.current));
+      const nextMode = b.detached || currentBusy ? 'worktree' : savedWorkspaceMode(project);
+      setWorkspaceMode(nextMode);
+      if (b.detached || currentBusy) rememberWorkspaceMode(project, nextMode);
+      const base = currentBusy ? b.current : b.defaultBranch ?? b.current ?? b.local[0]?.name;
+      if (nextMode === 'worktree' && base) setWorkspace({ kind: 'worktree', branch: base, name: branchName });
+    }).catch(() => { if (alive) setRepoLoading(false); });
     return () => { alive = false; };
   }, [transport, project]);
-  const refreshRepo = () => {
-    const path = project;
+  useEffect(() => {
+    if (!branchNameEdited.current) {
+      const name = branchNameFor(text, branchPrefix);
+      setBranchName(name);
+      setWorkspace(current => current.kind === 'branch' ? { kind: 'branch', branch: name } : current);
+    }
+  }, [text, branchPrefix]);
+  useEffect(() => {
+    branchNameEdited.current = false;
+    setBranchName(branchNameFor(text, branchPrefix));
+  }, [project, branchPrefix]);
+  const refreshRepo = async () => {
+    const path = projectRef.current;
     if (path === 'scratch') return;
-    void transport.request('project.branches', { project: path }).then(r => {
+    try {
+      const r = await transport.request('project.branches', { project: path });
       if (projectRef.current !== path || r.type !== 'res') return;
       const b = r.body as unknown as { isRepo: boolean } & RepoInfo;
       setRepo(b.isRepo ? b : null);
-    }).catch(() => {});
+      const currentBusy = Boolean(b.current && b.busyBranches.includes(b.current));
+      if (b.isRepo && ((b.detached && workspace.kind === 'current')
+        || (currentBusy && workspaceMode === 'local' && workspace.kind === 'current'))) {
+        setWorkspaceMode('worktree');
+        rememberWorkspaceMode(path, 'worktree');
+        const base = currentBusy ? b.current : b.defaultBranch ?? b.local[0]?.name;
+        if (base) setWorkspace({ kind: 'worktree', branch: base, name: branchName });
+      }
+    } catch { /* unavailable until the next menu open */ }
   };
   const transports = agents.find(a => a.vendor === vendor)?.transports ?? ['cli'];
   const chosen = via && transports.includes(via) ? via : transports[0]!;
   const modelList = useModels(vendor, agentsLoaded ? chosen : undefined);
   const detachedBlocked = Boolean(repo?.detached && workspace.kind === 'current');
+  const currentBusy = Boolean(repo?.current && repo.busyBranches.includes(repo.current));
+  const busyHint = repo && currentBusy && workspaceMode === 'worktree' && workspace.kind === 'worktree' && workspace.branch === repo.current
+    ? `${repo.current} is in use by another session — starting in a new worktree` : undefined;
+  const preparingWorktree = busy && workspace.kind === 'worktree';
+  const chooseMode = (next: WorkspaceMode) => {
+    if (next === 'local' && (repo?.detached || currentBusy)) return;
+    setWorkspaceMode(next);
+    rememberWorkspaceMode(project, next);
+    if (next === 'local') setWorkspace({ kind: 'current' });
+    else {
+      const base = repo?.defaultBranch ?? repo?.current ?? repo?.local[0]?.name;
+      if (base) setWorkspace({ kind: 'worktree', branch: base, name: branchName });
+    }
+  };
+  const chooseWorkspace = (choice: WorkspaceChoice) => {
+    if (choice.kind === 'current' && (repo?.detached || currentBusy)) {
+      if (repo?.detached) { setWorkspaceMode('worktree'); rememberWorkspaceMode(project, 'worktree'); }
+      const base = repo?.current ?? repo?.defaultBranch ?? repo?.local[0]?.name;
+      if (base) setWorkspace({ kind: 'worktree', branch: base, name: branchName });
+      return;
+    }
+    if (choice.kind === 'existing' || choice.kind === 'worktree') {
+      setWorkspaceMode('worktree');
+      rememberWorkspaceMode(project, 'worktree');
+      setWorkspace(choice.kind === 'worktree' ? { ...choice, name: branchName } : choice);
+    } else {
+      setWorkspaceMode('local');
+      rememberWorkspaceMode(project, 'local');
+      setWorkspace(choice);
+    }
+  };
+  const fetchRepo = async () => {
+    setError(undefined);
+    const fetched = await transport.request('project.fetch', { project }).catch(() => undefined);
+    if (fetched?.type === 'res' && (fetched.body as { ok: boolean }).ok) await refreshRepo();
+    else setError(fetched?.type === 'res' ? (fetched.body as { error?: string }).error ?? 'Git fetch failed' : 'Git fetch failed');
+  };
 
   const grow = () => {
     const el = area.current;
@@ -93,13 +177,14 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
 
   const send = async () => {
     const t = text.trim();
-    if (!t || busy || detachedBlocked) return;
+    if (!t || busy || repoLoading || detachedBlocked) return;
     setBusy(true); setError(undefined);
     try {
       const res = await transport.request('session.start', {
         machine: newId('m'), project, vendor, transport: chosen,
         model, effort, mode: 'default',
-        workspace: project === 'scratch' ? { kind: 'scratch' } : workspace,
+        workspace: project === 'scratch' ? { kind: 'scratch' }
+          : workspace.kind === 'worktree' ? { ...workspace, name: branchName.trim() || branchNameFor(t, branchPrefix) } : workspace,
       });
       if (res.type === 'err') { setError(workspaceError(res.code, res.message)); setBusy(false); return; }
       const session = (res.body as { session: string }).session;
@@ -130,7 +215,9 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
           minHeight: 42, maxHeight: 168, overflow: 'hidden',
         }}
       />
-      {error || img.error || detachedBlocked ? <div style={{ color: 'var(--accent-red)', fontSize: 'var(--text-xs)', marginBottom: 4 }}>{error ?? img.error ?? 'HEAD is detached — pick a new branch or a worktree'}</div> : null}
+      {preparingWorktree ? <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-hint)', fontSize: 11, marginBottom: 4 }}><Loader2 size={12} className="animate-spin" />Preparing worktree…</div> : null}
+      {busyHint && !preparingWorktree ? <div style={{ color: 'var(--text-hint)', fontSize: 11, marginBottom: 4 }}>{busyHint}</div> : null}
+      {error || img.error || detachedBlocked ? <div style={{ color: 'var(--accent-red)', fontSize: 'var(--text-xs)', marginBottom: 4, whiteSpace: 'pre-wrap' }}>{error ?? img.error ?? 'HEAD is detached — pick a new branch or a worktree'}</div> : null}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <button className="hv-sub" style={iconBtn} title="attach images" aria-label="attach images" onClick={img.pick}><Plus size={17} /></button>
         <button style={{ ...iconBtn, opacity: 0.45, cursor: 'default' }} title="mention files (soon)" disabled><AtSign size={16} /></button>
@@ -144,6 +231,13 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
             if (picked) { setProject(picked); rememberProject(picked); setProjects(loadPrefs().projects ?? []); }
             return picked;
           }} />
+        {repo ? <GitChip title="choose a local branch or worktree" icon={<GitBranch size={12} style={{ color: repo.detached ? 'var(--accent-amber)' : 'var(--text-hint)' }} />}
+          value={workspace} onChange={chooseWorkspace} info={repo} mode={workspaceMode} onModeChange={chooseMode}
+          branchName={branchName} onBranchNameChange={name => {
+            branchNameEdited.current = true; setBranchName(name);
+            if (workspace.kind === 'branch') setWorkspace({ kind: 'branch', branch: name });
+          }}
+          onOpen={refreshRepo} onFetch={fetchRepo} /> : null}
         <span style={chip} title="this machine"><Laptop size={12} style={{ color: 'var(--text-hint)' }} />local<ChevronDown size={12} style={{ color: 'var(--text-hint)' }} /></span>
         <AgentChip title="agent, transport, model and effort"
           vendor={vendor} via={chosen} agents={agents}
@@ -151,13 +245,11 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
           model={model} models={modelList.models} onModel={setModel}
           effort={effort} onEffort={setEffort}
           loading={modelList.loading} refresh={modelList.refresh} />
-        {repo ? <GitChip title="where the agent works" icon={<GitBranch size={12} style={{ color: repo.detached && workspace.kind === 'current' ? 'var(--accent-amber)' : 'var(--text-hint)' }} />}
-          value={workspace} onChange={setWorkspace} info={repo} onOpen={refreshRepo} /> : null}
-        <button onClick={() => void send()} disabled={!text.trim() || busy || detachedBlocked} title={detachedBlocked ? 'HEAD is detached — pick a new branch or a worktree' : 'start session'} style={{
+        <button onClick={() => void send()} disabled={!text.trim() || busy || detachedBlocked || repoLoading} title={detachedBlocked ? 'HEAD is detached — pick a new branch or a worktree' : repoLoading ? 'Loading Git branches…' : 'start session'} style={{
           width: 26, height: 26, borderRadius: '50%', border: 'none', cursor: 'pointer', marginLeft: 2,
-          background: 'var(--text-active)', color: 'var(--text-onAccent)', opacity: text.trim() && !detachedBlocked ? 1 : 0.5,
+          background: 'var(--text-active)', color: 'var(--text-onAccent)', opacity: text.trim() && !detachedBlocked && !repoLoading ? 1 : 0.5,
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        }}><ArrowUp size={15} strokeWidth={2.5} /></button>
+        }}>{preparingWorktree ? <Loader2 size={14} className="animate-spin" /> : <ArrowUp size={15} strokeWidth={2.5} />}</button>
       </div>
     </div>
   );
@@ -167,6 +259,11 @@ function workspaceError(code: string, message: string) {
   if (code === 'workspace.detached') return 'HEAD is detached — pick a new branch or a worktree';
   if (code === 'workspace.not_repo') return 'This folder is not a Git repository. Choose a Git project or use the current workspace.';
   if (code === 'workspace.failed') return message;
+  if (code === 'workspace.setup_failed') {
+    const lines = message.split(/\r?\n/);
+    const output = lines.slice(1).filter(Boolean).slice(0, 3);
+    return `Worktree setup failed${output.length ? `:\n${output.join('\n')}` : `: ${lines[0] ?? message}`}`;
+  }
   if (code === 'lease.conflict') return 'This workspace is already in use by another session. Choose a different workspace.';
   return message;
 }

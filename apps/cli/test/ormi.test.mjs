@@ -13,6 +13,7 @@ test('ormi with no args prints usage and exits 0', () => {
   assert.match(stdout, /agent smoke <vendor>/);
   assert.match(stdout, /ormi models \[--agent x\] \[--transport y\] \[--refresh\]/);
   assert.match(stdout, /ormi project branches <path>/);
+  assert.match(stdout, /ormi project fetch <path>/);
 });
 
 test('ormi models rejects unknown options before connecting to the daemon', () => {
@@ -25,6 +26,18 @@ test('ormi project branches requires a path before connecting to the daemon', ()
   const { status, stderr } = run(['project', 'branches']);
   assert.equal(status, 2);
   assert.match(stderr, /usage: ormi project branches <path>/);
+});
+
+test('ormi project fetch requires a path before connecting to the daemon', () => {
+  const { status, stderr } = run(['project', 'fetch']);
+  assert.equal(status, 2);
+  assert.match(stderr, /usage: ormi project branches <path> \| ormi project fetch <path>/);
+});
+
+test('ormi session start rejects include-dirty without a worktree before connecting', () => {
+  const { status, stderr } = run(['session', 'start', 'fake', '--include-dirty']);
+  assert.equal(status, 2);
+  assert.match(stderr, /--worktree <base>/);
 });
 
 test('ormi agent smoke without a vendor exits 2', () => {

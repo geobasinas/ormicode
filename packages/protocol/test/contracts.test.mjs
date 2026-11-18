@@ -10,8 +10,26 @@ const start = { machine, project: '/repo', vendor: 'fake', transport: 'cli', mod
 test('session start validates the workspace choice and preserves agent values', () => {
   assert.deepEqual(parseRequestBody('session.start', start), { success: true, data: start });
   assert.equal(parseRequestBody('session.start', { ...start, workspace: { kind: 'worktree', branch: 'main' } }).success, true);
+  assert.equal(parseRequestBody('session.start', {
+    ...start, workspace: { kind: 'worktree', branch: 'origin/main', name: 'ormi/new-task', includeDirty: true },
+  }).success, true);
+  assert.equal(parseRequestBody('session.start', { ...start, workspace: { kind: 'existing', path: '/repo/.ormi/worktrees/task' } }).success, true);
   assert.equal(parseRequestBody('session.start', { ...start, workspace: { kind: 'worktree' } }).success, false);
   assert.equal(parseRequestBody('session.start', { ...start, machine: 'unknown' }).success, false);
+});
+
+test('project branch and fetch contracts include default and worktree metadata', () => {
+  assert.equal(parseRequestBody('project.fetch', { project: '/repo' }).success, true);
+  assert.equal(parseRequestBody('project.fetch', { project: '' }).success, false);
+  assert.equal(parseResponseBody('project.fetch', { ok: true }).success, true);
+  assert.equal(parseResponseBody('project.fetch', { ok: false, error: 'offline' }).success, true);
+  const branch = { name: 'main', sha: 'abc123', subject: 'initial', ts: 1, upstream: null, ahead: 0, behind: 0, current: true, gone: false };
+  const body = {
+    isRepo: true, current: 'main', local: [branch], remote: [], detached: false, dirty: 1, busyBranches: ['main'],
+    defaultBranch: 'origin/main', worktrees: [{ path: '/repo/.ormi/worktrees/task', branch: 'ormi/task', session, state: 'idle' }],
+  };
+  assert.equal(parseResponseBody('project.branches', body).success, true);
+  assert.equal(parseResponseBody('project.branches', { ...body, worktrees: [{ path: '/repo/wt', branch: null, session: null, state: null }] }).success, true);
 });
 
 test('response contracts reject missing fields and unknown methods', () => {
@@ -51,7 +69,8 @@ test('models.list contracts include transport, model availability and per-adapte
 test('project.branches contracts include repository status and busy branches', () => {
   const branch = { name: 'main', sha: 'abc123', subject: 'initial', ts: 1, upstream: null, ahead: 0, behind: 0, current: true, gone: false };
   const response = {
-    isRepo: true, detached: false, dirty: 2, busyBranches: ['main'],
+    isRepo: true, detached: false, dirty: 2, busyBranches: ['main'], defaultBranch: 'origin/main',
+    worktrees: [{ path: '/repo/.ormi/worktrees/task', branch: 'ormi/task', session: null, state: null }],
     current: 'main', local: [branch], remote: [],
   };
   assert.equal(parseRequestBody('project.branches', { project: '/repo' }).success, true);
@@ -59,7 +78,8 @@ test('project.branches contracts include repository status and busy branches', (
   assert.equal(parseResponseBody('project.branches', { ...response, dirty: -1 }).success, false);
   assert.equal(parseResponseBody('project.branches', { ...response, detached: 'false' }).success, false);
   assert.equal(parseResponseBody('project.branches', {
-    isRepo: false, detached: false, dirty: 0, busyBranches: [], current: null, local: [], remote: [],
+    isRepo: false, detached: false, dirty: 0, busyBranches: [], defaultBranch: null, worktrees: [],
+    current: null, local: [], remote: [],
   }).success, true);
 });
 
@@ -94,6 +114,8 @@ test('agent events require matching tool, usage and retry data', () => {
   assert.equal(parseEventBody({ kind: 'tool_result', callId: 'call-1', status: 'interrupted' }).success, true);
   assert.equal(parseEventBody({ kind: 'usage', input: -1 }).success, false);
   assert.equal(parseEventBody({ kind: 'retry_scheduled', delayMs: -1 }).success, false);
+  assert.equal(parseEventBody({ kind: 'workspace_step', step: 'setup', status: 'warn', output: 'warning' }).success, true);
+  assert.equal(parseEventBody({ kind: 'workspace_step', step: 'unknown', status: 'ok' }).success, false);
   assert.equal(parseEventBody({ kind: 'text', text: 'ok', raw: undefined }).success, false);
 });
 
