@@ -120,5 +120,6 @@ button:focus-visible { outline: 1px solid var(--line-card); outline-offset: -1px
 .hv-row:hover { background-color: var(--bg-hover) !important; }
 .ormi-handle { position: relative; width: 6px; flex-shrink: 0; outline: none; }
 .ormi-handle::after { content: ''; position: absolute; inset: 0 2px; border-radius: 2px; transition: background-color 120ms; }
-.ormi-handle-line::before { content: ''; position: absolute; inset: 0 2.5px; background: var(--line-pane); }
-.ormi-handle:hover::after, .ormi-handle[data-separator="active"]::after, .ormi-handle:focus-visible::after { background: var(--line-card); }
+.ormi-handle-line::before { content: ''; position: absolute; inset: 0 2.5px; background: var(--line-subtle); }
+.ormi-handle::after { inset: 0 2.5px; }
+.ormi-handle:hover::after, .ormi-handle:active::after, .ormi-handle:focus-visible::after { background: var(--line-divider); }

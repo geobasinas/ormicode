@@ -23,7 +23,7 @@ export function NotesPanel({ session }: { session: string }) {
 
   const head = {
     display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
-    padding: 'var(--space-2) var(--space-3)', borderBottom: '1px solid var(--line-card)',
+    padding: 'var(--space-2) var(--space-3)', borderBottom: '1px solid var(--line-subtle)',
     fontSize: 'var(--text-xs)', color: 'var(--text-hint)',
   };
   const tab = (label: string, active: boolean, onClick: () => void) => (
@@ -42,7 +42,7 @@ export function NotesPanel({ session }: { session: string }) {
         <button title="new note" onClick={() => { setDraft({ title: 'Untitled', body: '', isNew: true }); setOpenId(undefined); setConfirm(false); }}
           style={{ font: 'inherit', background: 'none', border: 'none', color: 'var(--text-label)', cursor: 'pointer', display: 'inline-flex', padding: 2 }}><Plus size={15} /></button>
       </div>
-      <div style={{ display: 'flex', overflowX: 'auto', borderBottom: '1px solid var(--line-card)', flexShrink: 0 }}>
+      <div style={{ display: 'flex', overflowX: 'auto', borderBottom: '1px solid var(--line-subtle)', flexShrink: 0 }}>
         {notes.map(n => tab(n.title, (editing?.id ?? draft?.id) === n.id && !draft?.isNew, () => { setOpenId(n.id); setDraft(undefined); setConfirm(false); }))}
         {draft?.isNew ? tab('new', true, () => undefined) : null}
       </div>
