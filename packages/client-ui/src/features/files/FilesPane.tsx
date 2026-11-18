@@ -104,10 +104,10 @@ export function FilesPane({ session, onOpenSession }: { session: string; onOpenS
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 2, height: 38, flexShrink: 0, padding: '0 8px 0 12px' }}>
         <span style={{ ...mono, fontSize: 11, display: 'flex', alignItems: 'center', gap: 5, minWidth: 0, flex: 1, overflow: 'hidden', whiteSpace: 'nowrap', marginLeft: -3 }}>
-          <button onClick={() => go('')} className="hv" style={{ ...crumb, color: cwd ? 'var(--text-hint)' : 'var(--text-title)', fontWeight: cwd ? 400 : 600 }}>{root ? baseName(root) : '…'}</button>
+          <button onClick={() => go('')} onMouseDown={e => e.preventDefault()} className={cwd ? 'hv' : undefined} style={{ ...crumb, cursor: cwd ? 'pointer' : 'default', color: cwd ? 'var(--text-hint)' : 'var(--text-title)', fontWeight: cwd ? 400 : 600 }}>{root ? baseName(root) : '…'}</button>
           {crumbs.map((c, i) => <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
             <span style={{ color: 'var(--text-hint)' }}>/</span>
-            <button onClick={() => go(crumbs.slice(0, i + 1).join('/'))} className="hv" style={{ ...crumb, color: i === crumbs.length - 1 ? 'var(--text-title)' : 'var(--text-hint)', fontWeight: i === crumbs.length - 1 ? 600 : 400 }}>{c}</button>
+            <button onClick={() => go(crumbs.slice(0, i + 1).join('/'))} onMouseDown={e => e.preventDefault()} className={i === crumbs.length - 1 ? undefined : 'hv'} style={{ ...crumb, cursor: i === crumbs.length - 1 ? 'default' : 'pointer', color: i === crumbs.length - 1 ? 'var(--text-title)' : 'var(--text-hint)', fontWeight: i === crumbs.length - 1 ? 600 : 400 }}>{c}</button>
           </span>)}
         </span>
         <NavBtn title="Back" disabled={!back.length} onClick={() => { const p = back[back.length - 1]!; setBack(b => b.slice(0, -1)); setFwd(f => [cwd, ...f]); setCwd(p); }}><ArrowLeft size={13} /></NavBtn>
