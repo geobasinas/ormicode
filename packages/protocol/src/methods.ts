@@ -89,6 +89,9 @@ export const requestBodies = {
   'git.diff': z.object(session),
   'session.cost': z.object(session),
   'session.digest': z.object({ since: timestampSchema }),
+  'secret.set': z.object({ name: z.string().check(z.regex(/^[A-Z_][A-Z0-9_]*$/)), value: nonEmpty, project: z.optional(nonEmpty) }),
+  'secret.delete': z.object({ name: z.string().check(z.regex(/^[A-Z_][A-Z0-9_]*$/)), project: z.optional(nonEmpty) }),
+  'secret.status': z.object({ project: nonEmpty }),
   'checkpoint.list': z.object(session),
   // Without `to`: what `from` changed since the checkpoint before it.
   'checkpoint.diff': z.object({ ...session, from: nonEmpty, to: z.optional(nonEmpty) }),
@@ -129,6 +132,9 @@ export const responseBodies = {
   'session.unsubscribe': z.object({ unsubscribed: z.literal(true) }),
   'session.decide': z.object({ decided: z.literal(true) }),
   'session.answer': z.object({ answered: z.literal(true) }),
+  'secret.set': z.object({ ok: z.literal(true) }),
+  'secret.delete': z.object({ ok: z.literal(true) }),
+  'secret.status': z.object({ keyring: z.string(), declared: z.array(z.string()), missing: z.array(z.string()) }),
   'checkpoint.list': z.object({ checkpoints: z.array(z.object({ id: nonEmpty, seq: cursorSchema, tool: z.string(), ts: timestampSchema })) }),
   'session.digest': z.object({ since: timestampSchema, computedAt: timestampSchema, entries: z.array(jsonObjectSchema) }),
   'session.cost': z.object({

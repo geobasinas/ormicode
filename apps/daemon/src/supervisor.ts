@@ -12,6 +12,7 @@ import { Pairing, loadHubConfig, handleJoin } from './pair.ts';
 import { RelayClient, RemoteLink } from './relay.ts';
 import { append } from '@ormicode/journal';
 import { Checkpoints, DEFAULT_LIMITS } from '@ormicode/checkpoints';
+import { SecretBroker } from './secrets.ts';
 import { serve, defaultSocketPath, ormicodeDir, sessionLogDir, type Link } from './socket.ts';
 
 const WORKER_MAIN = join(dirname(fileURLToPath(import.meta.url)), 'worker-main.ts');
@@ -49,6 +50,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     maxBytes: Number(process.env.ORMICODE_CHECKPOINTS_MAX_BYTES ?? DEFAULT_LIMITS.maxBytes),
   });
   const checkpointsOn = process.env.ORMICODE_CHECKPOINTS !== '0';
+  const secrets = new SecretBroker(join(ormicodeDir(), 'logs', 'secrets-audit.jsonl'));
   const toolNames = new Map<string, string>();
   // Boot: interrupt in-flight sessions, expire pending interactions, reap stale
   // pids; auto-resume candidates are spawned once spawnWorker exists below.
@@ -68,7 +70,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
 
   const record = (session: string, kind: string, payload: Record<string, unknown>, ts?: number, origin?: string) => {
     if (closing) return;
-    const { frame } = append(db, session, { kind, payload: { kind, ...payload }, ...(ts ? { ts } : {}), ...(origin ? { origin } : {}) });
+    const { frame } = append(db, session, { kind, payload: { kind, ...secrets.redact(session, payload) }, ...(ts ? { ts } : {}), ...(origin ? { origin } : {}) });
     fanout(session, frame);
     const mapped = stateFor[kind];
     if (mapped) setState(db, session, mapped, typeof payload.reason === 'string' ? payload.reason : undefined, ts);
@@ -91,6 +93,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     const proc = spawn(process.execPath, [WORKER_MAIN], {
       env: {
         ...process.env,
+        ...secrets.envFor(session, row.project),
         ORMICODE_SOCKET: socketPath, ORMICODE_SESSION: session,
         ORMICODE_VENDOR: row.vendor, ORMICODE_TRANSPORT: row.transport,
         ORMICODE_CWD: row.cwd, ...(row.native_id ? { ORMICODE_RESUME: row.native_id } : {}),
@@ -165,12 +168,12 @@ export async function startDaemon(opts: DaemonOptions = {}) {
           return answer({ seq: 0 });
         }
         if (kind === 'turn_start') handoffsInTurn.delete(session);
-        const { seq } = append(db, session, { kind, payload: { kind, ...(body.payload as Record<string, unknown>) }, ts: Number(body.ts) || Date.now() });
-        const frameOut = JSON.stringify({ v: 1, type: 'evt', session, seq, ts: Number(body.ts) || Date.now(), body: { kind, ...(body.payload as Record<string, unknown>) } });
+        const payload = secrets.redact(session, body.payload as Record<string, unknown>);
+        const { seq } = append(db, session, { kind, payload: { kind, ...payload }, ts: Number(body.ts) || Date.now() });
+        const frameOut = JSON.stringify({ v: 1, type: 'evt', session, seq, ts: Number(body.ts) || Date.now(), body: { kind, ...payload } });
         fanout(session, frameOut);
         relay?.sendEvt(session, seq, JSON.parse(frameOut));
         idxSoon();
-        const payload = body.payload as Record<string, unknown>;
         if (kind === 'tool_call') {
           toolNames.set(`${session}/${String(payload?.callId)}`, String(payload?.name ?? 'tool'));
           if (!checkpoints.repo(session).exists()) checkpointSoon(session, seq, 'baseline');
@@ -288,7 +291,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     db, notesDir, startedAt, paused, heldPrompts, lastPrompt, handoffsInTurn,
     lastError: () => lastError, liveWorkers: () => workers.size,
     spawnWorker, toWorker, sendPrompt,
-    pairing, relay: () => relay, checkpoints, record,
+    pairing, relay: () => relay, checkpoints, record, secrets,
   };
 
   // idx summaries keep remote session lists fresh without streaming transcripts.

@@ -17,6 +17,8 @@ import { resolveWorkspace, diffPatch, DiffStatCache, type WorkspaceChoice } from
 const diffStats = new DiffStatCache();
 const PATCH_INLINE = 256 * 1024;
 import type { Checkpoints } from '@ormicode/checkpoints';
+import type { SecretBroker } from './secrets.ts';
+import { secretMethod } from './secret-methods.ts';
 import { loadTable, summarize } from '@ormicode/pricing';
 import { summarize as digestOf, rank as rankDigest } from '@ormicode/digest';
 import { checkpointMethod } from './checkpoint-methods.ts';
@@ -49,6 +51,7 @@ export interface DispatchCtx {
   pairing: Pairing;
   relay(): RelayClient | undefined;
   checkpoints: Checkpoints;
+  secrets: SecretBroker;
   record(session: string, kind: string, payload: Record<string, unknown>): void;
 }
 
@@ -77,6 +80,8 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         if (!hasTransport(vendor, transport)) return client.link.replyError(id, 'agent.unsupported', `${vendor}/${transport}`);
         const sessionId = newId('s');
         const project = String(body.project);
+        const missing = ctx.secrets.missing(project);
+        if (missing.length) return client.link.replyError(id, 'secrets.missing', `missing secrets: ${missing.join(', ')} (ormi secret set NAME --project ${project})`);
         const workspace = body.workspace as { kind: string; branch?: string };
         let resolved: { cwd: string; worktree?: string; branch?: string; baseBranch?: string; baseCommit?: string };
         if (workspace.kind === 'scratch') {
@@ -363,6 +368,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         return client.link.reply(id, { revoked: true, relaySynced: relay?.connected() ?? false });
       }
       default:
+        if (method.startsWith('secret.')) return secretMethod(ctx, client, id, method, body);
         if (method.startsWith('checkpoint.')) return await checkpointMethod(ctx, client, id, method, body);
         return client.link.replyError(id, 'protocol.unimplemented', method);
     }

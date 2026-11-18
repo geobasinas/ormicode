@@ -1367,6 +1367,8 @@ secrets:
 
 **Audit:** every access is logged (session, secret name, time) — never the value.
 
+**Implementation status:** `packages/secrets` + `apps/daemon/src/secrets.ts`. Keyring backends: macOS Keychain (`security`), Linux libsecret (`secret-tool`); other platforms report `secrets.unavailable` (Windows Credential Manager still to come). Entries are service `ormicode`, account `project:<path>:NAME` or `machine:NAME`; project scope wins. Projects declare names in `<project>/.ormi/secrets.yaml` (only the `secrets:` list form above is read). `session.start` refuses with `secrets.missing` when a declared secret has no value. Values are injected into the worker env at spawn (the agent and its tools inherit them) and redacted from every journaled event; a payload that needed redaction carries `redacted: [names]`. Audit lines go to `~/.ormicode/logs/secrets-audit.jsonl`. Methods: `secret.set {name, value, project?}`, `secret.delete`, `secret.status {project}` → `{keyring, declared, missing}`; CLI `ormi secret set|delete|status`. Automation scope, `.env` import, remote nodes and the app editor are still to come.
+
 **Not:** a password manager, vault service, sharing, or rotation engine.
 
 # Many agents together

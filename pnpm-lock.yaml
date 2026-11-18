@@ -107,6 +107,9 @@ importers:
       '@ormicode/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
+      '@ormicode/secrets':
+        specifier: workspace:*
+        version: link:../../packages/secrets
       '@ormicode/session-store':
         specifier: workspace:*
         version: link:../../packages/session-store
@@ -523,6 +526,8 @@ importers:
       '@ormicode/protocol':
         specifier: workspace:*
         version: link:../protocol
+
+  packages/secrets: {}
 
   packages/session-store:
     dependencies:
