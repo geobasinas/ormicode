@@ -14,6 +14,7 @@ import { Now } from './Now.tsx';
 import { SessionView } from './SessionView.tsx';
 import { SettingsView, loadPrefs, type Prefs } from './Settings.tsx';
 import { SessionHeader } from '../features/session/SessionHeader.tsx';
+import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels';
 
 const MAX_TABS = 8;
 const drag = { WebkitAppRegion: 'drag' } as const;
@@ -144,6 +145,7 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
 
   const sidebar = resolved.regions.sidebar;
   const openRef = useRef((id: string) => { void id; });
+  const shellLayout = useDefaultLayout({ id: 'ormi.shell', storage: globalThis.localStorage });
   const open = (id: string) => {
     setTabs(ts => ts.includes(id) ? ts : [...ts.slice(-(MAX_TABS - 1)), id]);
     setRoute(id);
@@ -160,9 +162,11 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
       <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-window)', color: 'var(--text-label)', fontFamily: 'var(--font-ui)', fontSize: 14, borderRadius: 14, overflow: 'hidden' }}>
         <Titlebar platform={platform} />
         <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-          {sidebar?.visible !== false ? (
+        <Group id="ormi.shell" orientation="horizontal" defaultLayout={shellLayout.defaultLayout} onLayoutChanged={shellLayout.onLayoutChanged} style={{ flex: 1, minWidth: 0 }}>
+          {sidebar?.visible !== false ? <>
+            <Panel id="sidebar" defaultSize={sidebar?.size ?? 268} minSize={220} maxSize={420}>
             <aside style={{
-              width: sidebar?.size ?? 268, flexShrink: 0, display: 'flex', flexDirection: 'column',
+              width: '100%', height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column',
               gap: 1, padding: '12px 8px 6px', background: 'var(--bg-window)',
             }}>
               <div style={{ height: 30, display: 'flex', alignItems: 'center', gap: 9, padding: '0 10px', background: 'var(--bg-card)', borderRadius: 8, border: '1px solid var(--line-divider)' }}>
@@ -208,8 +212,11 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
                 <span style={{ fontSize: 12.5, color: route === 'settings' ? 'var(--text-title)' : '#cbcbcb' }}>Settings</span>
               </button>
             </aside>
-          ) : null}
-          <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', margin: '12px 0 18px 18px' }}>
+            </Panel>
+            <Separator className="ormi-handle" />
+          </> : null}
+          <Panel id="main" minSize={420}>
+          <main style={{ height: '100%', boxSizing: 'border-box', minWidth: 0, display: 'flex', flexDirection: 'column', padding: '12px 0 18px 12px' }}>
             <div style={{ display: 'flex', gap: 10, flexShrink: 0, position: 'relative', zIndex: 1, marginBottom: -1 }}>
               <Tab id="now" active={route === 'now'} onSelect={() => setRoute('now')} />
               {tabs.map((t, i) => <Tab key={t} id={t} n={PAGES[t] ? undefined : tabs.filter(x => !PAGES[x]).indexOf(t) + 1} active={route === t} onSelect={() => setRoute(t)} onClose={() => close(t)} />)}
@@ -225,6 +232,8 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
                 : <SessionView key={route} session={route} rail={rail} onRail={setRail} />}
             </div>
           </main>
+          </Panel>
+        </Group>
           <Rail route={route} rail={rail} onRail={setRail} />
         </div>
       </div>

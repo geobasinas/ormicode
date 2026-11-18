@@ -6,22 +6,27 @@ import { Transcript } from '../features/session/Transcript.tsx';
 import { Approvals } from '../features/session/Approvals.tsx';
 import { Composer } from '../features/session/Composer.tsx';
 import { NotesPanel } from '../features/notes/NotesPanel.tsx';
+import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels';
 
 export function SessionView({ session, rail = 'none' }: { session: string; rail?: 'none' | 'notes'; onRail?: (r: 'none' | 'notes') => void }) {
   const { events, approvals } = useTranscript(session);
   const details = useSession(session);
-  return (
-    <div style={{ display: 'flex', height: '100%', background: 'var(--bg-main)' }}>
-      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
-        <Transcript events={events} />
-        <Approvals session={session} pending={approvals} />
-        <Composer session={session} details={details} />
-      </div>
-      {rail === 'notes' ? (
-        <div style={{ width: '50%', minWidth: 320, maxWidth: 560, flexShrink: 0, borderLeft: '1px solid var(--line-pane)', background: 'var(--bg-main)' }}>
-          <NotesPanel session={session} />
-        </div>
-      ) : null}
+  const notesLayout = useDefaultLayout({ id: 'ormi.session.notes', storage: globalThis.localStorage });
+  const chat = (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0 }}>
+      <Transcript events={events} />
+      <Approvals session={session} pending={approvals} />
+      <Composer session={session} details={details} />
     </div>
+  );
+  if (rail !== 'notes') return <div style={{ height: '100%', background: 'var(--bg-main)' }}>{chat}</div>;
+  return (
+    <Group id="ormi.session.notes" orientation="horizontal" defaultLayout={notesLayout.defaultLayout} onLayoutChanged={notesLayout.onLayoutChanged} style={{ height: '100%', background: 'var(--bg-main)' }}>
+      <Panel id="chat" minSize={360}>{chat}</Panel>
+      <Separator className="ormi-handle ormi-handle-line" />
+      <Panel id="notes" defaultSize="45" minSize={280} maxSize="70">
+        <div style={{ height: '100%', background: 'var(--bg-main)' }}><NotesPanel session={session} /></div>
+      </Panel>
+    </Group>
   );
 }

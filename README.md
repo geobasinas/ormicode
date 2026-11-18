@@ -2511,6 +2511,8 @@ Network denied unless a domain is listed (requests go through a logging host pro
 
 **Layout in the first screens:** sidebar 280px, main flexible, right rail off, composer at the bottom. Drag/resize/collapse/show/hide with keyboard equivalents; agent layout changes marked with history, revert, reset, safe mode; approvals never hidden; layout read before first frame.
 
+**Resize implementation status:** `react-resizable-panels` drives the sidebar ↔ main split (220–420px, default from the layout descriptor) and the session ↔ Notes split (Notes 280px to 70%). Separators are focusable and take arrow keys; sizes persist per device in `localStorage` (`ormi.shell`, `ormi.session.notes`). Collapse and the descriptor editing UX are still to come.
+
 **States and errors**
 | Situation | Screen shows |
 | --- | --- |
