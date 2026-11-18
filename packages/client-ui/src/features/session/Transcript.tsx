@@ -95,7 +95,7 @@ export function Transcript({ events }: { events: TranscriptEvent[] }) {
   return (
     <div style={{ flex: 1, overflow: 'auto', display: 'flex', justifyContent: 'center' }}>
       <div style={{ width: '100%', maxWidth: 720, padding: 'var(--space-4) var(--space-5)' }}>
-        {events.map(e => <div key={e.seq}>{line(e)}</div>)}
+        {events.map((e, i) => <div key={e.seq > 0 ? e.seq : -i - 1}>{line(e)}</div>)}
         <div ref={end} />
       </div>
     </div>

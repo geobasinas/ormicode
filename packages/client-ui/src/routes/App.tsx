@@ -187,13 +187,6 @@ export function App({ platform, theme = 'dark', layout }: { platform: ClientPlat
                 <Settings size={15} style={{ color: 'var(--text-label)', flexShrink: 0 }} />
                 <span style={{ fontSize: 13, color: 'var(--text-label)' }}>Settings</span>
               </div>
-              <div style={{ padding: '6px 10px 0', fontSize: 11, color: 'var(--text-hint)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: state === 'online' ? 'var(--accent-mint)' : 'var(--accent-amber)' }} title={state} />
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{platform.hubLabel}</span>
-              </div>
-              {platform.desktop?.storageBackend() === 'basic_text' ? (
-                <div style={{ padding: '4px 10px 0', fontSize: 11, color: 'var(--accent-amber)' }}>no OS keyring — token only obfuscated</div>
-              ) : null}
             </aside>
           ) : null}
           <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', margin: '12px 0 18px 18px' }}>
