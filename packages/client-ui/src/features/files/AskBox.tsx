@@ -1,7 +1,7 @@
 /** "Ask about this file": a prompt box under the viewer that starts a new
  *  session in the same project with the path and selected lines as context. */
 import { useRef, useState } from 'react';
-import { ArrowUp, X } from 'lucide-react';
+import { ArrowUp, X, MessageSquarePlus } from 'lucide-react';
 import { newId } from '@ormicode/protocol';
 import { usePlatform } from '../../lib/platform.ts';
 import { useSession } from '../session/useSession.ts';
@@ -34,9 +34,9 @@ export function AskBox({ session, path, sel, onClose, onStarted }: {
     onStarted(id);
   };
   return (
-    <div style={{ borderTop: '1px solid var(--line-subtle)', padding: '8px 10px 10px', flexShrink: 0 }}>
+    <div style={{ borderTop: '1px solid var(--line-subtle)', padding: '8px 10px 10px', flexShrink: 0, background: 'var(--bg-main)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-hint)', marginBottom: 6 }}>
-        <span>New session about <span style={{ fontFamily: 'var(--font-mono)' }}>{path.slice(path.lastIndexOf('/') + 1)}</span> {range}</span>
+        <MessageSquarePlus size={12} style={{ flexShrink: 0 }} /><span>Ask a new session about <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-label)' }}>{path.slice(path.lastIndexOf('/') + 1)}</span> {range}</span>
         <span style={{ flex: 1 }} />
         <button title="Close" onClick={onClose} className="hv" style={{ border: 'none', background: 'transparent', color: 'var(--text-hint)', display: 'inline-flex', padding: 3, borderRadius: 5, cursor: 'pointer' }}><X size={12} /></button>
       </div>

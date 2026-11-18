@@ -49,47 +49,50 @@ export function SearchView({ session, onOpen, onClose }: { session: string; onOp
     return [...m];
   }, [hits]);
   const tab = (id: 'name' | 'content', label: string) => (
-    <button onClick={() => setMode(id)} style={{ font: 'inherit', fontSize: 11, height: 22, padding: '0 8px', borderRadius: 6, border: 'none', cursor: 'pointer',
+    <button onClick={() => setMode(id)} style={{ font: 'inherit', fontSize: 11, height: 22, padding: '0 9px', borderRadius: 6, fontWeight: mode === id ? 600 : 400, border: 'none', cursor: 'pointer',
       background: mode === id ? 'var(--bg-raised)' : 'transparent', color: mode === id ? 'var(--text-title)' : 'var(--text-hint)' }}>{label}</button>
   );
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, height: 38, flexShrink: 0, padding: '0 8px 0 12px', borderBottom: '1px solid var(--line-subtle)' }}>
-        <Search size={13} style={{ color: 'var(--text-hint)', flexShrink: 0 }} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, height: 38, flexShrink: 0, padding: '0 8px' }}>
+        <span style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6, height: 28, padding: '0 6px 0 8px', borderRadius: 8, background: 'var(--bg-card)', border: '1px solid var(--line-card)', boxSizing: 'border-box' }}>
+        <Search size={12} style={{ color: 'var(--text-hint)', flexShrink: 0 }} />
         <input autoFocus value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Escape') onClose(); }}
           placeholder={mode === 'name' ? 'Go to file…' : 'Search in files…'}
           style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', color: 'var(--text-title)', font: 'inherit', fontSize: 12 }} />
         {mode === 'content' ? <button title="Regular expression" aria-pressed={regex} onClick={() => setRegex(r => !r)} className={regex ? undefined : 'hv'} style={{ border: 'none', width: 22, height: 22, borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', background: regex ? 'var(--bg-raised)' : 'transparent', color: regex ? 'var(--text-title)' : 'var(--text-hint)' }}><Regex size={12} /></button> : null}
-        <span style={{ display: 'inline-flex', gap: 2, background: 'var(--bg-inset)', borderRadius: 7, padding: 2 }}>{tab('name', 'Files')}{tab('content', 'Text')}</span>
+        </span>
+        <span style={{ display: 'inline-flex', gap: 2, background: 'var(--bg-inset)', borderRadius: 8, padding: 2, flexShrink: 0 }}>{tab('name', 'Files')}{tab('content', 'Text')}</span>
         <button title="Close search" onClick={onClose} className="hv" style={{ border: 'none', background: 'transparent', color: 'var(--text-hint)', display: 'inline-flex', padding: 4, borderRadius: 6, cursor: 'pointer' }}><X size={13} /></button>
       </div>
-      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '4px 0' }}>
-        {error ? <div style={{ padding: '8px 12px', fontSize: 11.5, color: 'var(--accent-red)' }}>{error}</div> : null}
-        {query.trim() && !error && (mode === 'name' ? !names.length : !hits.length) ? <div style={{ padding: '8px 12px', fontSize: 11.5, color: 'var(--text-hint)' }}>No matches</div> : null}
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '2px 6px 8px', borderTop: '1px solid var(--line-subtle)' }}>
+        {!query.trim() ? <div style={{ padding: '10px 6px', fontSize: 11.5, color: 'var(--text-hint)' }}>{mode === 'name' ? 'Type part of a file name — letters can be spread out, like “srvts”.' : 'Search the text of every file that isn’t gitignored.'}</div> : null}
+        {error ? <div style={{ padding: '8px 6px', fontSize: 11.5, color: 'var(--accent-red)' }}>{error}</div> : null}
+        {query.trim() && !error && (mode === 'name' ? !names.length : !hits.length) ? <div style={{ padding: '10px 6px', fontSize: 11.5, color: 'var(--text-hint)' }}>No matches</div> : null}
         {mode === 'name' ? names.map(n => {
           const d = dirName(n.path); const base = baseName(n.path); const off = n.path.length - base.length;
-          return <div key={n.path} onClick={() => onOpen(n.path)} className="hv-row" style={{ display: 'flex', alignItems: 'center', gap: 8, height: 26, padding: '0 12px', cursor: 'pointer', fontSize: 12 }}>
+          return <div key={n.path} onClick={() => onOpen(n.path)} className="hv-row" style={{ display: 'flex', alignItems: 'center', gap: 8, height: 26, padding: '0 8px', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}>
             <FileText size={12} style={{ color: 'var(--text-hint)', flexShrink: 0 }} />
             <span style={{ color: 'var(--text-label)', whiteSpace: 'nowrap' }}><Highlight text={base} ranges={toRanges(n.positions.filter(p => p >= off).map(p => p - off))} /></span>
             <span style={{ ...mono, fontSize: 10.5, color: 'var(--text-hint)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d}</span>
           </div>;
         }) : groups.map(([path, list]) => (
-          <div key={path} style={{ marginBottom: 4 }}>
-            <div onClick={() => onOpen(path)} className="hv-row" style={{ display: 'flex', alignItems: 'center', gap: 8, height: 26, padding: '0 12px', cursor: 'pointer', fontSize: 12 }}>
+          <div key={path} style={{ marginTop: 4 }}>
+            <div onClick={() => onOpen(path)} className="hv-row" style={{ display: 'flex', alignItems: 'center', gap: 8, height: 26, padding: '0 8px', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}>
               <FileText size={12} style={{ color: 'var(--text-hint)', flexShrink: 0 }} />
               <span style={{ color: 'var(--text-title)', fontWeight: 500, whiteSpace: 'nowrap' }}>{baseName(path)}</span>
               <span style={{ ...mono, fontSize: 10.5, color: 'var(--text-hint)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{dirName(path)}</span>
               <span style={{ ...mono, fontSize: 10, color: 'var(--text-hint)' }}>{list.length}</span>
             </div>
             {list.map(h => (
-              <div key={`${h.line}:${h.ranges[0]?.[0] ?? 0}`} onClick={() => onOpen(path, h.line)} className="hv-row" style={{ display: 'flex', gap: 10, padding: '2px 12px 2px 32px', cursor: 'pointer', ...mono, fontSize: 11, lineHeight: '17px' }}>
+              <div key={`${h.line}:${h.ranges[0]?.[0] ?? 0}`} onClick={() => onOpen(path, h.line)} className="hv-row" style={{ display: 'flex', gap: 10, padding: '2px 8px 2px 28px', borderRadius: 6, cursor: 'pointer', ...mono, fontSize: 11, lineHeight: '17px' }}>
                 <span style={{ color: 'var(--text-hint)', minWidth: 28, textAlign: 'right', flexShrink: 0 }}>{h.line}</span>
                 <span style={{ color: 'var(--text-secondary)', whiteSpace: 'pre', overflow: 'hidden', textOverflow: 'ellipsis' }}><Highlight text={h.text} ranges={h.ranges} /></span>
               </div>
             ))}
           </div>
         ))}
-        {truncated ? <div style={{ padding: '6px 12px', fontSize: 11, color: 'var(--text-hint)' }}>More results not shown — refine the search.</div> : null}
+        {truncated ? <div style={{ padding: '8px 6px', fontSize: 11, color: 'var(--text-hint)' }}>More results not shown — refine the search.</div> : null}
       </div>
     </div>
   );
