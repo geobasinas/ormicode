@@ -87,7 +87,7 @@ function Rail({ route, rail, onRail }: { route: string; rail: RailPane; onRail: 
   const isSession = route !== 'now';
   return (
     <div style={{
-      width: 56, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center',
+      width: 46, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center',
       padding: '12px 0 0', gap: 4, background: 'var(--bg-window)', alignSelf: 'flex-start',
     }}>
       {RAIL_ICONS.map(({ id, icon: Icon, label, soon }) => {

@@ -6,7 +6,6 @@ import { usePlatform } from '../../lib/platform.ts';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '../../components/ui/dropdown-menu.tsx';
-import { Button } from '../../components/Button.tsx';
 import type { SessionDetails } from './useSession.ts';
 
 
@@ -29,15 +28,15 @@ export function SessionHeader({ session, details }: { session: string; details: 
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 10, height: 30, minWidth: 0,
-      padding: '0 0 0 var(--space-3)', flexShrink: 1,
+      padding: '0 11px 0 var(--space-3)', flexShrink: 1,
     }}>
       <span style={{
-        display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, height: 20, flexShrink: 0,
+        display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, height: 24, boxSizing: 'border-box', flexShrink: 0,
         color: '#b7b7b7', padding: '0 9px', borderRadius: 6,
         background: 'var(--bg-card)', border: '1px solid var(--line-card)',
       }}><Laptop size={12} />{machine}</span>
       <DropdownMenu>
-        <DropdownMenuTrigger asChild><Button variant="ghost" aria-label="session menu"><Ellipsis size={16} /></Button></DropdownMenuTrigger>
+        <DropdownMenuTrigger asChild><button className="hv" aria-label="session menu" style={{ width: 24, height: 24, border: 'none', borderRadius: 6, background: 'transparent', color: 'var(--text-label)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0, flexShrink: 0 }}><Ellipsis size={15} /></button></DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           {canPause ? <DropdownMenuItem onClick={() => act('session.pause')}>Pause session</DropdownMenuItem> : null}
           {canResume ? <DropdownMenuItem onClick={() => act('session.resume')}>Resume session</DropdownMenuItem> : null}
