@@ -49,7 +49,7 @@ const components: Components = {
   h3: ({ children }) => <h3 style={{ color: 'var(--text-title)', fontSize: 14, fontWeight: 600, margin: '12px 0 6px' }}>{children}</h3>,
   ul: ({ children, className }) => <ul className={className} style={{ paddingLeft: 18, margin: '4px 0 8px' }}>{children}</ul>,
   ol: ({ children, className }) => <ol className={className} style={{ paddingLeft: 18, margin: '4px 0 8px' }}>{children}</ol>,
-  li: ({ children }) => <li style={{ margin: '3px 0' }}>{children}</li>,
+  li: ({ children, className }) => <li className={className} style={{ margin: '3px 0' }}>{children}</li>,
   input: ({ type, checked }) => type === 'checkbox'
     ? <input type="checkbox" className="ormi-check" checked={Boolean(checked)} disabled aria-label={checked ? 'Completed task' : 'Incomplete task'} />
     : null,

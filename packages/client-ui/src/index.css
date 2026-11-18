@@ -153,10 +153,13 @@ input::placeholder, textarea::placeholder { color: var(--text-hint); opacity: 0.
 .ormi-choice-danger:hover:not(:disabled) { background-color: var(--tint-red) !important; color: var(--accent-red) !important; }
 .ormi-choice:disabled { opacity: 0.55; }
 
+.ormi-markdown ul { list-style-type: disc; }
+.ormi-markdown ol { list-style-type: decimal; }
+.ormi-markdown ul ul { list-style-type: circle; }
 .ormi-markdown li::marker { color: var(--text-hint); }
-.ormi-markdown .contains-task-list { list-style: none; padding-left: 0; }
-.ormi-markdown .task-list-item { list-style: none; }
-.ormi-markdown .task-list-item .ormi-check { margin-right: 6px; vertical-align: middle; }
+.ormi-markdown .contains-task-list { padding-left: 18px; }
+.ormi-markdown .task-list-item { position: relative; list-style: none; }
+.ormi-markdown .task-list-item .ormi-check { position: absolute; left: -18px; top: 4px; margin: 0; }
 .ormi-markdown-code-toolbar { opacity: 0; pointer-events: none; transition: opacity 120ms; }
 .ormi-markdown-code:hover .ormi-markdown-code-toolbar, .ormi-markdown-code:focus-within .ormi-markdown-code-toolbar { opacity: 1; pointer-events: auto; }
 
