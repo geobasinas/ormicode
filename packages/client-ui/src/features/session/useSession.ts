@@ -5,7 +5,8 @@ import { usePlatform } from '../../lib/platform.ts';
 export interface SessionDetails {
   id: string; title: string | null; state: string; project: string;
   vendor: string; transport: string; updatedAt: number; branch?: string | null;
-  model?: string | null; effort?: string | null; nativeId?: string | null;
+  model?: string | null; effort?: string | null; mode?: string | null; nativeId?: string | null;
+  modes?: { id: string; name: string }[];
   parent?: string | null;
 }
 

@@ -18,6 +18,16 @@ const REGISTRY: Record<string, { pkg: string; cls: string }> = {
   'vibe/cli': { pkg: '@ormicode/agent-vibe-cli', cls: 'VibeCliAdapter' },
 };
 
+/** vendor -> transports with an adapter, in registry order; `fake` is the test agent. */
+export function agentList(): { vendor: string; transports: string[] }[] {
+  const by = new Map<string, string[]>();
+  for (const key of Object.keys(REGISTRY)) {
+    const [vendor, transport] = key.split('/') as [string, string];
+    by.set(vendor, [...(by.get(vendor) ?? []), transport]);
+  }
+  return [...by.entries(), ['fake', ['cli']] as [string, string[]]].map(([vendor, transports]) => ({ vendor, transports }));
+}
+
 export function hasTransport(vendor: string, transport: string): boolean {
   return vendor === 'fake' || vendor === 'acp' || Boolean(REGISTRY[`${vendor}/${transport}`]);
 }

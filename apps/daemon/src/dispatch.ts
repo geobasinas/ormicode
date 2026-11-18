@@ -11,7 +11,7 @@ import { mkdirSync, rmSync } from 'node:fs';
 
 import { ormicodeDir, sessionLogDir } from './socket.ts';
 import { acquireWorkspace, releaseForSession } from './leases.ts';
-import { hasTransport } from './registry.ts';
+import { hasTransport, agentList } from './registry.ts';
 import { resolveWorkspace, type WorkspaceChoice } from './git.ts';
 
 const LIVE_STATES = ['idle', 'starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying', 'paused_rate_limited', 'interrupted'] as const;
@@ -59,6 +59,8 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
   const body = parsed.data as Record<string, unknown>;
   try {
     switch (method) {
+      case 'agents.list':
+        return client.link.reply(id, { agents: agentList() });
       case 'daemon.status':
         return client.link.reply(id, { version: '0.0.0', uptimeMs: Date.now() - ctx.startedAt, liveWorkers: ctx.liveWorkers(), relay: ctx.relay()?.connected() ? 'connected' : 'disconnected', lastError: ctx.lastError() });
       case 'session.start': {
@@ -110,7 +112,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         if (!s) return client.link.replyError(id, 'session.not_found', String(body.session));
         return client.link.reply(id, {
           id: s.id, title: s.title, state: s.state, project: s.project, vendor: s.vendor,
-          transport: s.transport, updatedAt: s.updated_at, branch: s.branch, model: s.model, effort: s.effort,
+          transport: s.transport, updatedAt: s.updated_at, branch: s.branch, model: s.model, effort: s.effort, mode: s.mode,
           nativeId: s.native_id, acpVersion: s.acp_version, parent: s.parent,
         });
       }

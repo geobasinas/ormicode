@@ -28,7 +28,7 @@ const configOptionSchema = z.object({
 const sessionModeSchema = z.object({ id: nonEmpty, name: z.string() });
 const imageSchema = z.object({ data: nonEmpty, mimeType: nonEmpty });
 const detailsSchema = z.extend(summarySchema, {
-  model: z.nullable(z.string()), effort: z.nullable(z.string()),
+  model: z.nullable(z.string()), effort: z.nullable(z.string()), mode: z.optional(z.nullable(z.string())),
   // What actually ran: the agent's own session id for resume, its reported version,
   // and the negotiated ACP protocol version when the transport is acp.
   nativeId: z.optional(z.nullable(nonEmpty)), agentVersion: z.optional(z.nullable(z.string())),
@@ -81,6 +81,8 @@ export const requestBodies = {
   'session.unsubscribe': z.object(session),
   'session.decide': z.object({ ...session, request: requestIdSchema, option: nonEmpty }),
   'session.answer': z.object({ ...session, request: requestIdSchema, answers: z.record(nonEmpty, nonEmpty) }),
+  // Installed agent adapters: which vendor/transport pairs session.start accepts.
+  'agents.list': z.object({}),
   'devices.list': z.object({}),
   'devices.rename': z.object({ device: nonEmpty, name: nonEmpty }),
   // confirm must equal the device name, so a revoke can't fire by accident.
@@ -116,6 +118,7 @@ export const responseBodies = {
   'session.unsubscribe': z.object({ unsubscribed: z.literal(true) }),
   'session.decide': z.object({ decided: z.literal(true) }),
   'session.answer': z.object({ answered: z.literal(true) }),
+  'agents.list': z.object({ agents: z.array(z.object({ vendor: nonEmpty, transports: z.array(nonEmpty) })) }),
   'devices.list': z.object({ devices: z.array(z.object({ id: nonEmpty, name: nonEmpty, trustedAt: timestampSchema })) }),
   'devices.rename': z.object({ renamed: z.literal(true) }),
   'devices.revoke': z.object({ revoked: z.literal(true), relaySynced: z.boolean() }),

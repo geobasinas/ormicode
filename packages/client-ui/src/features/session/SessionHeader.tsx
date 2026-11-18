@@ -55,7 +55,7 @@ export function SessionHeader({ session, details }: { session: string; details: 
         background: 'var(--bg-card)', border: '1px solid var(--line-card)',
       }}><Laptop size={12} />{machine}</span>
       <DropdownMenu>
-        <DropdownMenuTrigger asChild><Button aria-label="session menu"><Ellipsis size={16} /></Button></DropdownMenuTrigger>
+        <DropdownMenuTrigger asChild><Button variant="ghost" aria-label="session menu"><Ellipsis size={16} /></Button></DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           {canPause ? <DropdownMenuItem onClick={() => act('session.pause')}>Pause session</DropdownMenuItem> : null}
           {canResume ? <DropdownMenuItem onClick={() => act('session.resume')}>Resume session</DropdownMenuItem> : null}
