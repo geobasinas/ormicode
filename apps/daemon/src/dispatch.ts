@@ -24,7 +24,7 @@ import { priceFor, type PriceBook } from '@ormicode/pricing';
 import { summarize as digestOf, rank as rankDigest } from '@ormicode/digest';
 import { checkpointMethod } from './checkpoint-methods.ts';
 import { costMethod } from './cost-methods.ts';
-import { gitMethod } from './git-methods.ts';
+import { gitMethod, projectBranches } from './git-methods.ts';
 import { fileMethod } from './file-methods.ts';
 import { listModels } from './models.ts';
 
@@ -82,6 +82,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         return client.link.reply(id, { agents: agentList() });
       case 'models.list':
         return client.link.reply(id, await listModels(body as { agent?: string; transport?: string; refresh?: boolean }));
+      case 'project.branches': return projectBranches(client, id, body);
       case 'daemon.status':
         return client.link.reply(id, { version: '0.0.0', uptimeMs: Date.now() - ctx.startedAt, liveWorkers: ctx.liveWorkers(), relay: ctx.relay()?.connected() ? 'connected' : 'disconnected', lastError: ctx.lastError() });
       case 'session.start': {

@@ -1,11 +1,12 @@
 /** New-session composer card: prompt + project/machine/agent chips → session.start.
  *  Enter sends, Shift+Enter newline; the textarea grows with the prompt. */
 import { useEffect, useRef, useState } from 'react';
-import { Plus, AtSign, Mic, ArrowUp, ChevronDown, Folder, Laptop, Cpu, Gauge, Bot } from 'lucide-react';
+import { Plus, AtSign, Mic, ArrowUp, ChevronDown, Folder, Laptop, Bot, GitBranch } from 'lucide-react';
 import { newId } from '@ormicode/protocol';
 import { usePlatform } from '../../lib/platform.ts';
 import { VENDORS, loadPrefs, rememberProject } from '../../routes/Settings.tsx';
-import { useImages, ImageStrip, MenuChip, ModelChip, EffortChip, ProjectChip, iconBtn } from './composer-parts.tsx';
+import { useImages, ImageStrip, ProjectChip, iconBtn } from './composer-parts.tsx';
+import { AgentChip, GitChip, type RepoInfo, type WorkspaceChoice } from './pickers.tsx';
 import { useModels } from './useModels.ts';
 
 const chip = {
@@ -30,6 +31,8 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
   const [effort, setEffort] = useState('default');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const [workspace, setWorkspace] = useState<WorkspaceChoice>({ kind: 'current' });
+  const [repo, setRepo] = useState<RepoInfo | null>(null);
   const img = useImages();
   useEffect(() => {
     let alive = true;
@@ -55,6 +58,18 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
       setProjects(cur => [...new Map([...cur, ...seen.filter(p => p !== 'scratch')].map(p => [p.replace(/\\/g, '/').toLowerCase(), p])).values()]);
     }).catch(() => {});
   }, [transport]);
+  useEffect(() => {
+    setWorkspace({ kind: 'current' });
+    setRepo(null);
+    if (project === 'scratch') return;
+    let alive = true;
+    transport.request('project.branches', { project }).then(r => {
+      if (!alive || r.type !== 'res') return;
+      const b = r.body as { isRepo: boolean; current: string | null; local: { name: string }[] };
+      if (b.isRepo) setRepo({ current: b.current, local: b.local });
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, [transport, project]);
   const transports = agents.find(a => a.vendor === vendor)?.transports ?? ['cli'];
   const chosen = via && transports.includes(via) ? via : transports[0]!;
   const modelList = useModels(vendor, agentsLoaded ? chosen : undefined);
@@ -72,7 +87,7 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
       const res = await transport.request('session.start', {
         machine: newId('m'), project, vendor, transport: chosen,
         model, effort, mode: 'default',
-        workspace: { kind: project === 'scratch' ? 'scratch' : 'current' },
+        workspace: project === 'scratch' ? { kind: 'scratch' } : workspace,
       });
       if (res.type === 'err') { setError(res.message); setBusy(false); return; }
       const session = (res.body as { session: string }).session;
@@ -118,10 +133,15 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
             return picked;
           }} />
         <span style={chip} title="this machine"><Laptop size={12} style={{ color: 'var(--text-hint)' }} />local<ChevronDown size={12} style={{ color: 'var(--text-hint)' }} /></span>
-        <MenuChip title="agent" label="Agent" icon={<Bot size={11} style={{ color: 'var(--text-hint)' }} />} value={vendor} choices={agents.map(a => ({ value: a.vendor }))} onChange={v => { setVendor(v); setVia(undefined); }} />
-        {transports.length > 1 ? <MenuChip title="transport" label="Transport" value={chosen} choices={transports.map(t => ({ value: t }))} onChange={setVia} /> : null}
-        <ModelChip title="model — the vendor's model id" icon={<Cpu size={11} style={{ color: 'var(--text-hint)' }} />} value={model} models={modelList.models} loading={modelList.loading} refresh={modelList.refresh} onChange={setModel} />
-        <EffortChip title="effort — the vendor's own word" icon={<Gauge size={11} style={{ color: 'var(--text-hint)' }} />} value={effort} model={model} models={modelList.models} onChange={setEffort} />
+        <AgentChip title="agent, transport, model and effort"
+          icon={<Bot size={11} style={{ color: 'var(--text-hint)' }} />}
+          vendor={vendor} via={chosen} agents={agents}
+          onPick={(v, t) => { setVendor(v); setVia(t); }}
+          model={model} models={modelList.models} onModel={setModel}
+          effort={effort} onEffort={setEffort}
+          loading={modelList.loading} refresh={modelList.refresh} />
+        {repo ? <GitChip title="where the agent works" icon={<GitBranch size={12} style={{ color: 'var(--text-hint)' }} />}
+          value={workspace} onChange={setWorkspace} info={repo} /> : null}
         <button onClick={() => void send()} disabled={!text.trim() || busy} title="start session" style={{
           width: 26, height: 26, borderRadius: '50%', border: 'none', cursor: 'pointer', marginLeft: 2,
           background: 'var(--text-active)', color: 'var(--text-onAccent)', opacity: text.trim() ? 1 : 0.5,

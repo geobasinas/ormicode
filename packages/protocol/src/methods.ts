@@ -10,6 +10,11 @@ const costBucket = { tokens: count, usd: z.nullable(z.number()), unpriced: count
 const gitPath = z.object({ path: nonEmpty, oldPath: z.optional(nonEmpty), status: z.enum(['M', 'A', 'D', 'R', '?', 'U']), staged: z.boolean(), unstaged: z.boolean() });
 const gitFileStat = z.object({ path: nonEmpty, oldPath: z.optional(nonEmpty), status: z.enum(['M', 'A', 'D', 'R', '?', 'U']), binary: z.boolean(), added: count, removed: count });
 const stashItem = z.object({ index: count, ref: nonEmpty, message: z.string(), branch: z.nullable(z.string()), ts: timestampSchema, files: count, added: count, removed: count });
+const branchInfo = z.object({
+  current: z.nullable(z.string()),
+  local: z.array(z.object({ name: nonEmpty, sha: nonEmpty, subject: z.string(), ts: timestampSchema, upstream: z.nullable(z.string()), ahead: count, behind: count, current: z.boolean(), gone: z.boolean() })),
+  remote: z.array(z.object({ name: nonEmpty, sha: nonEmpty, subject: z.string(), ts: timestampSchema })),
+});
 const gitLogResponse = z.object({
   commits: z.array(z.object({
     sha: nonEmpty, subject: z.string(), author: z.string(), email: z.string(), ts: timestampSchema,
@@ -174,6 +179,8 @@ export const requestBodies = {
   // confirm must equal the device name, so a revoke can't fire by accident.
   'devices.revoke': z.object({ device: nonEmpty, confirm: nonEmpty }),
   'models.list': z.object({ agent: z.optional(nonEmpty), transport: z.optional(nonEmpty), refresh: z.optional(z.boolean()) }),
+  // Branch catalog for a project dir before a session exists (composer workspace picker).
+  'project.branches': z.object({ project: nonEmpty }),
   // Hub-side pairing: returns a one-shot 12-digit code the new device enters.
   'pair.create': z.object({}),
   // A device exchanges a live code for a device token (raw token returned once).
@@ -258,11 +265,8 @@ export const responseBodies = {
     sha: nonEmpty, subject: z.string(), body: z.string(), author: z.string(), ts: timestampSchema, parents: z.array(nonEmpty),
     files: z.array(gitFileStat), patch: z.string(), truncated: z.boolean(),
   }),
-  'git.branches': z.object({
-    current: z.nullable(z.string()),
-    local: z.array(z.object({ name: nonEmpty, sha: nonEmpty, subject: z.string(), ts: timestampSchema, upstream: z.nullable(z.string()), ahead: count, behind: count, current: z.boolean(), gone: z.boolean() })),
-    remote: z.array(z.object({ name: nonEmpty, sha: nonEmpty, subject: z.string(), ts: timestampSchema })),
-  }),
+  'git.branches': branchInfo,
+  'project.branches': z.object({ isRepo: z.boolean(), ...branchInfo.shape }),
   'git.checkout': z.object({ branch: nonEmpty }),
   'git.createBranch': z.object({ branch: nonEmpty }),
   'git.deleteBranch': z.object({}),

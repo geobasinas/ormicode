@@ -87,3 +87,11 @@ export async function gitMethod(
     return client.link.replyError(id, code, message);
   }
 }
+
+/** Branch catalog for a project dir before a session exists — feeds the
+ * composer's workspace picker. Non-repos and 'scratch' reply isRepo:false. */
+export function projectBranches(client: Client, id: string, body: Record<string, unknown>): void {
+  const project = String(body.project);
+  if (project === 'scratch' || !isGitRepo(project)) return client.link.reply(id, { isRepo: false, current: null, local: [], remote: [] });
+  return client.link.reply(id, { isRepo: true, ...branches(project) });
+}
