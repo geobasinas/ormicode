@@ -31,10 +31,21 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
   const [error, setError] = useState<string>();
   const img = useImages();
   useEffect(() => {
-    transport.request('agents.list', {}).then(r => {
-      if (r.type === 'res') setAgents((r.body as unknown as { agents: Agent[] }).agents);
-      setAgentsLoaded(true);
-    }).catch(() => setAgentsLoaded(true));
+    let alive = true;
+    let timer: ReturnType<typeof setInterval> | undefined;
+    // agentsLoaded flips only on a successful reply — a failed call (daemon
+    // down) keeps the fallback agents for display and retries until it lands.
+    const fetch = () => transport.request('agents.list', {}).then(r => {
+      if (!alive) return;
+      if (r.type === 'res') {
+        setAgents((r.body as unknown as { agents: Agent[] }).agents);
+        setAgentsLoaded(true);
+        if (timer) { clearInterval(timer); timer = undefined; }
+      }
+    }).catch(() => {});
+    fetch();
+    timer = setInterval(fetch, 15_000);
+    return () => { alive = false; if (timer) clearInterval(timer); };
   }, [transport]);
   const transports = agents.find(a => a.vendor === vendor)?.transports ?? ['cli'];
   const chosen = via && transports.includes(via) ? via : transports[0]!;

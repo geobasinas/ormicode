@@ -20,6 +20,8 @@ interface ModelsState {
 
 type ClientTransport = ReturnType<typeof usePlatform>['transport'];
 
+const RETRY_MS = 30_000;
+
 const cache = new Map<string, ModelsState>();
 const inflight = new Map<string, Promise<ModelsState>>();
 const listeners = new Map<string, Set<(state: ModelsState) => void>>();
@@ -75,10 +77,17 @@ export function useModels(agent: string | undefined, via: string | undefined): M
     if (!subscribers) { subscribers = new Set(); listeners.set(key, subscribers); }
     subscribers.add(update);
     const cached = cache.get(key);
-    if (cached) setCurrent({ key, state: cached });
+    // An error-only entry is stale, not final: the daemon may have been
+    // down at first fetch. Real model data and in-flight loads are kept.
+    if (cached && (cached.models.length > 0 || cached.loading)) setCurrent({ key, state: cached });
     else void load(transport, agent, via);
+    const retry = setInterval(() => {
+      const s = cache.get(key);
+      if (s && !s.loading && !s.models.length) void load(transport, agent, via);
+    }, RETRY_MS);
     return () => {
       alive = false;
+      clearInterval(retry);
       subscribers?.delete(update);
       if (!subscribers?.size) listeners.delete(key);
     };
