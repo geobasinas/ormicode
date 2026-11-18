@@ -8,12 +8,31 @@ import { replay } from '@ormicode/journal';
 import { getSession, listSessions } from '@ormicode/session-store';
 import { newId } from '@ormicode/protocol';
 
+const pendingCleanup = new Set();
+test.after(async () => {
+  for (const cleanup of pendingCleanup) await cleanup();
+});
+
 const boot = async (env = {}) => {
+  const previous = new Map(Object.keys(env).map(key => [key, process.env[key]]));
   Object.assign(process.env, env);
   const dir = mkdtempSync(join(tmpdir(), 'ormi-daemon-test-'));
   const daemon = await startDaemon({ socketPath: '127.0.0.1:0', storePath: join(dir, 'store.db') });
   const client = await connect(daemon.socketPath);
-  const cleanup = async () => { await daemon.close(); for (const k of Object.keys(env)) delete process.env[k]; };
+  let closed = false;
+  const cleanup = async () => {
+    if (closed) return;
+    closed = true;
+    pendingCleanup.delete(cleanup);
+    try { client.close(); await daemon.close(); }
+    finally {
+      for (const [key, value] of previous) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  };
+  pendingCleanup.add(cleanup);
   return { daemon, client, cleanup };
 };
 
@@ -131,20 +150,25 @@ test('setModel reaches the worker and persists on the session row', async () => 
 
 test('a paused_rate_limited session retries the held prompt at resetAt', async () => {
   const { daemon, client, cleanup } = await boot({ ORMICODE_FAKE_SCRIPT: 'ratelimit_pause', ORMICODE_FAKE_DELAY_MS: '300' });
-  const session = await startSession(client);
-  await client.request('session.subscribe', { session });
-  const states = [];
-  client.onFrame = f => { if (f.type === 'evt') states.push(f.body.kind); };
-  await client.request('session.prompt', { session, text: 'retry me' });
-  const deadline = Date.now() + 15_000;
-  while (Date.now() < deadline && getSession(daemon.db, session)?.state !== 'paused_rate_limited')
-    await new Promise(r => setTimeout(r, 25));
-  assert.equal(getSession(daemon.db, session)?.state, 'paused_rate_limited');
-  // After the reset delay the supervisor resends the held prompt: a second
-  // turn_start followed by a real turn_end proves the schedule fired.
-  while (Date.now() < deadline && states.filter(k => k === 'turn_start').length < 2)
-    await new Promise(r => setTimeout(r, 50));
-  assert.equal(states.filter(k => k === 'turn_start').length, 2, 'held prompt resent at reset');
-  assert.equal(getSession(daemon.db, session)?.state, 'idle');
-  await cleanup();
+  try {
+    const session = await startSession(client);
+    await client.request('session.subscribe', { session });
+    const states = [];
+    client.onFrame = f => { if (f.type === 'evt') states.push(f.body.kind); };
+    await client.request('session.prompt', { session, text: 'retry me' });
+    const deadline = Date.now() + 15_000;
+    while (Date.now() < deadline && getSession(daemon.db, session)?.state !== 'paused_rate_limited')
+      await new Promise(r => setTimeout(r, 25));
+    assert.equal(getSession(daemon.db, session)?.state, 'paused_rate_limited');
+    // The second turn queues turn_start, text and turn_end together. Wait for
+    // the turn_end state transition, not just delivery of turn_start.
+    while (Date.now() < deadline && states.filter(k => k === 'turn_start').length < 2)
+      await new Promise(r => setTimeout(r, 50));
+    assert.equal(states.filter(k => k === 'turn_start').length, 2, 'held prompt resent at reset');
+    while (Date.now() < deadline && getSession(daemon.db, session)?.state !== 'idle')
+      await new Promise(r => setTimeout(r, 25));
+    assert.equal(getSession(daemon.db, session)?.state, 'idle');
+  } finally {
+    await cleanup();
+  }
 });
