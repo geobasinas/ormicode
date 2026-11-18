@@ -30,3 +30,11 @@ test('no events is silent, and ranking puts waiting first and oldest first withi
     summarize({ id: 'r', state: 'paused_rate_limited', updatedAt: 500 }, [ev(1, 'text', { text: 'x' })], 0, 1000)]);
   assert.deepEqual(sorted.map(e => e.session), ['r', 'f2', 'f1', 'd', 'p', 's_q']);
 });
+
+test('terminal lifecycle events do not make a session digest active', () => {
+  const result = summarize({ id: 's_term', state: 'idle', updatedAt: 100 }, [
+    ev(1, 'terminal_open', { terminal: 't_1' }, 200),
+    ev(2, 'terminal_close', { terminal: 't_1' }, 300),
+  ], 50, 1000);
+  assert.deepEqual(result, { session: 's_term', rank: 'silent', source: 'mechanical', silentMs: 900 });
+});

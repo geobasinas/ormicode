@@ -59,6 +59,28 @@ test('per-device limit, kill_device, and idle exit', { skip: process.platform ==
   assert.equal(exited, true);
 });
 
+test('throttles burst output once, then resumes after the bucket refills', { skip: process.platform === 'win32' }, async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ormi-pty-rate-'));
+  const socketPath = sockIn(dir);
+  const previousRate = process.env.ORMICODE_PTY_RATE;
+  process.env.ORMICODE_PTY_RATE = '50000';
+  const broker = await startBroker({ socketPath, idleMs: 60_000 });
+  const c = await connectBroker(socketPath);
+  try {
+    const started = Date.now();
+    const output = collect(c, out => out.includes('normal'));
+    await c.request('open', { cwd: dir, shell: '/bin/sh', args: ['-c', "head -c 2000000 /dev/zero | tr '\\000' a; sleep 1.2; printf normal"] });
+    const got = await output;
+    const text = got.toString();
+    assert.equal((text.match(/output over 1 MB\/s, dropping until it slows down/g) ?? []).length, 1);
+    assert.ok(got.length < 50_000 + 50_000 * (Date.now() - started) / 1000 + 100);
+    assert.ok(text.includes('normal'));
+  } finally {
+    c.close(); await broker.close();
+    if (previousRate === undefined) delete process.env.ORMICODE_PTY_RATE; else process.env.ORMICODE_PTY_RATE = previousRate;
+  }
+});
+
 test('ensureBroker starts a detached broker that outlives the client', { skip: process.platform === 'win32' }, async () => {
   const dir = mkdtempSync(join(tmpdir(), 'ormi-pty-'));
   const socketPath = sockIn(dir);

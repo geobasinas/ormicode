@@ -1,9 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startDaemon, connect } from '../src/index.ts';
+import { openStore } from '@ormicode/session-store';
+import { replay } from '@ormicode/journal';
+import { newId } from '@ormicode/protocol';
 
 test('terminal.* opens a broker shell, streams term frames and replays on attach', { skip: process.platform === 'win32' }, async () => {
   const dir = mkdtempSync(join(tmpdir(), 'ormi-term-'));
@@ -31,6 +34,41 @@ test('terminal.* opens a broker shell, streams term frames and replays on attach
     await b.request('terminal.close', { terminal: open.body.terminal });
     b.close();
   } finally {
+    await daemon.close();
+    delete process.env.ORMICODE_HOME; delete process.env.ORMICODE_PTY_IDLE_MS;
+  }
+});
+
+test('session terminals write lifecycle audit and journal events', { skip: process.platform === 'win32' }, async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ormi-term-audit-'));
+  const home = join(dir, 'home');
+  const project = join(dir, 'project');
+  mkdirSync(project, { recursive: true });
+  Object.assign(process.env, { ORMICODE_HOME: home, ORMICODE_PTY_IDLE_MS: '500' });
+  const storePath = join(dir, 'store.db');
+  const daemon = await startDaemon({ socketPath: '127.0.0.1:0', storePath });
+  const client = await connect(daemon.socketPath);
+  try {
+    const started = await client.request('session.start', {
+      machine: newId('m'), project, vendor: 'fake', transport: 'cli', model: 'x', effort: 'x', mode: 'x', workspace: { kind: 'current' },
+    });
+    const session = started.body.session;
+    const opened = await client.request('terminal.open', { session, shell: '/bin/sh', args: ['-c', 'sleep 5'] });
+    assert.equal(opened.type, 'res', JSON.stringify(opened));
+    const terminal = opened.body.terminal;
+    await client.request('terminal.close', { terminal });
+    const auditPath = join(home, 'logs', 'terminal-audit.jsonl');
+    for (let i = 0; i < 80 && (!existsSync(auditPath) || !readFileSync(auditPath, 'utf8').includes('"event":"exit"')); i++) await new Promise(r => setTimeout(r, 50));
+    const audit = readFileSync(auditPath, 'utf8').trim().split('\n').map(line => JSON.parse(line));
+    assert.deepEqual(audit.map(e => e.event).sort(), ['close', 'exit', 'open']);
+    assert.ok(audit.every(e => e.terminal === terminal && typeof e.device === 'string' && e.session === session && typeof e.cwd === 'string' && typeof e.shell === 'string'), JSON.stringify(audit));
+    const db = openStore(storePath);
+    const events = replay(db, session).map(e => JSON.parse(e.payload));
+    db.close();
+    assert.deepEqual(events.filter(e => e.kind === 'terminal_open').map(e => e.terminal), [terminal]);
+    assert.deepEqual(events.filter(e => e.kind === 'terminal_close').map(e => e.terminal), [terminal]);
+  } finally {
+    client.close();
     await daemon.close();
     delete process.env.ORMICODE_HOME; delete process.env.ORMICODE_PTY_IDLE_MS;
   }

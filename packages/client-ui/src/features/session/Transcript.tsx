@@ -2,7 +2,7 @@
  * tool calls as compact expandable rows (result folded in, checkpoint as a
  * hover-only icon), system events as muted lines. */
 import { useEffect, useMemo, useRef } from 'react';
-import { CircleAlert, ArrowRight, RotateCw, Pause, ChevronRight, History } from 'lucide-react';
+import { CircleAlert, ArrowRight, RotateCw, Pause, ChevronRight, History, ShieldQuestion, CircleCheck, CircleHelp, MessageCircle, Clock3 } from 'lucide-react';
 import { ToolRow, ThinkingRow, CheckpointMark } from './ToolRow.tsx';
 import type { TranscriptEvent } from './useTranscript.ts';
 
@@ -22,6 +22,10 @@ function toolCard(icon: React.ReactNode, label: string, detail?: string) {
       {detail ? <span style={{ ...mono, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{detail}</span> : null}
     </div>
   );
+}
+
+function eventLine(icon: React.ReactNode, text: string) {
+  return <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-hint)', fontSize: 12, lineHeight: '18px' }}>{icon}{text}</div>;
 }
 
 interface Ctx { session: string; results: Map<string, TranscriptEvent>; cpAfter: Map<number, TranscriptEvent>; calls: Set<string>; attached: Set<number> }
@@ -73,6 +77,19 @@ function line(e: TranscriptEvent, ctx: Ctx) {
       return <div style={{ ...small, color: 'var(--text-hint)', display: 'flex', gap: 6, alignItems: 'center', margin: '4px 0' }} title={String(b.id ?? '')}>
         <History size={11} />Restored files to checkpoint <span style={mono}>{String(b.id ?? '').slice(0, 7)}</span>
       </div>;
+    case 'approval_request':
+      return eventLine(<ShieldQuestion size={12} />, 'Asked for approval');
+    case 'approval_decision':
+      return eventLine(<CircleCheck size={12} />, b.option === 'deny' ? 'Denied' : 'Allowed');
+    case 'question_request':
+      return eventLine(<CircleHelp size={12} />, 'Asked a question');
+    case 'question_answer':
+      return eventLine(<MessageCircle size={12} />, 'Answered');
+    case 'interaction_expired':
+      return eventLine(<Clock3 size={12} />, 'Request expired');
+    case 'terminal_open':
+    case 'terminal_close':
+      return null;
     case 'state':
       return null;
     case 'agent_version':

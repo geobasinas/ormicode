@@ -12,7 +12,7 @@ import { Scrollback } from './scrollback.ts';
 import { defaultShell } from './shell.ts';
 
 export interface TerminalInfo { terminal: string; cwd: string; shell: string; device: string; openedAt: number; pid: number; exited: boolean; code: number | null; offset: number }
-interface Term { info: TerminalInfo; proc: pty.IPty; buf: Scrollback; readers: Set<Socket> }
+interface Term { info: TerminalInfo; proc: pty.IPty; buf: Scrollback; readers: Set<Socket>; tokens: number; lastRefill: number; dropped: boolean }
 export interface BrokerOptions { socketPath: string; idleMs?: number; maxPerDevice?: number; scrollbackLines?: number; onExit?: () => void }
 
 const CHUNK = 64 * 1024;
@@ -27,6 +27,8 @@ export function startBroker(opts: BrokerOptions): Promise<{ server: Server; clos
   const terms = new Map<string, Term>();
   const conns = new Set<Socket>();
   const idleMs = opts.idleMs ?? 30_000;
+  const configuredRate = Number(process.env.ORMICODE_PTY_RATE);
+  const rate = Number.isFinite(configuredRate) && configuredRate > 0 ? configuredRate : 1024 * 1024;
   let idle: NodeJS.Timeout | undefined;
   const send = (s: Socket, msg: unknown) => { if (!s.destroyed) s.write(`${JSON.stringify(msg)}\n`); };
   const live = () => [...terms.values()].filter(t => !t.info.exited).length;
@@ -46,12 +48,20 @@ export function startBroker(opts: BrokerOptions): Promise<{ server: Server; clos
       env: { ...process.env, TERM: 'xterm-256color' } as Record<string, string>,
     });
     const info: TerminalInfo = { terminal: newTerminalId(), cwd, shell, device, openedAt: Date.now(), pid: proc.pid, exited: false, code: null, offset: 0 };
-    const t: Term = { info, proc, buf: new Scrollback(opts.scrollbackLines ?? 5000), readers: new Set() };
+    const t: Term = { info, proc, buf: new Scrollback(opts.scrollbackLines ?? 5000), readers: new Set(), tokens: rate, lastRefill: Date.now(), dropped: false };
     terms.set(info.terminal, t);
     proc.onData(d => {
       const chunk = Buffer.from(d, 'utf8');
-      const offset = t.buf.push(chunk); info.offset = t.buf.end;
-      for (const r of t.readers) send(r, { ev: 'output', terminal: info.terminal, offset, data: chunk.toString('base64') });
+      const now = Date.now();
+      t.tokens = Math.min(rate, t.tokens + Math.max(0, now - t.lastRefill) * rate / 1000);
+      t.lastRefill = now;
+      if (t.tokens >= rate) t.dropped = false;
+      const allowed = Math.min(chunk.length, Math.floor(t.tokens));
+      if (allowed) { t.tokens -= allowed; output(t, chunk.subarray(0, allowed)); }
+      if (allowed < chunk.length) {
+        if (!t.dropped) output(t, Buffer.from('\r\n[ormicode: output over 1 MB/s, dropping until it slows down]\r\n'));
+        t.dropped = true;
+      }
     });
     proc.onExit(({ exitCode }) => {
       info.exited = true; info.code = exitCode;
@@ -60,6 +70,11 @@ export function startBroker(opts: BrokerOptions): Promise<{ server: Server; clos
     });
     clearTimeout(idle);
     return info;
+  };
+
+  const output = (t: Term, chunk: Buffer) => {
+    const offset = t.buf.push(chunk); t.info.offset = t.buf.end;
+    for (const r of t.readers) send(r, { ev: 'output', terminal: t.info.terminal, offset, data: chunk.toString('base64') });
   };
 
   const attach = (s: Socket, t: Term, from: number) => {

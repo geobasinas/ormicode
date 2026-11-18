@@ -294,7 +294,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     db, notesDir, startedAt, paused, heldPrompts, lastPrompt, handoffsInTurn,
     lastError: () => lastError, liveWorkers: () => workers.size,
     spawnWorker, toWorker, sendPrompt,
-    pairing, relay: () => relay, checkpoints, record, secrets, terminals: new TerminalHub(),
+    pairing, relay: () => relay, checkpoints, record, secrets, terminals: new TerminalHub(record, ormicodeDir()),
     prices: new PriceBook({
       cachePath: join(ormicodeDir(), 'cache', 'prices.json'), overridesPath: join(ormicodeDir(), 'prices.json'),
       url: process.env.ORMICODE_PRICES_URL === 'off' ? null : process.env.ORMICODE_PRICES_URL,

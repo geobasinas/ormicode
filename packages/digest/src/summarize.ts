@@ -13,6 +13,7 @@ const PATH_KEYS = ['file_path', 'filePath', 'path', 'notebook_path'];
 const clip = (s: string, n = 200) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
 export function summarize(s: DigestSession, events: DigestEvent[], since: number, now = Date.now()): DigestEntry {
+  events = events.filter(e => e.kind !== 'terminal_open' && e.kind !== 'terminal_close');
   if (!events.length) return { session: s.id, rank: 'silent', source: 'mechanical', silentMs: Math.max(0, now - Math.max(since, s.updatedAt)) };
   const paths = new Set<string>(); const calls = new Map<string, string>(); const dropped: string[] = [];
   const open = new Map<string, Wants>();
