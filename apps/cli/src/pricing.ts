@@ -15,3 +15,20 @@ export async function pricingCommand(verb: string | undefined, args: string[]): 
     return 0;
   });
 }
+
+export async function costCommand(verb: string | undefined, args: string[]): Promise<number> {
+  const index = args.indexOf('--since');
+  const raw = index >= 0 ? args[index + 1] : undefined;
+  const since = raw === undefined ? undefined : Number(raw);
+  const invalidArgs = index < 0 ? args.length !== 0
+    : args.length !== 2 || index !== 0 || !Number.isSafeInteger(since) || (since ?? -1) < 0;
+  if (verb !== 'totals' || invalidArgs) {
+    console.error('usage: ormi cost totals [--since <ms>]'); return 2;
+  }
+  return withDaemon(async link => {
+    const res = await link.request('cost.totals', since === undefined ? {} : { since });
+    if (res.type === 'err') { console.error(`${res.code}: ${res.message}`); return 1; }
+    console.log(JSON.stringify(res.body, null, 2));
+    return 0;
+  });
+}

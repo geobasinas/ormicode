@@ -4,7 +4,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openStore, createSession, getSession, listSessions, sessionsInStates, setState, setTitle, archiveSession, setNativeId,
-  addDevice, getDeviceByHash, listDevices, renameDevice, revokeDevice, listNotes, setNote, deleteNote } from '../src/index.ts';
+  addDevice, getDeviceByHash, listDevices, renameDevice, revokeDevice, listNotes, setNote, deleteNote, getPinnedPrice, pinPrice } from '../src/index.ts';
 
 test('openStore applies migrations and is idempotent on reopen', () => {
   const path = join(mkdtempSync(join(tmpdir(), 'ormi-store-')), 'nested', 'store.db');
@@ -59,4 +59,16 @@ test('notes: markdown files with a title front matter', () => {
   assert.deepEqual(listNotes(dir, 's_none'), []);
   assert.equal(deleteNote(dir, 's_1', id), true);
   assert.equal(deleteNote(dir, 's_1', id), false);
+});
+
+test('session prices pin a model price and keep the first version', () => {
+  const db = openStore(':memory:');
+  createSession(db, { id: 's_1', machine: 'm', project: '/p', vendor: 'fake', transport: 'cli', cwd: '/p' });
+  const first = { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 };
+  pinPrice(db, 's_1', 'claude-sonnet-4-6', first, 'openrouter-old');
+  assert.deepEqual(getPinnedPrice(db, 's_1', 'claude-sonnet-4-6'), { price: first, version: 'openrouter-old' });
+  pinPrice(db, 's_1', 'claude-sonnet-4-6', { input: 9, output: 30 }, 'openrouter-new');
+  assert.deepEqual(getPinnedPrice(db, 's_1', 'claude-sonnet-4-6'), { price: first, version: 'openrouter-old' });
+  assert.equal(db.pragma('user_version', { simple: true }), 3);
+  db.close();
 });

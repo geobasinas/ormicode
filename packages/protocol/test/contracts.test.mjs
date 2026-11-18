@@ -22,6 +22,19 @@ test('response contracts reject missing fields and unknown methods', () => {
   assert.deepEqual(parseResponseBody('session.teleport', {}), { success: false, error: 'protocol.unknown_method' });
 });
 
+test('cost totals contracts validate time filters and all aggregation buckets', () => {
+  assert.equal(parseRequestBody('cost.totals', {}).success, true);
+  assert.equal(parseRequestBody('cost.totals', { since: 0 }).success, true);
+  assert.equal(parseRequestBody('cost.totals', { since: -1 }).success, false);
+  const bucket = { tokens: 12, usd: null, unpriced: 1, estimate: false };
+  const body = {
+    total: bucket, projects: [{ project: '/repo', ...bucket }],
+    days: [{ date: '2025-01-02', ...bucket }], sessions: [{ session, project: '/repo', ...bucket }],
+  };
+  assert.equal(parseResponseBody('cost.totals', body).success, true);
+  assert.equal(parseResponseBody('cost.totals', { ...body, days: [{ date: 'yesterday', ...bucket }] }).success, false);
+});
+
 test('event body contracts check state, text and approval data', () => {
   assert.equal(parseEventBody({ kind: 'text', text: 'hello' }).success, true);
   assert.equal(parseEventBody({ kind: 'text' }).success, false);

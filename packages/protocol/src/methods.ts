@@ -5,6 +5,7 @@ const session = { session: sessionIdSchema };
 const nonEmpty = z.string().check(z.minLength(1));
 const count = z.number().check(z.int(), z.gte(0));
 const limitSchema = z.number().check(z.int(), z.gte(1), z.lte(500));
+const costBucket = { tokens: count, usd: z.nullable(z.number()), unpriced: count, estimate: z.boolean() };
 const gitPath = z.object({ path: nonEmpty, oldPath: z.optional(nonEmpty), status: z.enum(['M', 'A', 'D', 'R', '?', 'U']), staged: z.boolean(), unstaged: z.boolean() });
 const gitFileStat = z.object({ path: nonEmpty, oldPath: z.optional(nonEmpty), status: z.enum(['M', 'A', 'D', 'R', '?', 'U']), binary: z.boolean(), added: count, removed: count });
 const stashItem = z.object({ index: count, ref: nonEmpty, message: z.string(), branch: z.nullable(z.string()), ts: timestampSchema, files: count, added: count, removed: count });
@@ -123,6 +124,7 @@ export const requestBodies = {
   'git.pr': z.object({ ...session, title: nonEmpty, body: z.string(), draft: z.optional(z.boolean()) }),
   'git.prMerge': z.object({ ...session, method: z.enum(['squash', 'merge', 'rebase']) }),
   'session.cost': z.object(session),
+  'cost.totals': z.object({ since: z.optional(timestampSchema) }),
   'pricing.status': z.object({}),
   'pricing.refresh': z.object({}),
   'pricing.get': z.object({ model: nonEmpty }),
@@ -195,6 +197,12 @@ export const responseBodies = {
   'session.cost': z.object({
     input: cursorSchema, output: cursorSchema, cacheRead: cursorSchema, cacheWrite: cursorSchema, turns: cursorSchema,
     usd: z.nullable(z.number()), source: z.enum(['reported', 'estimate', 'none']), priceVersion: z.nullable(z.string()), model: z.nullable(z.string()),
+  }),
+  'cost.totals': z.object({
+    total: z.object(costBucket),
+    projects: z.array(z.object({ project: nonEmpty, ...costBucket })),
+    days: z.array(z.object({ date: z.string().check(z.regex(/^\d{4}-\d{2}-\d{2}$/)), ...costBucket })),
+    sessions: z.array(z.object({ session: sessionIdSchema, project: nonEmpty, ...costBucket })),
   }),
   'git.diff': z.object({
     files: z.array(z.object({ path: nonEmpty, oldPath: z.optional(nonEmpty), status: z.enum(['added', 'deleted', 'modified', 'renamed']), binary: z.boolean(), added: cursorSchema, removed: cursorSchema })),

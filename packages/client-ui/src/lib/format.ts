@@ -24,6 +24,20 @@ export function projectName(project: string): string {
   return base || project;
 }
 
+export function compactTokens(tokens: number): string {
+  const abs = Math.abs(tokens);
+  if (abs < 1_000) return Math.round(tokens).toLocaleString('en-US');
+  const unit = abs >= 1_000_000 ? 'm' : 'k';
+  const value = abs >= 1_000_000 ? tokens / 1_000_000 : tokens / 1_000;
+  return `${value.toFixed(Math.abs(value) >= 100 ? 0 : 1).replace(/\.0$/, '')}${unit}`;
+}
+
+export function formatUsd(usd: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: Math.abs(usd) < 0.01 ? 6 : 2,
+  }).format(usd);
+}
+
 export function greeting(now = new Date()): string {
   const h = now.getHours();
   if (h < 5) return 'Up late';

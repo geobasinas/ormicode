@@ -20,9 +20,10 @@ import type { Checkpoints } from '@ormicode/checkpoints';
 import type { SecretBroker } from './secrets.ts';
 import { secretMethod } from './secret-methods.ts';
 import type { TerminalHub } from './terminal-methods.ts';
-import { summarize, priceFor, type PriceBook } from '@ormicode/pricing';
+import { priceFor, type PriceBook } from '@ormicode/pricing';
 import { summarize as digestOf, rank as rankDigest } from '@ormicode/digest';
 import { checkpointMethod } from './checkpoint-methods.ts';
+import { costMethod } from './cost-methods.ts';
 import { gitMethod } from './git-methods.ts';
 
 const LIVE_STATES = ['idle', 'starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying', 'paused_rate_limited', 'interrupted'] as const;
@@ -134,14 +135,9 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
           since, computedAt));
         return client.link.reply(id, { since, computedAt, entries: rankDigest(entries) });
       }
-      case 'session.cost': {
-        const s = getSession(db, String(body.session));
-        if (!s) return client.link.replyError(id, 'session.not_found', String(body.session));
-        const events = replay(db, s.id).filter(e => e.kind === 'usage' || e.kind === 'turn_end')
-          .map(e => ({ kind: e.kind, payload: JSON.parse(e.payload) as Record<string, unknown> }));
-        await ctx.prices.ensure();
-        return client.link.reply(id, { ...summarize(events, s.model, ctx.prices.table()) });
-      }
+      case 'session.cost':
+      case 'cost.totals':
+        return costMethod(ctx, client, id, method, body);
       case 'pricing.status':
       case 'pricing.refresh':
         await ctx.prices.ensure(method === 'pricing.refresh');

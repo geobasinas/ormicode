@@ -14,9 +14,14 @@ export function costOf(u: Usage, p: Price): number {
 }
 
 /** Turns that report costUsd use it; other turns are estimated; any unpriced turn without a reported cost makes the dollar figure null. */
-export function summarize(events: { kind: string; payload: Record<string, unknown> }[], model: string | null, table: PriceTable): CostSummary {
+export function summarize(
+  events: { kind: string; payload: Record<string, unknown> }[],
+  model: string | null,
+  table: PriceTable,
+  pinned?: { price: Price; version: string },
+): CostSummary {
   const sum: CostSummary = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, turns: 0, usd: 0, source: 'none', priceVersion: null, model };
-  const price = priceFor(table, model);
+  const price = pinned?.price ?? priceFor(table, model);
   let reported = false; let estimated = false;
   for (const e of events) {
     if (e.kind === 'turn_end') sum.turns++;
@@ -29,6 +34,6 @@ export function summarize(events: { kind: string; payload: Record<string, unknow
   }
   sum.source = estimated ? 'estimate' : reported ? 'reported' : 'none';
   if (sum.source === 'none' && sum.usd === 0) sum.usd = null;
-  if (estimated) sum.priceVersion = table.version ?? null;
+  if (estimated) sum.priceVersion = pinned?.version ?? table.version ?? null;
   return sum;
 }

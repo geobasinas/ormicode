@@ -1,9 +1,9 @@
 /** Settings tab (Settings-2 mockup): inner nav + one section at a time. Only
  * client-side prefs and existing daemon methods are wired; the rest say so. */
 import { useEffect, useState, type ReactNode } from 'react';
-import { Settings as Gear, Palette, SlidersHorizontal, Bell, Keyboard, Smartphone, Laptop, Shield, Info, type LucideIcon } from 'lucide-react';
+import { Settings as Gear, Palette, SlidersHorizontal, Bell, Keyboard, Smartphone, Laptop, Shield, Info, Coins, type LucideIcon } from 'lucide-react';
 import { usePlatform } from '../lib/platform.ts';
-import { ago } from '../lib/format.ts';
+import { ago, compactTokens, formatUsd, projectName } from '../lib/format.ts';
 
 export interface Prefs { theme: string; defaultVendor: string; defaultProject: string }
 const KEY = 'ormi.prefs';
@@ -21,7 +21,7 @@ const NAV: { group: string; items: Section[] }[] = [
     { id: 'defaults', label: 'Session defaults', icon: SlidersHorizontal }, { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'shortcuts', label: 'Keyboard shortcuts', icon: Keyboard }] },
   { group: 'CONNECTION', items: [{ id: 'devices', label: 'Paired devices', icon: Smartphone }, { id: 'machines', label: 'Machines', icon: Laptop }] },
-  { group: 'DATA', items: [{ id: 'privacy', label: 'Data and privacy', icon: Shield }, { id: 'about', label: 'About', icon: Info }] },
+  { group: 'DATA', items: [{ id: 'usage', label: 'Usage', icon: Coins }, { id: 'privacy', label: 'Data and privacy', icon: Shield }, { id: 'about', label: 'About', icon: Info }] },
 ];
 const TITLES: Record<string, [string, string]> = {
   general: ['General', 'How ormicode runs on this computer'],
@@ -31,6 +31,7 @@ const TITLES: Record<string, [string, string]> = {
   shortcuts: ['Keyboard shortcuts', 'Ctrl on Windows and Linux, Cmd on macOS'],
   devices: ['Paired devices', 'Phones and browsers that can reach this hub'],
   machines: ['Machines', 'Computers running an ormicode daemon'],
+  usage: ['Usage', 'Stored token and cost totals'],
   privacy: ['Data and privacy', 'What is stored and where'],
   about: ['About', 'Versions and connection'],
 };
@@ -65,6 +66,53 @@ function Switch({ on, onChange, disabled }: { on: boolean; onChange?: (v: boolea
   );
 }
 const Soon = ({ what }: { what: string }) => <span style={{ fontSize: 10.5, color: 'var(--text-hint)' }}>{what}</span>;
+
+interface CostBucket { tokens: number; usd: number | null; unpriced: number; estimate: boolean }
+interface CostTotals {
+  total: CostBucket;
+  projects: ({ project: string } & CostBucket)[];
+  days: ({ date: string } & CostBucket)[];
+  sessions: ({ session: string; project: string } & CostBucket)[];
+}
+
+function amount(bucket: CostBucket): string {
+  return bucket.usd === null ? '—' : `${formatUsd(bucket.usd)}${bucket.estimate ? ' estimate' : ''}`;
+}
+function usageHint(bucket: CostBucket): string {
+  return `${compactTokens(bucket.tokens)} tokens${bucket.unpriced ? ` · ${bucket.unpriced} unpriced` : ''}`;
+}
+
+function Usage() {
+  const { transport } = usePlatform();
+  const [totals, setTotals] = useState<CostTotals>();
+  const [error, setError] = useState<string>();
+  useEffect(() => {
+    let alive = true;
+    void transport.request('cost.totals', { since: Date.now() - 30 * 24 * 60 * 60 * 1000 }).then(res => {
+      if (!alive) return;
+      if (res.type === 'res') setTotals(res.body as unknown as CostTotals);
+      else setError(res.type === 'err' ? `${res.code}: ${res.message}` : 'unexpected reply');
+    }).catch((e: Error) => { if (alive) setError(e.message); });
+    return () => { alive = false; };
+  }, [transport]);
+  const recentDays = [...(totals?.days ?? [])].sort((a, b) => a.date.localeCompare(b.date)).slice(-14).reverse();
+  const unavailable = error ? <Row title="Could not load usage" hint={error} /> : !totals ? <Row title="Loading usage" /> : null;
+  return <>
+    <Group title="LAST 30 DAYS">
+      {unavailable ?? <Row title="Total" hint={usageHint(totals!.total)}><span style={{ fontSize: 11.5, color: 'var(--text-label)' }}>{amount(totals!.total)}</span></Row>}
+    </Group>
+    <Group title="BY PROJECT">
+      {unavailable ?? (totals!.projects.length
+        ? totals!.projects.map(p => <Row key={p.project} title={projectName(p.project)} hint={usageHint(p)}><span style={{ fontSize: 11.5, color: 'var(--text-label)' }}>{amount(p)}</span></Row>)
+        : <Row title="No usage in the last 30 days" />)}
+    </Group>
+    <Group title="BY DAY">
+      {unavailable ?? (recentDays.length
+        ? recentDays.map(day => <Row key={day.date} title={day.date} hint={usageHint(day)}><span style={{ fontSize: 11.5, color: 'var(--text-label)' }}>{amount(day)}</span></Row>)
+        : <Row title="No usage in the last 14 days" />)}
+    </Group>
+  </>;
+}
 
 const SHORTCUTS: [string, string][] = [
   ['New session', 'Ctrl N'], ['Search sessions', 'Ctrl K'], ['Home', 'Ctrl 1'], ['Settings', 'Ctrl ,'],
@@ -173,6 +221,7 @@ export function SettingsView({ prefs, onPrefs, connection }: { prefs: Prefs; onP
           {section === 'shortcuts' ? <Group title="SHORTCUTS">{SHORTCUTS.map(([a, k]) => <Row key={a} title={a}><span style={{ ...ctl, fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--text-label)' }}>{k}</span></Row>)}</Group> : null}
           {section === 'devices' ? <Devices /> : null}
           {section === 'machines' ? <Group title="THIS MACHINE"><Row title="local" hint="Other machines appear here once multi-machine hubs ship"><Soon what="soon" /></Row></Group> : null}
+          {section === 'usage' ? <Usage /> : null}
           {section === 'privacy' ? <Group title="STORAGE"><Row title="Sessions and journals" hint="~/.ormicode/ on this machine. The relay only forwards encrypted frames." mono /></Group> : null}
           {section === 'about' ? <About connection={connection} /> : null}
         </div>

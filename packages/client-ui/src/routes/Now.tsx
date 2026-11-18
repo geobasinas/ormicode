@@ -5,7 +5,7 @@ import { NewSession } from '../features/session/NewSession.tsx';
 import { PairCard } from '../features/pair/PairCard.tsx';
 import { StateIcon, NEEDS_YOU, LIVE, stateLabel, whereLine } from '../features/session/state.tsx';
 import { useDigest, type DigestEntry } from '../features/session/useDigest.ts';
-import { ago, greeting, projectName } from '../lib/format.ts';
+import { ago, compactTokens, greeting, projectName } from '../lib/format.ts';
 
 const cardBox = {
   background: 'var(--bg-card)', border: '1px solid var(--line-card)',
@@ -37,13 +37,6 @@ function SessionRow({ s, first, onOpen }: { s: SessionSummary; first: boolean; o
 }
 
 type DigestHighlight = Exclude<DigestEntry, { rank: 'silent' }>;
-
-function compactTokens(tokens: number): string {
-  if (tokens < 1_000) return String(tokens);
-  const value = tokens >= 1_000_000 ? tokens / 1_000_000 : tokens / 1_000;
-  const unit = tokens >= 1_000_000 ? 'm' : 'k';
-  return `${value.toFixed(value >= 100 ? 0 : 1).replace(/\.0$/, '')}${unit}`;
-}
 
 function attentionLine(s: SessionSummary, entry?: DigestHighlight): string {
   if (!entry) return `${stateLabel(s.state)} · ${projectName(s.project)}`;

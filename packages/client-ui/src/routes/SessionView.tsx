@@ -1,5 +1,6 @@
 /** Session route: header, transcript, approvals surface, composer, and
  * side panels toggled from the app-level right rail (Notes first). */
+import { useEffect, useState } from 'react';
 import { useTranscript } from '../features/session/useTranscript.ts';
 import { useSession } from '../features/session/useSession.ts';
 import { Transcript } from '../features/session/Transcript.tsx';
@@ -10,19 +11,40 @@ import { TerminalPane } from '../features/terminal/TerminalPane.tsx';
 import { GitPane } from '../features/git/GitPane.tsx';
 import type { RailPane } from './App.tsx';
 import { History } from 'lucide-react';
-import { projectName } from '../lib/format.ts';
+import { compactTokens, formatUsd, projectName } from '../lib/format.ts';
 import { stateLabel } from '../features/session/state.tsx';
 import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels';
+import { usePlatform } from '../lib/platform.ts';
+
+interface SessionCost {
+  input: number; output: number; cacheRead: number; cacheWrite: number; turns: number;
+  usd: number | null; source: 'reported' | 'estimate' | 'none'; priceVersion: string | null; model: string | null;
+}
 
 export function SessionView({ session, rail = 'none' }: { session: string; rail?: RailPane; onRail?: (r: RailPane) => void }) {
   const { events, approvals } = useTranscript(session);
   const details = useSession(session);
+  const { transport } = usePlatform();
+  const [cost, setCost] = useState<SessionCost>();
   const notesLayout = useDefaultLayout({ id: 'ormi.session.notes', storage: globalThis.localStorage });
+  useEffect(() => {
+    if (!details) return;
+    let alive = true;
+    void transport.request('session.cost', { session }).then(res => {
+      if (alive && res.type === 'res') setCost(res.body as unknown as SessionCost);
+    }).catch(() => undefined);
+    return () => { alive = false; };
+  }, [transport, session, details?.state]);
+  const tokens = cost ? cost.input + cost.output + cost.cacheRead + cost.cacheWrite : 0;
+  const costTitle = cost
+    ? `Input ${cost.input.toLocaleString('en-US')} · Output ${cost.output.toLocaleString('en-US')} · Cache read ${cost.cacheRead.toLocaleString('en-US')} · Cache write ${cost.cacheWrite.toLocaleString('en-US')} · ${cost.turns} turns · model ${cost.model ?? '—'} · prices ${cost.priceVersion ?? '—'}${cost.source === 'estimate' ? ' (estimate)' : ''}`
+    : '';
   const chat = (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0, overflow: 'hidden' }}>
       {details ? <div style={{ display: 'flex', justifyContent: 'center', flexShrink: 0 }}>
         <div style={{ width: '100%', maxWidth: 720, height: 38, padding: '0 var(--space-5)', boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-hint)', whiteSpace: 'nowrap', overflow: 'hidden' }}>
           <History size={11} />{[projectName(details.project), details.vendor, stateLabel(details.state)].join(' · ')}
+          {cost && tokens > 0 ? <span title={costTitle}> · {compactTokens(tokens)} tokens{cost.usd !== null ? ` · ${cost.source === 'estimate' ? '~' : ''}${formatUsd(cost.usd)}` : ''}</span> : null}
         </div>
       </div> : null}
       <Transcript events={events} session={session} />

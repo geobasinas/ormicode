@@ -42,6 +42,13 @@ test('summarize estimates from the fetched price, prefers reported cost, and nev
   assert.deepEqual([summarize([ev('usage', { input: 10 })], 'claude-sonnet-4-6', EMPTY).usd], [null]);
 });
 
+test('summarize uses the pinned price and version instead of a changed table', () => {
+  const changed = fromOpenRouter({ data: [{ id: 'anthropic/claude-sonnet-4.6', pricing: { prompt: '0.000009', completion: '0.00003' } }] });
+  const pinned = { price: { input: 3, output: 15 }, version: 'openrouter-original' };
+  const result = summarize([{ kind: 'usage', payload: { input: 1_000_000, output: 100_000 } }], 'claude-sonnet-4-6', changed, pinned);
+  assert.deepEqual([result.usd, result.priceVersion, result.source], [4.5, 'openrouter-original', 'estimate']);
+});
+
 test('PriceBook fetches once, caches for maxAge, survives failures and applies hand edits', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'ormi-price-'));
   let now = 1000; let calls = 0; let fail = false;
