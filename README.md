@@ -2202,7 +2202,7 @@ CLI is for you and scripts; the built-in MCP server is for models. Both use the 
 
 **Tests:** fixture journals with known diffs and abandoned calls; every claim maps to an event; inactive sessions are reported silent.
 
-**Implementation status:** `packages/digest` builds the mechanical entries (changed paths from tool-call `file_path`/`path` inputs, the last failed tool output or else the last agent text as `result`, open approvals/questions/rate-limit pauses as `wants`, failed tool calls as `dropped`, tokens from `usage`) and the ranking; `session.digest` serves them for all unarchived sessions. Summaries, the cost cap and the desktop digest screen are still to come.
+**Implementation status:** `packages/digest` builds the mechanical entries (changed paths from tool-call `file_path`/`path` inputs, the last failed tool output or else the last agent text as `result`, open approvals/questions/rate-limit pauses as `wants`, failed tool calls as `dropped`, tokens from `usage`) and the ranking; `session.digest` serves them for all unarchived sessions. Home's Needs you column shows non-silent entries in rank order, fills with live sessions, and records `computedAt` as this device's next `since` when the app is hidden or closed. Summaries and the cost cap are still to come.
 
 ## Observability
 

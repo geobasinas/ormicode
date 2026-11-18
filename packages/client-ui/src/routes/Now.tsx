@@ -4,6 +4,7 @@ import { useSessions, type SessionSummary } from '../features/session/useSession
 import { NewSession } from '../features/session/NewSession.tsx';
 import { PairCard } from '../features/pair/PairCard.tsx';
 import { StateIcon, NEEDS_YOU, LIVE, stateLabel, whereLine } from '../features/session/state.tsx';
+import { useDigest, type DigestEntry } from '../features/session/useDigest.ts';
 import { ago, greeting, projectName } from '../lib/format.ts';
 
 const cardBox = {
@@ -35,10 +36,38 @@ function SessionRow({ s, first, onOpen }: { s: SessionSummary; first: boolean; o
   );
 }
 
-function AttentionRow({ s, n, onOpen }: { s: SessionSummary; n: number; onOpen: (id: string) => void }) {
-  const needs = NEEDS_YOU.has(s.state);
+type DigestHighlight = Exclude<DigestEntry, { rank: 'silent' }>;
+
+function compactTokens(tokens: number): string {
+  if (tokens < 1_000) return String(tokens);
+  const value = tokens >= 1_000_000 ? tokens / 1_000_000 : tokens / 1_000;
+  const unit = tokens >= 1_000_000 ? 'm' : 'k';
+  return `${value.toFixed(value >= 100 ? 0 : 1).replace(/\.0$/, '')}${unit}`;
+}
+
+function attentionLine(s: SessionSummary, entry?: DigestHighlight): string {
+  if (!entry) return `${stateLabel(s.state)} · ${projectName(s.project)}`;
+  if (entry.rank === 'waiting') {
+    const wants = entry.wants;
+    const label = wants?.kind === 'approval' ? 'Wants approval'
+      : wants?.kind === 'question' ? 'Has a question' : 'Rate limited';
+    return wants ? `${label} · ${ago(wants.since)}` : label;
+  }
+  if (entry.rank === 'failed') return `Failed · ${entry.dropped[0] ?? entry.where.state}`;
+  const files = entry.changed.paths.length;
+  if (entry.rank === 'done') return `Done${files ? ` · ${files} files changed` : ''}`;
+  const details = [
+    ...(files ? [`${files} files changed`] : []),
+    ...(entry.cost.tokens ? [`${compactTokens(entry.cost.tokens)} tokens`] : []),
+  ];
+  return details.join(' · ') || 'Progressed';
+}
+
+function AttentionRow({ s, n, entry, onOpen }: { s: SessionSummary; n: number; entry?: DigestHighlight; onOpen: (id: string) => void }) {
+  const color = entry?.rank === 'waiting' || (!entry && NEEDS_YOU.has(s.state))
+    ? 'var(--accent-amber)' : entry?.rank === 'failed' ? 'var(--accent-red)' : 'var(--text-secondary)';
   return (
-    <button className="hv-row" onClick={() => onOpen(s.id)} style={rowBtn}>
+    <button className="hv-row" title={entry?.changed.result} onClick={() => onOpen(s.id)} style={rowBtn}>
       <span style={{
         width: 20, height: 20, borderRadius: 7, flexShrink: 0, display: 'inline-flex',
         alignItems: 'center', justifyContent: 'center', background: 'var(--bg-badge)',
@@ -46,8 +75,8 @@ function AttentionRow({ s, n, onOpen }: { s: SessionSummary; n: number; onOpen: 
       }}>{n}</span>
       <span style={{ flex: 1, minWidth: 0 }}>
         {title(s, n === 1)}
-        <span style={{ display: 'block', fontSize: 10.5, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: needs ? 'var(--accent-amber)' : 'var(--text-secondary)' }}>
-          {stateLabel(s.state)} · {projectName(s.project)}
+        <span style={{ display: 'block', fontSize: 10.5, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color }}>
+          {attentionLine(s, entry)}
         </span>
       </span>
       <StateIcon state={s.state} size={12} />
@@ -57,10 +86,22 @@ function AttentionRow({ s, n, onOpen }: { s: SessionSummary; n: number; onOpen: 
 
 export function Now({ onOpen, state }: { onOpen: (session: string) => void; state?: string }) {
   const { sessions } = useSessions();
-  const needs = sessions.filter(s => NEEDS_YOU.has(s.state)).sort((a, b) => (a.updatedAt ?? 0) - (b.updatedAt ?? 0));
-  const live = sessions.filter(s => LIVE.has(s.state));
+  const digest = useDigest(sessions);
+  const sessionsById = new Map(sessions.map(s => [s.id, s]));
+  const rows: { s: SessionSummary; entry?: DigestHighlight }[] = [];
+  const listed = new Set<string>();
+  for (const entry of digest) {
+    if (entry.rank === 'silent') continue;
+    const s = sessionsById.get(entry.session);
+    if (!s || listed.has(s.id)) continue;
+    rows.push({ s, entry }); listed.add(s.id);
+  }
+  for (const s of sessions) {
+    if (rows.length >= 5) break;
+    if (LIVE.has(s.state) && !listed.has(s.id)) { rows.push({ s }); listed.add(s.id); }
+  }
   const recent = [...sessions].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)).slice(0, 4);
-  const right = [...needs, ...live].slice(0, 4);
+  const right = rows.slice(0, 5);
   const empty = (t: string) => <div style={{ color: 'var(--text-secondary)', fontSize: 12, height: 38, display: 'flex', alignItems: 'center', padding: '0 12px' }}>{t}</div>;
   return (
     <div style={{ overflow: 'auto', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
@@ -79,8 +120,8 @@ export function Now({ onOpen, state }: { onOpen: (session: string) => void; stat
           <div>
             <div style={head}>NEEDS YOU</div>
             <div style={cardBox}>
-              {right.map((s, i) => <AttentionRow key={s.id} s={s} n={i + 1} onOpen={onOpen} />)}
-              {!right.length ? empty('Nothing waiting on you') : null}
+              {right.map(({ s, entry }, i) => <AttentionRow key={s.id} s={s} n={i + 1} entry={entry} onOpen={onOpen} />)}
+              {!right.length ? empty('Nothing new since you left') : null}
             </div>
           </div>
         </div>
