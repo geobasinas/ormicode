@@ -21,10 +21,10 @@ export const dark: ColorTokens = {
 
 /** Built-in `light` theme — same semantic names, light values. */
 export const light: ColorTokens = {
-  'bg.window': '#E7E7E7', 'bg.main': '#F2F2F2', 'bg.card': '#FAFAFA', 'bg.raised': '#FFFFFF', 'bg.inset': '#D2D2D2', 'bg.chip': '#E4E4E4', 'bg.hover': '#EDEDED', 'bg.badge': '#4A4A4A',
+  'bg.window': '#E7E7E7', 'bg.main': '#F2F2F2', 'bg.card': '#FAFAFA', 'bg.raised': '#FFFFFF', 'bg.inset': '#EBEBEB', 'bg.chip': '#E4E4E4', 'bg.hover': '#EDEDED', 'bg.badge': '#4A4A4A',
   'line.card': '#CBCBCB', 'line.divider': '#D2D2D2', 'line.pane': '#C7C7C7', 'line.subtle': '#E8E8E8',
   'text.title': '#1B1B1B', 'text.active': '#101010', 'text.label': '#353535', 'text.secondary': '#4A4A4A', 'text.hint': '#6A6E76',
-  'accent.mint': '#7FB69D', 'accent.amber': '#D9B878', 'accent.red': '#D69C98',
-  'tint.mint': '#BFE0CD', 'tint.amber': '#F0E4C8', 'tint.red': '#F0D9D6',
-  'text.onAccent': '#181818',
+  'accent.mint': '#3B8A64', 'accent.amber': '#A2741C', 'accent.red': '#B4534C',
+  'tint.mint': '#DCEEE3', 'tint.amber': '#F4EBD6', 'tint.red': '#F5E1DE',
+  'text.onAccent': '#FAFAFA',
 };

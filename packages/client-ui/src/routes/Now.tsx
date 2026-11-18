@@ -17,7 +17,7 @@ const rowBtn = {
   borderRadius: 9, display: 'flex', alignItems: 'center', gap: 13,
 };
 const title = (s: SessionSummary, first: boolean) => (
-  <span style={{ display: 'block', fontSize: 12, fontWeight: 500, color: first ? 'var(--text-title)' : '#cbcbcb', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title || s.id.slice(0, 14)}</span>
+  <span style={{ display: 'block', fontSize: 12, fontWeight: 500, color: first ? 'var(--text-title)' : 'var(--text-label)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title || s.id.slice(0, 14)}</span>
 );
 
 function SessionRow({ s, first, onOpen }: { s: SessionSummary; first: boolean; onOpen: (id: string) => void }) {

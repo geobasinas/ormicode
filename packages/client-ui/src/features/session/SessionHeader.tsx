@@ -32,7 +32,7 @@ export function SessionHeader({ session, details }: { session: string; details: 
     }}>
       <span style={{
         display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, height: 24, boxSizing: 'border-box', flexShrink: 0,
-        color: '#b7b7b7', padding: '0 9px', borderRadius: 6,
+        color: 'var(--text-label)', padding: '0 9px', borderRadius: 6,
         background: 'var(--bg-card)', border: '1px solid var(--line-card)',
       }}><Laptop size={12} />{machine}</span>
       <DropdownMenu>

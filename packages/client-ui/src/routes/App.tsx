@@ -22,10 +22,10 @@ const noDrag = { WebkitAppRegion: 'no-drag' } as const;
 
 function Titlebar({ platform }: { platform: ClientPlatform }) {
   const d = platform.desktop;
-  const btn = { ...noDrag, width: 46, height: 40, font: 'inherit', fontSize: 13, border: 'none', cursor: 'default', background: 'transparent', color: '#ababab' };
+  const btn = { ...noDrag, width: 46, height: 40, font: 'inherit', fontSize: 13, border: 'none', cursor: 'default', background: 'transparent', color: 'var(--text-secondary)' };
   return (
     <div style={{ ...drag, height: 40, display: 'flex', alignItems: 'center', paddingLeft: 14, background: 'var(--bg-window)', flexShrink: 0 }}>
-      <PanelLeft size={15} style={{ ...noDrag, color: '#8a8a8a' }} />
+      <PanelLeft size={15} style={{ ...noDrag, color: 'var(--text-secondary)' }} />
       <span style={{ flex: 1 }} />
       {d ? (
         <span style={{ display: 'flex' }}>
@@ -177,7 +177,7 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
                 <Search size={15} style={{ color: 'var(--text-label)', flexShrink: 0 }} />
                 <input ref={el => { searchRef.current = el; }} value={query} onChange={e => setQuery(e.target.value)} placeholder="Search"
                   style={{ flex: 1, minWidth: 0, font: 'inherit', fontSize: 13, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text-label)' }} />
-                <span style={{ fontSize: 10, color: '#5e5e5e', whiteSpace: 'nowrap' }}>Ctrl K</span>
+                <span style={{ fontSize: 10, color: 'var(--text-hint)', whiteSpace: 'nowrap' }}>Ctrl K</span>
               </div>
               <button className="hv-sub" onClick={() => setRoute('now')} style={{
                 height: 30, marginTop: 6, display: 'flex', alignItems: 'center', gap: 10, padding: '0 10px',
@@ -186,7 +186,7 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
               }}>
                 <SquarePen size={15} style={{ color: 'var(--text-title)', flexShrink: 0 }} />
                 <span style={{ flex: 1 }}>New session</span>
-                <span style={{ fontSize: 10, color: '#5e5e5e' }}>Ctrl N</span>
+                <span style={{ fontSize: 10, color: 'var(--text-hint)' }}>Ctrl N</span>
               </button>
               <div style={{ height: 4 }} />
               <div style={{ display: 'flex', padding: '0 2px' }}>
@@ -195,8 +195,8 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
                     <button key={f} onClick={() => setFilter(f)} style={{
                       flex: 1, font: 'inherit', fontSize: 12, fontWeight: filter === f ? 500 : 400, cursor: 'pointer',
                       padding: '4px 0', border: 'none', borderRadius: 7, textAlign: 'center',
-                      background: filter === f ? '#2f2f2f' : 'transparent',
-                      color: filter === f ? 'var(--text-active)' : '#888888',
+                      background: filter === f ? 'var(--bg-raised)' : 'transparent',
+                      color: filter === f ? 'var(--text-active)' : 'var(--text-secondary)',
                     }}>{f}</button>
                   ))}
                 </div>
@@ -213,7 +213,7 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
                 background: route === 'settings' ? 'var(--bg-inset)' : 'transparent',
               }}>
                 <Settings size={15} style={{ color: route === 'settings' ? 'var(--text-title)' : 'var(--text-label)', flexShrink: 0 }} />
-                <span style={{ fontSize: 12.5, color: route === 'settings' ? 'var(--text-title)' : '#cbcbcb' }}>Settings</span>
+                <span style={{ fontSize: 12.5, color: route === 'settings' ? 'var(--text-title)' : 'var(--text-label)' }}>Settings</span>
               </button>
             </aside>
             </Panel>

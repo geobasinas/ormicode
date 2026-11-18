@@ -26,7 +26,7 @@ function Row({ s, active, onSelect }: { s: SessionSummary; active?: string; onSe
         <span style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
           <span style={{
             flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12.5,
-            fontWeight: selected || needs ? 600 : 400, color: selected ? 'var(--text-active)' : '#bbbbbb',
+            fontWeight: selected || needs ? 600 : 400, color: selected ? 'var(--text-active)' : 'var(--text-label)',
           }}>{s.title || s.id.slice(0, 12)}</span>
           <span style={{ fontSize: 10.5, color: needs ? 'var(--accent-amber)' : 'var(--text-secondary)', flexShrink: 0 }}>{ago(s.updatedAt ?? 0)}</span>
         </span>
@@ -73,7 +73,7 @@ export function SessionList({ active, onSelect, query }: { active?: string; onSe
           <div key={project} style={{ marginBottom: 10 }}>
             <div style={{
               display: 'flex', alignItems: 'center', gap: 13, height: 26, padding: '0 12px 0 13px',
-              fontSize: 12, fontWeight: 600, color: project === 'scratch' ? '#9c9c9c' : '#cbcbcb',
+              fontSize: 12, fontWeight: 600, color: project === 'scratch' ? 'var(--text-secondary)' : 'var(--text-label)',
             }}>
               <Folder size={13} style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
               <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{project === 'scratch' ? 'no project' : projectName(project)}</span>
@@ -97,7 +97,7 @@ function FinishedGroup({ done, active, onSelect }: { done: SessionSummary[]; act
     <div>
       <button className="hv-sub" onClick={() => setExpanded(!expanded)} style={{
         textAlign: 'left', width: '100%', height: 26, padding: '0 12px 0 10px', border: 'none', cursor: 'pointer',
-        font: 'inherit', background: 'transparent', color: '#888888',
+        font: 'inherit', background: 'transparent', color: 'var(--text-secondary)',
         borderRadius: 7, display: 'flex', alignItems: 'center', gap: 13, fontSize: 12,
       }}>
         <span style={{ width: 14, display: 'inline-flex', justifyContent: 'center' }}><Check size={12} style={{ color: 'var(--text-secondary)' }} /></span>

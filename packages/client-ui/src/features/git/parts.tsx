@@ -47,8 +47,8 @@ export function Btn({ children, onClick, primary, danger, disabled, title }: { c
       display: 'inline-flex', alignItems: 'center', gap: 6, height: 28, padding: '0 11px', borderRadius: 7, font: 'inherit', fontSize: 11.5, whiteSpace: 'nowrap', flexShrink: 0,
       cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.45 : 1,
       border: primary ? 'none' : danger ? 'none' : '1px solid var(--line-card)',
-      background: primary ? '#f2f2f2' : danger ? 'transparent' : 'var(--bg-card)',
-      color: primary ? '#101010' : danger ? 'var(--accent-red)' : 'var(--text-label)', fontWeight: primary ? 600 : 400,
+      background: primary ? 'var(--text-title)' : danger ? 'transparent' : 'var(--bg-card)',
+      color: primary ? 'var(--bg-main)' : danger ? 'var(--accent-red)' : 'var(--text-label)', fontWeight: primary ? 600 : 400,
     }}>{children}</button>
   );
 }

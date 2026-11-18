@@ -8,7 +8,7 @@ export interface Attached { data: string; mimeType: string; url: string; name: s
 const MAX_BYTES = 5 * 1024 * 1024;
 
 export const chip = {
-  font: 'inherit', fontSize: 11, color: '#b7b7b7', background: 'var(--bg-chip)', border: 'none', borderRadius: 7,
+  font: 'inherit', fontSize: 11, color: 'var(--text-label)', background: 'var(--bg-chip)', border: 'none', borderRadius: 7,
   padding: '0 8px', height: 24, display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer', whiteSpace: 'nowrap' as const,
   minWidth: 0, overflow: 'hidden' as const,
 };

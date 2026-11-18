@@ -19,7 +19,7 @@ function Hunks({ file }: { file: FilePatch }) {
             <div key={li} style={{ ...mono, fontSize: 11, lineHeight: '19px', display: 'flex', whiteSpace: 'pre', background: c === '+' ? 'var(--tint-mint)' : c === '-' ? 'var(--tint-red)' : 'transparent' }}>
               <span style={{ width: 40, textAlign: 'right', paddingRight: 8, color: 'var(--text-hint)', flexShrink: 0 }}>{num}</span>
               <span style={{ width: 14, color: c === '+' ? 'var(--accent-mint)' : c === '-' ? 'var(--accent-red)' : 'transparent', flexShrink: 0 }}>{c === ' ' ? '' : c}</span>
-              <span style={{ color: c === '+' ? '#bfe0cd' : c === '-' ? '#d9b1ad' : 'var(--text-label)' }}>{l.slice(1)}</span>
+              <span style={{ color: c === '+' ? 'var(--accent-mint)' : c === '-' ? 'var(--accent-red)' : 'var(--text-label)' }}>{l.slice(1)}</span>
             </div>
           );
         })}

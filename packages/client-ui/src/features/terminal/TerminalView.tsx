@@ -14,7 +14,9 @@ function tokenTheme() {
     cursor: css('--text-title', '#f2f2f2'), cursorAccent: css('--bg-inset', '#171717'), selectionBackground: css('--bg-raised', '#2a2a2a'),
     black: css('--bg-raised', '#2a2a2a'), brightBlack: css('--text-hint', '#878787'),
     red, brightRed: red, green, brightGreen: green, yellow, brightYellow: yellow,
-    blue: '#8faed1', brightBlue: '#a9c2df', magenta: '#bfa2d1', brightMagenta: '#cdb6dc', cyan: '#8ec5c2', brightCyan: '#a7d3d0',
+    ...(document.documentElement.dataset.theme === 'light'
+      ? { blue: '#3f6fa8', brightBlue: '#5583bb', magenta: '#8a5aa8', brightMagenta: '#9d6fba', cyan: '#2f8a86', brightCyan: '#3e9c97' }
+      : { blue: '#8faed1', brightBlue: '#a9c2df', magenta: '#bfa2d1', brightMagenta: '#cdb6dc', cyan: '#8ec5c2', brightCyan: '#a7d3d0' }),
     white: css('--text-label', '#b7b7b7'), brightWhite: css('--text-title', '#f2f2f2'),
   };
 }
