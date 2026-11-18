@@ -38,6 +38,9 @@ test('tool calls leave checkpoints; restore and fork use them', async () => {
     assert.match(diff.body.patch, /\+two/);
     const cost = await client.request('session.cost', { session });
     assert.deepEqual([cost.body.turns >= 1, cost.body.usd, cost.body.source], [true, null, 'none']);
+    const dg = await client.request('session.digest', { since: 0 });
+    assert.equal(dg.type, 'res', JSON.stringify(dg));
+    assert.equal(dg.body.entries.find(e => e.session === session).source, 'mechanical');
     const gd = await client.request('git.diff', { session });
     assert.deepEqual(gd.body.files.map(f => [f.path, f.status, f.added, f.removed]), [['a.txt', 'modified', 1, 1], ['b.txt', 'added', 1, 0]]);
     const row = (await client.request('session.list', {})).body.sessions.find(s => s.id === session);

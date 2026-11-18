@@ -13,6 +13,7 @@
     "@ormicode/checkpoints": "workspace:*",
     "@ormicode/leases": "workspace:*",
     "@ormicode/pricing": "workspace:*",
+    "@ormicode/digest": "workspace:*",
     "@ormicode/git-core": "workspace:*",
     "@ormicode/agent-claude-sdk": "workspace:*",
     "@ormicode/agent-claude-cli": "workspace:*",

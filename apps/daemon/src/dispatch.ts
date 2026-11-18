@@ -18,6 +18,7 @@ const diffStats = new DiffStatCache();
 const PATCH_INLINE = 256 * 1024;
 import type { Checkpoints } from '@ormicode/checkpoints';
 import { loadTable, summarize } from '@ormicode/pricing';
+import { summarize as digestOf, rank as rankDigest } from '@ormicode/digest';
 import { checkpointMethod } from './checkpoint-methods.ts';
 
 const LIVE_STATES = ['idle', 'starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying', 'paused_rate_limited', 'interrupted'] as const;
@@ -116,6 +117,13 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
           ...(s.base_commit && !s.archived ? { diff: diffStats.get(s.cwd, s.base_commit) } : {}),
         }));
         return client.link.reply(id, { sessions });
+      }
+      case 'session.digest': {
+        const since = Number(body.since); const computedAt = Date.now();
+        const entries = listSessions(db).map(s => digestOf({ id: s.id, state: s.state, updatedAt: s.updated_at },
+          replay(db, s.id).filter(e => e.ts > since).map(e => ({ seq: e.seq, ts: e.ts, kind: e.kind, payload: JSON.parse(e.payload) as Record<string, unknown> })),
+          since, computedAt));
+        return client.link.reply(id, { since, computedAt, entries: rankDigest(entries) });
       }
       case 'session.cost': {
         const s = getSession(db, String(body.session));

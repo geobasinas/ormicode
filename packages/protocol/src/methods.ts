@@ -88,6 +88,7 @@ export const requestBodies = {
   'agents.list': z.object({}),
   'git.diff': z.object(session),
   'session.cost': z.object(session),
+  'session.digest': z.object({ since: timestampSchema }),
   'checkpoint.list': z.object(session),
   // Without `to`: what `from` changed since the checkpoint before it.
   'checkpoint.diff': z.object({ ...session, from: nonEmpty, to: z.optional(nonEmpty) }),
@@ -129,6 +130,7 @@ export const responseBodies = {
   'session.decide': z.object({ decided: z.literal(true) }),
   'session.answer': z.object({ answered: z.literal(true) }),
   'checkpoint.list': z.object({ checkpoints: z.array(z.object({ id: nonEmpty, seq: cursorSchema, tool: z.string(), ts: timestampSchema })) }),
+  'session.digest': z.object({ since: timestampSchema, computedAt: timestampSchema, entries: z.array(jsonObjectSchema) }),
   'session.cost': z.object({
     input: cursorSchema, output: cursorSchema, cacheRead: cursorSchema, cacheWrite: cursorSchema, turns: cursorSchema,
     usd: z.nullable(z.number()), source: z.enum(['reported', 'estimate', 'none']), priceVersion: z.nullable(z.string()), model: z.nullable(z.string()),

@@ -89,6 +89,9 @@ importers:
       '@ormicode/crypto':
         specifier: workspace:*
         version: link:../../packages/crypto
+      '@ormicode/digest':
+        specifier: workspace:*
+        version: link:../../packages/digest
       '@ormicode/git-core':
         specifier: workspace:*
         version: link:../../packages/git-core
@@ -483,6 +486,8 @@ importers:
   packages/crypto: {}
 
   packages/diff: {}
+
+  packages/digest: {}
 
   packages/git-core:
     dependencies:
