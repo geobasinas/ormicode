@@ -7,7 +7,7 @@
  * (~/.ormicode/desktop/remote.json + safeStorage token), fall back to
  * the relay WebSocket. Pairing goes through `ormi:pair` IPC.
  */
-import { app, BrowserWindow, ipcMain, safeStorage, screen, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, safeStorage, screen, shell } from 'electron';
 import { isAbsolute, join } from 'node:path';
 import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, statSync } from 'node:fs';
 import * as daemonSocket from '@ormicode/daemon/socket';
@@ -165,6 +165,11 @@ app.whenReady().then(async () => {
     return shell.openPath(path);
   });
   ipcMain.handle('ormi:showItemInFolder', (_e, absPath: unknown) => shell.showItemInFolder(checkedPath(absPath)));
+  ipcMain.handle('ormi:pickFolder', async (_e, title: unknown) => {
+    const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+    const picked = await dialog.showOpenDialog(win!, { title: typeof title === 'string' ? title : 'Choose a project folder', properties: ['openDirectory', 'createDirectory'] });
+    return picked.canceled ? null : picked.filePaths[0] ?? null;
+  });
   ipcMain.on('ormi:subscribe', (_e, session: string, after?: number) => {
     void link?.request('session.subscribe', { session, ...(after !== undefined ? { after } : {}) });
   });

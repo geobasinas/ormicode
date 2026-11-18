@@ -6,7 +6,7 @@ import { usePlatform } from '../lib/platform.ts';
 import { ago, compactTokens, formatUsd, projectName } from '../lib/format.ts';
 import { useSessions } from '../features/session/useSessions.ts';
 
-export interface Prefs { theme: string; defaultVendor: string; defaultProject: string }
+export interface Prefs { theme: string; defaultVendor: string; defaultProject: string; projects?: string[] }
 const KEY = 'ormi.prefs';
 export const VENDORS = ['claude', 'codex', 'opencode', 'pi', 'grok', 'vibe', 'fake'];
 export function loadPrefs(theme = 'dark'): Prefs {
@@ -14,6 +14,11 @@ export function loadPrefs(theme = 'dark'): Prefs {
   try { return { ...base, ...JSON.parse(globalThis.localStorage?.getItem(KEY) ?? '{}') as Partial<Prefs> }; } catch { return base; }
 }
 function savePrefs(p: Prefs) { try { globalThis.localStorage?.setItem(KEY, JSON.stringify(p)); } catch { /* private mode */ } }
+/** Adds a folder to the composer's project list (most recent first, 12 max). */
+export function rememberProject(path: string) {
+  const prefs = loadPrefs();
+  savePrefs({ ...prefs, projects: [path, ...(prefs.projects ?? []).filter(p => p !== path)].slice(0, 12) });
+}
 
 type Section = { id: string; label: string; icon: LucideIcon };
 const NAV: { group: string; items: Section[] }[] = [

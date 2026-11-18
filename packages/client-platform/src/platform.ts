@@ -36,6 +36,8 @@ export interface DesktopExtras {
   winClose(): void;
   openPath(absPath: string): Promise<string>;
   showItemInFolder(absPath: string): void;
+  /** Native folder picker for the project chip; null when cancelled. */
+  pickFolder(): Promise<string | null>;
 }
 
 export interface ClientPlatform {

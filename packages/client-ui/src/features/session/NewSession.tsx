@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Plus, AtSign, Mic, ArrowUp, ChevronDown, Folder, Laptop, Cpu, Gauge, Bot } from 'lucide-react';
 import { newId } from '@ormicode/protocol';
 import { usePlatform } from '../../lib/platform.ts';
-import { VENDORS, loadPrefs } from '../../routes/Settings.tsx';
-import { useImages, ImageStrip, MenuChip, ModelChip, EffortChip, iconBtn } from './composer-parts.tsx';
+import { VENDORS, loadPrefs, rememberProject } from '../../routes/Settings.tsx';
+import { useImages, ImageStrip, MenuChip, ModelChip, EffortChip, ProjectChip, iconBtn } from './composer-parts.tsx';
 import { useModels } from './useModels.ts';
 
 const chip = {
@@ -17,11 +17,12 @@ type Agent = { vendor: string; transports: string[] };
 const FALLBACK: Agent[] = VENDORS.map(vendor => ({ vendor, transports: ['cli'] }));
 
 export function NewSession({ onStarted }: { onStarted: (session: string) => void }) {
-  const { transport } = usePlatform();
+  const { transport, desktop } = usePlatform();
   const area = useRef<HTMLTextAreaElement>(null);
   const [text, setText] = useState('');
   const [vendor, setVendor] = useState(() => loadPrefs().defaultVendor);
   const [project, setProject] = useState(() => loadPrefs().defaultProject);
+  const [projects, setProjects] = useState<string[]>(() => loadPrefs().projects ?? []);
   const [agents, setAgents] = useState<Agent[]>(FALLBACK);
   const [agentsLoaded, setAgentsLoaded] = useState(false);
   const [via, setVia] = useState<string>();
@@ -46,6 +47,13 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
     fetch();
     timer = setInterval(fetch, 15_000);
     return () => { alive = false; if (timer) clearInterval(timer); };
+  }, [transport]);
+  useEffect(() => {
+    transport.request('session.list', {}).then(r => {
+      if (r.type !== 'res') return;
+      const seen = ((r.body as { sessions: { project: string }[] }).sessions ?? []).map(s => s.project);
+      setProjects(cur => [...new Map([...cur, ...seen.filter(p => p !== 'scratch')].map(p => [p.replace(/\\/g, '/').toLowerCase(), p])).values()]);
+    }).catch(() => {});
   }, [transport]);
   const transports = agents.find(a => a.vendor === vendor)?.transports ?? ['cli'];
   const chosen = via && transports.includes(via) ? via : transports[0]!;
@@ -101,12 +109,14 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
         <button style={{ ...iconBtn, opacity: 0.45, cursor: 'default' }} title="mention files (soon)" disabled><AtSign size={16} /></button>
         <button style={{ ...iconBtn, opacity: 0.45, cursor: 'default' }} title="voice (soon)" disabled><Mic size={16} /></button>
         <span style={{ flex: 1 }} />
-        <label style={{ ...chip, cursor: 'text' }} title="project path or 'scratch'">
-          <Folder size={12} style={{ color: 'var(--text-hint)' }} />
-          <input value={project} onChange={e => setProject(e.target.value)}
-            style={{ width: 72, font: 'inherit', fontSize: 'inherit', color: 'inherit', background: 'transparent', border: 'none', outline: 'none', padding: 0 }} />
-          <ChevronDown size={12} style={{ color: 'var(--text-hint)' }} />
-        </label>
+        <ProjectChip title="project folder or 'scratch'" icon={<Folder size={12} style={{ color: 'var(--text-hint)' }} />}
+          value={project} projects={projects}
+          onChange={v => { setProject(v); if (v !== 'scratch') { rememberProject(v); setProjects(loadPrefs().projects ?? []); } }}
+          onBrowse={async () => {
+            const picked = await desktop?.pickFolder().catch(() => null) ?? null;
+            if (picked) { setProject(picked); rememberProject(picked); setProjects(loadPrefs().projects ?? []); }
+            return picked;
+          }} />
         <span style={chip} title="this machine"><Laptop size={12} style={{ color: 'var(--text-hint)' }} />local<ChevronDown size={12} style={{ color: 'var(--text-hint)' }} /></span>
         <MenuChip title="agent" label="Agent" icon={<Bot size={11} style={{ color: 'var(--text-hint)' }} />} value={vendor} choices={agents.map(a => ({ value: a.vendor }))} onChange={v => { setVendor(v); setVia(undefined); }} />
         {transports.length > 1 ? <MenuChip title="transport" label="Transport" value={chosen} choices={transports.map(t => ({ value: t }))} onChange={setVia} /> : null}

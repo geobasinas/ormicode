@@ -1,8 +1,9 @@
 /** Pieces shared by the Home and session composers: image attachments
  * (pick or paste), picker chips and inline-editable chips. */
 import { useRef, useState, type ClipboardEvent, type ReactNode } from 'react';
-import { Check, ChevronDown, RefreshCw, X } from 'lucide-react';
+import { Check, ChevronDown, FolderOpen, Pencil, RefreshCw, X } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuLabel } from '../../components/ui/dropdown-menu.tsx';
+import { projectName } from '../../lib/format.ts';
 import type { ListedModel } from './useModels.ts';
 
 export interface Attached { data: string; mimeType: string; url: string; name: string }
@@ -186,6 +187,36 @@ export function EffortChip({ value, model, models, onChange, icon, title, width 
             <span>{choice === 'default' ? 'Default' : choice}</span>
           </DropdownMenuItem>
         ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/** Project chip: known folders, native browse and free path entry. */
+export function ProjectChip({ value, projects, onChange, onBrowse, icon, title }: {
+  value: string; projects: string[]; onChange: (path: string) => void; onBrowse: () => Promise<string | null>; icon?: ReactNode; title?: string;
+}) {
+  const [custom, setCustom] = useState(false);
+  if (custom) return <TextChip autoEdit onDone={() => setCustom(false)} title={title} icon={icon} value={value} onCommit={onChange} />;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button className="hv-sub" style={chip} title={title}>
+          {icon}<span className="ormi-chip-text">{projectName(value)}</span>{chev}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" style={{ maxWidth: 'calc(100vw - 16px)' }}>
+        <DropdownMenuLabel>Project</DropdownMenuLabel>
+        {['scratch', ...new Map(projects.map(p => [p.replace(/\\/g, '/').toLowerCase(), p])).values()].map(path => (
+          <DropdownMenuItem key={path} onSelect={() => onChange(path)} title={path === 'scratch' ? 'no project folder' : path} className="text-xs">
+            <span style={{ width: 16, display: 'inline-flex' }}>{value === path ? <Check size={13} /> : null}</span>
+            <span className="min-w-0 flex-1 truncate">{projectName(path)}</span>
+            {path !== 'scratch' ? <span style={{ color: 'var(--text-hint)', fontFamily: 'var(--font-mono)', fontSize: 10 }} className="truncate">{path}</span> : null}
+          </DropdownMenuItem>
+        ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => void onBrowse()} className="text-xs"><FolderOpen size={12} />Browse for folder…</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => setCustom(true)} className="text-xs"><Pencil size={12} />Enter path…</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
