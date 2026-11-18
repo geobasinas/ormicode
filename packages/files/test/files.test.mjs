@@ -134,7 +134,7 @@ test('file.write is atomic, preserves mode, checks mtime and refuses binary file
   const target = prepareWrite(root, 'existing.txt', 'new', baseMtime);
   const saved = writeFile(target, 'new');
   assert.equal(saved.size, 3);
-  assert.equal(statSync(file).mode & 0o777, 0o640);
+  assert.equal(statSync(file).mode & 0o777, process.platform === 'win32' ? 0o666 : 0o640);
   assert.equal(readdirSync(root).some(name => name.startsWith('.ormicode-')), false);
   assert.throws(() => prepareWrite(root, 'existing.txt', 'stale', baseMtime - 2), fileCode('file.conflict'));
   put(root, 'binary.bin', Buffer.from([0, 0, 1]));

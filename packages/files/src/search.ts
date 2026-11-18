@@ -61,7 +61,7 @@ function byteIndexToUtf16(text: string, offset: number): number {
 
 function rgPathText(path: { text?: string; bytes?: string }): string {
   const value = path.text !== undefined ? path.text : Buffer.from(path.bytes ?? '', 'base64').toString('utf8');
-  return value.replace(/^\.\//, '').replace(/\\/g, '/');
+  return value.replace(/\\/g, '/').replace(/^\.\//, '');
 }
 
 export function searchContent(root: string, query: string, regex = false, limit = 200): Promise<{
