@@ -5,6 +5,20 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { usePlatform } from '../../lib/platform.ts';
 
+const css = (name: string, fallback: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+/** xterm palette from the app's theme tokens, so the terminal follows dark/light themes. */
+function tokenTheme() {
+  const red = css('--accent-red', '#d69c98'); const green = css('--accent-mint', '#9acbaf'); const yellow = css('--accent-amber', '#d9b878');
+  return {
+    background: css('--bg-inset', '#171717'), foreground: css('--text-label', '#b7b7b7'),
+    cursor: css('--text-title', '#f2f2f2'), cursorAccent: css('--bg-inset', '#171717'), selectionBackground: css('--bg-raised', '#2a2a2a'),
+    black: css('--bg-raised', '#2a2a2a'), brightBlack: css('--text-hint', '#878787'),
+    red, brightRed: red, green, brightGreen: green, yellow, brightYellow: yellow,
+    blue: '#8faed1', brightBlue: '#a9c2df', magenta: '#bfa2d1', brightMagenta: '#cdb6dc', cyan: '#8ec5c2', brightCyan: '#a7d3d0',
+    white: css('--text-label', '#b7b7b7'), brightWhite: css('--text-title', '#f2f2f2'),
+  };
+}
+
 const b64 = (s: string) => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 const toB64 = (s: string) => { let bin = ''; for (const b of new TextEncoder().encode(s)) bin += String.fromCharCode(b); return btoa(bin); };
 
@@ -17,8 +31,10 @@ export function TerminalView({ terminal, visible, onExit }: { terminal: string; 
     const el = host.current; if (!el) return;
     const term = new Terminal({
       fontFamily: '"JetBrains Mono", ui-monospace, monospace', fontSize: 12, lineHeight: 1.35, cursorBlink: true,
-      theme: { background: '#171717', foreground: '#cbcbcb', cursor: '#f2f2f2', selectionBackground: '#2f2f2f', green: '#9acbaf', red: '#d69c98', yellow: '#d9b878' },
+      scrollback: 5000, theme: tokenTheme(),
     });
+    const themeWatch = new MutationObserver(() => { term.options.theme = tokenTheme(); });
+    themeWatch.observe(document.documentElement, { attributes: true, attributeFilter: ['style', 'class'] });
     const fit = new FitAddon(); fitRef.current = fit;
     term.loadAddon(fit); term.open(el);
     let next = 0;
@@ -41,7 +57,7 @@ export function TerminalView({ terminal, visible, onExit }: { terminal: string; 
     const input = term.onData(data => void transport.request('terminal.write', { terminal, data: toB64(data) }));
     void transport.request('terminal.attach', { terminal, from: 0 }).then(resize);
     return () => {
-      ro.disconnect(); input.dispose(); transport.onEvent = prev;
+      ro.disconnect(); themeWatch.disconnect(); input.dispose(); transport.onEvent = prev;
       void transport.request('terminal.detach', { terminal }); term.dispose();
     };
   }, [transport, terminal]);

@@ -19,9 +19,9 @@ export function SessionView({ session, rail = 'none' }: { session: string; rail?
   const details = useSession(session);
   const notesLayout = useDefaultLayout({ id: 'ormi.session.notes', storage: globalThis.localStorage });
   const chat = (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0, overflow: 'hidden' }}>
       {details ? <div style={{ display: 'flex', justifyContent: 'center', flexShrink: 0 }}>
-        <div style={{ width: '100%', maxWidth: 720, padding: '10px var(--space-5) 0', display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-hint)' }}>
+        <div style={{ width: '100%', maxWidth: 720, height: 38, padding: '0 var(--space-5)', boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-hint)', whiteSpace: 'nowrap', overflow: 'hidden' }}>
           <History size={11} />{[projectName(details.project), details.vendor, stateLabel(details.state)].join(' · ')}
         </div>
       </div> : null}
@@ -33,10 +33,10 @@ export function SessionView({ session, rail = 'none' }: { session: string; rail?
   if (rail === 'none') return <div style={{ height: '100%', background: 'var(--bg-main)' }}>{chat}</div>;
   return (
     <Group id="ormi.session.notes" orientation="horizontal" defaultLayout={notesLayout.defaultLayout} onLayoutChanged={notesLayout.onLayoutChanged} style={{ height: '100%', background: 'var(--bg-main)' }}>
-      <Panel id="chat" minSize={360}>{chat}</Panel>
+      <Panel id="chat" minSize={440}>{chat}</Panel>
       <Separator className="ormi-handle ormi-handle-line" />
-      <Panel id="notes" defaultSize="45" minSize={280} maxSize="70">
-        <div style={{ height: '100%', background: 'var(--bg-main)' }}>
+      <Panel id="notes" defaultSize="42" minSize={340} maxSize="65">
+        <div className="ormi-pane" style={{ height: '100%', background: 'var(--bg-main)', minWidth: 0, overflow: 'hidden' }}>
           {rail === 'notes' ? <NotesPanel session={session} /> : rail === 'git' ? <GitPane session={session} /> : <TerminalPane session={session} />}
         </div>
       </Panel>

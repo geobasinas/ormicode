@@ -37,9 +37,9 @@ export function ChangesTab({ session, diff, reloadDiff }: { session: string; dif
       </Header>
       <div style={scroll}>
         {st?.branch ? <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px 8px' }}>
-          <span style={{ ...mono, fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 8px', borderRadius: 6, background: 'var(--bg-chip)', color: 'var(--text-label)' }}><GitBranch size={11} />{st.branch}</span>
-          {st.base ? <><ArrowRight size={11} style={{ color: 'var(--text-hint)' }} /><span style={{ ...mono, ...hint }}>{st.base}</span></> : null}
-          <span style={{ flex: 1 }} /><span style={hint}>{st.aheadOfBase ? `${st.aheadOfBase} commit${st.aheadOfBase > 1 ? 's' : ''} ahead` : ''}</span>
+          <span style={{ ...mono, fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 8px', borderRadius: 6, background: 'var(--bg-chip)', color: 'var(--text-label)', minWidth: 0, whiteSpace: 'nowrap' }}><GitBranch size={11} style={{ flexShrink: 0 }} /><span className="ormi-chip-text">{st.branch}</span></span>
+          {st.base ? <><ArrowRight size={11} style={{ color: 'var(--text-hint)', flexShrink: 0 }} /><span className="ormi-chip-text" style={{ ...mono, ...hint, whiteSpace: 'nowrap' }}>{st.base}</span></> : null}
+          <span style={{ flex: 1 }} /><span style={{ ...hint, whiteSpace: 'nowrap', flexShrink: 0 }}>{st.aheadOfBase ? `${st.aheadOfBase} commit${st.aheadOfBase > 1 ? 's' : ''} ahead` : ''}</span>
         </div> : null}
         {status.error ? <Notice tone="red">{status.error}</Notice> : null}
         {files.length ? files.map(f => <FileRow key={f.path} {...f} active={sel === f.path} onClick={() => setSel(s => s === f.path ? null : f.path)} />) : <Notice>No changes since the session started</Notice>}
@@ -66,15 +66,15 @@ export function ChangesTab({ session, diff, reloadDiff }: { session: string; dif
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 0', ...hint }}>
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}><input type="checkbox" checked={amend} onChange={e => setAmend(e.target.checked)} />Amend last commit</label>
-          <span style={{ flex: 1 }} />{st?.branch ? <span style={{ ...mono, display: 'inline-flex', gap: 4, alignItems: 'center' }}><GitBranch size={11} />{st.branch}</span> : null}
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', whiteSpace: 'nowrap' }}><input type="checkbox" checked={amend} onChange={e => setAmend(e.target.checked)} />Amend last commit</label>
+          <span style={{ flex: 1 }} />{st?.branch ? <span style={{ ...mono, display: 'inline-flex', gap: 4, alignItems: 'center', minWidth: 0, whiteSpace: 'nowrap' }}><GitBranch size={11} style={{ flexShrink: 0 }} /><span className="ormi-chip-text">{st.branch}</span></span> : null}
         </div>
         {msg ? <div style={{ fontSize: 11, color: msg.tone === 'red' ? 'var(--accent-red)' : 'var(--text-hint)', paddingBottom: 6 }}>{msg.text}</div> : null}
       </div>
       <Footer>
         <IconBtn title="Unstage all" onClick={() => void run('git.unstage')} disabled={!st?.staged.files}><Undo2 size={14} /></IconBtn>
         <span style={{ flex: 1 }} />
-        <Btn disabled={!canCommit} onClick={() => void commit(false)}>Commit <span style={{ ...hint, fontSize: 10 }}>Ctrl ↵</span></Btn>
+        <Btn disabled={!canCommit} onClick={() => void commit(false)}>Commit <span className="ormi-pane-narrow-hide" style={{ ...hint, fontSize: 10 }}>Ctrl ↵</span></Btn>
         <Btn primary disabled={!canCommit} onClick={() => void commit(true)}>Commit and push<ChevronDown size={12} /></Btn>
       </Footer>
     </div>

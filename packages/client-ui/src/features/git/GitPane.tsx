@@ -26,13 +26,13 @@ export function GitPane({ session }: { session: string }) {
   ];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ display: 'flex', borderBottom: '1px solid var(--line-subtle)', padding: '0 6px', flexShrink: 0, overflowX: 'auto' }}>
+      <div className="ormi-tabs" style={{ display: 'flex', height: 38, boxSizing: 'border-box', borderBottom: '1px solid var(--line-subtle)', padding: '0 6px', flexShrink: 0, overflowX: 'auto' }}>
         {TABS.map(({ id, label, icon: Icon, count, mint }) => (
           <button key={id} onClick={() => setTab(id)} style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 10px 9px', border: 'none', background: 'transparent', cursor: 'pointer', font: 'inherit', fontSize: 11.5, whiteSpace: 'nowrap',
+            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 8px', height: 37, flexShrink: 0, border: 'none', background: 'transparent', cursor: 'pointer', font: 'inherit', fontSize: 11.5, whiteSpace: 'nowrap',
             color: tab === id ? 'var(--text-title)' : 'var(--text-hint)', fontWeight: tab === id ? 600 : 400,
             borderBottom: tab === id ? '1.5px solid var(--text-title)' : '1.5px solid transparent',
-          }}><Icon size={12} />{label}{count ? <Count mint={mint && id === 'pr'}>{count}</Count> : null}</button>
+          }}><Icon size={12} className="ormi-pane-narrow-hide" />{label}{count ? <span className={id === 'pr' ? undefined : 'ormi-pane-narrow-hide'} style={{ display: 'inline-flex' }}><Count mint={mint && id === 'pr'}>{count}</Count></span> : null}</button>
         ))}
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>

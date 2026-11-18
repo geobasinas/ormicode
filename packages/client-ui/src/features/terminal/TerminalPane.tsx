@@ -9,13 +9,13 @@ const iconBtn = { border: 'none', background: 'transparent', color: 'var(--text-
 export function TerminalPane({ session }: { session: string }) {
   const { tabs, active, setActive, open, close, markExited, error } = useTerminalTabs(session);
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '8px 10px 10px', gap: 8 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, minHeight: 26 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '0 10px 10px', gap: 2 }}>
+      <div className="ormi-tabs" style={{ display: 'flex', alignItems: 'center', gap: 4, height: 38, flexShrink: 0, overflowX: 'auto' }}>
         {tabs.map(t => {
           const on = t.terminal === active;
           return (
             <span key={t.terminal} onClick={() => setActive(t.terminal)} className={on ? undefined : 'hv'} style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 8px', borderRadius: 6, cursor: 'pointer',
+              display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 8px', borderRadius: 6, cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap',
               fontFamily: 'var(--font-mono)', fontSize: 11, background: on ? 'var(--bg-raised)' : 'transparent',
               color: on ? 'var(--text-active)' : 'var(--text-hint)', opacity: t.exited ? 0.6 : 1,
             }}>
@@ -29,7 +29,7 @@ export function TerminalPane({ session }: { session: string }) {
         <button title="Splits — not supported (tabs only)" style={{ ...iconBtn, opacity: 0.45, cursor: 'default' }}><Columns2 size={13} /></button>
         <button title="Maximize — soon" style={{ ...iconBtn, opacity: 0.45, cursor: 'default' }}><Maximize2 size={13} /></button>
       </div>
-      <div style={{ position: 'relative', flex: 1, minHeight: 0, background: '#171717', border: '1px solid var(--line-subtle)', borderRadius: 10, padding: 10 }}>
+      <div style={{ position: 'relative', flex: 1, minHeight: 0, background: 'var(--bg-inset)', border: '1px solid var(--line-card)', borderRadius: 10, padding: 10, overflow: 'hidden' }}>
         <div style={{ position: 'absolute', inset: 10 }}>
           {tabs.map(t => <TerminalView key={t.terminal} terminal={t.terminal} visible={t.terminal === active} onExit={() => markExited(t.terminal)} />)}
         </div>

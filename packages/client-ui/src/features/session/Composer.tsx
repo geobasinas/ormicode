@@ -39,8 +39,8 @@ export function Composer({ session, details }: { session: string; details?: Sess
     <div style={{ padding: '0 var(--space-5) var(--space-4)', display: 'flex', justifyContent: 'center' }}>
       <div style={{
         width: '100%', maxWidth: 680, background: 'var(--bg-card)', border: '1px solid var(--line-card)',
-        borderRadius: 12, padding: '10px 12px 8px',
-      }}>
+        borderRadius: 12, padding: '10px 12px 8px', boxSizing: 'border-box', minWidth: 0,
+      }} className="ormi-composer">
         {img.picker}
         <ImageStrip images={img.images} onRemove={img.remove} />
         <textarea
@@ -58,23 +58,23 @@ export function Composer({ session, details }: { session: string; details?: Sess
         />
         {error || img.error ? <div style={{ color: 'var(--accent-red)', fontSize: 11, marginBottom: 4 }}>{error ?? img.error}</div> : null}
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <button className="hv-sub" style={iconBtn} title="attach images" aria-label="attach images" onClick={img.pick}><Plus size={16} /></button>
-          <button style={{ ...iconBtn, opacity: 0.45, cursor: 'default' }} title="mention files (soon)" disabled><AtSign size={15} /></button>
-          <button style={{ ...iconBtn, opacity: 0.45, cursor: 'default' }} title="voice (soon)" disabled><Mic size={15} /></button>
-          <span style={{ flex: 1 }} />
-          {details?.vendor ? <span style={{ ...chip, cursor: 'default' }} title="agent · transport">{details.vendor}<span style={{ color: 'var(--text-hint)' }}>{details.transport}</span></span> : null}
+          <button className="hv-sub" style={{ ...iconBtn, flexShrink: 0 }} title="attach images" aria-label="attach images" onClick={img.pick}><Plus size={16} /></button>
+          <button className="ormi-narrow-hide" style={{ ...iconBtn, opacity: 0.45, cursor: 'default' }} title="mention files (soon)" disabled><AtSign size={15} /></button>
+          <button className="ormi-narrow-hide" style={{ ...iconBtn, opacity: 0.45, cursor: 'default' }} title="voice (soon)" disabled><Mic size={15} /></button>
+          <span style={{ flex: 1, minWidth: 4 }} />
+          {details?.vendor ? <span className="ormi-narrow-hide" style={{ ...chip, cursor: 'default', flexShrink: 0 }} title="agent · transport">{details.vendor}<span style={{ color: 'var(--text-hint)' }}>{details.transport}</span></span> : null}
           {modes.length ? <MenuChip title="mode" label="Mode" value={mode ?? modes[0]!.id} choices={modes.map(m => ({ value: m.id, name: m.name }))} onChange={v => void call('session.setMode', { mode: v })} /> : null}
           {details ? <TextChip title="model — the vendor's model id" icon={<Cpu size={11} style={{ color: 'var(--text-hint)' }} />} value={details.model ?? 'default'} onCommit={v => void call('session.setModel', { model: v })} /> : null}
           {details ? <TextChip title="effort — the vendor's own word" icon={<Gauge size={11} style={{ color: 'var(--text-hint)' }} />} width={60} value={details.effort ?? 'default'} onCommit={v => void call('session.setEffort', { effort: v })} /> : null}
           {live && !text.trim() ? (
             <button onClick={() => void call('session.abort', {})} title="stop the turn" aria-label="stop" style={{
-              width: 26, height: 26, borderRadius: '50%', border: 'none', cursor: 'pointer', marginLeft: 2,
+              width: 26, height: 26, borderRadius: '50%', border: 'none', cursor: 'pointer', marginLeft: 2, flexShrink: 0,
               background: 'var(--text-active)', color: 'var(--text-onAccent)',
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             }}><Square size={10} fill="currentColor" /></button>
           ) : (
             <button onClick={() => void send()} title={live ? 'steer' : 'send'} aria-label="send" style={{
-              width: 26, height: 26, borderRadius: '50%', border: 'none', cursor: 'pointer', marginLeft: 2,
+              width: 26, height: 26, borderRadius: '50%', border: 'none', cursor: 'pointer', marginLeft: 2, flexShrink: 0,
               background: 'var(--text-active)', color: 'var(--text-onAccent)', opacity: text.trim() ? 1 : 0.5,
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             }}><ArrowUp size={15} strokeWidth={2.5} /></button>

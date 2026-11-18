@@ -33,7 +33,7 @@ export function FileRow({ path, status, added, removed, active, onClick }: { pat
 
 export function Header({ title, count, children }: { title: string; count?: ReactNode; children?: ReactNode }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', minHeight: 40 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px', height: 40, flexShrink: 0, whiteSpace: 'nowrap' }}>
       <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-title)' }}>{title}</span>
       {count !== undefined ? <Count>{count}</Count> : null}
       <span style={{ flex: 1 }} />{children}
@@ -44,7 +44,7 @@ export function Header({ title, count, children }: { title: string; count?: Reac
 export function Btn({ children, onClick, primary, danger, disabled, title }: { children: ReactNode; onClick?: () => void; primary?: boolean; danger?: boolean; disabled?: boolean; title?: string }) {
   return (
     <button title={title} disabled={disabled} onClick={onClick} className={disabled || primary ? undefined : 'hv'} style={{
-      display: 'inline-flex', alignItems: 'center', gap: 6, height: 28, padding: '0 11px', borderRadius: 7, fontSize: 11.5, font: 'inherit',
+      display: 'inline-flex', alignItems: 'center', gap: 6, height: 28, padding: '0 11px', borderRadius: 7, font: 'inherit', fontSize: 11.5, whiteSpace: 'nowrap', flexShrink: 0,
       cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.45 : 1,
       border: primary ? 'none' : danger ? 'none' : '1px solid var(--line-card)',
       background: primary ? '#f2f2f2' : danger ? 'transparent' : 'var(--bg-card)',

@@ -10,9 +10,10 @@ const MAX_BYTES = 5 * 1024 * 1024;
 export const chip = {
   font: 'inherit', fontSize: 11, color: '#b7b7b7', background: 'var(--bg-chip)', border: 'none', borderRadius: 7,
   padding: '0 8px', height: 24, display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer', whiteSpace: 'nowrap' as const,
+  minWidth: 0, overflow: 'hidden' as const,
 };
 export const iconBtn = { background: 'none', border: 'none', color: 'var(--text-hint)', font: 'inherit', cursor: 'pointer', padding: 4, display: 'inline-flex', borderRadius: 6 };
-const chev = <ChevronDown size={11} style={{ color: 'var(--text-hint)' }} />;
+const chev = <ChevronDown size={11} style={{ color: 'var(--text-hint)', flexShrink: 0 }} />;
 
 const read = (f: File) => new Promise<Attached>((ok, fail) => {
   const r = new FileReader();
@@ -68,7 +69,7 @@ export function MenuChip({ value, choices, onChange, label, icon, title }: {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="hv-sub" style={chip} title={title}>{icon}{current?.name ?? value}{chev}</button>
+        <button className="hv-sub" style={chip} title={title}>{icon}<span className="ormi-chip-text">{current?.name ?? value}</span>{chev}</button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         {label ? <DropdownMenuLabel>{label}</DropdownMenuLabel> : null}
@@ -86,7 +87,7 @@ export function TextChip({ value, onCommit, title, placeholder, icon, width = 96
 }) {
   const [draft, setDraft] = useState<string>();
   if (draft === undefined) {
-    return <button className="hv-sub" style={chip} title={title} onClick={() => setDraft(value === 'default' ? '' : value)}>{icon}{value}{chev}</button>;
+    return <button className="hv-sub" style={chip} title={title} onClick={() => setDraft(value === 'default' ? '' : value)}>{icon}<span className="ormi-chip-text">{value}</span>{chev}</button>;
   }
   const commit = () => { const v = draft.trim() || 'default'; setDraft(undefined); if (v !== value) onCommit(v); };
   return (

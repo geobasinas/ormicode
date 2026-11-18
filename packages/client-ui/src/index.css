@@ -126,3 +126,11 @@ button:focus-visible { outline: 1px solid var(--line-card); outline-offset: -1px
 .ormi-handle-line::before { content: ''; position: absolute; inset: 0 2.5px; background: var(--line-subtle); }
 .ormi-handle::after { inset: 0 2.5px; }
 .ormi-handle:hover::after, .ormi-handle:active::after, .ormi-handle:focus-visible::after { background: var(--line-divider); }
+
+/* Composer and side panes adapt to their own width (resizable splits). */
+.ormi-composer, .ormi-pane { container-type: inline-size; }
+@container (max-width: 470px) { .ormi-narrow-hide { display: none !important; } }
+@container (max-width: 430px) { .ormi-pane-narrow-hide { display: none !important; } }
+.ormi-chip-text { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.ormi-tabs { scrollbar-width: none; }
+.ormi-tabs::-webkit-scrollbar { display: none; }

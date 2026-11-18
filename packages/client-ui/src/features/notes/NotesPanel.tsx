@@ -23,7 +23,7 @@ export function NotesPanel({ session }: { session: string }) {
 
   const head = {
     display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
-    padding: 'var(--space-2) var(--space-3)', borderBottom: '1px solid var(--line-subtle)',
+    height: 38, boxSizing: 'border-box' as const, flexShrink: 0, padding: '0 12px', borderBottom: '1px solid var(--line-subtle)',
     fontSize: 'var(--text-xs)', color: 'var(--text-hint)',
   };
   const tab = (label: string, active: boolean, onClick: () => void) => (
