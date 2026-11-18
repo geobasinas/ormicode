@@ -9,32 +9,27 @@ import {
   DropdownMenuSubTrigger, DropdownMenuTrigger,
 } from '../../components/ui/dropdown-menu.tsx';
 import { chip, TextChip } from './composer-parts.tsx';
+import { VendorIcon, vendorColor } from './vendor-icons.tsx';
 import type { ListedModel } from './useModels.ts';
 
 const chev = <ChevronDown size={11} style={{ color: 'var(--text-hint)', flexShrink: 0 }} />;
 const mark = (on: boolean) => <span style={{ width: 16, display: 'inline-flex' }}>{on ? <Check size={13} /> : null}</span>;
 const right = (text: string) => <span style={{ marginLeft: 'auto', paddingLeft: 16, color: 'var(--text-hint)', fontSize: 10 }} className="truncate">{text}</span>;
 
-const VENDOR_META: Record<string, { name: string; color: string }> = {
-  claude: { name: 'Claude', color: '#d97757' },
-  codex: { name: 'Codex', color: '#10a37f' },
-  grok: { name: 'Grok', color: '#9aa4b2' },
-  opencode: { name: 'OpenCode', color: '#7c6cf0' },
-  pi: { name: 'Pi', color: '#e8b23e' },
-  vibe: { name: 'Vibe', color: '#4cc3d9' },
-  fake: { name: 'Fake', color: '#6b7280' },
+const VENDOR_META: Record<string, { name: string }> = {
+  claude: { name: 'Claude' }, codex: { name: 'Codex' }, grok: { name: 'Grok' },
+  opencode: { name: 'OpenCode' }, pi: { name: 'Pi' }, vibe: { name: 'Vibe' }, fake: { name: 'Fake' },
 };
 const TRANSPORT_DESC: Record<string, string> = { sdk: 'in-process', cli: 'command line', acp: 'agent protocol' };
-const meta = (vendor: string) => VENDOR_META[vendor] ?? { name: vendor, color: 'var(--text-hint)' };
+const meta = (vendor: string) => VENDOR_META[vendor] ?? { name: vendor };
 
-/** Colored letter tile identifying a vendor. */
+/** Brand mark on a tinted tile. */
 const tile = (vendor: string) => (
   <span style={{
     width: 18, height: 18, borderRadius: 5, flexShrink: 0,
-    background: `${meta(vendor).color}26`, color: meta(vendor).color,
+    background: `color-mix(in srgb, ${vendorColor(vendor)} 15%, transparent)`,
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-    fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
-  }}>{vendor[0]}</span>
+  }}><VendorIcon vendor={vendor} /></span>
 );
 
 /** Effort levels a model advertises; falls back to a shared set when every
@@ -121,6 +116,7 @@ export function AgentChip({ vendor, via, agents, onPick, model, models, onModel,
             {!loading && list.length ? visible.map(m => (
               <DropdownMenuItem key={m.id} disabled={!m.available} title={!m.available ? m.reason : undefined} onSelect={() => onModel(m.id)} className="text-xs">
                 {mark(model === m.id)}
+                {tile(m.agent)}
                 <span className="min-w-0 flex-1 truncate">{m.label}</span>
                 {m.label !== m.id ? <span style={{ color: 'var(--text-hint)', fontFamily: 'var(--font-mono)', fontSize: 10 }}>{m.id}</span> : null}
               </DropdownMenuItem>
