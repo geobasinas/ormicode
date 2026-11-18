@@ -594,26 +594,24 @@
   font-size: 12px;
 }
 
-.ormi-md [class*="linkDialogPopoverContent"] {
+.ormi-md-link-dialog {
   box-sizing: border-box;
-  width: 300px;
-  max-width: calc(100vw - 20px);
   padding: 12px;
 }
 
-.ormi-md [class*="linkDialogEditForm"] {
+.ormi-md .ormi-md-link-edit-form {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.ormi-md [class*="formField"] {
+.ormi-md .ormi-md-link-field {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.ormi-md [class*="formField"] label {
+.ormi-md .ormi-md-link-field label {
   color: var(--text-hint);
   font-size: 11px;
 }
@@ -632,8 +630,13 @@
   padding: 0 8px;
 }
 
-.ormi-md [class*="linkDialogEditForm"] button[type="submit"],
-.ormi-md [class*="linkDialogEditForm"] button[type="reset"] {
+.ormi-md .ormi-md-link-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.ormi-md .ormi-md-link-actions button {
   box-sizing: border-box;
   height: 26px;
   min-height: 26px;
@@ -642,16 +645,73 @@
   font-size: 12px;
 }
 
-.ormi-md [class*="linkDialogEditForm"] button[type="submit"] {
+.ormi-md .ormi-md-link-actions button[type="submit"] {
   border: 1px solid var(--line-card);
   background: var(--bg-raised);
   color: var(--text-title);
 }
 
-.ormi-md [class*="linkDialogEditForm"] button[type="reset"] {
+.ormi-md .ormi-md-link-actions button[type="button"] {
   border: 0;
   background: transparent;
   color: var(--text-secondary);
+}
+
+.ormi-md-link-anchor {
+  position: fixed;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.ormi-md .ormi-md-link-preview {
+  display: flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 4px;
+}
+
+.ormi-md .ormi-md-link-preview-url {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--text-label);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ormi-md .ormi-md-link-preview-url:hover {
+  color: var(--text-title);
+}
+
+.ormi-md .ormi-md-link-preview-actions {
+  display: flex;
+  flex: none;
+  gap: 2px;
+}
+
+.ormi-md .ormi-md-link-preview-actions button {
+  box-sizing: border-box;
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-hint);
+}
+
+.ormi-md .ormi-md-link-preview-actions button:hover {
+  background: var(--bg-raised);
+  color: var(--text-active);
+}
+
+.ormi-md .ormi-md-link-preview-actions button svg {
+  width: 14px;
+  height: 14px;
 }
 
 .ormi-md [role="tooltip"] {
@@ -664,4 +724,11 @@
 .ormi-md [data-placeholder]::before,
 .ormi-md .mdxeditor-editor-placeholder {
   color: var(--text-hint);
+}
+
+.ormi-md input:focus,
+.ormi-md input:focus-visible,
+.ormi-md textarea:focus {
+  outline: none;
+  border-color: var(--text-hint);
 }

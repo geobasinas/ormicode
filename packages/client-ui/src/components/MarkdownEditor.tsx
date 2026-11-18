@@ -1,4 +1,5 @@
 import { MDXEditor } from '@mdxeditor/editor';
+import { OrmiLinkDialog } from './LinkDialog';
 import {
   BlockTypeSelect,
   BoldItalicUnderlineToggles,
@@ -148,7 +149,7 @@ export function MarkdownEditor({ value, onChange, placeholder }: MarkdownEditorP
         listsPlugin(),
         quotePlugin(),
         linkPlugin(),
-        linkDialogPlugin(),
+        linkDialogPlugin({ LinkDialog: OrmiLinkDialog }),
         thematicBreakPlugin(),
         tablePlugin(),
         codeBlockPlugin({ defaultCodeBlockLanguage: 'txt' }),
