@@ -92,6 +92,8 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   const spawnWorker = (session: string) => {
     const row = getSession(db, session);
     if (!row) throw new Error(`unknown session ${session}`);
+    // Baseline before the agent can touch anything (a baseline at the first tool_call races the tool).
+    if (!checkpoints.repo(session).exists()) checkpointSoon(session, 0, 'baseline');
     const proc = spawn(process.execPath, [WORKER_MAIN], {
       env: {
         ...process.env,
@@ -178,7 +180,6 @@ export async function startDaemon(opts: DaemonOptions = {}) {
         idxSoon();
         if (kind === 'tool_call') {
           toolNames.set(`${session}/${String(payload?.callId)}`, String(payload?.name ?? 'tool'));
-          if (!checkpoints.repo(session).exists()) checkpointSoon(session, seq, 'baseline');
         } else if (kind === 'tool_result') {
           const key = `${session}/${String(payload?.callId)}`;
           checkpointSoon(session, seq, toolNames.get(key) ?? 'tool'); toolNames.delete(key);
