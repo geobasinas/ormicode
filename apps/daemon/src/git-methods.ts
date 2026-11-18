@@ -102,6 +102,7 @@ export function projectBranches(ctx: DispatchCtx, client: Client, id: string, bo
     });
   }
   const info = branches(project);
+  const remote = info.remote.filter(branch => branch.name.includes('/') && !branch.name.endsWith('/HEAD'));
   const local = info.local
     .sort((a, b) => Number(b.current) - Number(a.current) || b.ts - a.ts || a.name.localeCompare(b.name))
     .slice(0, 50);
@@ -119,7 +120,7 @@ export function projectBranches(ctx: DispatchCtx, client: Client, id: string, bo
       return { path: worktree.path, branch: worktree.branch, session: session?.id ?? null, state: session?.state ?? null };
     });
   return client.link.reply(id, {
-    isRepo: true, ...info, local, detached: info.current === null,
+    isRepo: true, ...info, local, remote, detached: info.current === null,
     dirty: status(project, null).files.length, busyBranches: busyBranches(ctx.db, project),
     defaultBranch: defaultBranch(project), worktrees: worktreeRows,
   });

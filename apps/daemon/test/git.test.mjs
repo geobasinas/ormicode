@@ -137,6 +137,8 @@ test('project.branches reports dirty, busy and detached state and empty non-repo
     assert.deepEqual(initial.body.busyBranches, ['main']);
     assert.equal(initial.body.defaultBranch, 'origin/main');
     assert.deepEqual(initial.body.worktrees, []);
+    assert.ok(initial.body.remote.some(branch => branch.name === 'origin/main'));
+    assert.ok(initial.body.remote.every(branch => branch.name.includes('/') && !branch.name.endsWith('/HEAD')));
     const fetched = await client.request('project.fetch', { project: dir });
     assert.deepEqual(fetched.body, { ok: true });
 

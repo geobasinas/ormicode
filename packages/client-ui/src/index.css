@@ -153,6 +153,13 @@ input::placeholder, textarea::placeholder { color: var(--text-hint); opacity: 0.
 .ormi-choice-danger:hover:not(:disabled) { background-color: var(--tint-red) !important; color: var(--accent-red) !important; }
 .ormi-choice:disabled { opacity: 0.55; }
 
+.ormi-markdown li::marker { color: var(--text-hint); }
+.ormi-markdown .contains-task-list { list-style: none; padding-left: 0; }
+.ormi-markdown .task-list-item { list-style: none; }
+.ormi-markdown .task-list-item .ormi-check { margin-right: 6px; vertical-align: middle; }
+.ormi-markdown-code-toolbar { opacity: 0; pointer-events: none; transition: opacity 120ms; }
+.ormi-markdown-code:hover .ormi-markdown-code-toolbar, .ormi-markdown-code:focus-within .ormi-markdown-code-toolbar { opacity: 1; pointer-events: auto; }
+
 /* Syntax colours for the Files viewer (CodeMirror), per theme. */
 :root { --syn-keyword: #d69c98; --syn-string: #9acbaf; --syn-number: #d9b878; --syn-function: #8faed1; --syn-type: #8ec5c2; --syn-property: #bfa2d1; }
 :root[data-theme="light"] { --syn-keyword: #b4534c; --syn-string: #3b8a64; --syn-number: #a2741c; --syn-function: #3f6fa8; --syn-type: #2f8a86; --syn-property: #8a5aa8; }

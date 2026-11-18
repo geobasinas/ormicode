@@ -261,11 +261,11 @@ export function GitChip({ value, onChange, info, mode, onModeChange, branchName,
             {info.dirty > 0 && value.kind === 'branch' ? <div style={{ padding: '5px 10px', color: 'var(--text-hint)', fontSize: 10 }}>{info.dirty} uncommitted {info.dirty === 1 ? 'change comes' : 'changes come'} along to the new branch</div> : null}
           </DropdownMenuContent>
         ) : (
-          <DropdownMenuContent align="start" style={{
+          <DropdownMenuContent align="start" side="top" collisionPadding={8} avoidCollisions style={{
             width: 300, maxWidth: 'calc(100vw - 16px)',
-            maxHeight: 'min(520px, var(--radix-dropdown-menu-content-available-height))', overflowY: 'auto',
+            maxHeight: 'min(420px, var(--radix-dropdown-menu-content-available-height))', overflowY: 'auto',
           }}>
-            <div style={{ padding: '3px 5px 7px', position: 'relative' }}>
+            <div style={{ padding: '3px 5px 7px', position: 'sticky', top: 0, zIndex: 1, background: 'var(--bg-raised)' }}>
               <Search size={12} style={{ position: 'absolute', left: 12, top: 10, color: 'var(--text-hint)' }} />
               <input aria-label="Search branches and worktrees" value={query} onChange={event => setQuery(event.target.value)}
                 onKeyDown={event => {

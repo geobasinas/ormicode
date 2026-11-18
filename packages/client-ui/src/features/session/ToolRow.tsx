@@ -7,6 +7,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { usePlatform } from '../../lib/platform.ts';
 import type { TranscriptEvent } from './useTranscript.ts';
 import { requestOpenFile } from '../../lib/openFile.ts';
+import { Markdown } from './Markdown.tsx';
 
 const mono = { fontFamily: 'var(--font-mono)' };
 const hint = { color: 'var(--text-hint)' };
@@ -33,8 +34,11 @@ export function shape(name: string, input: Record<string, unknown>): Shape {
   if (['webfetch', 'websearch', 'web_search'].includes(n)) return { icon: ic(Globe), verb: n === 'webfetch' ? 'Fetched' : 'Searched the web', detail: str(input.url ?? input.query) };
   if (['todowrite', 'update_plan'].includes(n)) return { icon: ic(ListChecks), verb: 'Updated the plan' };
   if (['task', 'agent'].includes(n)) return { icon: ic(Sparkles), verb: 'Delegated', detail: str(input.description ?? input.prompt) };
-  const summary = JSON.stringify(input);
-  return { icon: ic(Wrench), verb: name, detail: summary === '{}' ? undefined : summary };
+  const parts = name.split('__');
+  if (parts[0]?.toLowerCase() === 'mcp') parts.shift();
+  const verb = parts.map(part => part.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ').trim()).filter(Boolean).join(' · ') || 'Tool';
+  const detail = Object.values(input).find(value => typeof value === 'string' && value.trim() && value.length <= 80);
+  return { icon: ic(Wrench), verb, detail: typeof detail === 'string' ? detail.trim() : undefined };
 }
 
 export function CheckpointMark({ session, cp, inline }: { session: string; cp: TranscriptEvent; inline?: boolean }) {
@@ -89,11 +93,15 @@ export function Detail({ name, input, raw }: { name: string; input: Record<strin
   return <><div style={{ ...hint, marginBottom: 4 }}>{name}</div>{pretty(raw)}</>;
 }
 
-export function ToolRow({ call, result, checkpoint, session }: { call: TranscriptEvent; result?: TranscriptEvent; checkpoint?: TranscriptEvent; session: string }) {
+export function ToolRow({ call, result, checkpoint, session, childCount = 0, childRunning, nested }: {
+  call: TranscriptEvent; result?: TranscriptEvent; checkpoint?: TranscriptEvent; session: string;
+  childCount?: number; childRunning?: boolean; nested?: ReactNode;
+}) {
   const [open, setOpen] = useState(false);
   const input = (call.body.input && typeof call.body.input === 'object' ? call.body.input : {}) as Record<string, unknown>;
   const s = shape(String(call.body.name), input);
   const status = result ? String(result.body.status) : 'running';
+  const delegated = ['task', 'agent'].includes(String(call.body.name).toLowerCase());
   const file = s.target ? str(input.file_path ?? input.filePath ?? input.path ?? input.notebook_path) : '';
   return (
     <div className="ormi-hover-zone ormi-tool" style={{ margin: '1px 0', position: 'relative' }}>
@@ -108,6 +116,8 @@ export function ToolRow({ call, result, checkpoint, session }: { call: Transcrip
           {s.added || s.removed ? <span style={{ ...mono, fontSize: 11, display: 'inline-flex', gap: 5, flexShrink: 0, opacity: 0.85 }}>
             {s.added ? <span style={{ color: 'var(--accent-mint)' }}>+{s.added}</span> : null}{s.removed ? <span style={{ color: 'var(--accent-red)' }}>−{s.removed}</span> : null}
           </span> : null}
+          {delegated ? <span style={{ fontSize: 10, flexShrink: 0 }}>· {childCount} steps</span> : null}
+          {delegated && childRunning ? <Loader2 size={11} className="animate-spin" style={{ flexShrink: 0 }} /> : null}
           {status === 'failed' ? <span style={{ color: 'var(--accent-red)', fontSize: 11, flexShrink: 0, opacity: 0.85 }}>failed</span>
             : status === 'interrupted' ? <span style={{ color: 'var(--accent-amber)', fontSize: 11, flexShrink: 0, opacity: 0.85 }}>interrupted</span> : null}
           {open ? <ChevronDown size={11} style={{ ...hint, flexShrink: 0 }} /> : <ChevronRight size={11} className="ormi-hover-reveal" style={{ ...hint, flexShrink: 0 }} />}
@@ -117,6 +127,7 @@ export function ToolRow({ call, result, checkpoint, session }: { call: Transcrip
       </div>
       {open ? <div style={{ margin: '2px 0 6px 19px', padding: '6px 9px', borderRadius: 6, background: 'var(--bg-inset)', ...mono, fontSize: 11, color: 'var(--text-label)', maxHeight: 280, overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
         <Detail name={String(call.body.name)} input={input} raw={call.body.input} />
+        {nested ? <div style={{ margin: '8px 0 2px 2px', paddingLeft: 9, borderLeft: '1px solid var(--line-card)' }}>{nested}</div> : null}
         {result?.body.output !== undefined ? <><div style={{ ...hint, margin: '10px 0 4px' }}>output</div>{pretty(result.body.output).slice(0, 20_000)}</> : null}
       </div> : null}
     </div>
@@ -130,7 +141,7 @@ export function ThinkingRow({ text }: { text: string }) {
       <div onClick={() => setOpen(o => !o)} className="ormi-tool-line" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: 12, lineHeight: '18px', padding: '2px 0', ...hint }}>
         <Brain size={12} style={{ opacity: 0.8 }} />Thinking{open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
       </div>
-      {open ? <div style={{ ...mono, fontSize: 11.5, color: 'var(--text-hint)', whiteSpace: 'pre-wrap', padding: '2px 0 0 19px' }}>{text}</div> : null}
+      {open ? <div style={{ padding: '2px 0 0 19px' }}><Markdown text={text} muted /></div> : null}
     </div>
   );
 }
