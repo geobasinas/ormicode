@@ -1,9 +1,10 @@
 /** Settings tab (Settings-2 mockup): inner nav + one section at a time. Only
  * client-side prefs and existing daemon methods are wired; the rest say so. */
 import { useEffect, useState, type ReactNode } from 'react';
-import { Settings as Gear, Palette, SlidersHorizontal, Bell, Keyboard, Smartphone, Laptop, Shield, Info, Coins, type LucideIcon } from 'lucide-react';
+import { Settings as Gear, Palette, SlidersHorizontal, Bell, Keyboard, Smartphone, Laptop, Shield, Info, Coins, KeyRound, type LucideIcon } from 'lucide-react';
 import { usePlatform } from '../lib/platform.ts';
 import { ago, compactTokens, formatUsd, projectName } from '../lib/format.ts';
+import { useSessions } from '../features/session/useSessions.ts';
 
 export interface Prefs { theme: string; defaultVendor: string; defaultProject: string }
 const KEY = 'ormi.prefs';
@@ -21,7 +22,7 @@ const NAV: { group: string; items: Section[] }[] = [
     { id: 'defaults', label: 'Session defaults', icon: SlidersHorizontal }, { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'shortcuts', label: 'Keyboard shortcuts', icon: Keyboard }] },
   { group: 'CONNECTION', items: [{ id: 'devices', label: 'Paired devices', icon: Smartphone }, { id: 'machines', label: 'Machines', icon: Laptop }] },
-  { group: 'DATA', items: [{ id: 'usage', label: 'Usage', icon: Coins }, { id: 'privacy', label: 'Data and privacy', icon: Shield }, { id: 'about', label: 'About', icon: Info }] },
+  { group: 'DATA', items: [{ id: 'usage', label: 'Usage', icon: Coins }, { id: 'secrets', label: 'Secrets', icon: KeyRound }, { id: 'privacy', label: 'Data and privacy', icon: Shield }, { id: 'about', label: 'About', icon: Info }] },
 ];
 const TITLES: Record<string, [string, string]> = {
   general: ['General', 'How ormicode runs on this computer'],
@@ -32,6 +33,7 @@ const TITLES: Record<string, [string, string]> = {
   devices: ['Paired devices', 'Phones and browsers that can reach this hub'],
   machines: ['Machines', 'Computers running an ormicode daemon'],
   usage: ['Usage', 'Stored token and cost totals'],
+  secrets: ['Secrets', 'Names and values stored in this machine’s keyring'],
   privacy: ['Data and privacy', 'What is stored and where'],
   about: ['About', 'Versions and connection'],
 };
@@ -46,11 +48,11 @@ const ctl = {
 function Group({ title, children }: { title: string; children: ReactNode }) {
   return <div style={{ marginTop: 18 }}><div style={{ ...label, margin: '0 0 7px' }}>{title}</div><div style={card}>{children}</div></div>;
 }
-function Row({ title, hint, children, mono }: { title: string; hint?: string; children?: ReactNode; mono?: boolean }) {
+function Row({ title, hint, children, mono, monoTitle }: { title: string; hint?: string; children?: ReactNode; mono?: boolean; monoTitle?: boolean }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 44, padding: '7px 14px', boxSizing: 'border-box', borderTop: '1px solid var(--line-card)', marginTop: -1 }}>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, color: 'var(--text-title)' }}>{title}</div>
+        <div style={{ fontSize: 13, color: 'var(--text-title)', fontFamily: monoTitle ? 'var(--font-mono)' : undefined }}>{title}</div>
         {hint ? <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2, fontFamily: mono ? 'var(--font-mono)' : undefined }}>{hint}</div> : null}
       </div>
       {children}
@@ -110,6 +112,92 @@ function Usage() {
       {unavailable ?? (recentDays.length
         ? recentDays.map(day => <Row key={day.date} title={day.date} hint={usageHint(day)}><span style={{ fontSize: 11.5, color: 'var(--text-label)' }}>{amount(day)}</span></Row>)
         : <Row title="No usage in the last 14 days" />)}
+    </Group>
+  </>;
+}
+
+interface ListedSecret { name: string; scope: 'project' | 'machine'; declared: boolean; missing: boolean }
+interface SecretList { keyring: string; available: boolean; message?: string; secrets: ListedSecret[] }
+const secretName = /^[A-Z_][A-Z0-9_]*$/;
+const secretButton = { ...ctl, cursor: 'pointer', fontSize: 11 } as const;
+
+function SecretItem({ item, project, available, changed }: { item: ListedSecret; project: string; available: boolean; changed: () => void }) {
+  const { transport } = usePlatform();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const save = async () => {
+    const secret = value; setValue('');
+    const r = await transport.request('secret.set', { name: item.name, value: secret, ...(project ? { project } : {}) }).catch(() => undefined);
+    setEditing(false);
+    if (r?.type === 'res') changed();
+  };
+  const remove = async () => {
+    const r = await transport.request('secret.delete', { name: item.name, ...(project ? { project } : {}) }).catch(() => undefined);
+    setDeleting(false);
+    if (r?.type === 'res') changed();
+  };
+  return <Row title={item.name} monoTitle hint={`${item.scope === 'project' ? 'Project' : 'Machine'} secret${item.declared ? ' · declared' : ''}`}>
+    {item.missing ? <span style={{ color: 'var(--accent-amber)', fontSize: 11 }}>missing</span> : null}
+    {editing ? <>
+      <input aria-label={`Set ${item.name}`} autoComplete="new-password" type="password" value={value} onChange={e => setValue(e.target.value)} disabled={!available} style={{ ...ctl, width: 150 }} />
+      <button style={secretButton} disabled={!available || !value} onClick={() => void save()}>Save</button>
+      <button style={secretButton} onClick={() => { setEditing(false); setValue(''); }}>Cancel</button>
+    </> : deleting ? <>
+      <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Delete {item.name}?</span>
+      <button style={secretButton} disabled={!available} onClick={() => void remove()}>Delete</button>
+      <button style={secretButton} onClick={() => setDeleting(false)}>Cancel</button>
+    </> : <>
+      <button style={secretButton} disabled={!available} onClick={() => setEditing(true)}>Set</button>
+      <button style={secretButton} disabled={!available} onClick={() => setDeleting(true)}>Delete</button>
+    </>}
+  </Row>;
+}
+
+function Secrets() {
+  const { transport } = usePlatform();
+  const { sessions } = useSessions();
+  const [project, setProject] = useState('');
+  const [list, setList] = useState<SecretList>();
+  const [error, setError] = useState<string>();
+  const [refresh, setRefresh] = useState(0);
+  const [name, setName] = useState('');
+  const [value, setValue] = useState('');
+  const projects = [...new Set(sessions.map(s => s.project))].sort();
+  const changed = () => setRefresh(n => n + 1);
+  useEffect(() => {
+    let alive = true;
+    void transport.request('secret.list', project ? { project } : {}).then(r => {
+      if (!alive) return;
+      if (r.type === 'res') { setList(r.body as unknown as SecretList); setError(undefined); }
+      else setError(`${r.code}: ${r.message}`);
+    }).catch((e: Error) => { if (alive) setError(e.message); });
+    return () => { alive = false; };
+  }, [transport, project, refresh]);
+  const save = async () => {
+    const secret = value; setValue('');
+    const r = await transport.request('secret.set', { name, value: secret, ...(project ? { project } : {}) }).catch(() => undefined);
+    if (r?.type === 'res') { setName(''); changed(); }
+  };
+  const available = list?.available ?? false;
+  return <>
+    <Group title="SCOPE">
+      <Row title="Project">
+        <select aria-label="Secrets project" className="ormi-select" style={ctl} value={project} onChange={e => setProject(e.target.value)}>
+          <option value="">Machine (all projects)</option>
+          {projects.map(p => <option key={p} value={p}>{projectName(p)}</option>)}
+        </select>
+      </Row>
+    </Group>
+    <Group title="SECRETS">
+      {error ? <Row title="Could not load secrets" hint={error} /> : null}
+      {list && !list.available ? <Row title="Keyring unavailable" hint={list.message ?? 'No keyring backend is available.'} /> : null}
+      {list?.secrets.map(item => <SecretItem key={`${item.scope}:${item.name}`} item={item} project={project} available={available} changed={changed} />)}
+      <Row title="Add secret">
+        <input aria-label="Secret name" autoComplete="off" value={name} onChange={e => setName(e.target.value)} disabled={!available} placeholder="UPPER_SNAKE_CASE" style={{ ...ctl, width: 140, fontFamily: 'var(--font-mono)' }} />
+        <input aria-label="Secret value" type="password" autoComplete="new-password" value={value} onChange={e => setValue(e.target.value)} disabled={!available} style={{ ...ctl, width: 150 }} />
+        <button style={secretButton} disabled={!available || !secretName.test(name) || !value} onClick={() => void save()}>Save</button>
+      </Row>
     </Group>
   </>;
 }
@@ -222,6 +310,7 @@ export function SettingsView({ prefs, onPrefs, connection }: { prefs: Prefs; onP
           {section === 'devices' ? <Devices /> : null}
           {section === 'machines' ? <Group title="THIS MACHINE"><Row title="local" hint="Other machines appear here once multi-machine hubs ship"><Soon what="soon" /></Row></Group> : null}
           {section === 'usage' ? <Usage /> : null}
+          {section === 'secrets' ? <Secrets /> : null}
           {section === 'privacy' ? <Group title="STORAGE"><Row title="Sessions and journals" hint="~/.ormicode/ on this machine. The relay only forwards encrypted frames." mono /></Group> : null}
           {section === 'about' ? <About connection={connection} /> : null}
         </div>

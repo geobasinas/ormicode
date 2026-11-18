@@ -3,6 +3,7 @@ import { cursorSchema, jsonObjectSchema, requestIdSchema, sessionIdSchema, idSch
 
 const session = { session: sessionIdSchema };
 const nonEmpty = z.string().check(z.minLength(1));
+const secretName = z.string().check(z.regex(/^[A-Z_][A-Z0-9_]*$/));
 const count = z.number().check(z.int(), z.gte(0));
 const limitSchema = z.number().check(z.int(), z.gte(1), z.lte(500));
 const costBucket = { tokens: count, usd: z.nullable(z.number()), unpriced: count, estimate: z.boolean() };
@@ -132,6 +133,7 @@ export const requestBodies = {
   'secret.set': z.object({ name: z.string().check(z.regex(/^[A-Z_][A-Z0-9_]*$/)), value: nonEmpty, project: z.optional(nonEmpty) }),
   'secret.delete': z.object({ name: z.string().check(z.regex(/^[A-Z_][A-Z0-9_]*$/)), project: z.optional(nonEmpty) }),
   'secret.status': z.object({ project: nonEmpty }),
+  'secret.list': z.object({ project: z.optional(nonEmpty) }),
   'terminal.open': z.object({ cwd: z.optional(nonEmpty), session: z.optional(sessionIdSchema), cols: z.optional(cursorSchema), rows: z.optional(cursorSchema), shell: z.optional(nonEmpty), args: z.optional(z.array(z.string())) }),
   'terminal.attach': z.object({ terminal: nonEmpty, from: z.optional(cursorSchema) }),
   'terminal.detach': z.object({ terminal: nonEmpty }),
@@ -189,6 +191,10 @@ export const responseBodies = {
   'terminal.close': z.object({}),
   'terminal.list': z.object({ terminals: z.array(terminalInfo) }),
   'secret.status': z.object({ keyring: z.string(), declared: z.array(z.string()), missing: z.array(z.string()) }),
+  'secret.list': z.object({
+    keyring: z.string(), available: z.boolean(), message: z.optional(z.string()),
+    secrets: z.array(z.object({ name: secretName, scope: z.enum(['project', 'machine']), declared: z.boolean(), missing: z.boolean() })),
+  }),
   'checkpoint.list': z.object({ checkpoints: z.array(z.object({ id: nonEmpty, seq: cursorSchema, tool: z.string(), ts: timestampSchema })) }),
   'session.digest': z.object({ since: timestampSchema, computedAt: timestampSchema, entries: z.array(jsonObjectSchema) }),
   'pricing.status': priceStatus,

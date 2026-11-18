@@ -5,6 +5,7 @@ export function secretMethod(ctx: DispatchCtx, client: Client, id: string, metho
   const { keyring } = ctx.secrets;
   const project = typeof body.project === 'string' ? body.project : undefined;
   const name = String(body.name ?? '');
+  if (method === 'secret.list') return client.link.reply(id, ctx.secrets.names(project));
   if (method === 'secret.status') {
     const names = declared(String(body.project));
     return client.link.reply(id, { keyring: keyring.kind, declared: names, missing: ctx.secrets.missing(String(body.project)) });
@@ -17,6 +18,7 @@ export function secretMethod(ctx: DispatchCtx, client: Client, id: string, metho
   } catch (e) {
     return client.link.replyError(id, (e as { code?: string }).code ?? 'secrets.failed', (e as Error).message);
   }
+  ctx.secrets.indexName(name, project, method === 'secret.set');
   ctx.secrets.log(name, method === 'secret.set' ? 'set' : 'delete');
   return client.link.reply(id, { ok: true });
 }

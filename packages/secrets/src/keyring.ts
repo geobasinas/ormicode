@@ -3,7 +3,7 @@
 // account "<scope>:<NAME>" where scope is "machine" or "project:<abs path>".
 import { execFileSync } from 'node:child_process';
 
-export interface Keyring { readonly kind: string; get(account: string): string | undefined; set(account: string, value: string): void; delete(account: string): void }
+export interface Keyring { readonly kind: string; readonly message?: string; get(account: string): string | undefined; set(account: string, value: string): void; delete(account: string): void }
 
 export class KeyringUnavailable extends Error { readonly code = 'secrets.unavailable'; }
 
@@ -41,8 +41,9 @@ export function systemKeyring(): Keyring {
   if (process.env.ORMICODE_KEYRING === 'memory') return new MemoryKeyring();
   if (process.platform === 'darwin') return new MacKeychain();
   if (process.platform === 'linux' && has('secret-tool')) return new SecretTool();
-  return { kind: 'none', get: () => undefined,
-    set: () => { throw new KeyringUnavailable(process.platform === 'linux' ? 'install libsecret-tools (secret-tool) to store secrets' : `no keyring backend for ${process.platform} yet`); },
+  const message = process.platform === 'linux' ? 'Install libsecret-tools (secret-tool) to store secrets.' : `No keyring backend for ${process.platform} yet.`;
+  return { kind: 'none', message, get: () => undefined,
+    set: () => { throw new KeyringUnavailable(message); },
     delete: () => undefined };
 }
 

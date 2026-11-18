@@ -52,7 +52,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     maxBytes: Number(process.env.ORMICODE_CHECKPOINTS_MAX_BYTES ?? DEFAULT_LIMITS.maxBytes),
   });
   const checkpointsOn = process.env.ORMICODE_CHECKPOINTS !== '0';
-  const secrets = new SecretBroker(join(ormicodeDir(), 'logs', 'secrets-audit.jsonl'));
+  const secrets = new SecretBroker(join(ormicodeDir(), 'logs', 'secrets-audit.jsonl'), join(ormicodeDir(), 'secrets-index.json'));
   const toolNames = new Map<string, string>();
   // Boot: interrupt in-flight sessions, expire pending interactions, reap stale
   // pids; auto-resume candidates are spawned once spawnWorker exists below.

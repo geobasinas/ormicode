@@ -35,6 +35,19 @@ test('cost totals contracts validate time filters and all aggregation buckets', 
   assert.equal(parseResponseBody('cost.totals', { ...body, days: [{ date: 'yesterday', ...bucket }] }).success, false);
 });
 
+test('secret listing exposes only names and scope metadata', () => {
+  assert.equal(parseRequestBody('secret.list', {}).success, true);
+  assert.equal(parseRequestBody('secret.list', { project: '/repo' }).success, true);
+  assert.equal(parseResponseBody('secret.list', {
+    keyring: 'memory', available: true,
+    secrets: [{ name: 'API_KEY', scope: 'project', declared: true, missing: false }],
+  }).success, true);
+  assert.equal(parseResponseBody('secret.list', {
+    keyring: 'memory', available: true,
+    secrets: [{ name: 'api-key', scope: 'project', declared: true, missing: false }],
+  }).success, false);
+});
+
 test('event body contracts check state, text and approval data', () => {
   assert.equal(parseEventBody({ kind: 'text', text: 'hello' }).success, true);
   assert.equal(parseEventBody({ kind: 'text' }).success, false);

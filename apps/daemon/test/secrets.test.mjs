@@ -40,3 +40,35 @@ test('declared secrets gate session.start, are injected and redacted from the jo
     delete process.env.ORMICODE_KEYRING; delete process.env.ORMICODE_HOME;
   }
 });
+
+test('secret.list merges the names-only index with project declarations and never stores values', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ormi-sec-list-'));
+  const home = join(dir, 'home');
+  Object.assign(process.env, { ORMICODE_KEYRING: 'memory', ORMICODE_HOME: home });
+  const project = join(dir, 'project');
+  mkdirSync(join(project, '.ormi'), { recursive: true });
+  writeFileSync(join(project, '.ormi', 'secrets.yaml'), 'secrets:\n  - DECLARED_MISSING\n');
+  const daemon = await startDaemon({ socketPath: '127.0.0.1:0', storePath: join(dir, 'store.db') });
+  const client = await connect(daemon.socketPath);
+  try {
+    await client.request('secret.set', { name: 'MACHINE_TOKEN', value: `machine-${Date.now()}` });
+    await client.request('secret.set', { name: 'PROJECT_TOKEN', value: `project-${Date.now()}`, project });
+    const result = await client.request('secret.list', { project });
+    assert.equal(result.body.keyring, 'memory');
+    assert.equal(result.body.available, true);
+    assert.deepEqual(result.body.secrets, [
+      { name: 'DECLARED_MISSING', scope: 'project', declared: true, missing: true },
+      { name: 'MACHINE_TOKEN', scope: 'machine', declared: false, missing: false },
+      { name: 'PROJECT_TOKEN', scope: 'project', declared: false, missing: false },
+    ]);
+    const index = readFileSync(join(home, 'secrets-index.json'), 'utf8');
+    assert.deepEqual(JSON.parse(index), { machine: ['MACHINE_TOKEN'], projects: { [project]: ['PROJECT_TOKEN'] } });
+    assert.ok(!index.includes('machine-') && !index.includes('project-'));
+    await client.request('secret.delete', { name: 'PROJECT_TOKEN', project });
+    assert.deepEqual((await client.request('secret.list', { project })).body.secrets.map(s => s.name), ['DECLARED_MISSING', 'MACHINE_TOKEN']);
+  } finally {
+    client.close();
+    await daemon.close();
+    delete process.env.ORMICODE_KEYRING; delete process.env.ORMICODE_HOME;
+  }
+});
