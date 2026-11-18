@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, readFileSync, writeFileSync, unlinkSync, existsSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync, unlinkSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 /** Named markdown notes per session under <dir>/<session>/<n_id>.md; title in front matter. */
@@ -17,7 +17,7 @@ export function listNotes(dir: string, session: string): Note[] {
   return readdirSync(folder).filter(f => /^n_[0-7][0-9A-HJKMNP-TV-Z]{25}\.md$/.test(f) || f === `${session}.md`).map(f => {
     const raw = readFileSync(join(folder, f), 'utf8');
     const { title, body } = parse(raw);
-    return { id: f.replace(/\.md$/, ''), title, body, updatedAt: 0 };
+    return { id: f.replace(/\.md$/, ''), title, body, updatedAt: Math.floor(statSync(join(folder, f)).mtimeMs) };
   });
 }
 

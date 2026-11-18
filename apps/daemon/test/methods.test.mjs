@@ -113,6 +113,7 @@ test('notes round-trip through the daemon', async () => {
   const got = await client.request('session.getNotes', { session });
   assert.equal(got.body.notes.length, 1);
   assert.equal(got.body.notes[0].title, 'api flag');
+  assert.ok(got.body.notes[0].updatedAt > 1_000_000_000_000);
   assert.equal((await client.request('session.deleteNote', { session, id: set.body.id })).body.deleted, true);
   await cleanup();
 });

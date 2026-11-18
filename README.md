@@ -2496,7 +2496,7 @@ Network denied unless a domain is listed (requests go through a logging host pro
 
 **Right rail:** contextual panels in tabs (resizable, collapsible, saved per session and device), off by default. The first screens ships only **Notes**:
 - list/create/rename/delete named notes (`session.getNotes`/`setNotes`/`deleteNote`), one tab each; new = "Untitled".
-- Markdown rendered, plain-text editing, debounced save, edited time and word count, working checkboxes. Delete asks once.
+- Notes are edited with MDXEditor and stored as plain Markdown; debounced save, edited time and word count, working checkboxes. Delete asks once.
 
 **Session menu:** Stop, Archive, Copy session id, Copy worktree path, Open in file manager (desktop). Run on machine, Rename, Duplicate, Open worktree and Export transcript wait until their protocol methods exist — no dead menu items.
 

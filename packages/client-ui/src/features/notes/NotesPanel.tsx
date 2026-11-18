@@ -1,9 +1,11 @@
 /** Notes rail: named notes per session — tab strip, debounced save,
  * one-tap-confirm delete, meta line with edit age and word count. */
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { ago } from '../../lib/format.ts';
 import { useNotes } from './useNotes.ts';
+
+const MarkdownEditor = lazy(() => import('../../components/MarkdownEditor.tsx').then(module => ({ default: module.MarkdownEditor })));
 
 export function NotesPanel({ session }: { session: string }) {
   const { notes, save, remove } = useNotes(session);
@@ -57,10 +59,11 @@ export function NotesPanel({ session }: { session: string }) {
               ? `Edited ${ago(notes.find(n => n.id === editing.id)!.updatedAt)} · ${words} words · ${changed ? 'saving…' : 'saved'}`
               : `${words} words · unsaved`}
           </div>
-          <textarea value={editing.body} placeholder="Write a note…" onChange={e => patch({ body: e.target.value })} style={{
-            flex: 1, resize: 'none', font: 'inherit', fontSize: 'var(--text-sm)', lineHeight: 'var(--leading-loose)',
-            background: 'transparent', border: 'none', outline: 'none', color: 'var(--text-label)',
-          }} />
+          <div style={{ flex: 1, minHeight: 0 }}>
+            <Suspense fallback={<div style={{ height: '100%' }} />}>
+              <MarkdownEditor key={editing.id ?? 'new'} value={editing.body} onChange={body => patch({ body })} placeholder="Write a note…" />
+            </Suspense>
+          </div>
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             {confirm ? (
               <button onClick={() => { if (editing.id) remove(editing.id); setDraft(undefined); setOpenId(undefined); setConfirm(false); }}

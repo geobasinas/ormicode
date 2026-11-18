@@ -20,6 +20,7 @@
     "@fontsource/jetbrains-mono": "5.3.0",
     "@hookform/resolvers": "^7.0.6",
     "@lezer/highlight": "1.2.5",
+    "@mdxeditor/editor": "4.3.4",
     "@ormicode/client-platform": "workspace:*",
     "@ormicode/diff": "workspace:*",
     "@ormicode/protocol": "workspace:*",

@@ -52,10 +52,14 @@ test('devices: add, lookup by hash, rename, revoke hides them', () => {
 
 test('notes: markdown files with a title front matter', () => {
   const dir = mkdtempSync(join(tmpdir(), 'ormi-notes-'));
+  const startedAt = Date.now();
   const id = setNote(dir, 's_1', { title: 'Plan', body: '- one\n' }, () => 'n_01ARZ3NDEKTSV4RRFFQ69G5FAV');
   assert.equal(id, 'n_01ARZ3NDEKTSV4RRFFQ69G5FAV');
   setNote(dir, 's_1', { id, title: 'Plan 2', body: 'two' }, () => 'unused');
-  assert.deepEqual(listNotes(dir, 's_1').map(n => [n.id, n.title, n.body]), [[id, 'Plan 2', 'two']]);
+  const [note] = listNotes(dir, 's_1');
+  assert.deepEqual([note.id, note.title, note.body], [id, 'Plan 2', 'two']);
+  assert.ok(note.updatedAt >= startedAt - 1_000);
+  assert.ok(note.updatedAt <= Date.now() + 1_000);
   assert.deepEqual(listNotes(dir, 's_none'), []);
   assert.equal(deleteNote(dir, 's_1', id), true);
   assert.equal(deleteNote(dir, 's_1', id), false);

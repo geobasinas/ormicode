@@ -1,0 +1,667 @@
+.ormi-pane:has(.ormi-md) {
+  container-type: normal;
+}
+
+.ormi-md {
+  --baseBase: var(--bg-main);
+  --baseBgSubtle: var(--bg-card);
+  --baseBg: var(--bg-chip);
+  --baseBgHover: var(--bg-raised);
+  --baseBgActive: var(--bg-raised);
+  --baseLine: var(--line-subtle);
+  --baseBorder: var(--line-card);
+  --baseBorderHover: var(--line-card);
+  --baseSolid: var(--text-hint);
+  --baseSolidHover: var(--text-secondary);
+  --baseText: var(--text-label);
+  --baseTextContrast: var(--text-title);
+  --accentBase: var(--bg-main);
+  --accentBgSubtle: var(--tint-mint);
+  --accentBg: var(--tint-mint);
+  --accentBgHover: var(--tint-mint);
+  --accentBgActive: var(--tint-mint);
+  --accentLine: var(--accent-mint);
+  --accentBorder: var(--accent-mint);
+  --accentBorderHover: var(--accent-mint);
+  --accentSolid: var(--accent-mint);
+  --accentSolidHover: var(--accent-mint);
+  --accentText: var(--accent-mint);
+  --accentTextContrast: var(--text-title);
+  --basePageBg: transparent;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: transparent;
+  color: var(--text-label);
+  font-family: var(--font-ui);
+}
+
+.ormi-md .mdxeditor-toolbar {
+  box-sizing: border-box;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 2px;
+  width: calc(100% + 4px);
+  height: 32px;
+  min-height: 32px;
+  margin-left: -4px;
+  padding: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 0;
+  border-bottom: 1px solid var(--line-subtle);
+  border-radius: 0;
+  background: transparent;
+  scrollbar-width: none;
+}
+
+.ormi-md .mdxeditor-toolbar::-webkit-scrollbar {
+  display: none;
+}
+
+.ormi-md .mdxeditor-toolbar > * {
+  flex-shrink: 0;
+}
+
+.ormi-md .mdxeditor-toolbar button,
+.ormi-md .mdxeditor-toolbar [role="radio"] {
+  box-sizing: border-box;
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-hint);
+  font: inherit;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.ormi-md .mdxeditor-toolbar button:hover,
+.ormi-md .mdxeditor-toolbar [role="radio"]:hover {
+  background: var(--bg-raised);
+  color: var(--text-active);
+}
+
+.ormi-md .mdxeditor-toolbar button:active,
+.ormi-md .mdxeditor-toolbar button[data-state="on"],
+.ormi-md .mdxeditor-toolbar [role="radio"][data-state="on"],
+.ormi-md .mdxeditor-toolbar [role="radio"][aria-checked="true"] {
+  background: var(--bg-raised);
+  color: var(--text-title);
+}
+
+.ormi-md .mdxeditor-toolbar button svg,
+.ormi-md .mdxeditor-toolbar [role="radio"] svg {
+  width: 14px;
+  height: 14px;
+  color: currentColor;
+}
+
+.ormi-md .mdxeditor-toolbar [role="separator"] {
+  box-sizing: border-box;
+  width: 1px;
+  min-width: 1px;
+  height: 14px;
+  margin: 0 3px;
+  border: 0;
+  background: var(--line-divider);
+}
+
+.ormi-md .mdxeditor-toolbar button[aria-haspopup],
+.ormi-md .mdxeditor-toolbar button[role="combobox"] {
+  width: auto;
+  min-width: 24px;
+  padding: 0 5px;
+  border: 0;
+  background: transparent;
+  font-size: 11.5px;
+}
+
+.ormi-md .mdxeditor-toolbar button[aria-label="Block type"] {
+  color: var(--text-secondary);
+}
+
+.ormi-md .mdxeditor-toolbar [class*="ggDiffSourceToggle"] {
+  flex-shrink: 0;
+  height: 24px;
+  margin: 0 0 0 auto;
+  border: 0;
+  background: transparent;
+  font-size: 11.5px;
+}
+
+.ormi-md .mdxeditor-toolbar [class*="ggDiffSourceToggle"] [role="radio"] {
+  width: auto;
+  min-width: auto;
+  padding: 0 7px;
+}
+
+.ormi-md .mdxeditor-root-contenteditable {
+  box-sizing: border-box;
+  min-height: 0;
+  margin-left: -14px;
+  padding-left: 14px;
+  overflow-x: hidden;
+  width: calc(100% + 14px);
+  background: transparent;
+  scrollbar-color: var(--line-card) transparent;
+  scrollbar-width: thin;
+}
+
+.ormi-md .mdxeditor-root-contenteditable::-webkit-scrollbar,
+.ormi-md .mdxeditor-source-editor .cm-scroller::-webkit-scrollbar,
+.ormi-md .mdxeditor-diff-editor .cm-scroller::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.ormi-md .mdxeditor-root-contenteditable::-webkit-scrollbar-track,
+.ormi-md .mdxeditor-source-editor .cm-scroller::-webkit-scrollbar-track,
+.ormi-md .mdxeditor-diff-editor .cm-scroller::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ormi-md .mdxeditor-root-contenteditable::-webkit-scrollbar-thumb,
+.ormi-md .mdxeditor-source-editor .cm-scroller::-webkit-scrollbar-thumb,
+.ormi-md .mdxeditor-diff-editor .cm-scroller::-webkit-scrollbar-thumb {
+  border-radius: 6px;
+  background: var(--line-card);
+}
+
+.ormi-md-content {
+  box-sizing: border-box;
+  min-height: 100%;
+  padding: 10px 0 !important;
+  color: var(--text-label) !important;
+  font-family: var(--font-ui);
+  font-size: var(--text-sm) !important;
+  line-height: var(--leading-loose) !important;
+}
+
+.ormi-md-content p {
+  margin: 0 0 8px;
+}
+
+.ormi-md-content h1,
+.ormi-md-content h2,
+.ormi-md-content h3 {
+  margin: 14px 0 6px;
+  color: var(--text-title);
+  line-height: 1.35;
+}
+
+.ormi-md-content h1:first-child,
+.ormi-md-content h2:first-child,
+.ormi-md-content h3:first-child {
+  margin-top: 0;
+}
+
+.ormi-md-content h1 {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.ormi-md-content h2 {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.ormi-md-content h3 {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ormi-md-content ul,
+.ormi-md-content ol {
+  padding-left: 18px;
+}
+
+.ormi-md-content ul {
+  list-style: disc;
+}
+
+.ormi-md-content ol {
+  list-style: decimal;
+}
+
+.ormi-md-content ul ul {
+  list-style: circle;
+}
+
+.ormi-md-content ::marker {
+  color: var(--text-hint);
+}
+
+.ormi-md-content li {
+  margin: 2px 0;
+}
+
+.ormi-md-content li[class*="listItemChecked"],
+.ormi-md-content li[class*="listItemUnchecked"] {
+  padding-inline: 0 !important;
+  list-style: none;
+}
+
+.ormi-md-content li[class*="listItemChecked"]::before,
+.ormi-md-content li[class*="listItemUnchecked"]::before {
+  box-sizing: border-box;
+  top: 5px;
+  left: -18px;
+  width: 13px;
+  height: 13px;
+  border: 1px solid var(--line-card);
+  border-radius: 3px;
+  background: transparent;
+}
+
+.ormi-md-content li[class*="listItemChecked"]::before {
+  border-color: var(--accent-mint);
+  background: var(--accent-mint);
+}
+
+.ormi-md-content li[class*="listItemChecked"]::after {
+  top: 8px;
+  left: -14px;
+  right: auto;
+  width: 3px;
+  height: 6px;
+  border-color: var(--text-onAccent);
+  border-width: 0 1.5px 1.5px 0;
+}
+
+.ormi-md-content li[class*="listItemChecked"] {
+  color: var(--text-hint);
+  text-decoration: line-through;
+}
+
+.ormi-md-content li[data-checked="true"] > *,
+.ormi-md-content li[aria-checked="true"] > * {
+  color: var(--text-hint);
+  text-decoration: line-through;
+}
+
+.ormi-md-content blockquote {
+  margin: 8px 0;
+  padding: 0 0 0 10px;
+  border: 0;
+  border-left: 2px solid var(--line-card);
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.ormi-md-content code:not(pre code) {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--bg-inset);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+.ormi-md-content a {
+  color: var(--text-title);
+  text-decoration: underline;
+  text-decoration-color: var(--line-card);
+  text-underline-offset: 2px;
+}
+
+.ormi-md-content hr {
+  height: 1px;
+  margin: 12px 0;
+  border: 0;
+  background: var(--line-subtle);
+}
+
+.ormi-md-content table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.ormi-md-content th,
+.ormi-md-content td {
+  padding: 4px 8px;
+  border: 1px solid var(--line-card);
+  text-align: left;
+}
+
+.ormi-md-content th {
+  background: var(--bg-card);
+  color: var(--text-title);
+  font-weight: 600;
+}
+
+.ormi-md-content pre {
+  overflow-x: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--line-subtle);
+  border-radius: 8px;
+  background: var(--bg-inset);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 18px;
+}
+
+.ormi-md-content pre code {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.ormi-md ._codeMirrorWrapper_eoiyl_391 {
+  box-sizing: border-box;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  margin: 0 0 8px;
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid var(--line-subtle);
+  border-radius: 8px;
+  background: var(--bg-inset);
+}
+
+.ormi-md ._codeMirrorToolbar_eoiyl_408 {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  min-height: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  top: 2px;
+  right: 2px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--bg-inset);
+  color: var(--text-hint);
+  font-size: 11px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.ormi-md ._codeMirrorWrapper_eoiyl_391:hover ._codeMirrorToolbar_eoiyl_408,
+.ormi-md ._codeMirrorWrapper_eoiyl_391:focus-within ._codeMirrorToolbar_eoiyl_408 {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.ormi-md ._codeMirrorToolbar_eoiyl_408 button,
+.ormi-md ._codeMirrorToolbar_eoiyl_408 [role="combobox"] {
+  box-sizing: border-box;
+  min-width: 0;
+  height: 18px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--text-hint);
+  font-size: 11px;
+}
+
+.ormi-md ._codeMirrorToolbar_eoiyl_408 button:hover,
+.ormi-md ._codeMirrorToolbar_eoiyl_408 [role="combobox"]:hover {
+  background: var(--bg-raised);
+  color: var(--text-title);
+}
+
+.ormi-md ._codeMirrorWrapper_eoiyl_391 > div:last-child {
+  min-width: 0;
+  overflow-x: auto;
+  padding: 8px 10px;
+}
+
+.ormi-md ._codeMirrorWrapper_eoiyl_391 .cm-scroller {
+  overflow-x: auto !important;
+  scrollbar-color: var(--line-card) transparent;
+  scrollbar-width: thin;
+}
+
+.ormi-md ._codeMirrorWrapper_eoiyl_391 .cm-scroller::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.ormi-md ._codeMirrorWrapper_eoiyl_391 .cm-scroller::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ormi-md ._codeMirrorWrapper_eoiyl_391 .cm-scroller::-webkit-scrollbar-thumb {
+  border-radius: 6px;
+  background: var(--line-card);
+}
+
+.ormi-md ._codeMirrorWrapper_eoiyl_391 .cm-line {
+  white-space: pre !important;
+  overflow-wrap: normal !important;
+}
+
+.ormi-md ._codeMirrorWrapper_eoiyl_391 .cm-editor,
+.ormi-md ._codeMirrorWrapper_eoiyl_391 .cm-content {
+  min-width: max-content;
+}
+
+.ormi-md ._codeMirrorWrapper_eoiyl_391 .cm-content {
+  padding: 0 !important;
+}
+
+.ormi-md-content table[class*="tableEditor"] {
+  border-collapse: collapse;
+}
+
+.ormi-md-content table[class*="tableEditor"] > colgroup > col:first-child,
+.ormi-md-content table[class*="tableEditor"] > colgroup > col:last-child {
+  width: 0 !important;
+}
+
+.ormi-md-content table[class*="tableEditor"] > thead > tr > th:first-child,
+.ormi-md-content table[class*="tableEditor"] > thead > tr > th:last-child,
+.ormi-md-content table[class*="tableEditor"] > tbody > tr > [data-tool-cell="true"]:first-child,
+.ormi-md-content table[class*="tableEditor"] > tbody > tr > [data-tool-cell="true"]:last-child,
+.ormi-md-content table[class*="tableEditor"] > tfoot > tr > th:first-child,
+.ormi-md-content table[class*="tableEditor"] > tfoot > tr > th:last-child {
+  box-sizing: border-box;
+  position: relative;
+  width: 0 !important;
+  min-width: 0;
+  max-width: 0;
+  padding: 0 !important;
+  border: 0 !important;
+  overflow: visible;
+}
+
+.ormi-md-content table[class*="tableEditor"] > thead th,
+.ormi-md-content table[class*="tableEditor"] > tfoot th,
+.ormi-md-content table[class*="tableEditor"] [data-tool-cell="true"] {
+  padding: 0;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.ormi-md-content table[class*="tableEditor"] [class*="tableToolsColumn"] {
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.ormi-md-content table[class*="tableEditor"] > tbody > tr > [data-tool-cell="true"]:first-child [class*="tableColumnEditorTrigger"] {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  box-sizing: border-box;
+  width: 14px;
+  min-width: 14px;
+  height: 18px;
+  padding: 0;
+}
+
+.ormi-md-content table[class*="tableEditor"] > tbody > tr > [data-tool-cell="true"]:last-child [class*="addColumnButton"] {
+  position: absolute;
+  top: 0;
+  right: 2px;
+  width: 22px;
+  height: 100%;
+}
+
+.ormi-md-content table[class*="tableEditor"] > thead > tr > th:last-child [class*="iconButton"] {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+}
+
+.ormi-md-content table[class*="tableEditor"] [class*="tableColumnEditorTrigger"],
+.ormi-md-content table[class*="tableEditor"] [class*="tableRowEditorTrigger"],
+.ormi-md-content table[class*="tableEditor"] [class*="addRowButton"],
+.ormi-md-content table[class*="tableEditor"] [class*="addColumnButton"],
+.ormi-md-content table[class*="tableEditor"] [class*="iconButton"] {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.ormi-md-content table[class*="tableEditor"]:is(:hover, :focus-within) [class*="tableColumnEditorTrigger"],
+.ormi-md-content table[class*="tableEditor"]:is(:hover, :focus-within) [class*="tableRowEditorTrigger"],
+.ormi-md-content table[class*="tableEditor"]:is(:hover, :focus-within) [class*="addRowButton"],
+.ormi-md-content table[class*="tableEditor"]:is(:hover, :focus-within) [class*="addColumnButton"],
+.ormi-md-content table[class*="tableEditor"]:is(:hover, :focus-within) [class*="iconButton"] {
+  opacity: 1;
+  visibility: visible;
+}
+
+.ormi-md-content:focus,
+.ormi-md-content[contenteditable="true"]:focus {
+  outline: none;
+}
+
+.ormi-md .mdxeditor-source-editor,
+.ormi-md .mdxeditor-diff-editor {
+  background: transparent;
+}
+
+.ormi-md .mdxeditor-source-editor .cm-editor,
+.ormi-md .mdxeditor-diff-editor .cm-editor,
+.ormi-md-content .cm-editor {
+  height: 100%;
+  background: transparent !important;
+  color: var(--text-label);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+.ormi-md .mdxeditor-source-editor .cm-scroller,
+.ormi-md .mdxeditor-diff-editor .cm-scroller,
+.ormi-md-content .cm-scroller {
+  font-family: var(--font-mono);
+  line-height: var(--leading-loose);
+}
+
+.ormi-md .mdxeditor-source-editor .cm-content,
+.ormi-md .mdxeditor-diff-editor .cm-content,
+.ormi-md-content .cm-content {
+  padding: 10px 0;
+}
+
+.ormi-md .cm-gutters {
+  display: none !important;
+}
+
+.ormi-md .mdxeditor-code-block .cm-editor {
+  background: transparent !important;
+}
+
+.ormi-md [role="listbox"],
+.ormi-md [role="dialog"],
+.ormi-md [role="tooltip"],
+.ormi-md [data-radix-popper-content-wrapper] > *,
+.ormi-md [data-radix-popover-content] {
+  border: 1px solid var(--line-card);
+  border-radius: 8px;
+  background: var(--bg-raised);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.16);
+  color: var(--text-label);
+  font-size: 12px;
+}
+
+.ormi-md [class*="linkDialogPopoverContent"] {
+  box-sizing: border-box;
+  width: 300px;
+  max-width: calc(100vw - 20px);
+  padding: 12px;
+}
+
+.ormi-md [class*="linkDialogEditForm"] {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ormi-md [class*="formField"] {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ormi-md [class*="formField"] label {
+  color: var(--text-hint);
+  font-size: 11px;
+}
+
+.ormi-md input,
+.ormi-md textarea {
+  box-sizing: border-box;
+  width: 100%;
+  height: 26px;
+  border: 1px solid var(--line-card);
+  border-radius: 6px;
+  background: var(--bg-inset);
+  color: var(--text-label);
+  font: inherit;
+  font-size: 12px;
+  padding: 0 8px;
+}
+
+.ormi-md [class*="linkDialogEditForm"] button[type="submit"],
+.ormi-md [class*="linkDialogEditForm"] button[type="reset"] {
+  box-sizing: border-box;
+  height: 26px;
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.ormi-md [class*="linkDialogEditForm"] button[type="submit"] {
+  border: 1px solid var(--line-card);
+  background: var(--bg-raised);
+  color: var(--text-title);
+}
+
+.ormi-md [class*="linkDialogEditForm"] button[type="reset"] {
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.ormi-md [role="tooltip"] {
+  border-color: var(--line-card);
+  border-radius: 6px;
+  background: var(--bg-raised);
+  font-size: 11px;
+}
+
+.ormi-md [data-placeholder]::before,
+.ormi-md .mdxeditor-editor-placeholder {
+  color: var(--text-hint);
+}
