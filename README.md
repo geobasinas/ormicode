@@ -459,7 +459,7 @@ States with several causes carry a `reason` (e.g. `interrupted`: `host_restart`,
 - **answer** replies to a pending clarifying question with `session.answer {session, request, answers}`. `answers` maps each original question text to the user's answer. The adapter preserves the question's own text and choices; the first valid response wins. A question is not an approval.
 
 **Starting a session** takes: machine, project, vendor, transport, model, effort, mode, optional workspace name, and workspace choice (current branch / new branch / worktree from a branch). ACP sessions can also carry `agentCommand` and `agentArgs`.
-- `session.start` returns the id. `session.list`/`session.get` return id, title, state, project, vendor, transport, last update; `get` also returns current model and effort.
+- `session.start` returns the id. `session.list`/`session.get` return id, title, state, project, vendor, transport, last update and branch (null for scratch/no-git); `get` also returns current model and effort.
 - No branch given → resolve and save the checked-out branch and exact starting commit. If HEAD is detached, require an explicit workspace choice.
 - If that branch is busy with another running session, atomically reserve a unique worktree and branch at the recorded commit. Never copy or move uncommitted changes into it. If creation fails, leave existing files untouched and do not start the agent.
 

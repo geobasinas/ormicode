@@ -1,5 +1,8 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "@fontsource-variable/inter";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
 
 /*
  * shadcn theme bound to our design tokens. applyTheme() sets the
@@ -113,3 +116,5 @@
 
 button:focus { outline: none; }
 button:focus-visible { outline: 1px solid var(--line-card); outline-offset: -1px; }
+.hv-row { transition: background-color 120ms; }
+.hv-row:hover { background-color: var(--bg-hover) !important; }

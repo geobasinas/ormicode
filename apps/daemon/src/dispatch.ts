@@ -101,7 +101,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
       case 'session.list': {
         const sessions = listSessions(db, Boolean(body.archived)).map(s => ({
           id: s.id, title: s.title, state: s.state, project: s.project, vendor: s.vendor,
-          transport: s.transport, updatedAt: s.updated_at,
+          transport: s.transport, updatedAt: s.updated_at, branch: s.branch,
         }));
         return client.link.reply(id, { sessions });
       }
@@ -110,7 +110,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         if (!s) return client.link.replyError(id, 'session.not_found', String(body.session));
         return client.link.reply(id, {
           id: s.id, title: s.title, state: s.state, project: s.project, vendor: s.vendor,
-          transport: s.transport, updatedAt: s.updated_at, model: s.model, effort: s.effort,
+          transport: s.transport, updatedAt: s.updated_at, branch: s.branch, model: s.model, effort: s.effort,
           nativeId: s.native_id, acpVersion: s.acp_version, parent: s.parent,
         });
       }

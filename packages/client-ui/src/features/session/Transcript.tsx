@@ -69,7 +69,7 @@ function line(e: TranscriptEvent) {
     case 'error':
       return toolCard(<CircleAlert size={13} style={{ color: 'var(--accent-red)', flexShrink: 0 }} />, 'error', String(b.message ?? b.code));
     case 'turn_start':
-      return <div style={{ borderTop: '1px solid var(--line-pane)', margin: '14px 0 8px' }} />;
+      return <div style={{ height: 18 }} />;
     case 'turn_end':
       return null;
     case 'handoff_brief':

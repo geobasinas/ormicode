@@ -17,6 +17,8 @@ const workspaceSchema = z.union([
 const summarySchema = z.object({
   id: sessionIdSchema, title: z.nullable(z.string()), state: sessionStateSchema,
   project: nonEmpty, vendor: nonEmpty, transport: nonEmpty, updatedAt: timestampSchema,
+  // Git branch the session works on; absent/null for scratch or no-git projects.
+  branch: z.optional(z.nullable(z.string())),
 });
 const configOptionSchema = z.object({
   id: nonEmpty, category: z.optional(nonEmpty), type: z.optional(nonEmpty), name: z.optional(z.string()),

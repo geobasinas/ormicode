@@ -4,7 +4,7 @@ import { usePlatform } from '../../lib/platform.ts';
 
 export interface SessionDetails {
   id: string; title: string | null; state: string; project: string;
-  vendor: string; transport: string; updatedAt: number;
+  vendor: string; transport: string; updatedAt: number; branch?: string | null;
   model?: string | null; effort?: string | null; nativeId?: string | null;
   parent?: string | null;
 }

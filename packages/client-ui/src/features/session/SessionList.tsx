@@ -1,49 +1,40 @@
-/** Sidebar session list, grouped by project — state icon + title + age,
- * carry-over and waiting sessions first (per the sessions-list spec). */
+/** Sidebar session list, grouped by project — state icon, title, age and a
+ * mono branch line per row; waiting first, done collapsed (sessions-list spec). */
 import { useMemo, useState } from 'react';
-import { Play, LoaderCircle, CircleAlert, Pause, CircleX, Moon, Check, Archive, Folder, ChevronDown, ChevronRight, type LucideIcon } from 'lucide-react';
+import { Check, Folder, GitBranch, ChevronDown, ChevronRight } from 'lucide-react';
 import { useSessions, type SessionSummary } from './useSessions.ts';
+import { StateIcon, NEEDS_YOU, LIVE, stateLabel } from './state.tsx';
 import { ago, projectName } from '../../lib/format.ts';
 
-const stateIcon: Record<string, { icon: LucideIcon; color: string }> = {
-  running: { icon: Play, color: 'var(--accent-mint)' },
-  starting: { icon: LoaderCircle, color: 'var(--accent-mint)' },
-  retrying: { icon: LoaderCircle, color: 'var(--accent-amber)' },
-  awaiting_approval: { icon: CircleAlert, color: 'var(--accent-amber)' },
-  awaiting_input: { icon: CircleAlert, color: 'var(--accent-amber)' },
-  paused_rate_limited: { icon: Pause, color: 'var(--accent-amber)' },
-  interrupted: { icon: Pause, color: 'var(--accent-amber)' },
-  failed: { icon: CircleX, color: 'var(--accent-red)' },
-  idle: { icon: Moon, color: 'var(--text-hint)' },
-  done: { icon: Check, color: 'var(--text-secondary)' },
-  archived: { icon: Archive, color: 'var(--text-hint)' },
-};
-const needsYou = new Set(['awaiting_approval', 'awaiting_input', 'interrupted', 'failed', 'paused_rate_limited']);
-const finished = new Set(['done', 'idle']);
-const rank = (s: SessionSummary) => (needsYou.has(s.state) ? 0 : s.state === 'running' || s.state === 'starting' ? 1 : 2);
+const rank = (s: SessionSummary) => (NEEDS_YOU.has(s.state) ? 0 : LIVE.has(s.state) ? 1 : 2);
 const DAY = 24 * 3600 * 1000;
-const today = (s: SessionSummary) => finished.has(s.state) && Date.now() - (s.updatedAt ?? 0) < DAY;
+const isDone = (s: SessionSummary) => s.state === 'done';
+const mono = { fontFamily: 'var(--font-mono)', fontSize: 10 };
 
 function Row({ s, active, onSelect }: { s: SessionSummary; active?: string; onSelect: (id: string) => void }) {
-  const ic = stateIcon[s.state] ?? stateIcon.idle!;
+  const selected = s.id === active;
+  const needs = NEEDS_YOU.has(s.state);
+  const scratch = s.project === 'scratch';
   return (
-    <button className="hv-sub" onClick={() => onSelect(s.id)} style={{
-      textAlign: 'left', width: '100%', padding: '6px 10px',
-      border: 'none', cursor: 'pointer', font: 'inherit',
-      background: s.id === active ? 'var(--bg-card)' : 'transparent', color: 'var(--text-label)',
-      borderRadius: 7, display: 'flex', alignItems: 'center', gap: 8,
+    <button className="hv-sub" onClick={() => onSelect(s.id)} title={stateLabel(s.state)} style={{
+      textAlign: 'left', width: '100%', height: 38, padding: '0 8px 0 10px', flexShrink: 0,
+      border: 'none', cursor: 'pointer', font: 'inherit', background: selected ? 'var(--bg-card)' : 'transparent',
+      borderRadius: 7, display: 'flex', alignItems: 'center', gap: 13,
     }}>
-      <ic.icon size={13} style={{ color: ic.color, flexShrink: 0 }} />
+      <span style={{ width: 14, display: 'inline-flex', justifyContent: 'center' }}><StateIcon state={s.state} size={12} /></span>
       <span style={{ flex: 1, minWidth: 0 }}>
-        <span style={{
-          display: 'flex', justifyContent: 'space-between', fontSize: 13, fontWeight: 500,
-          color: s.id === active ? 'var(--text-active)' : '#bbbbbb',
-        }}>
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title || s.id.slice(0, 12)}</span>
-          <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--text-hint)', flexShrink: 0, marginLeft: 8 }}>{ago(s.updatedAt ?? 0)}</span>
+        <span style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+          <span style={{
+            flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12.5,
+            fontWeight: selected || needs ? 600 : 400, color: selected ? 'var(--text-active)' : '#bbbbbb',
+          }}>{s.title || s.id.slice(0, 12)}</span>
+          <span style={{ fontSize: 10.5, color: needs ? 'var(--accent-amber)' : 'var(--text-secondary)', flexShrink: 0 }}>{ago(s.updatedAt ?? 0)}</span>
         </span>
-        <span style={{ display: 'block', fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {s.state}{s.vendor ? ` · ${s.vendor}` : ''}
+        <span style={{ ...mono, display: 'flex', alignItems: 'center', gap: 4, marginTop: 2, color: 'var(--text-secondary)', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+          {scratch || !s.branch ? <span>{scratch ? 'scratch · no git' : s.vendor ?? ''}</span>
+            : <><GitBranch size={9} style={{ flexShrink: 0 }} /><span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.branch}</span></>}
+          <span style={{ flex: 1 }} />
+          <span>{stateLabel(s.state)}</span>
         </span>
       </span>
     </button>
@@ -55,40 +46,41 @@ export function SessionList({ active, onSelect, query }: { active?: string; onSe
   const groups = useMemo(() => {
     const q = query?.trim().toLowerCase();
     const visible = sessions.filter(s => s.state !== 'archived' &&
-      (!q || `${s.title ?? ''} ${s.project} ${s.vendor}`.toLowerCase().includes(q)));
+      (!q || `${s.title ?? ''} ${s.project} ${s.vendor} ${s.branch ?? ''}`.toLowerCase().includes(q)));
     const byProject = new Map<string, SessionSummary[]>();
     for (const s of visible) {
       const g = byProject.get(s.project) ?? [];
       g.push(s); byProject.set(s.project, g);
     }
     for (const g of byProject.values()) g.sort((a, b) => rank(a) - rank(b) || (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
-    return [...byProject.entries()].sort((a, b) =>
-      Math.max(...b[1].map(s => s.updatedAt ?? 0)) - Math.max(...a[1].map(s => s.updatedAt ?? 0)));
+    const latest = (l: SessionSummary[]) => Math.max(...l.map(s => s.updatedAt ?? 0));
+    // Projects first by recency; scratch sessions sit last under "no project" like the mockup.
+    return [...byProject.entries()].sort((a, b) => Number(a[0] === 'scratch') - Number(b[0] === 'scratch') || latest(b[1]) - latest(a[1]));
   }, [sessions, query]);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto', gap: 2 }}>
-      {error ? <div style={{ padding: '0 10px', color: 'var(--accent-red)', fontSize: 13 }}>{error}</div> : null}
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto', gap: 0 }}>
+      {error ? <div style={{ padding: '0 10px', color: 'var(--accent-red)', fontSize: 12 }}>{error}</div> : null}
       {groups.map(([project, list]) => {
-        const open = list.filter(s => !today(s));
-        const done = list.filter(today);
+        const open = list.filter(s => !isDone(s));
+        const done = list.filter(isDone);
+        const waiting = list.filter(s => NEEDS_YOU.has(s.state)).length;
         return (
-          <div key={project}>
+          <div key={project} style={{ marginBottom: 10 }}>
             <div style={{
-              display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px 4px',
-              fontSize: 13, fontWeight: 600, color: 'var(--text-label)',
+              display: 'flex', alignItems: 'center', gap: 13, height: 26, padding: '0 12px 0 13px',
+              fontSize: 12, fontWeight: 600, color: project === 'scratch' ? '#9c9c9c' : '#cbcbcb',
             }}>
-              <Folder size={12} style={{ color: 'var(--text-hint)', flexShrink: 0 }} />
-              {projectName(project)}
-              <span style={{ flex: 1 }} />
-              <span style={{ fontWeight: 400, color: 'var(--text-hint)', fontSize: 11 }}>{list.length}</span>
+              <Folder size={13} style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{project === 'scratch' ? 'no project' : projectName(project)}</span>
+              {waiting ? <span style={{ fontWeight: 400, color: 'var(--accent-amber)', fontSize: 10.5 }} title="needs you">{waiting} waiting</span> : null}
             </div>
             {open.map(s => <Row key={s.id} s={s} active={active} onSelect={onSelect} />)}
             {done.length ? <FinishedGroup done={done} active={active} onSelect={onSelect} /> : null}
           </div>
         );
       })}
-      {!groups.length && !error ? <div style={{ padding: '0 10px', color: 'var(--text-hint)', fontSize: 13 }}>no sessions</div> : null}
+      {!groups.length && !error ? <div style={{ padding: '0 13px', color: 'var(--text-hint)', fontSize: 12 }}>{query ? 'no matches' : 'no sessions yet'}</div> : null}
     </div>
   );
 }
@@ -96,15 +88,16 @@ export function SessionList({ active, onSelect, query }: { active?: string; onSe
 function FinishedGroup({ done, active, onSelect }: { done: SessionSummary[]; active?: string; onSelect: (id: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   const Chevron = expanded ? ChevronDown : ChevronRight;
+  const today = done.filter(s => Date.now() - (s.updatedAt ?? 0) < DAY).length;
   return (
     <div>
       <button className="hv-sub" onClick={() => setExpanded(!expanded)} style={{
-        textAlign: 'left', width: '100%', padding: '5px 10px', border: 'none', cursor: 'pointer',
-        font: 'inherit', background: 'transparent', color: 'var(--text-secondary)',
-        borderRadius: 7, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13,
+        textAlign: 'left', width: '100%', height: 26, padding: '0 12px 0 10px', border: 'none', cursor: 'pointer',
+        font: 'inherit', background: 'transparent', color: '#888888',
+        borderRadius: 7, display: 'flex', alignItems: 'center', gap: 13, fontSize: 12,
       }}>
-        <Check size={13} style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
-        <span style={{ flex: 1 }}>{done.length} finished today</span>
+        <span style={{ width: 14, display: 'inline-flex', justifyContent: 'center' }}><Check size={12} style={{ color: 'var(--text-secondary)' }} /></span>
+        <span style={{ flex: 1 }}>{today === done.length ? `${done.length} finished today` : `${done.length} finished`}</span>
         <Chevron size={12} style={{ color: 'var(--text-hint)' }} />
       </button>
       {expanded ? done.map(s => <Row key={s.id} s={s} active={active} onSelect={onSelect} />) : null}

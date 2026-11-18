@@ -5,10 +5,10 @@ import { Plus, AtSign, Mic, ArrowUp, ChevronDown, Folder, Laptop } from 'lucide-
 import { newId } from '@ormicode/protocol';
 import { usePlatform } from '../../lib/platform.ts';
 
-const VENDORS = ['claude', 'codex', 'opencode', 'pi', 'grok', 'vibe', 'fake'];
+import { VENDORS, loadPrefs } from '../../routes/Settings.tsx';
 
 const chip = {
-  font: 'inherit', fontSize: 12, color: 'var(--text-label)',
+  font: 'inherit', fontSize: 11, fontWeight: 500, color: 'var(--text-title)',
   background: 'var(--bg-chip)', border: 'none',
   borderRadius: 7, padding: '0 8px', height: 24, display: 'inline-flex', alignItems: 'center', gap: 6,
 };
@@ -18,8 +18,8 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
   const { transport } = usePlatform();
   const area = useRef<HTMLTextAreaElement>(null);
   const [text, setText] = useState('');
-  const [vendor, setVendor] = useState('claude');
-  const [project, setProject] = useState('scratch');
+  const [vendor, setVendor] = useState(() => loadPrefs().defaultVendor);
+  const [project, setProject] = useState(() => loadPrefs().defaultProject);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -49,7 +49,7 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
   return (
     <div style={{
       background: 'var(--bg-card)', border: '1px solid var(--line-card)', borderRadius: 12,
-      padding: '14px 14px 10px', width: '100%',
+      padding: '11px 14px 10px', width: '100%',
     }}>
       <textarea
         ref={area}
@@ -58,7 +58,7 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
         onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
         placeholder="What do you want to work on?" rows={1}
         style={{
-          width: '100%', resize: 'none', font: 'inherit', fontSize: 14, lineHeight: 1.5,
+          width: '100%', resize: 'none', font: 'inherit', fontSize: 13, lineHeight: 1.5,
           background: 'transparent', border: 'none', outline: 'none', color: 'var(--text-active)',
           minHeight: 42, maxHeight: 168, overflow: 'hidden',
         }}
@@ -84,7 +84,7 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
         </span>
         <button onClick={() => void send()} disabled={!text.trim() || busy} title="start session" style={{
           width: 26, height: 26, borderRadius: '50%', border: 'none', cursor: 'pointer', marginLeft: 2,
-          background: 'var(--text-title)', color: 'var(--text-onAccent)', opacity: text.trim() ? 1 : 0.4,
+          background: 'var(--text-active)', color: 'var(--text-onAccent)', opacity: text.trim() ? 1 : 0.5,
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
         }}><ArrowUp size={15} strokeWidth={2.5} /></button>
       </div>

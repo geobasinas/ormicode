@@ -21,10 +21,10 @@ export function Composer({ session, details }: { session: string; details?: Sess
   const iconBtn = { background: 'none', border: 'none', color: 'var(--text-hint)', font: 'inherit', cursor: 'pointer', padding: 4, display: 'inline-flex' };
   const chip = { fontSize: 'var(--text-xs)', color: 'var(--text-label)', background: 'var(--bg-chip)', border: 'none', borderRadius: 7, padding: '0 8px', height: 24, display: 'inline-flex', alignItems: 'center', gap: 5 };
   return (
-    <div style={{ padding: 'var(--space-3)', display: 'flex', justifyContent: 'center' }}>
+    <div style={{ padding: '0 var(--space-5) var(--space-4)', display: 'flex', justifyContent: 'center' }}>
       <div style={{
-        width: '100%', background: 'var(--bg-card)', border: '1px solid var(--line-card)',
-        borderRadius: 'var(--radius-md)', padding: 'var(--space-2) var(--space-3)',
+        width: '100%', maxWidth: 680, background: 'var(--bg-card)', border: '1px solid var(--line-card)',
+        borderRadius: 12, padding: '10px 12px 8px',
       }}>
         <textarea
           ref={area}

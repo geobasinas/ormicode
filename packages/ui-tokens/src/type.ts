@@ -7,7 +7,7 @@ export interface TypeTokens {
 }
 
 export const typeScale: TypeTokens = {
-  'font.ui': 'Inter, system-ui, sans-serif',
+  'font.ui': '"Inter Variable", Inter, system-ui, sans-serif',
   'font.mono': '"JetBrains Mono", ui-monospace, monospace',
   'font.serif': 'Georgia, serif',
   'text.xs': '11px', 'text.sm': '12.5px', 'text.md': '14px', 'text.lg': '17px', 'text.xl': '21px', 'text.2xl': '26px',

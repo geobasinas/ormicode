@@ -1,102 +1,86 @@
 /** Now route: greeting, start composer, then two mockup-style columns —
- * recent sessions on the left, attention/working items on the right. */
-import { Play, CircleAlert, LoaderCircle, GitBranch, Folder, type LucideIcon } from 'lucide-react';
+ * recent sessions on the left, sessions that need you or are working on the right. */
 import { useSessions, type SessionSummary } from '../features/session/useSessions.ts';
 import { NewSession } from '../features/session/NewSession.tsx';
 import { PairCard } from '../features/pair/PairCard.tsx';
+import { StateIcon, NEEDS_YOU, LIVE, stateLabel, whereLine } from '../features/session/state.tsx';
 import { ago, greeting, projectName } from '../lib/format.ts';
-
-const attention = ['awaiting_approval', 'awaiting_input', 'paused_rate_limited', 'interrupted', 'failed'];
-const working = ['running', 'starting', 'retrying'];
-
-const stateGlyph: Record<string, { icon: LucideIcon; color: string }> = {
-  running: { icon: Play, color: 'var(--accent-mint)' },
-  starting: { icon: LoaderCircle, color: 'var(--accent-mint)' },
-  retrying: { icon: LoaderCircle, color: 'var(--accent-amber)' },
-  awaiting_approval: { icon: CircleAlert, color: 'var(--accent-amber)' },
-  awaiting_input: { icon: CircleAlert, color: 'var(--accent-amber)' },
-  paused_rate_limited: { icon: CircleAlert, color: 'var(--accent-amber)' },
-  interrupted: { icon: CircleAlert, color: 'var(--accent-amber)' },
-  failed: { icon: CircleAlert, color: 'var(--accent-red)' },
-};
-const rowIcon = (s: SessionSummary) => stateGlyph[s.state] ?? { icon: Play, color: 'var(--text-hint)' };
 
 const cardBox = {
   background: 'var(--bg-card)', border: '1px solid var(--line-card)',
-  borderRadius: 'var(--radius-md)', padding: 4, overflow: 'hidden' as const,
+  borderRadius: 12, padding: 3, overflow: 'hidden' as const,
 };
-const head = { fontSize: 11, color: 'var(--text-hint)', letterSpacing: 1.2, margin: '0 0 6px 10px' };
+const head = { fontSize: 10, fontWeight: 600, color: 'var(--text-label)', letterSpacing: 1, margin: '0 0 6px 0' };
+const rowBtn = {
+  textAlign: 'left' as const, font: 'inherit', cursor: 'pointer', width: '100%', height: 38,
+  padding: '0 12px 0 9px', background: 'transparent', border: 'none',
+  borderRadius: 9, display: 'flex', alignItems: 'center', gap: 13,
+};
+const title = (s: SessionSummary, first: boolean) => (
+  <span style={{ display: 'block', fontSize: 12, fontWeight: 500, color: first ? 'var(--text-title)' : '#cbcbcb', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title || s.id.slice(0, 14)}</span>
+);
 
-function SessionRow({ s, onOpen }: { s: SessionSummary; onOpen: (id: string) => void }) {
-  const { icon: Icon, color } = rowIcon(s);
+function SessionRow({ s, first, onOpen }: { s: SessionSummary; first: boolean; onOpen: (id: string) => void }) {
   return (
-    <button className="hv-sub" onClick={() => onOpen(s.id)} style={{
-      textAlign: 'left', font: 'inherit', cursor: 'pointer', width: '100%',
-      padding: '8px 12px', background: 'transparent', border: 'none',
-      borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', gap: 10,
-    }}>
-      <Icon size={14} style={{ color, flexShrink: 0 }} />
+    <button className="hv-row" onClick={() => onOpen(s.id)} style={rowBtn}>
+      <span style={{ width: 20, display: 'inline-flex', justifyContent: 'center' }}><StateIcon state={s.state} size={12} /></span>
       <span style={{ flex: 1, minWidth: 0 }}>
-        <span style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--text-active)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title || s.id.slice(0, 14)}</span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text-hint)', marginTop: 1 }}>
-          <Folder size={10} />{projectName(s.project)}
-          <GitBranch size={10} style={{ marginLeft: 4 }} />{s.state}
+        {title(s, first)}
+        <span style={{ display: 'block', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-secondary)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {s.project === 'scratch' ? whereLine(s) : whereLine(s, projectName(s.project))}
         </span>
       </span>
-      <span style={{ fontSize: 11, color: 'var(--text-hint)', flexShrink: 0 }}>{ago(s.updatedAt ?? 0)}</span>
+      <span style={{ fontSize: 10.5, color: 'var(--text-secondary)', flexShrink: 0 }}>{ago(s.updatedAt ?? 0)}</span>
     </button>
   );
 }
 
 function AttentionRow({ s, n, onOpen }: { s: SessionSummary; n: number; onOpen: (id: string) => void }) {
-  const needs = attention.includes(s.state);
+  const needs = NEEDS_YOU.has(s.state);
   return (
-    <button className="hv-sub" onClick={() => onOpen(s.id)} style={{
-      textAlign: 'left', font: 'inherit', cursor: 'pointer', width: '100%',
-      padding: '8px 12px', background: 'transparent', border: 'none',
-      borderRadius: 'var(--radius-sm)', display: 'flex', alignItems: 'center', gap: 10,
-    }}>
+    <button className="hv-row" onClick={() => onOpen(s.id)} style={rowBtn}>
       <span style={{
-        width: 20, height: 20, borderRadius: 6, flexShrink: 0, display: 'inline-flex',
-        alignItems: 'center', justifyContent: 'center', background: '#2f2f2f',
-        color: 'var(--text-secondary)', fontSize: 11, fontWeight: 600,
+        width: 20, height: 20, borderRadius: 7, flexShrink: 0, display: 'inline-flex',
+        alignItems: 'center', justifyContent: 'center', background: 'var(--bg-badge)',
+        color: 'var(--text-onAccent)', fontSize: 10, fontWeight: 700,
       }}>{n}</span>
       <span style={{ flex: 1, minWidth: 0 }}>
-        <span style={{ display: 'block', fontSize: 13, fontWeight: 500, color: 'var(--text-active)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title || s.id.slice(0, 14)}</span>
-        <span style={{ display: 'block', fontSize: 11, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: needs ? 'var(--accent-amber)' : 'var(--text-hint)' }}>
-          {s.state.replace(/_/g, ' ')}
+        {title(s, n === 1)}
+        <span style={{ display: 'block', fontSize: 10.5, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: needs ? 'var(--accent-amber)' : 'var(--text-secondary)' }}>
+          {stateLabel(s.state)} · {projectName(s.project)}
         </span>
       </span>
-      <span style={{ fontSize: 11, color: 'var(--text-hint)', flexShrink: 0 }}>{ago(s.updatedAt ?? 0)}</span>
+      <StateIcon state={s.state} size={12} />
     </button>
   );
 }
 
 export function Now({ onOpen, state }: { onOpen: (session: string) => void; state?: string }) {
   const { sessions } = useSessions();
-  const needs = sessions.filter(s => attention.includes(s.state));
-  const live = sessions.filter(s => working.includes(s.state));
-  const recent = [...sessions].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)).slice(0, 5);
-  const right = [...needs, ...live].slice(0, 5);
+  const needs = sessions.filter(s => NEEDS_YOU.has(s.state)).sort((a, b) => (a.updatedAt ?? 0) - (b.updatedAt ?? 0));
+  const live = sessions.filter(s => LIVE.has(s.state));
+  const recent = [...sessions].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)).slice(0, 4);
+  const right = [...needs, ...live].slice(0, 4);
+  const empty = (t: string) => <div style={{ color: 'var(--text-secondary)', fontSize: 12, height: 38, display: 'flex', alignItems: 'center', padding: '0 12px' }}>{t}</div>;
   return (
     <div style={{ overflow: 'auto', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
       <div style={{ width: '100%', maxWidth: 792, padding: '0 var(--space-5)' }}>
-        <h1 style={{ fontSize: 22, color: 'var(--text-title)', margin: '0 0 var(--space-4)', fontWeight: 600, letterSpacing: -0.3 }}>{greeting()}</h1>
+        <h1 style={{ fontSize: 22, color: 'var(--text-title)', margin: '0 0 15px', fontWeight: 600, letterSpacing: -0.3 }}>{greeting()}</h1>
         {state === 'unpaired' ? <PairCard /> : null}
         <NewSession onStarted={onOpen} />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)', marginTop: 'var(--space-5)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}>
           <div>
             <div style={head}>RECENT SESSIONS</div>
             <div style={cardBox}>
-              {recent.map(s => <SessionRow key={s.id} s={s} onOpen={onOpen} />)}
-              {!recent.length ? <div style={{ color: 'var(--text-hint)', fontSize: 'var(--text-sm)', padding: 'var(--space-3)' }}>no sessions yet</div> : null}
+              {recent.map((s, i) => <SessionRow key={s.id} s={s} first={i === 0} onOpen={onOpen} />)}
+              {!recent.length ? empty('No sessions yet. Start one above.') : null}
             </div>
           </div>
           <div>
             <div style={head}>NEEDS YOU</div>
             <div style={cardBox}>
               {right.map((s, i) => <AttentionRow key={s.id} s={s} n={i + 1} onOpen={onOpen} />)}
-              {!right.length ? <div style={{ color: 'var(--text-hint)', fontSize: 'var(--text-sm)', padding: 'var(--space-3)' }}>nothing waiting on you</div> : null}
+              {!right.length ? empty('Nothing waiting on you') : null}
             </div>
           </div>
         </div>

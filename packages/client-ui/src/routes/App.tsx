@@ -12,6 +12,8 @@ import { SessionList } from '../features/session/SessionList.tsx';
 import { useSession } from '../features/session/useSession.ts';
 import { Now } from './Now.tsx';
 import { SessionView } from './SessionView.tsx';
+import { SettingsView, loadPrefs, type Prefs } from './Settings.tsx';
+import { SessionHeader } from '../features/session/SessionHeader.tsx';
 
 const MAX_TABS = 8;
 const drag = { WebkitAppRegion: 'drag' } as const;
@@ -35,9 +37,11 @@ function Titlebar({ platform }: { platform: ClientPlatform }) {
   );
 }
 
-function Tab({ id, active, onSelect, onClose }: { id: string; active: boolean; onSelect: () => void; onClose?: () => void }) {
-  const details = useSession(id === 'now' ? undefined : id);
-  const label = id === 'now' ? 'Home' : (details?.title || id.slice(0, 14));
+const PAGES: Record<string, string> = { now: 'Home', settings: 'Settings' };
+
+function Tab({ id, n, active, onSelect, onClose }: { id: string; n?: number; active: boolean; onSelect: () => void; onClose?: () => void }) {
+  const details = useSession(PAGES[id] ? undefined : id);
+  const label = PAGES[id] ?? (details?.title || id.slice(0, 14));
   const R = 10;
   const ref = useRef<HTMLSpanElement>(null);
   useLayoutEffect(() => { const el = ref.current; if (el) { el.style.minWidth = ''; el.style.minWidth = `${Math.ceil(el.getBoundingClientRect().width)}px`; } }, [label, active, onClose]);
@@ -54,7 +58,8 @@ function Tab({ id, active, onSelect, onClose }: { id: string; active: boolean; o
       color: active ? 'var(--text-title)' : 'var(--text-secondary)',
     }} onClick={onSelect}>
       <span className={active ? undefined : 'hv-tab'} style={{ position: 'relative', zIndex: 2, display: 'inline-flex', alignItems: 'center', gap: 8, padding: '4px 11px', borderRadius: 8 }}>
-        {label}
+        {n !== undefined ? <span style={{ width: 18, height: 18, borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: active ? 'var(--bg-badge)' : 'var(--bg-raised)', color: active ? 'var(--text-onAccent)' : 'var(--text-label)', fontSize: 10, fontWeight: 700 }}>{n}</span> : null}
+        <span style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
         {onClose ? <X size={12} className="hv-x" style={{ color: 'var(--text-hint)', borderRadius: 4 }} onClick={e => { e.stopPropagation(); onClose(); }} /> : null}
       </span>
       {active ? fillet('right') : null}
@@ -99,7 +104,14 @@ function Rail({ route, rail, onRail }: { route: string; rail: string; onRail: (r
   );
 }
 
-export function App({ platform, theme = 'dark', layout }: { platform: ClientPlatform; theme?: string; layout?: LayoutDescriptor }) {
+function ActiveHeader({ session }: { session: string }) {
+  const details = useSession(session);
+  return <SessionHeader session={session} details={details} />;
+}
+
+export function App({ platform, theme: initialTheme, layout }: { platform: ClientPlatform; theme?: string; layout?: LayoutDescriptor }) {
+  const [prefs, setPrefs] = useState<Prefs>(() => loadPrefs(initialTheme));
+  const theme = prefs.theme;
   const [tabs, setTabs] = useState<string[]>([]);
   const [route, setRoute] = useState<string>('now');
   const [state, setState] = useState<string>('connecting');
@@ -119,6 +131,8 @@ export function App({ platform, theme = 'dark', layout }: { platform: ClientPlat
       if (!e.ctrlKey && !e.metaKey) return;
       if (e.key === 'k' || e.key === 'K') { e.preventDefault(); searchRef.current?.focus(); }
       if (e.key === 'n' || e.key === 'N') { e.preventDefault(); setRoute('now'); }
+      if (e.key === '1') { e.preventDefault(); setRoute('now'); }
+      if (e.key === ',') { e.preventDefault(); openRef.current('settings'); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -129,10 +143,12 @@ export function App({ platform, theme = 'dark', layout }: { platform: ClientPlat
   }, [platform]);
 
   const sidebar = resolved.regions.sidebar;
+  const openRef = useRef((id: string) => { void id; });
   const open = (id: string) => {
     setTabs(ts => ts.includes(id) ? ts : [...ts.slice(-(MAX_TABS - 1)), id]);
     setRoute(id);
   };
+  openRef.current = id => open(id);
   const close = (id: string) => setTabs(ts => {
     const next = ts.filter(t => t !== id);
     if (route === id) setRoute(next[next.length - 1] ?? 'now');
@@ -152,8 +168,8 @@ export function App({ platform, theme = 'dark', layout }: { platform: ClientPlat
               <div style={{ height: 30, display: 'flex', alignItems: 'center', gap: 9, padding: '0 10px', background: 'var(--bg-card)', borderRadius: 8, border: '1px solid var(--line-divider)' }}>
                 <Search size={15} style={{ color: 'var(--text-label)', flexShrink: 0 }} />
                 <input ref={el => { searchRef.current = el; }} value={query} onChange={e => setQuery(e.target.value)} placeholder="Search"
-                  style={{ flex: 1, font: 'inherit', fontSize: 13, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text-label)' }} />
-                <span style={{ fontSize: 10, color: '#5e5e5e' }}>Ctrl K</span>
+                  style={{ flex: 1, minWidth: 0, font: 'inherit', fontSize: 13, background: 'transparent', border: 'none', outline: 'none', color: 'var(--text-label)' }} />
+                <span style={{ fontSize: 10, color: '#5e5e5e', whiteSpace: 'nowrap' }}>Ctrl K</span>
               </div>
               <button className="hv-sub" onClick={() => setRoute('now')} style={{
                 height: 30, marginTop: 6, display: 'flex', alignItems: 'center', gap: 10, padding: '0 10px',
@@ -183,22 +199,30 @@ export function App({ platform, theme = 'dark', layout }: { platform: ClientPlat
                   <div style={{ padding: '0 var(--space-3)', color: 'var(--text-hint)', fontSize: 13 }}>no bots yet</div>
                 )}
               </div>
-              <div style={{ padding: '8px 10px 0', borderTop: '1px solid var(--line-pane)', display: 'flex', alignItems: 'center', gap: 10 }}>
-                <Settings size={15} style={{ color: 'var(--text-label)', flexShrink: 0 }} />
-                <span style={{ fontSize: 13, color: 'var(--text-label)' }}>Settings</span>
-              </div>
+              <button className="hv-sub" onClick={() => open('settings')} style={{
+                height: 32, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '0 10px', marginTop: 4,
+                font: 'inherit', cursor: 'pointer', border: 'none', borderRadius: 8, textAlign: 'left',
+                background: route === 'settings' ? 'var(--bg-inset)' : 'transparent',
+              }}>
+                <Settings size={15} style={{ color: route === 'settings' ? 'var(--text-title)' : 'var(--text-label)', flexShrink: 0 }} />
+                <span style={{ fontSize: 12.5, color: route === 'settings' ? 'var(--text-title)' : '#cbcbcb' }}>Settings</span>
+              </button>
             </aside>
           ) : null}
           <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', margin: '12px 0 18px 18px' }}>
             <div style={{ display: 'flex', gap: 10, flexShrink: 0, position: 'relative', zIndex: 1, marginBottom: -1 }}>
               <Tab id="now" active={route === 'now'} onSelect={() => setRoute('now')} />
-              {tabs.map(t => <Tab key={t} id={t} active={route === t} onSelect={() => setRoute(t)} onClose={() => close(t)} />)}
+              {tabs.map((t, i) => <Tab key={t} id={t} n={PAGES[t] ? undefined : tabs.filter(x => !PAGES[x]).indexOf(t) + 1} active={route === t} onSelect={() => setRoute(t)} onClose={() => close(t)} />)}
+              <span style={{ flex: 1 }} />
+              {!PAGES[route] ? <div style={{ ...noDrag, minWidth: 0, display: 'flex' }}><ActiveHeader key={route} session={route} /></div> : null}
             </div>
             <div style={{
               flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg-main)',
               borderRadius: route === 'now' ? '0 12px 12px 12px' : 12,
             }}>
-              {route === 'now' ? <Now onOpen={open} state={state} /> : <SessionView key={route} session={route} rail={rail} onRail={setRail} />}
+              {route === 'now' ? <Now onOpen={open} state={state} />
+                : route === 'settings' ? <SettingsView prefs={prefs} onPrefs={setPrefs} connection={state} />
+                : <SessionView key={route} session={route} rail={rail} onRail={setRail} />}
             </div>
           </main>
           <Rail route={route} rail={rail} onRail={setRail} />
