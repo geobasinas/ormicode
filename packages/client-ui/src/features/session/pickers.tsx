@@ -61,7 +61,12 @@ export function AgentChip({ vendor, via, agents, onPick, model, models, onModel,
     <DropdownMenu onOpenChange={open => { if (!open) setQuery(''); }}>
       <DropdownMenuTrigger asChild>
         <button className="hv-sub" style={chip} title={title}>
-          {icon}<span className="ormi-chip-text">{pair}{model !== 'default' ? ` · ${current?.label ?? model}` : ''}</span>{chev}
+          {icon ?? <VendorIcon vendor={vendor} size={11} />}
+          <span className="ormi-chip-text">
+            {pair}
+            {model !== 'default' ? ` · ${current?.label ?? model}` : ''}
+            {effort !== 'default' ? ` · ${effort}` : ''}
+          </span>{chev}
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" style={{ width: 248, maxWidth: 'calc(100vw - 16px)' }}>

@@ -1,7 +1,7 @@
 /** New-session composer card: prompt + project/machine/agent chips → session.start.
  *  Enter sends, Shift+Enter newline; the textarea grows with the prompt. */
 import { useEffect, useRef, useState } from 'react';
-import { Plus, AtSign, Mic, ArrowUp, ChevronDown, Folder, Laptop, Bot, GitBranch } from 'lucide-react';
+import { Plus, AtSign, Mic, ArrowUp, ChevronDown, Folder, Laptop, GitBranch } from 'lucide-react';
 import { newId } from '@ormicode/protocol';
 import { usePlatform } from '../../lib/platform.ts';
 import { VENDORS, loadPrefs, rememberProject } from '../../routes/Settings.tsx';
@@ -134,7 +134,6 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
           }} />
         <span style={chip} title="this machine"><Laptop size={12} style={{ color: 'var(--text-hint)' }} />local<ChevronDown size={12} style={{ color: 'var(--text-hint)' }} /></span>
         <AgentChip title="agent, transport, model and effort"
-          icon={<Bot size={11} style={{ color: 'var(--text-hint)' }} />}
           vendor={vendor} via={chosen} agents={agents}
           onPick={(v, t) => { setVendor(v); setVia(t); }}
           model={model} models={modelList.models} onModel={setModel}
