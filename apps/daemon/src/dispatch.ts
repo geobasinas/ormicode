@@ -17,6 +17,7 @@ import { resolveWorkspace, diffPatch, DiffStatCache, type WorkspaceChoice } from
 const diffStats = new DiffStatCache();
 const PATCH_INLINE = 256 * 1024;
 import type { Checkpoints } from '@ormicode/checkpoints';
+import { loadTable, summarize } from '@ormicode/pricing';
 import { checkpointMethod } from './checkpoint-methods.ts';
 
 const LIVE_STATES = ['idle', 'starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying', 'paused_rate_limited', 'interrupted'] as const;
@@ -115,6 +116,13 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
           ...(s.base_commit && !s.archived ? { diff: diffStats.get(s.cwd, s.base_commit) } : {}),
         }));
         return client.link.reply(id, { sessions });
+      }
+      case 'session.cost': {
+        const s = getSession(db, String(body.session));
+        if (!s) return client.link.replyError(id, 'session.not_found', String(body.session));
+        const events = replay(db, s.id).filter(e => e.kind === 'usage' || e.kind === 'turn_end')
+          .map(e => ({ kind: e.kind, payload: JSON.parse(e.payload) as Record<string, unknown> }));
+        return client.link.reply(id, { ...summarize(events, s.model, loadTable(join(ormicodeDir(), 'prices.json'))) });
       }
       case 'git.diff': {
         const s = getSession(db, String(body.session));

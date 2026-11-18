@@ -87,6 +87,7 @@ export const requestBodies = {
   // Installed agent adapters: which vendor/transport pairs session.start accepts.
   'agents.list': z.object({}),
   'git.diff': z.object(session),
+  'session.cost': z.object(session),
   'checkpoint.list': z.object(session),
   // Without `to`: what `from` changed since the checkpoint before it.
   'checkpoint.diff': z.object({ ...session, from: nonEmpty, to: z.optional(nonEmpty) }),
@@ -128,6 +129,10 @@ export const responseBodies = {
   'session.decide': z.object({ decided: z.literal(true) }),
   'session.answer': z.object({ answered: z.literal(true) }),
   'checkpoint.list': z.object({ checkpoints: z.array(z.object({ id: nonEmpty, seq: cursorSchema, tool: z.string(), ts: timestampSchema })) }),
+  'session.cost': z.object({
+    input: cursorSchema, output: cursorSchema, cacheRead: cursorSchema, cacheWrite: cursorSchema, turns: cursorSchema,
+    usd: z.nullable(z.number()), source: z.enum(['reported', 'estimate', 'none']), priceVersion: z.nullable(z.string()), model: z.nullable(z.string()),
+  }),
   'git.diff': z.object({
     files: z.array(z.object({ path: nonEmpty, oldPath: z.optional(nonEmpty), status: z.enum(['added', 'deleted', 'modified', 'renamed']), binary: z.boolean(), added: cursorSchema, removed: cursorSchema })),
     patch: z.string(), truncated: z.boolean(),

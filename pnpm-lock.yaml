@@ -98,6 +98,9 @@ importers:
       '@ormicode/leases':
         specifier: workspace:*
         version: link:../../packages/leases
+      '@ormicode/pricing':
+        specifier: workspace:*
+        version: link:../../packages/pricing
       '@ormicode/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
@@ -501,6 +504,8 @@ importers:
       '@ormicode/session-store':
         specifier: workspace:*
         version: link:../session-store
+
+  packages/pricing: {}
 
   packages/protocol:
     dependencies:

@@ -857,6 +857,8 @@ Checking afterwards and rolling back is faster than reviewing every change upfro
 
 **Never shown:** projected monthly spend, savings, streaks, anything that looks like a business dashboard.
 
+**Implementation status:** `packages/pricing` has a built-in list-price table (version `builtin-2025-08`: Claude Opus/Sonnet/Haiku and GPT-5 family) merged with hand edits from `~/.ormicode/prices.json`; vendor price fetching is still to come. `session.cost {session}` → `{input, output, cacheRead, cacheWrite, turns, usd, source: reported|estimate|none, priceVersion, model}`, summed from stored `usage` events: agent-reported `costUsd` is used as is, other turns are estimated from the price table, and any unpriced turn makes `usd` null. Per-project/day/machine totals and the desktop display are still to come.
+
 **Retries:** a retried turn can be billed twice. Usage is recorded per attempt, the session total is the sum, and retries are marked so a big number has an explanation.
 
 ## Raw logs
