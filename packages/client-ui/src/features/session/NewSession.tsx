@@ -5,7 +5,8 @@ import { Plus, AtSign, Mic, ArrowUp, ChevronDown, Folder, Laptop, Cpu, Gauge, Bo
 import { newId } from '@ormicode/protocol';
 import { usePlatform } from '../../lib/platform.ts';
 import { VENDORS, loadPrefs } from '../../routes/Settings.tsx';
-import { useImages, ImageStrip, MenuChip, TextChip, iconBtn } from './composer-parts.tsx';
+import { useImages, ImageStrip, MenuChip, ModelChip, EffortChip, iconBtn } from './composer-parts.tsx';
+import { useModels } from './useModels.ts';
 
 const chip = {
   font: 'inherit', fontSize: 11, fontWeight: 500, color: 'var(--text-title)',
@@ -22,6 +23,7 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
   const [vendor, setVendor] = useState(() => loadPrefs().defaultVendor);
   const [project, setProject] = useState(() => loadPrefs().defaultProject);
   const [agents, setAgents] = useState<Agent[]>(FALLBACK);
+  const [agentsLoaded, setAgentsLoaded] = useState(false);
   const [via, setVia] = useState<string>();
   const [model, setModel] = useState('default');
   const [effort, setEffort] = useState('default');
@@ -31,10 +33,12 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
   useEffect(() => {
     transport.request('agents.list', {}).then(r => {
       if (r.type === 'res') setAgents((r.body as unknown as { agents: Agent[] }).agents);
-    }).catch(() => undefined);
+      setAgentsLoaded(true);
+    }).catch(() => setAgentsLoaded(true));
   }, [transport]);
   const transports = agents.find(a => a.vendor === vendor)?.transports ?? ['cli'];
   const chosen = via && transports.includes(via) ? via : transports[0]!;
+  const modelList = useModels(vendor, agentsLoaded ? chosen : undefined);
 
   const grow = () => {
     const el = area.current;
@@ -95,8 +99,8 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
         <span style={chip} title="this machine"><Laptop size={12} style={{ color: 'var(--text-hint)' }} />local<ChevronDown size={12} style={{ color: 'var(--text-hint)' }} /></span>
         <MenuChip title="agent" label="Agent" icon={<Bot size={11} style={{ color: 'var(--text-hint)' }} />} value={vendor} choices={agents.map(a => ({ value: a.vendor }))} onChange={v => { setVendor(v); setVia(undefined); }} />
         {transports.length > 1 ? <MenuChip title="transport" label="Transport" value={chosen} choices={transports.map(t => ({ value: t }))} onChange={setVia} /> : null}
-        <TextChip title="model — the vendor's model id" icon={<Cpu size={11} style={{ color: 'var(--text-hint)' }} />} value={model} onCommit={setModel} />
-        <TextChip title="effort — the vendor's own word" icon={<Gauge size={11} style={{ color: 'var(--text-hint)' }} />} width={60} value={effort} onCommit={setEffort} />
+        <ModelChip title="model — the vendor's model id" icon={<Cpu size={11} style={{ color: 'var(--text-hint)' }} />} value={model} models={modelList.models} loading={modelList.loading} refresh={modelList.refresh} onChange={setModel} />
+        <EffortChip title="effort — the vendor's own word" icon={<Gauge size={11} style={{ color: 'var(--text-hint)' }} />} value={effort} model={model} models={modelList.models} onChange={setEffort} />
         <button onClick={() => void send()} disabled={!text.trim() || busy} title="start session" style={{
           width: 26, height: 26, borderRadius: '50%', border: 'none', cursor: 'pointer', marginLeft: 2,
           background: 'var(--text-active)', color: 'var(--text-onAccent)', opacity: text.trim() ? 1 : 0.5,

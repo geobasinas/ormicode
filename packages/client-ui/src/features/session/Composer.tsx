@@ -1,11 +1,12 @@
 /** Session composer — Enter sends (session.prompt; session.steer while the agent
  * is working), Shift+Enter newline. Images by picker or paste; model, effort and
  * mode chips call session.setModel/setEffort/setMode; Stop calls session.abort. */
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Plus, AtSign, Mic, ArrowUp, Square, Cpu, Gauge } from 'lucide-react';
 import { usePlatform } from '../../lib/platform.ts';
 import type { SessionDetails } from './useSession.ts';
-import { useImages, ImageStrip, MenuChip, TextChip, chip, iconBtn } from './composer-parts.tsx';
+import { useImages, ImageStrip, MenuChip, ModelChip, EffortChip, chip, iconBtn } from './composer-parts.tsx';
+import { useModels } from './useModels.ts';
 
 const LIVE = new Set(['running', 'starting', 'retrying']);
 
@@ -14,7 +15,14 @@ export function Composer({ session, details }: { session: string; details?: Sess
   const area = useRef<HTMLTextAreaElement>(null);
   const [text, setText] = useState('');
   const [error, setError] = useState<string>();
+  const [modelOverride, setModelOverride] = useState<string>();
+  const [effortOverride, setEffortOverride] = useState<string>();
   const img = useImages();
+  const modelList = useModels(details?.vendor, details?.transport);
+  useEffect(() => { setModelOverride(undefined); }, [session, details?.model]);
+  useEffect(() => { setEffortOverride(undefined); }, [session, details?.effort]);
+  const model = modelOverride ?? details?.model ?? 'default';
+  const effort = effortOverride ?? details?.effort ?? 'default';
   const live = LIVE.has(details?.state ?? '');
   const grow = () => {
     const el = area.current;
@@ -64,8 +72,8 @@ export function Composer({ session, details }: { session: string; details?: Sess
           <span style={{ flex: 1, minWidth: 4 }} />
           {details?.vendor ? <span className="ormi-narrow-hide" style={{ ...chip, cursor: 'default', flexShrink: 0 }} title="agent · transport">{details.vendor}<span style={{ color: 'var(--text-hint)' }}>{details.transport}</span></span> : null}
           {modes.length ? <MenuChip title="mode" label="Mode" value={mode ?? modes[0]!.id} choices={modes.map(m => ({ value: m.id, name: m.name }))} onChange={v => void call('session.setMode', { mode: v })} /> : null}
-          {details ? <TextChip title="model — the vendor's model id" icon={<Cpu size={11} style={{ color: 'var(--text-hint)' }} />} value={details.model ?? 'default'} onCommit={v => void call('session.setModel', { model: v })} /> : null}
-          {details ? <TextChip title="effort — the vendor's own word" icon={<Gauge size={11} style={{ color: 'var(--text-hint)' }} />} width={60} value={details.effort ?? 'default'} onCommit={v => void call('session.setEffort', { effort: v })} /> : null}
+          {details ? <ModelChip title="model — the vendor's model id" icon={<Cpu size={11} style={{ color: 'var(--text-hint)' }} />} value={model} models={modelList.models} loading={modelList.loading} refresh={modelList.refresh} onChange={v => { setModelOverride(v); if (v !== 'default') void call('session.setModel', { model: v }).then(ok => { if (!ok) setModelOverride(undefined); }); }} /> : null}
+          {details ? <EffortChip title="effort — the vendor's own word" icon={<Gauge size={11} style={{ color: 'var(--text-hint)' }} />} value={effort} model={model} models={modelList.models} onChange={v => { setEffortOverride(v); if (v !== 'default') void call('session.setEffort', { effort: v }).then(ok => { if (!ok) setEffortOverride(undefined); }); }} /> : null}
           {live && !text.trim() ? (
             <button onClick={() => void call('session.abort', {})} title="stop the turn" aria-label="stop" style={{
               width: 26, height: 26, borderRadius: '50%', border: 'none', cursor: 'pointer', marginLeft: 2, flexShrink: 0,

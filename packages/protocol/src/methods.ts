@@ -173,6 +173,7 @@ export const requestBodies = {
   'devices.rename': z.object({ device: nonEmpty, name: nonEmpty }),
   // confirm must equal the device name, so a revoke can't fire by accident.
   'devices.revoke': z.object({ device: nonEmpty, confirm: nonEmpty }),
+  'models.list': z.object({ agent: z.optional(nonEmpty), transport: z.optional(nonEmpty), refresh: z.optional(z.boolean()) }),
   // Hub-side pairing: returns a one-shot 12-digit code the new device enters.
   'pair.create': z.object({}),
   // A device exchanges a live code for a device token (raw token returned once).
@@ -223,6 +224,13 @@ export const responseBodies = {
   'pricing.status': priceStatus,
   'pricing.refresh': priceStatus,
   'pricing.get': z.object({ model: nonEmpty, version: z.nullable(z.string()), price: z.nullable(z.object({ input: z.number(), output: z.number(), cacheRead: z.optional(z.number()), cacheWrite: z.optional(z.number()) })) }),
+  'models.list': z.object({
+    models: z.array(z.object({
+      agent: nonEmpty, transport: nonEmpty, id: nonEmpty, label: nonEmpty, efforts: z.array(z.string()),
+      available: z.boolean(), reason: z.optional(z.string()), cachedAt: timestampSchema,
+    })),
+    errors: z.optional(z.array(z.object({ agent: nonEmpty, transport: nonEmpty, message: nonEmpty }))),
+  }),
   'session.cost': z.object({
     input: cursorSchema, output: cursorSchema, cacheRead: cursorSchema, cacheWrite: cursorSchema, turns: cursorSchema,
     usd: z.nullable(z.number()), source: z.enum(['reported', 'estimate', 'none']), priceVersion: z.nullable(z.string()), model: z.nullable(z.string()),

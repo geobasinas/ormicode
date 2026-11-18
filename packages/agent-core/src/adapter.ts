@@ -11,7 +11,7 @@ export const NO_CAPABILITIES: Readonly<Capabilities> = Object.freeze({
   modes: false, configOptions: false, images: false, plan: false, subagents: false, nativeWindows: false,
 });
 export interface DetectResult { available: boolean; version?: string; reason?: string }
-export interface Model { id: string; name?: string; efforts?: readonly string[] }
+export interface Model { id: string; name?: string; efforts?: readonly string[]; available?: boolean; reason?: string }
 export type ModelList = readonly Model[];
 /** A stdio MCP server the agent should launch (command + args + env). */
 export interface McpServerSpec { command: string; args?: string[]; env?: Record<string, string> }

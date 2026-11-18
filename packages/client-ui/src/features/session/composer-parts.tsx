@@ -1,8 +1,9 @@
 /** Pieces shared by the Home and session composers: image attachments
  * (pick or paste), picker chips and inline-editable chips. */
 import { useRef, useState, type ClipboardEvent, type ReactNode } from 'react';
-import { ChevronDown, X } from 'lucide-react';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger, DropdownMenuLabel } from '../../components/ui/dropdown-menu.tsx';
+import { Check, ChevronDown, RefreshCw, X } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuLabel } from '../../components/ui/dropdown-menu.tsx';
+import type { ListedModel } from './useModels.ts';
 
 export interface Attached { data: string; mimeType: string; url: string; name: string }
 const MAX_BYTES = 5 * 1024 * 1024;
@@ -81,20 +82,143 @@ export function MenuChip({ value, choices, onChange, label, icon, title }: {
   );
 }
 
-/** Chip showing a value; click to type a new one (Enter commits, Esc cancels). */
-export function TextChip({ value, onCommit, title, placeholder, icon, width = 96 }: {
-  value: string; onCommit: (v: string) => void; title?: string; placeholder?: string; icon?: ReactNode; width?: number;
+export function ModelChip({ value, models, loading, onChange, refresh, icon, title }: {
+  value: string; models: ListedModel[]; loading: boolean; onChange: (v: string) => void; refresh: () => Promise<unknown>; icon?: ReactNode; title?: string;
 }) {
-  const [draft, setDraft] = useState<string>();
-  if (draft === undefined) {
-    return <button className="hv-sub" style={chip} title={title} onClick={() => setDraft(value === 'default' ? '' : value)}>{icon}<span className="ormi-chip-text">{value}</span>{chev}</button>;
+  const [query, setQuery] = useState('');
+  const [custom, setCustom] = useState(false);
+  models = models.filter(model => model.id !== 'default');
+  if (custom) return <TextChip autoEdit onDone={() => setCustom(false)} title={title} icon={icon} value={value} onCommit={onChange} />;
+  const current = models.find(model => model.id === value);
+  const matching = models.filter(model => `${model.label}\n${model.id}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
+  const visible = matching.slice(0, 200);
+  return (
+    <DropdownMenu onOpenChange={open => { if (!open) setQuery(''); }}>
+      <DropdownMenuTrigger asChild>
+        <button className="hv-sub" style={chip} title={title}>
+          {icon}<span className="ormi-chip-text">{value === 'default' ? 'default' : current?.label ?? value}</span>{chev}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" style={{ width: 300, maxWidth: 'calc(100vw - 16px)', maxHeight: 420 }}>
+        <DropdownMenuLabel>Model</DropdownMenuLabel>
+        {models.length > 10 ? (
+          <div style={{ padding: '2px 8px 8px' }}>
+            <input
+              autoFocus
+              aria-label="Search models"
+              placeholder="Search models…"
+              value={query}
+              onChange={event => setQuery(event.target.value)}
+              onKeyDown={event => event.stopPropagation()}
+              onClick={event => event.stopPropagation()}
+              style={{
+                width: '100%', height: 28, boxSizing: 'border-box', padding: '0 8px',
+                font: 'inherit', fontSize: 11, color: 'var(--text-title)', background: 'var(--bg-inset)',
+                border: '1px solid var(--line-card)', borderRadius: 6, outline: 'none',
+              }}
+            />
+          </div>
+        ) : null}
+        <DropdownMenuItem onSelect={() => onChange('default')} className="text-xs">
+          <span style={{ width: 16, display: 'inline-flex' }}>{value === 'default' ? <Check size={13} /> : null}</span>
+          <span>Default</span>
+        </DropdownMenuItem>
+        {loading ? <div style={{ padding: '8px 10px', color: 'var(--text-hint)', fontSize: 11 }}>Loading models…</div>
+          : !models.length ? <div style={{ padding: '8px 10px', color: 'var(--text-hint)', fontSize: 11 }}>This agent doesn&apos;t list models</div> : null}
+        {!loading && models.length ? (
+          <>
+            {visible.map(model => (
+              <DropdownMenuItem
+                key={model.id}
+                disabled={!model.available}
+                title={!model.available ? model.reason : undefined}
+                onSelect={() => onChange(model.id)}
+                className="text-xs"
+              >
+                <span style={{ width: 16, display: 'inline-flex' }}>{value === model.id ? <Check size={13} /> : null}</span>
+                <span className="min-w-0 flex-1 truncate">{model.label}</span>
+                {model.label !== model.id ? <span style={{ color: 'var(--text-hint)', fontFamily: 'var(--font-mono)', fontSize: 10 }}>{model.id}</span> : null}
+              </DropdownMenuItem>
+            ))}
+            {matching.length > visible.length ? <div style={{ padding: '5px 10px', color: 'var(--text-hint)', fontSize: 10 }}>Showing 200 of {matching.length} — refine search</div> : null}
+            {!matching.length ? <div style={{ padding: '8px 10px', color: 'var(--text-hint)', fontSize: 11 }}>No matching models</div> : null}
+          </>
+        ) : null}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => setCustom(true)} className="text-xs"><span style={{ width: 16, display: 'inline-flex' }} />Custom model id…</DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={event => { event.preventDefault(); void refresh(); }} className="text-xs">
+          <RefreshCw size={12} />Refresh list
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+export function EffortChip({ value, model, models, onChange, icon, title, width = 60 }: {
+  value: string; model: string; models: ListedModel[]; onChange: (v: string) => void; icon?: ReactNode; title?: string; width?: number;
+}) {
+  const selected = models.find(candidate => candidate.id === model);
+  let choices = selected?.efforts;
+  if (!selected) {
+    const sets = models.map(candidate => [...candidate.efforts].sort().join('\0'));
+    if (sets.length && new Set(sets).size === 1) choices = models[0]!.efforts;
   }
-  const commit = () => { const v = draft.trim() || 'default'; setDraft(undefined); if (v !== value) onCommit(v); };
+  if (selected && !choices?.length) {
+    return <button disabled style={{ ...chip, opacity: 0.45, cursor: 'not-allowed' }} title="This model has no effort levels">{icon}<span className="ormi-chip-text">{value}</span>{chev}</button>;
+  }
+  if (!choices?.length) return <TextChip title={title} icon={icon} width={width} value={value} onCommit={onChange} />;
+  const invalid = value !== 'default' && !choices.includes(value);
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button className="hv-sub" style={chip} title={invalid ? 'not offered by this model' : title}>
+          {icon}<span className="ormi-chip-text">{value}</span>
+          {invalid ? <span aria-label="not offered by this model" style={{ color: 'var(--accent-amber)', fontSize: 10, lineHeight: 1 }}>●</span> : null}
+          {chev}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuLabel>Effort</DropdownMenuLabel>
+        {['default', ...choices].map(choice => (
+          <DropdownMenuItem key={choice} onSelect={() => onChange(choice)} className="text-xs">
+            <span style={{ width: 16, display: 'inline-flex' }}>{value === choice ? <Check size={13} /> : null}</span>
+            <span>{choice === 'default' ? 'Default' : choice}</span>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+/** Chip showing a value; click to type a new one (Enter commits, Esc cancels). */
+export function TextChip({ value, onCommit, title, placeholder, icon, width = 96, autoEdit = false, onDone }: {
+  value: string; onCommit: (v: string) => void; title?: string; placeholder?: string; icon?: ReactNode; width?: number; autoEdit?: boolean; onDone?: () => void;
+}) {
+  const finished = useRef(false);
+  const [draft, setDraft] = useState<string | undefined>(() => autoEdit ? (value === 'default' ? '' : value) : undefined);
+  if (draft === undefined) {
+    return <button className="hv-sub" style={chip} title={title} onClick={() => { finished.current = false; setDraft(value === 'default' ? '' : value); }}>{icon}<span className="ormi-chip-text">{value}</span>{chev}</button>;
+  }
+  const commit = () => {
+    if (finished.current) return;
+    finished.current = true;
+    const v = draft.trim() || 'default';
+    setDraft(undefined);
+    if (v !== value) onCommit(v);
+    onDone?.();
+  };
   return (
     <span style={{ ...chip, cursor: 'text', boxShadow: '0 0 0 1px var(--line-card)' }} title={title}>
       {icon}
       <input autoFocus value={draft} placeholder={placeholder ?? 'default'} onChange={e => setDraft(e.target.value)} onBlur={commit}
-        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commit(); } if (e.key === 'Escape') setDraft(undefined); }}
+        onKeyDown={e => {
+          if (e.key === 'Enter') { e.preventDefault(); commit(); }
+          if (e.key === 'Escape') {
+            if (finished.current) return;
+            finished.current = true; setDraft(undefined); onDone?.();
+          }
+        }}
         style={{ width, font: 'inherit', fontSize: 'inherit', color: 'var(--text-title)', background: 'transparent', border: 'none', outline: 'none', padding: 0 }} />
     </span>
   );

@@ -35,6 +35,19 @@ test('cost totals contracts validate time filters and all aggregation buckets', 
   assert.equal(parseResponseBody('cost.totals', { ...body, days: [{ date: 'yesterday', ...bucket }] }).success, false);
 });
 
+test('models.list contracts include transport, model availability and per-adapter errors', () => {
+  assert.equal(parseRequestBody('models.list', {}).success, true);
+  assert.equal(parseRequestBody('models.list', { agent: 'pi', transport: 'sdk', refresh: true }).success, true);
+  assert.equal(parseRequestBody('models.list', { agent: '' }).success, false);
+  const entry = {
+    agent: 'claude', transport: 'sdk', id: 'claude-sonnet-4-6', label: 'Sonnet 4.6',
+    efforts: ['low', 'high'], available: true, cachedAt: 1,
+  };
+  assert.equal(parseResponseBody('models.list', { models: [entry] }).success, true);
+  assert.equal(parseResponseBody('models.list', { models: [entry], errors: [{ agent: 'pi', transport: 'cli', message: 'not found' }] }).success, true);
+  assert.equal(parseResponseBody('models.list', { models: [{ ...entry, efforts: 'high' }] }).success, false);
+});
+
 test('secret listing exposes only names and scope metadata', () => {
   assert.equal(parseRequestBody('secret.list', {}).success, true);
   assert.equal(parseRequestBody('secret.list', { project: '/repo' }).success, true);

@@ -11,6 +11,13 @@ test('ormi with no args prints usage and exits 0', () => {
   const { status, stdout } = run([]);
   assert.equal(status, 0);
   assert.match(stdout, /agent smoke <vendor>/);
+  assert.match(stdout, /ormi models \[--agent x\] \[--transport y\] \[--refresh\]/);
+});
+
+test('ormi models rejects unknown options before connecting to the daemon', () => {
+  const { status, stderr } = run(['models', '--unknown']);
+  assert.equal(status, 2);
+  assert.match(stderr, /usage: ormi models/);
 });
 
 test('ormi agent smoke without a vendor exits 2', () => {

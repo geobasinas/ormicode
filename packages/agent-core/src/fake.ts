@@ -1,5 +1,5 @@
 import { NO_CAPABILITIES } from './adapter.ts';
-import type { AgentAdapter, Handle, PromptInput, StartSpec } from './adapter.ts';
+import type { AgentAdapter, Handle, ModelList, PromptInput, StartSpec } from './adapter.ts';
 import { EventQueue } from './event-queue.ts';
 import type { AgentEvent } from '@ormicode/protocol';
 
@@ -27,7 +27,10 @@ export class FakeAdapter implements AgentAdapter {
     this.delayMs = options.delayMs ?? (Number(process.env.ORMICODE_FAKE_DELAY_MS) || 30_000);
   }
   async detect() { return { available: true, version: 'fake-1' }; }
-  async models() { return []; }
+  async models(): Promise<ModelList> {
+    const models = process.env.ORMICODE_FAKE_MODELS;
+    return models ? JSON.parse(models) as ModelList : [];
+  }
   async start(spec: StartSpec): Promise<Handle> {
     if (!spec.cwd) throw new Error('cwd is required');
     const handle = Object.freeze({ id: `fake-${++this.nextId}` });

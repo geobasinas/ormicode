@@ -26,6 +26,7 @@ import { checkpointMethod } from './checkpoint-methods.ts';
 import { costMethod } from './cost-methods.ts';
 import { gitMethod } from './git-methods.ts';
 import { fileMethod } from './file-methods.ts';
+import { listModels } from './models.ts';
 
 const LIVE_STATES = ['idle', 'starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying', 'paused_rate_limited', 'interrupted'] as const;
 
@@ -79,6 +80,8 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
     switch (method) {
       case 'agents.list':
         return client.link.reply(id, { agents: agentList() });
+      case 'models.list':
+        return client.link.reply(id, await listModels(body as { agent?: string; transport?: string; refresh?: boolean }));
       case 'daemon.status':
         return client.link.reply(id, { version: '0.0.0', uptimeMs: Date.now() - ctx.startedAt, liveWorkers: ctx.liveWorkers(), relay: ctx.relay()?.connected() ? 'connected' : 'disconnected', lastError: ctx.lastError() });
       case 'session.start': {

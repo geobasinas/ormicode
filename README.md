@@ -1159,13 +1159,12 @@ Next step: <what the previous agent was about to do>
 
 **Discovery**
 - Each adapter asks its vendor which models exist, at runtime (SDK if there is one, otherwise the CLI's list).
-- Results are cached for 1 hour. The cache key is agent + version + logged-in account, so switching accounts never shows the wrong list.
-- `models.list` takes `{ agent? }` and returns `{ agent, id, label, alias?, efforts, available, reason?, cachedAt }`.
+- Results are cached for 1 hour by agent/transport and detected version (or agent/transport when the adapter does not report a version). Model lists are transport-specific, such as pi SDK versus CLI.
+- `models.list` takes `{ agent?, transport?, refresh? }` and returns `{ agent, transport, id, label, efforts, available, reason?, cachedAt }` entries.
   - `id` and `label` are the vendor's own words.
   - `efforts` is the vendor's own effort words (empty if it has none).
-  - `alias` is only there when the alias table maps to this model.
   - `reason` explains why a model is unavailable.
-  - No `agent` = every adapter's models.
+  - No `agent` = every installed adapter's models using that vendor's default transport; `transport` overrides the default when an agent is specified.
 - You can add a model by hand when a vendor won't list it. Manual entries are per agent and survive cache refreshes.
 
 **What's shown**
@@ -1187,12 +1186,12 @@ Next step: <what the previous agent was about to do>
 - A model you can't use (no auth) is shown greyed out with the reason — never hidden.
 
 **When discovery fails**
-- Use the last cache → then manual entries → then the agent's default with no picker. The session always starts.
+- Use the last cache; if none exists, return no listed models and an error. A session can still start with the default or a custom model id.
 
 **ACP agents**
 - Use `configOptions` with `category: model` (or modes on older v1 agents), shown in the same picker.
 
-**Cache file:** `~/.ormicode/cache/models.json` (with timestamp and agent version). Deleted by `ormi doctor --repair`.
+**Cache file:** `~/.ormicode/cache/models.json` (keyed by agent/transport and detected version, with `cachedAt`). Deleted by `ormi doctor --repair`.
 
 # Approvals and safety
 
