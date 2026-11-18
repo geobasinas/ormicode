@@ -89,9 +89,15 @@ importers:
       '@ormicode/crypto':
         specifier: workspace:*
         version: link:../../packages/crypto
+      '@ormicode/git-core':
+        specifier: workspace:*
+        version: link:../../packages/git-core
       '@ormicode/journal':
         specifier: workspace:*
         version: link:../../packages/journal
+      '@ormicode/leases':
+        specifier: workspace:*
+        version: link:../../packages/leases
       '@ormicode/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
@@ -473,11 +479,25 @@ importers:
 
   packages/crypto: {}
 
+  packages/diff: {}
+
+  packages/git-core:
+    dependencies:
+      '@ormicode/diff':
+        specifier: workspace:*
+        version: link:../diff
+
   packages/journal:
     dependencies:
       '@ormicode/protocol':
         specifier: workspace:*
         version: link:../protocol
+      '@ormicode/session-store':
+        specifier: workspace:*
+        version: link:../session-store
+
+  packages/leases:
+    dependencies:
       '@ormicode/session-store':
         specifier: workspace:*
         version: link:../session-store

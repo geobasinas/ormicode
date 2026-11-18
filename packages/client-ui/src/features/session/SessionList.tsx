@@ -33,6 +33,9 @@ function Row({ s, active, onSelect }: { s: SessionSummary; active?: string; onSe
         <span style={{ ...mono, display: 'flex', alignItems: 'center', gap: 4, marginTop: 2, color: 'var(--text-secondary)', overflow: 'hidden', whiteSpace: 'nowrap' }}>
           {scratch || !s.branch ? <span>{scratch ? 'scratch · no git' : s.vendor ?? ''}</span>
             : <><GitBranch size={9} style={{ flexShrink: 0 }} /><span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.branch}</span></>}
+          {s.worktree ? <span title="own worktree" style={{ border: '1px solid var(--line-card)', borderRadius: 4, padding: '0 3px', fontSize: 9, flexShrink: 0 }}>wt</span> : null}
+          {s.diff && (s.diff.added || s.diff.removed) ? <span title={`${s.diff.files} files changed`} style={{ flexShrink: 0 }}>
+            <span style={{ color: 'var(--accent-mint)' }}>+{s.diff.added}</span> <span style={{ color: 'var(--accent-red)' }}>−{s.diff.removed}</span></span> : null}
           <span style={{ flex: 1 }} />
           <span>{stateLabel(s.state)}</span>
         </span>

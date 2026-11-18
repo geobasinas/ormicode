@@ -19,6 +19,9 @@ const summarySchema = z.object({
   project: nonEmpty, vendor: nonEmpty, transport: nonEmpty, updatedAt: timestampSchema,
   // Git branch the session works on; absent/null for scratch or no-git projects.
   branch: z.optional(z.nullable(z.string())),
+  // Own worktree under .ormi/worktrees; diff = worktree vs base commit incl. untracked (null when git failed).
+  worktree: z.optional(z.boolean()),
+  diff: z.optional(z.nullable(z.object({ added: cursorSchema, removed: cursorSchema, files: cursorSchema }))),
 });
 const configOptionSchema = z.object({
   id: nonEmpty, category: z.optional(nonEmpty), type: z.optional(nonEmpty), name: z.optional(z.string()),
@@ -83,6 +86,7 @@ export const requestBodies = {
   'session.answer': z.object({ ...session, request: requestIdSchema, answers: z.record(nonEmpty, nonEmpty) }),
   // Installed agent adapters: which vendor/transport pairs session.start accepts.
   'agents.list': z.object({}),
+  'git.diff': z.object(session),
   'checkpoint.list': z.object(session),
   // Without `to`: what `from` changed since the checkpoint before it.
   'checkpoint.diff': z.object({ ...session, from: nonEmpty, to: z.optional(nonEmpty) }),
@@ -124,6 +128,10 @@ export const responseBodies = {
   'session.decide': z.object({ decided: z.literal(true) }),
   'session.answer': z.object({ answered: z.literal(true) }),
   'checkpoint.list': z.object({ checkpoints: z.array(z.object({ id: nonEmpty, seq: cursorSchema, tool: z.string(), ts: timestampSchema })) }),
+  'git.diff': z.object({
+    files: z.array(z.object({ path: nonEmpty, oldPath: z.optional(nonEmpty), status: z.enum(['added', 'deleted', 'modified', 'renamed']), binary: z.boolean(), added: cursorSchema, removed: cursorSchema })),
+    patch: z.string(), truncated: z.boolean(),
+  }),
   'checkpoint.diff': z.object({ patch: z.string(), truncated: z.boolean() }),
   'checkpoint.restore': z.object({ restored: z.literal(true), id: nonEmpty }),
   'checkpoint.fork': z.object({ session: sessionIdSchema, branch: nonEmpty, cwd: nonEmpty, from: nonEmpty }),

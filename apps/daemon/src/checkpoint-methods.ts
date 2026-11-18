@@ -4,8 +4,8 @@ import { randomBytes } from 'node:crypto';
 import { newId } from '@ormicode/protocol';
 import { getSession, createSession } from '@ormicode/session-store';
 import type { Client, DispatchCtx } from './dispatch.ts';
-import { acquireWorkspace, releaseForSession } from './leases.ts';
-import { forkWorktree, removeWorktree } from './git.ts';
+import { acquireWorkspace, releaseForSession } from '@ormicode/leases';
+import { forkWorktree, removeWorktree } from '@ormicode/git-core';
 
 const IN_TURN = new Set(['starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying']);
 

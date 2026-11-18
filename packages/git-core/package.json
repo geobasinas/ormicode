@@ -1,0 +1,8 @@
+{
+  "name": "@ormicode/git-core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": { "@ormicode/diff": "workspace:*" }
+}

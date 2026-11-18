@@ -10,9 +10,12 @@ import { join } from 'node:path';
 import { mkdirSync, rmSync } from 'node:fs';
 
 import { ormicodeDir, sessionLogDir } from './socket.ts';
-import { acquireWorkspace, releaseForSession } from './leases.ts';
+import { acquireWorkspace, releaseForSession } from '@ormicode/leases';
 import { hasTransport, agentList } from './registry.ts';
-import { resolveWorkspace, type WorkspaceChoice } from './git.ts';
+import { resolveWorkspace, diffPatch, DiffStatCache, type WorkspaceChoice } from '@ormicode/git-core';
+
+const diffStats = new DiffStatCache();
+const PATCH_INLINE = 256 * 1024;
 import type { Checkpoints } from '@ormicode/checkpoints';
 import { checkpointMethod } from './checkpoint-methods.ts';
 
@@ -108,8 +111,20 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         const sessions = listSessions(db, Boolean(body.archived)).map(s => ({
           id: s.id, title: s.title, state: s.state, project: s.project, vendor: s.vendor,
           transport: s.transport, updatedAt: s.updated_at, branch: s.branch,
+          worktree: Boolean(s.worktree),
+          ...(s.base_commit && !s.archived ? { diff: diffStats.get(s.cwd, s.base_commit) } : {}),
         }));
         return client.link.reply(id, { sessions });
+      }
+      case 'git.diff': {
+        const s = getSession(db, String(body.session));
+        if (!s) return client.link.replyError(id, 'session.not_found', String(body.session));
+        if (!s.base_commit) return client.link.replyError(id, 'git.failed', 'session has no recorded base commit');
+        const { patch, files } = diffPatch(s.cwd, s.base_commit);
+        return client.link.reply(id, {
+          files: files.map(f => ({ path: f.path, ...(f.oldPath ? { oldPath: f.oldPath } : {}), status: f.status, binary: f.binary, added: f.added, removed: f.removed })),
+          patch: patch.length > PATCH_INLINE ? patch.slice(0, PATCH_INLINE) : patch, truncated: patch.length > PATCH_INLINE,
+        });
       }
       case 'session.get': {
         const s = getSession(db, String(body.session));

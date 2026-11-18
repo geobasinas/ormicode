@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { usePlatform } from '../../lib/platform.ts';
 
-export interface SessionSummary { id: string; state: string; project: string; title?: string | null; vendor?: string; transport?: string; updatedAt?: number; branch?: string | null }
+export interface SessionSummary { id: string; state: string; project: string; title?: string | null; vendor?: string; transport?: string; updatedAt?: number; branch?: string | null; worktree?: boolean; diff?: { added: number; removed: number; files: number } | null }
 
 export function useSessions(): { sessions: SessionSummary[]; error?: string } {
   const { transport } = usePlatform();

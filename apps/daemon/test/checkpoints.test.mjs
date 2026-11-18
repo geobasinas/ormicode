@@ -36,6 +36,10 @@ test('tool calls leave checkpoints; restore and fork use them', async () => {
     assert.deepEqual(list.map(c => c.tool), ['fake_tool', 'baseline']);
     const diff = await client.request('checkpoint.diff', { session, from: list[0].id });
     assert.match(diff.body.patch, /\+two/);
+    const gd = await client.request('git.diff', { session });
+    assert.deepEqual(gd.body.files.map(f => [f.path, f.status, f.added, f.removed]), [['a.txt', 'modified', 1, 1], ['b.txt', 'added', 1, 0]]);
+    const row = (await client.request('session.list', {})).body.sessions.find(s => s.id === session);
+    assert.deepEqual(row.diff, { files: 2, added: 2, removed: 1 });
     await until(async () => (await client.request('session.get', { session })).body.state === 'idle');
     const conv = await client.request('checkpoint.restore', { session, id: list[1].id, mode: 'conversation' });
     assert.equal(conv.code, 'checkpoint.unimplemented');

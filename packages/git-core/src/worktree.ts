@@ -1,4 +1,4 @@
-// Git workspace resolution for session.start. Implements the README rules:
+// Git workspace resolution for session.start (moved from apps/daemon/src/git.ts). Implements the README rules:
 // record the resolved branch + starting commit, detached HEAD requires an
 // explicit workspace choice, a busy branch auto-reserves a worktree, worktrees
 // live in <project>/.ormi/worktrees/<slug>, and a failed worktree add cleans up.
