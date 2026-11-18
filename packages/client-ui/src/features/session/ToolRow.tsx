@@ -6,6 +6,7 @@ import { Pencil, Wrench, SquareTerminal, FileText, Search, Globe, ListChecks, Sp
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '../../components/ui/dropdown-menu.tsx';
 import { usePlatform } from '../../lib/platform.ts';
 import type { TranscriptEvent } from './useTranscript.ts';
+import { requestOpenFile } from '../../lib/openFile.ts';
 
 const mono = { fontFamily: 'var(--font-mono)' };
 const hint = { color: 'var(--text-hint)' };
@@ -93,6 +94,7 @@ export function ToolRow({ call, result, checkpoint, session }: { call: Transcrip
   const input = (call.body.input && typeof call.body.input === 'object' ? call.body.input : {}) as Record<string, unknown>;
   const s = shape(String(call.body.name), input);
   const status = result ? String(result.body.status) : 'running';
+  const file = s.target ? str(input.file_path ?? input.filePath ?? input.path ?? input.notebook_path) : '';
   return (
     <div className="ormi-hover-zone ormi-tool" style={{ margin: '1px 0', position: 'relative' }}>
       <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -101,7 +103,7 @@ export function ToolRow({ call, result, checkpoint, session }: { call: Transcrip
           fontSize: 12, lineHeight: '18px', color: 'var(--text-hint)',
         }}>
           {status === 'running' ? <Loader2 size={12} className="animate-spin" style={{ color: 'var(--text-hint)', flexShrink: 0 }} /> : s.icon}
-          <span style={{ whiteSpace: 'nowrap' }}><span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{s.verb}</span>{s.target ? ` ${s.target}` : ''}</span>
+          <span style={{ whiteSpace: 'nowrap' }}><span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{s.verb}</span>{s.target ? ' ' : ''}{s.target ? (file ? <span className="ormi-file-link" title={`Open ${file} in Files`} onClick={e => { e.stopPropagation(); requestOpenFile(session, file); }}>{s.target}</span> : s.target) : ''}</span>
           <span style={{ ...mono, fontSize: 11, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: 0.85 }}>{s.detail ?? ''}</span>
           {s.added || s.removed ? <span style={{ ...mono, fontSize: 11, display: 'inline-flex', gap: 5, flexShrink: 0, opacity: 0.85 }}>
             {s.added ? <span style={{ color: 'var(--accent-mint)' }}>+{s.added}</span> : null}{s.removed ? <span style={{ color: 'var(--accent-red)' }}>−{s.removed}</span> : null}

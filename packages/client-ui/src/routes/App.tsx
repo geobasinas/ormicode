@@ -12,6 +12,7 @@ import { SessionList } from '../features/session/SessionList.tsx';
 import { useSession } from '../features/session/useSession.ts';
 import { Now } from './Now.tsx';
 import { SessionView } from './SessionView.tsx';
+import { OPEN_FILE } from '../lib/openFile.ts';
 import { SettingsView, loadPrefs, type Prefs } from './Settings.tsx';
 import { SessionHeader } from '../features/session/SessionHeader.tsx';
 import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels';
@@ -122,6 +123,11 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
   const [state, setState] = useState<string>('connecting');
   const [query, setQuery] = useState('');
   const [rail, setRail] = useState<RailPane>('none');
+  useEffect(() => {
+    const on = () => setRail('files');
+    window.addEventListener(OPEN_FILE, on);
+    return () => window.removeEventListener(OPEN_FILE, on);
+  }, []);
   const [filter, setFilter] = useState<(typeof FILTER_TABS)[number]>('All');
   const resolved = useMemo(() => {
     if (!layout) return defaultLayout;

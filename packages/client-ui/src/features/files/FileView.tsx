@@ -25,8 +25,8 @@ const ERRORS: Record<string, string> = {
   'file.binary': 'Binary files can’t be edited here.',
 };
 
-export function FileView({ session, path, line, git, isGit, onBack, onOpenExternal, onOpenSession }: {
-  session: string; path: string; line?: number; git?: GitMark; isGit: boolean;
+export function FileView({ session, path, line, git, isGit, onBack: leave, onOpenExternal, onOpenSession, onGoFolder }: {
+  session: string; path: string; line?: number; git?: GitMark; isGit: boolean; onGoFolder?: (path: string) => void;
   onBack: () => void; onOpenExternal?: () => void; onOpenSession?: (id: string) => void;
 }) {
   const request = useFileRequest(session);
@@ -43,6 +43,9 @@ export function FileView({ session, path, line, git, isGit, onBack, onOpenExtern
   const [sel, setSel] = useState<{ from: number; to: number; text: string } | null>(null);
   const [asking, setAsking] = useState(false);
 
+  const dirty = editing && draft !== undefined && draft !== data?.content;
+  const guard = (fn: () => void) => () => { if (!dirty || window.confirm('Discard your unsaved changes?')) fn(); };
+  const onBack = guard(leave);
   const load = useCallback(async () => {
     const r = await request<FileData>('file.read', { path, ...(at ? { ref: at.sha } : {}), ...(force ? { force: true } : {}) });
     if (r.error) { setError(r.error); return; }
@@ -85,7 +88,7 @@ export function FileView({ session, path, line, git, isGit, onBack, onOpenExtern
         <span style={{ display: 'flex', alignItems: 'baseline', gap: 6, minWidth: 0, flex: 1, padding: '0 4px', whiteSpace: 'nowrap', overflow: 'hidden' }}>
           <span style={{ fontSize: 12, fontWeight: 600, color: git ? GIT_COLOR[git] ?? 'var(--text-title)' : 'var(--text-title)' }}>{baseName(path)}</span>
           {git && GIT_LETTER[git] ? <span style={{ ...mono, fontSize: 10, color: GIT_COLOR[git] }}>{GIT_LETTER[git]}</span> : null}
-          <span style={{ ...mono, fontSize: 10.5, color: 'var(--text-hint)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{dir}</span>
+          <span style={{ ...mono, fontSize: 10.5, color: 'var(--text-hint)', overflow: 'hidden', textOverflow: 'ellipsis', display: 'inline-flex', gap: 1 }}>{dir ? dir.split('/').map((seg, i, all) => <span key={i}>{i ? '/' : ''}<span className="ormi-file-link" title={`Show ${all.slice(0, i + 1).join('/')}`} onClick={guard(() => onGoFolder?.(all.slice(0, i + 1).join('/')))}>{seg}</span></span>) : null}</span>
         </span>
         {editing ? <>
           {saving ? <Loader2 size={13} className="animate-spin" style={{ color: 'var(--text-hint)' }} /> : null}
@@ -109,7 +112,7 @@ export function FileView({ session, path, line, git, isGit, onBack, onOpenExtern
       </div> : null}
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         <div style={{ flex: 1, minHeight: 0, background: 'var(--bg-inset)' }}>
-          {!data ? null
+          {!data ? (error ? null : <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-hint)' }}><Loader2 size={14} className="animate-spin" /></div>)
             : data.tooLarge ? <Placeholder icon={<FileWarning size={18} />} title={`${formatSize(data.size)} — too large to show here`}
                 action={data.size <= 10 * 1024 * 1024 ? <button className="hv" style={btn} onClick={() => setForce(true)}>Open anyway</button> : undefined} />
             : data.encoding === 'base64' && data.mime?.startsWith('image/') ? <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, boxSizing: 'border-box' }}>

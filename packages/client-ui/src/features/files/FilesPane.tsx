@@ -6,6 +6,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { ArrowLeft, ArrowRight, ArrowUp, RotateCw, Search, Ellipsis, ChevronRight, ChevronDown, Folder, FolderOpen, FileText, Link2 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../components/ui/dropdown-menu.tsx';
 import { usePlatform } from '../../lib/platform.ts';
+import { OPEN_FILE, takeOpenFile } from '../../lib/openFile.ts';
 import { useListings, useFileRequest } from './useFiles.ts';
 import { FileView } from './FileView.tsx';
 import { SearchView } from './SearchView.tsx';
@@ -66,11 +67,35 @@ export function FilesPane({ session, onOpenSession }: { session: string; onOpenS
   const virt = useVirtualizer({ count: rows.length, getScrollElement: () => scroller.current, estimateSize: () => ROW, overscan: 12, useFlushSync: false });
   const abs = (p: string) => (root ? (p ? `${root}/${p}` : root) : undefined);
   const openFile = (path: string, line?: number) => { setSelected(path); setView({ path, line }); };
+  const relative = (p: string) => {
+    const wire = p.replace(/\\/g, '/');
+    if (!/^([a-z]:)?\//i.test(wire)) return wire.replace(/^\.\//, '');
+    return root && wire.startsWith(`${root.replace(/\\/g, '/')}/`) ? wire.slice(root.length + 1) : undefined;
+  };
+  useEffect(() => {
+    const take = () => { const p = root !== undefined ? takeOpenFile(session) : undefined; const rel = p ? relative(p) : undefined; if (rel) openFile(rel); };
+    take();
+    window.addEventListener(OPEN_FILE, take);
+    return () => window.removeEventListener(OPEN_FILE, take);
+  });
+  const onKey = (ev: React.KeyboardEvent) => {
+    const i = rows.findIndex(r => r.e.path === selected);
+    const pick = (n: number) => { const r = rows[Math.max(0, Math.min(rows.length - 1, n))]; if (r) { setSelected(r.e.path); virt.scrollToIndex(rows.indexOf(r)); } };
+    const cur = rows[i]?.e;
+    if (ev.key === 'ArrowDown') pick(i + 1);
+    else if (ev.key === 'ArrowUp') pick(i < 0 ? 0 : i - 1);
+    else if (ev.key === 'ArrowRight' && cur?.kind === 'dir' && !open.has(cur.path)) toggle(cur.path);
+    else if (ev.key === 'ArrowLeft' && cur) { if (cur.kind === 'dir' && open.has(cur.path)) toggle(cur.path); else { const parent = dirName(cur.path); if (parent !== cwd && parent) setSelected(parent); } }
+    else if (ev.key === 'Enter' && cur) { if (cur.kind === 'dir') go(cur.path); else openFile(cur.path); }
+    else if (ev.key === 'Backspace' && cwd) go(dirName(cwd));
+    else return;
+    ev.preventDefault();
+  };
   const gitOf = (path: string) => dirs[dirName(path)]?.entries.find(e => e.path === path)?.git;
 
   if (view === 'search') return <SearchView session={session} onClose={() => setView('tree')} onOpen={openFile} />;
   if (typeof view === 'object') return <FileView session={session} path={view.path} line={view.line} git={gitOf(view.path)} isGit={isGit}
-    onBack={() => setView('tree')} onOpenSession={onOpenSession}
+    onBack={() => setView('tree')} onOpenSession={onOpenSession} onGoFolder={p => { setView('tree'); go(p); }}
     onOpenExternal={desk?.openPath && abs(view.path) ? () => void desk.openPath!(abs(view.path)!) : undefined} />;
 
   const crumbs = cwd ? cwd.split('/') : [];
@@ -106,8 +131,9 @@ export function FilesPane({ session, onOpenSession }: { session: string; onOpenS
         <span className="ormi-pane-narrow-hide" style={{ width: cols.type }}>Type</span>
         <span style={{ width: cols.size, textAlign: 'right' }}>Size</span>
       </div>
-      <div ref={scroller} style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '2px 0' }}>
+      <div ref={scroller} tabIndex={0} onKeyDown={onKey} className="ormi-tree" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '2px 0' }}>
         {error && !listing ? <div style={{ padding: '8px 12px', fontSize: 11.5, color: 'var(--accent-red)' }}>{error}</div> : null}
+        {!listing && !error ? <div style={{ padding: '8px 12px', fontSize: 11.5, color: 'var(--text-hint)' }}>Loading…</div> : null}
         {listing && !rows.length ? <div style={{ padding: '8px 12px', fontSize: 11.5, color: 'var(--text-hint)' }}>Empty folder</div> : null}
         <div style={{ height: virt.getTotalSize(), position: 'relative' }}>
           {virt.getVirtualItems().map(item => {
