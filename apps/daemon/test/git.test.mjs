@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, existsSync, rmSync } from 'node:fs';
+import { chmodSync, mkdtempSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startDaemon, connect } from '../src/index.ts';
@@ -115,4 +115,85 @@ test('a failed worktree add cleans up and leaves the repo untouched', async () =
   assert.deepEqual(git(dir, 'branch', '--list', 'ormi/*'), '', 'no branch leaked');
   await daemon.close(); client.close();
   rmSync(dir, { recursive: true, force: true });
+});
+
+test('Git pane methods, fake PR status and terminal.open session cwd', { skip: process.platform === 'win32' }, async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ormi-git-pane-'));
+  const project = join(dir, 'project');
+  execFileSync('git', ['init', '-q', '-b', 'main', project]);
+  writeFileSync(join(project, 'file.txt'), 'base\n');
+  git(project, 'add', 'file.txt');
+  git(project, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-m', 'base');
+  const gh = join(dir, 'fake-gh');
+  writeFileSync(gh, `#!/usr/bin/env node
+process.stdout.write(JSON.stringify({
+  number: 17, title: 'Test PR', body: 'Description', state: 'OPEN', isDraft: false,
+  url: 'https://example.test/pull/17', headRefName: 'main', baseRefName: 'main',
+  author: { login: 'author' }, createdAt: '2026-01-02T03:04:05Z',
+  statusCheckRollup: [{ name: 'checks', status: 'COMPLETED', conclusion: 'SUCCESS', startedAt: '2026-01-02T03:00:00Z', completedAt: '2026-01-02T03:02:00Z' }],
+  reviews: [{ author: { login: 'reviewer' }, state: 'APPROVED' }],
+  reviewRequests: [{ requestedReviewer: { login: 'requested' } }],
+  additions: 3, deletions: 1, changedFiles: 2
+}));
+`);
+  chmodSync(gh, 0o755);
+  const envKeys = ['ORMICODE_HOME', 'ORMICODE_FAKE_SCRIPT', 'ORMICODE_FAKE_DELAY_MS', 'ORMICODE_PRICES_URL', 'ORMICODE_GH'];
+  const oldEnv = Object.fromEntries(envKeys.map(key => [key, process.env[key]]));
+  Object.assign(process.env, {
+    ORMICODE_HOME: join(dir, 'home'), ORMICODE_FAKE_SCRIPT: 'tool',
+    ORMICODE_FAKE_DELAY_MS: '1200', ORMICODE_PRICES_URL: 'off', ORMICODE_GH: gh,
+  });
+  const { daemon, client } = await boot(dir);
+  try {
+    const started = await start(client, project, { kind: 'current' });
+    const session = started.body.session;
+    const waitFor = async fn => {
+      const end = Date.now() + 10_000;
+      while (Date.now() < end) {
+        const value = await fn();
+        if (value) return value;
+        await new Promise(resolve => setTimeout(resolve, 40));
+      }
+      throw new Error('timed out waiting for session');
+    };
+    await waitFor(async () => (await client.request('session.get', { session })).body.state === 'idle');
+    assert.equal((await client.request('git.status', { session })).body.branch, 'main');
+    writeFileSync(join(project, 'new.txt'), 'new\n');
+    assert.equal((await client.request('git.stage', { session, paths: ['new.txt'] })).type, 'res');
+    const created = await client.request('git.commit', { session, message: 'add new file' });
+    assert.match(created.body.sha, /^[0-9a-f]{40}$/);
+    assert.equal((await client.request('git.log', { session })).body.commits[0].subject, 'add new file');
+    assert.equal((await client.request('git.show', { session, sha: created.body.sha })).body.files[0].path, 'new.txt');
+
+    await client.request('git.createBranch', { session, name: 'pane/branch' });
+    assert.equal((await client.request('session.get', { session })).body.branch, 'pane/branch');
+    await client.request('git.checkout', { session, branch: 'main' });
+    assert.equal((await client.request('git.deleteBranch', { session, name: 'pane/branch', confirm: 'wrong' })).code, 'git.confirm_required');
+    assert.equal((await client.request('git.deleteBranch', { session, name: 'pane/branch', confirm: 'pane/branch' })).type, 'res');
+
+    const pr = (await client.request('git.prStatus', { session })).body.pr;
+    assert.equal(pr.number, 17);
+    assert.equal(pr.checks[0].durationMs, 120_000);
+    assert.deepEqual(pr.reviewers.map(r => r.state), ['approved', 'requested']);
+
+    writeFileSync(join(project, 'busy.txt'), 'busy\n');
+    await client.request('session.prompt', { session, text: 'wait briefly' });
+    await waitFor(async () => (await client.request('session.get', { session })).body.state === 'running');
+    assert.equal((await client.request('git.stage', { session, paths: ['busy.txt'] })).code, 'checkpoint.busy');
+    await waitFor(async () => (await client.request('session.get', { session })).body.state === 'idle');
+
+    assert.equal((await client.request('terminal.open', {})).code, 'terminal.bad_request');
+    const terminal = await client.request('terminal.open', { session, shell: '/bin/sh', args: ['-c', 'sleep 5'] });
+    assert.equal(terminal.type, 'res', JSON.stringify(terminal));
+    assert.equal(terminal.body.cwd, project);
+    await client.request('terminal.close', { terminal: terminal.body.terminal });
+  } finally {
+    client.close();
+    await daemon.close();
+    rmSync(dir, { recursive: true, force: true });
+    for (const [key, value] of Object.entries(oldEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
 });

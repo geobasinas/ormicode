@@ -69,6 +69,10 @@ export function setTitle(db: Store, id: string, title: string): void {
   db.prepare('UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?').run(title, Date.now(), id);
 }
 
+export function setBranch(db: Store, id: string, branch: string | null): void {
+  db.prepare('UPDATE sessions SET branch = ?, updated_at = ? WHERE id = ?').run(branch, Date.now(), id);
+}
+
 export function archiveSession(db: Store, id: string): void {
   db.prepare('UPDATE sessions SET archived = 1, updated_at = ? WHERE id = ?').run(Date.now(), id);
 }

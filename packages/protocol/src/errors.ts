@@ -2,7 +2,8 @@ export const errorCodes = [
   'session.busy', 'session.already_decided', 'session.not_found', 'session.not_running',
   'session.resync_required', 'agent.unauthorized', 'agent.binary_missing', 'agent.rate_limited',
   'agent.plan_limit', 'agent.failed', 'agent.unsupported', 'machine.unreachable',
-  'git.dirty_worktree', 'git.failed', 'git.worktree_in_use', 'relay.rate_limited',
+  'git.dirty_worktree', 'git.failed', 'git.worktree_in_use', 'git.nothing_to_commit', 'git.confirm_required',
+  'checkpoint.busy', 'terminal.bad_request', 'relay.rate_limited',
   'pairing.expired', 'acp.unsupported_version', 'lease.held', 'protocol.unknown_method',
   'protocol.unsupported_version', 'protocol.invalid_frame', 'protocol.unknown_event',
 ] as const;

@@ -1788,9 +1788,11 @@ The hub sends a short summary through the relay Worker to Firebase (FCM); the ap
 
 **PRs**
 - `gh pr create --base <base> --head <branch> --title … --body …`. If `gh auth status` fails, sessions still work and the UI says once that PRs are unavailable.
-- `git.pr {title, body}` stores the PR number and URL on the session (shown as its main artifact). Not authenticated → `git.failed` "PRs are unavailable: <reason>". No recorded base → refused.
+- `git.pr {title, body, draft?}` returns the PR number and URL; it does not store them on the session. `git.prStatus` reads the current branch's PR and checks; `git.prMerge` merges it. Not authenticated → `git.failed` "PRs are unavailable: <reason>". No recorded base → refused.
 
-**Diffs and branches:** `git.diff` → `{files, patch}` inline up to 256 KB, otherwise `{files, blob, size}`. *Implementation status:* `git.diff` (worktree vs the session's base commit, untracked files included, parsed by `packages/diff`) is built; until blobs exist a larger patch is cut at 256 KB with `truncated: true`. `session.list` rows carry `worktree` and `diff: {added, removed, files}` (10 s cache), shown in the desktop sidebar. `git.branches` and `git.pr` are still to come. `git.branches` → current branch plus every branch with upstream and ahead/behind.
+**Diffs and branches:** `git.diff` returns parsed `{files, patch, truncated}` for the worktree vs the session's base commit, including untracked files; patches are cut at 256 KB. `session.list` rows carry `worktree` and `diff: {added, removed, files}` (10 s cache), shown in the desktop sidebar.
+
+**Implementation status:** the daemon Git-pane API is built in `packages/git-core` and `apps/daemon/src/git-methods.ts`: `git.status`, stage/unstage/commit/push, `git.log`/`git.show`, `git.branches`, checkout/create/delete branch, merge/cherry-pick/revert, stash list/show/push/pop/apply/drop, and PR status/create/merge. Status includes staged/unstaged paths and staged numstat; history marks commits not reachable from remotes and reads `Ormi-Session`; show includes root-commit patches. Checkout and branch creation update the session's recorded branch. Mutations are blocked during an active turn, branch deletion requires the exact name as confirmation, and PR metadata is returned but not stored on the session. Larger patches are truncated inline; blob-backed patches are not built.
 
 **Credentials:** never stored, copied or injected. Uses the machine's git credential helper, SSH agent and `gh` auth. Missing credentials are reported by `ormi doctor`.
 
@@ -1802,16 +1804,18 @@ The hub sends a short summary through the relay Worker to Firebase (FCM); the ap
 
 ## Git tab
 
-> **Status:** later · **Needs:** [Git rules](#git-rules)
+> **Status:** now · **Needs:** [Git rules](#git-rules)
 
 **The screen that replaces keeping a terminal open all day to watch agent branches.**
+
+The daemon methods for this pane are built. The UI can use the status, history, branches, conflict-operation, stash and PR contracts below; fetch/pull/rebase, tags, worktree controls and reflog remain future work.
 
 **Shows**
 - Branches with ahead/behind, last commit, and which sessions work on them.
 - Worktrees with path, branch and owning session's state.
 - Working tree status (staged/unstaged) and one-click commit for your own edits.
 - Commit list with parents and refs, filterable by session, author, date (a readable list, not a lane graph).
-- Actions: fetch, pull, push, rebase onto base, cherry-pick, revert, merge, stash, tag, create worktree.
+- Actions: stage/unstage, commit, push, checkout/create/delete branch, cherry-pick, revert, merge, stash and PR actions.
 
 **Key interaction:** every commit has `Ormi-Session`/`Ormi-Turn` trailers, so a commit opens the session and turn that made it, and a session lists its commits. **Blame a line → commit → prompt.**
 
@@ -1821,12 +1825,13 @@ The hub sends a short summary through the relay Worker to Firebase (FCM); the ap
 - `git.fetch` = `fetch --all --prune`. `git.pull` fast-forward only (otherwise an error, never a merge).
 - `git.reflog` → `{sha, selector, subject, ts}` (50 default, max 500).
 - `git.tag` lightweight, or annotated with a message; refuses existing names.
-- `git.stash`: `push`, `list`, `pop` only.
+- `git.stash`: `push`, `list`, `show`, `pop`, `apply` and `drop`; list and mutating operations return the updated stash list, while show returns file stats and a patch (up to 256 KB).
 - `git.createWorktree` → new branch in `.ormi/worktrees/<branch>`.
 - `git.merge` = `merge --no-edit`. `git.rebase` onto `onto` or the base, never interactive. `git.cherryPick`/`git.revert` take 1–50 commits with `--no-edit`.
-- None start on a dirty tree (`git.dirty_worktree`). Conflict → `{state:'conflict', conflict}`; success → `{state:'done', head}`. Pass `continue: true` or `abort: true` to continue/abort. No skip; merge commits can't be picked/reverted.
+- Built methods: `git.status`, `stage`, `unstage`, `commit`, `push`, `log`, `show`, `branches`, `checkout`, `createBranch`, `deleteBranch`, `merge`, `cherryPick`, `revert`, `stash`, `prStatus`, `pr` and `prMerge`. `terminal.open` accepts a session and defaults to its cwd when no cwd is supplied.
+- Merge/cherry-pick/revert refuse dirty trees (`git.dirty_worktree`). Conflict → `{state:'conflict', conflict}`; success → `{state:'done', head}`. Pass `continue: true` or `abort: true` to continue/abort. No skip; merge commits can't be picked/reverted. Other unimplemented Git-pane actions remain future work.
 
-**Safety:** on branches the session didn't create, force push, hard reset, branch delete and removing a worktree with changes need the branch name typed. On its own branch/worktree, no confirmation. `git.removeWorktree` takes the name as `confirm`, never removes the main checkout, and fails with `git.worktree_in_use` while a live session uses it. A reflog view offers "restore previous tip".
+**Safety:** on branches the session didn't create, force push, hard reset and removing a worktree with changes need the branch name typed. `git.deleteBranch` always requires the exact branch name as `confirm` and refuses the current branch. `git.removeWorktree` takes the name as `confirm`, never removes the main checkout, and fails with `git.worktree_in_use` while a live session uses it. A reflog view offers "restore previous tip".
 
 **Not:** submodule management, bisect, history rewriting beyond rebase/revert, GPG. Use the terminal.
 
@@ -1860,7 +1865,7 @@ The hub sends a short summary through the relay Worker to Firebase (FCM); the ap
 
 **Test:** run coloured output, kill the supervisor, restart, check the replayed buffer is identical.
 
-**Implementation status:** `packages/pty-broker` (node-pty) runs as a detached process on `~/.ormicode/pty.sock` (a named pipe on Windows), started by the daemon on first use and left running across daemon restarts. Defined lifetime: it exits after 30 s (`ORMICODE_PTY_IDLE_MS`) with no live terminals and no connections; a machine reboot ends it. Scrollback is the last 5000 lines (4 MB cap) addressed by byte offset. Methods (dotted, like the rest of the protocol): `terminal.open {cwd, cols?, rows?, shell?, args?}`, `terminal.attach {terminal, from?}` (replays from the offset, then streams), `terminal.detach`, `terminal.write {terminal, data (base64)}`, `terminal.resize`, `terminal.close`, `terminal.list`; output arrives as `{type: 'term', terminal, body: {kind: 'terminal_output', offset, data} | {kind: 'terminal_exit', code}}` frames, not journaled. Limit 4 per device; `devices.revoke` kills that device's terminals. Tested: identical replay of coloured output after the reader reconnects, per-device limit, idle exit, detached start. Still to come: journaling open/close, the 1 MB/s throttle, ACP terminal requests, and the desktop Terminal panel.
+**Implementation status:** `packages/pty-broker` (node-pty) runs as a detached process on `~/.ormicode/pty.sock` (a named pipe on Windows), started by the daemon on first use and left running across daemon restarts. Defined lifetime: it exits after 30 s (`ORMICODE_PTY_IDLE_MS`) with no live terminals and no connections; a machine reboot ends it. Scrollback is the last 5000 lines (4 MB cap) addressed by byte offset. Methods (dotted, like the rest of the protocol): `terminal.open {cwd, cols?, rows?, shell?, args?}`, `terminal.attach {terminal, from?}` (replays from the offset, then streams), `terminal.detach`, `terminal.write {terminal, data (base64)}`, `terminal.resize`, `terminal.close`, `terminal.list`; output arrives as `{type: 'term', terminal, body: {kind: 'terminal_output', offset, data} | {kind: 'terminal_exit', code}}` frames, not journaled. Limit 4 per device; `devices.revoke` kills that device's terminals. Tested: identical replay of coloured output after the reader reconnects, per-device limit, idle exit, detached start. `terminal.write` data is base64 (UTF-8 bytes). The desktop Terminal panel (right rail; xterm.js in `packages/client-ui/src/features/terminal`) opens shells at the session's folder via `terminal.open {session}`, keeps tab ids per session in localStorage, replays from offset 0 on attach and de-duplicates output by offset; tabs only (split/maximize greyed). Still to come: journaling open/close, the 1 MB/s throttle and ACP terminal requests.
 
 ## Browser preview
 
@@ -2884,7 +2889,7 @@ setup step, checks, attempts, notes
 
 **Private:** never uploaded, no leaderboard.
 
-**API:** `eval.suite.list`, `eval.suite.save`, `eval.run`, `eval.compare`.
+**API:** `terminal.open` accepts either `cwd` or `session`; with only `session`, it opens at that row's cwd. Providing neither is `terminal.bad_request`. Other methods: `eval.suite.list`, `eval.suite.save`, `eval.run`, `eval.compare`.
 
 **Tests:** a suite entry made from a passing session reproduces the same checks; a deliberately broken adapter fails loudly instead of quietly scoring zero.
 
@@ -3290,7 +3295,7 @@ Example request and response bodies (inside their corresponding envelopes):
 | Sessions | `session.list`, `get`, `start`, `prompt`, `steer`, `pause`, `resume`, `abort`, `decide`, `answer`, `setModel`, `setEffort`, `setMode`, `setOption`, `retry`, `handoff`, `fork`, `commit`, `archive`, `delete`, `events`, `subscribe`, `unsubscribe`, `logs`, `getNotes`, `setNotes`, `deleteNote` |
 | Pairing (local only) | `pairing.start`, `pairing.status`, `pairing.confirm` |
 | Machines | `machine.list`, `status`, `projects`, `terminalOpen`, `terminalWrite`, `terminalResize`, `terminalClose` |
-| Git | `git.branches`, `worktrees`, `diff`, `push`, `pr`, `createWorktree`, `removeWorktree`, `graph`, `conflict`, `merge`, `reflog`, `fetch`, `pull`, `rebase`, `cherryPick`, `revert`, `stash`, `tag` |
+| Git | Built: `git.status`, `stage`, `unstage`, `commit`, `push`, `log`, `show`, `branches`, `checkout`, `createBranch`, `deleteBranch`, `merge`, `cherryPick`, `revert`, `stash`, `prStatus`, `pr`, `prMerge`, `diff`. Planned: `worktrees`, `createWorktree`, `removeWorktree`, `graph`, `conflict`, `reflog`, `fetch`, `pull`, `rebase`, `tag` |
 | Review | `review.queue`, `comment`, `batch` |
 | Files | `file.read`, `tree`, `search`, `write`, `blame`, `history` |
 | Artifacts | `artifact.list`, `get`, `publish`, `reject`, `blob.get` |
@@ -3331,7 +3336,7 @@ Example request and response bodies (inside their corresponding envelopes):
 
 **Efficiency:** batch frames per tick, merge text deltas, put several messages in one frame, enable `web_socket_compression`, and send snapshot + deltas by `seq` rather than full replays ([Performance](#performance)).
 
-**Errors:** `domain.reason` codes, lowercase: `session.busy`, `session.already_decided`, `session.not_found`, `session.not_running`, `session.resync_required`, `agent.unauthorized`, `agent.binary_missing`, `agent.rate_limited`, `agent.plan_limit`, `agent.failed`, `agent.unsupported`, `machine.unreachable`, `git.dirty_worktree`, `git.failed`, `git.worktree_in_use`, `relay.rate_limited`, `pairing.expired`, `acp.unsupported_version`, `lease.held`, `protocol.unknown_method`, `protocol.unknown_event`, `protocol.unsupported_version`, `protocol.invalid_frame`. The registry is `packages/protocol/src/errors.ts`, and a new code gets added there. Human wording lives in the client.
+**Errors:** `domain.reason` codes, lowercase: `session.busy`, `session.already_decided`, `session.not_found`, `session.not_running`, `session.resync_required`, `agent.unauthorized`, `agent.binary_missing`, `agent.rate_limited`, `agent.plan_limit`, `agent.failed`, `agent.unsupported`, `machine.unreachable`, `git.dirty_worktree`, `git.failed`, `git.worktree_in_use`, `git.nothing_to_commit`, `git.confirm_required`, `checkpoint.busy`, `terminal.bad_request`, `relay.rate_limited`, `pairing.expired`, `acp.unsupported_version`, `lease.held`, `protocol.unknown_method`, `protocol.unknown_event`, `protocol.unsupported_version`, `protocol.invalid_frame`. The registry is `packages/protocol/src/errors.ts`, and a new code gets added there. Human wording lives in the client.
 
 **Always included:** every session frame carries `vendor`, `transport`, and for ACP `acpVersion`, so clients show what actually ran.
 

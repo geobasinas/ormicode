@@ -23,6 +23,7 @@ import type { TerminalHub } from './terminal-methods.ts';
 import { summarize, priceFor, type PriceBook } from '@ormicode/pricing';
 import { summarize as digestOf, rank as rankDigest } from '@ormicode/digest';
 import { checkpointMethod } from './checkpoint-methods.ts';
+import { gitMethod } from './git-methods.ts';
 
 const LIVE_STATES = ['idle', 'starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying', 'paused_rate_limited', 'interrupted'] as const;
 
@@ -382,6 +383,8 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         return client.link.reply(id, { revoked: true, relaySynced: relay?.connected() ?? false });
       }
       default:
+        if (method.startsWith('git.')) return await gitMethod(ctx, client, id, method, body);
+        if (method === 'terminal.open') return await ctx.terminals.open(db, client, id, body);
         if (method.startsWith('terminal.')) return await ctx.terminals.method(client, id, method, body);
         if (method.startsWith('secret.')) return secretMethod(ctx, client, id, method, body);
         if (method.startsWith('checkpoint.')) return await checkpointMethod(ctx, client, id, method, body);

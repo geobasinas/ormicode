@@ -3,6 +3,18 @@ import { cursorSchema, jsonObjectSchema, requestIdSchema, sessionIdSchema, idSch
 
 const session = { session: sessionIdSchema };
 const nonEmpty = z.string().check(z.minLength(1));
+const count = z.number().check(z.int(), z.gte(0));
+const limitSchema = z.number().check(z.int(), z.gte(1), z.lte(500));
+const gitPath = z.object({ path: nonEmpty, oldPath: z.optional(nonEmpty), status: z.enum(['M', 'A', 'D', 'R', '?', 'U']), staged: z.boolean(), unstaged: z.boolean() });
+const gitFileStat = z.object({ path: nonEmpty, oldPath: z.optional(nonEmpty), status: z.enum(['M', 'A', 'D', 'R', '?', 'U']), binary: z.boolean(), added: count, removed: count });
+const stashItem = z.object({ index: count, ref: nonEmpty, message: z.string(), branch: z.nullable(z.string()), ts: timestampSchema, files: count, added: count, removed: count });
+const gitPr = z.object({
+  number: count, title: z.string(), body: z.string(), state: z.enum(['open', 'closed', 'merged', 'draft']), url: nonEmpty,
+  head: nonEmpty, base: nonEmpty, author: nonEmpty, createdAt: timestampSchema,
+  checks: z.array(z.object({ name: z.string(), state: z.enum(['pass', 'fail', 'pending', 'skipped']), durationMs: z.nullable(count) })),
+  reviewers: z.array(z.object({ login: nonEmpty, state: z.enum(['approved', 'changes_requested', 'commented', 'requested']) })),
+  additions: count, deletions: count, changedFiles: count,
+});
 export const sessionStateSchema = z.enum([
   'idle', 'starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying',
   'paused_rate_limited', 'interrupted', 'failed', 'done', 'archived',
@@ -89,6 +101,27 @@ export const requestBodies = {
   // Installed agent adapters: which vendor/transport pairs session.start accepts.
   'agents.list': z.object({}),
   'git.diff': z.object(session),
+  'git.status': z.object(session),
+  'git.stage': z.object({ ...session, paths: z.optional(z.array(nonEmpty)) }),
+  'git.unstage': z.object({ ...session, paths: z.optional(z.array(nonEmpty)) }),
+  'git.commit': z.object({ ...session, message: nonEmpty, amend: z.optional(z.boolean()) }),
+  'git.push': z.object(session),
+  'git.log': z.object({ ...session, ref: z.optional(nonEmpty), limit: z.optional(limitSchema), skip: z.optional(count) }),
+  'git.show': z.object({ ...session, sha: nonEmpty }),
+  'git.branches': z.object(session),
+  'git.checkout': z.object({ ...session, branch: nonEmpty }),
+  'git.createBranch': z.object({ ...session, name: nonEmpty, from: z.optional(nonEmpty), checkout: z.optional(z.boolean()) }),
+  'git.deleteBranch': z.object({ ...session, name: nonEmpty, confirm: nonEmpty }),
+  'git.merge': z.object({ ...session, branch: z.optional(nonEmpty), continue: z.optional(z.boolean()), abort: z.optional(z.boolean()) }),
+  'git.cherryPick': z.object({ ...session, commits: z.optional(z.array(nonEmpty).check(z.minLength(1), z.maxLength(50))), continue: z.optional(z.boolean()), abort: z.optional(z.boolean()) }),
+  'git.revert': z.object({ ...session, commits: z.optional(z.array(nonEmpty).check(z.minLength(1), z.maxLength(50))), continue: z.optional(z.boolean()), abort: z.optional(z.boolean()) }),
+  'git.stash': z.object({
+    ...session, op: z.enum(['list', 'show', 'push', 'pop', 'apply', 'drop']), index: z.optional(count),
+    message: z.optional(z.string()), includeUntracked: z.optional(z.boolean()),
+  }),
+  'git.prStatus': z.object(session),
+  'git.pr': z.object({ ...session, title: nonEmpty, body: z.string(), draft: z.optional(z.boolean()) }),
+  'git.prMerge': z.object({ ...session, method: z.enum(['squash', 'merge', 'rebase']) }),
   'session.cost': z.object(session),
   'pricing.status': z.object({}),
   'pricing.refresh': z.object({}),
@@ -97,7 +130,7 @@ export const requestBodies = {
   'secret.set': z.object({ name: z.string().check(z.regex(/^[A-Z_][A-Z0-9_]*$/)), value: nonEmpty, project: z.optional(nonEmpty) }),
   'secret.delete': z.object({ name: z.string().check(z.regex(/^[A-Z_][A-Z0-9_]*$/)), project: z.optional(nonEmpty) }),
   'secret.status': z.object({ project: nonEmpty }),
-  'terminal.open': z.object({ cwd: nonEmpty, cols: z.optional(cursorSchema), rows: z.optional(cursorSchema), shell: z.optional(nonEmpty), args: z.optional(z.array(z.string())) }),
+  'terminal.open': z.object({ cwd: z.optional(nonEmpty), session: z.optional(sessionIdSchema), cols: z.optional(cursorSchema), rows: z.optional(cursorSchema), shell: z.optional(nonEmpty), args: z.optional(z.array(z.string())) }),
   'terminal.attach': z.object({ terminal: nonEmpty, from: z.optional(cursorSchema) }),
   'terminal.detach': z.object({ terminal: nonEmpty }),
   'terminal.write': z.object({ terminal: nonEmpty, data: z.string() }),
@@ -167,6 +200,42 @@ export const responseBodies = {
     files: z.array(z.object({ path: nonEmpty, oldPath: z.optional(nonEmpty), status: z.enum(['added', 'deleted', 'modified', 'renamed']), binary: z.boolean(), added: cursorSchema, removed: cursorSchema })),
     patch: z.string(), truncated: z.boolean(),
   }),
+  'git.status': z.object({
+    branch: z.nullable(z.string()), base: z.nullable(z.string()), upstream: z.nullable(z.string()), ahead: count, behind: count, aheadOfBase: count,
+    files: z.array(gitPath), staged: z.object({ added: count, removed: count, files: count }),
+  }),
+  'git.stage': z.object({}),
+  'git.unstage': z.object({}),
+  'git.commit': z.object({ sha: nonEmpty }),
+  'git.push': z.object({ branch: nonEmpty, upstream: nonEmpty }),
+  'git.log': z.object({
+    commits: z.array(z.object({
+      sha: nonEmpty, subject: z.string(), author: z.string(), email: z.string(), ts: timestampSchema,
+      parents: z.array(nonEmpty), refs: z.array(z.string()), pushed: z.boolean(), session: z.optional(nonEmpty),
+    })), total: count,
+  }),
+  'git.show': z.object({
+    sha: nonEmpty, subject: z.string(), body: z.string(), author: z.string(), ts: timestampSchema, parents: z.array(nonEmpty),
+    files: z.array(gitFileStat), patch: z.string(), truncated: z.boolean(),
+  }),
+  'git.branches': z.object({
+    current: z.nullable(z.string()),
+    local: z.array(z.object({ name: nonEmpty, sha: nonEmpty, subject: z.string(), ts: timestampSchema, upstream: z.nullable(z.string()), ahead: count, behind: count, current: z.boolean(), gone: z.boolean() })),
+    remote: z.array(z.object({ name: nonEmpty, sha: nonEmpty, subject: z.string(), ts: timestampSchema })),
+  }),
+  'git.checkout': z.object({ branch: nonEmpty }),
+  'git.createBranch': z.object({ branch: nonEmpty }),
+  'git.deleteBranch': z.object({}),
+  'git.merge': z.object({ state: z.enum(['done', 'conflict']), head: z.optional(nonEmpty), conflict: z.optional(z.object({ files: z.array(nonEmpty) })) }),
+  'git.cherryPick': z.object({ state: z.enum(['done', 'conflict']), head: z.optional(nonEmpty), conflict: z.optional(z.object({ files: z.array(nonEmpty) })) }),
+  'git.revert': z.object({ state: z.enum(['done', 'conflict']), head: z.optional(nonEmpty), conflict: z.optional(z.object({ files: z.array(nonEmpty) })) }),
+  'git.stash': z.union([
+    z.object({ stashes: z.array(stashItem) }),
+    z.object({ files: z.array(gitFileStat), patch: z.string(), truncated: z.boolean() }),
+  ]),
+  'git.prStatus': z.object({ pr: z.nullable(gitPr) }),
+  'git.pr': z.object({ number: count, url: nonEmpty }),
+  'git.prMerge': z.object({}),
   'checkpoint.diff': z.object({ patch: z.string(), truncated: z.boolean() }),
   'checkpoint.restore': z.object({ restored: z.literal(true), id: nonEmpty }),
   'checkpoint.fork': z.object({ session: sessionIdSchema, branch: nonEmpty, cwd: nonEmpty, from: nonEmpty }),
