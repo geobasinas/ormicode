@@ -5,6 +5,7 @@ import { agentList, createAdapter } from './registry.ts';
 import { ormicodeDir } from './socket.ts';
 
 const CACHE_TTL_MS = 60 * 60_000;
+const CACHE_VERSION = 2; // bump when listed fields change so stale entries die
 const MODEL_TIMEOUT_MS = 20_000;
 
 interface ListedModel {
@@ -19,7 +20,7 @@ interface ListedModel {
 }
 
 interface CacheEntry { cachedAt: number; models: ListedModel[] }
-interface ModelCache { entries: Record<string, CacheEntry> }
+interface ModelCache { version?: number; entries: Record<string, CacheEntry> }
 interface AdapterPair { agent: string; transport: string; invalid?: string }
 
 function cachePath(): string {
@@ -31,13 +32,13 @@ function cachePath(): string {
 function readCache(path: string): ModelCache {
   try {
     const parsed = JSON.parse(readFileSync(path, 'utf8')) as ModelCache;
-    return parsed && parsed.entries && typeof parsed.entries === 'object' && !Array.isArray(parsed.entries) ? parsed : { entries: {} };
+    return parsed && parsed.version === CACHE_VERSION && parsed.entries && typeof parsed.entries === 'object' && !Array.isArray(parsed.entries) ? parsed : { entries: {} };
   } catch { return { entries: {} }; }
 }
 
 function writeCache(path: string, cache: ModelCache): void {
   const temp = `${path}.${process.pid}.tmp`;
-  writeFileSync(temp, JSON.stringify(cache));
+  writeFileSync(temp, JSON.stringify({ ...cache, version: CACHE_VERSION }));
   renameSync(temp, path);
 }
 

@@ -1,7 +1,8 @@
 import { spawn, execFile } from 'node:child_process';
 import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { mkdtemp, writeFile, unlink, rmdir } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
@@ -13,6 +14,23 @@ type Spawn = (command: string, args: string[], options: SpawnOptionsWithoutStdio
 type Session = { spec: StartSpec; log?: RawLog; model?: string; effort?: string; outputSchema?: string; nativeId?: string; queue: EventQueue; active: boolean; disposed: boolean; needsRecovery: boolean; process?: ChildProcessWithoutNullStreams; running?: Promise<void>; interrupted: boolean };
 const execFileAsync = promisify(execFile);
 const limit = 1024 * 1024;
+
+/** ~/.grok/models_cache.json — `grok models` prints ids only; the cache carries
+ *  display names and the per-model reasoning_efforts the API advertises. */
+function grokModelCatalog(): Map<string, { name: string; efforts: string[] }> {
+  try {
+    const home = process.env.GROK_HOME ?? join(homedir(), '.grok');
+    const raw = JSON.parse(readFileSync(join(home, 'models_cache.json'), 'utf8')) as { models?: Record<string, { info?: { hidden?: boolean; name?: string; reasoning_efforts?: { value?: string }[] } }> };
+    const out = new Map<string, { name: string; efforts: string[] }>();
+    for (const [id, entry] of Object.entries(raw.models ?? {})) {
+      const info = entry.info;
+      if (!info || info.hidden) continue;
+      const efforts = (info.reasoning_efforts ?? []).map(e => e.value).filter((v): v is string => typeof v === 'string' && v.length > 0);
+      out.set(id, { name: info.name ?? id, efforts });
+    }
+    return out;
+  } catch { return new Map(); }
+}
 
 /** One headless Grok process per turn. Headless permission requests are not interactive. */
 export class GrokCliAdapter implements AgentAdapter {
@@ -32,7 +50,11 @@ export class GrokCliAdapter implements AgentAdapter {
   async models() {
     try {
       const { stdout } = await execFileAsync(this.options.executable ?? 'grok', ['models'], { timeout: 15_000, windowsHide: true });
-      return stdout.split('\n').map(line => /^\s*[-*]\s+(\S+)/.exec(line)?.[1]).filter((id): id is string => Boolean(id)).map(id => ({ id }));
+      const catalog = grokModelCatalog();
+      return stdout.split('\n')
+        .map(line => /^\s*[-*]\s+(\S+)/.exec(line)?.[1])
+        .filter((id): id is string => Boolean(id))
+        .map(id => ({ id, ...(catalog.get(id)?.name ? { name: catalog.get(id)!.name } : {}), ...(catalog.get(id)?.efforts.length ? { efforts: catalog.get(id)!.efforts } : {}) }));
     } catch { return []; }
   }
   async start(spec: StartSpec): Promise<Handle> { return this.create(spec); }

@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import * as z from 'zod/mini';
 import { EventQueue, NO_CAPABILITIES } from '@ormicode/agent-core';
 import type { AgentAdapter, Handle, ModelList, NativeRef, PromptInput, StartSpec } from '@ormicode/agent-core';
-import { OpenCodeServer } from './server.ts';
+import { OpenCodeServer, listOpenCodeModels } from './server.ts';
 import { OpenCodeEventMapper } from './map.ts';
 import { OpenCodePermissionBroker } from './permissions.ts';
 
@@ -18,7 +18,6 @@ type Session = {
   running?: Promise<void>; finish?: Finish; model?: string; effort?: string;
 };
 const execFileAsync = promisify(execFile);
-const modelRef = z.looseObject({ id: z.string().check(z.minLength(1)), modelID: z.optional(z.string()), providerID: z.string().check(z.minLength(1)), name: z.optional(z.string()), variants: z.optional(z.array(z.looseObject({ id: z.string() }))) });
 
 /** OpenCode v2 SDK adapter over an owned loopback server. Permission decisions are forwarded without changing their scope. */
 export class OpenCodeSdkAdapter implements AgentAdapter {
@@ -45,11 +44,7 @@ export class OpenCodeSdkAdapter implements AgentAdapter {
     return this.starting;
   }
   async models(): Promise<ModelList> {
-    const server = await this.ensureServer();
-    const listed = await server.client.model.list();
-    const data = z.safeParse(z.looseObject({ data: z.array(modelRef) }), listed);
-    if (!data.success) return [];
-    return data.data.data.map(model => ({ id: `${model.providerID}/${model.modelID ?? model.id}`, ...(model.name !== undefined ? { name: model.name } : {}), ...(model.variants?.length ? { efforts: model.variants.map(variant => variant.id) } : {}) }));
+    return listOpenCodeModels(await this.ensureServer());
   }
   async start(spec: StartSpec): Promise<Handle> {
     if (!spec.cwd) throw new Error('cwd is required');

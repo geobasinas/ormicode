@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { EventQueue, NO_CAPABILITIES, RawLog, attachRawLog } from '@ormicode/agent-core';
+import { OpenCodeServer, listOpenCodeModels } from '@ormicode/agent-opencode-sdk';
 import type { AgentAdapter, Handle, NativeRef, PromptInput, StartSpec } from '@ormicode/agent-core';
 import { OpenCodeCliMapper } from './map.ts';
 
@@ -31,10 +32,17 @@ export class OpenCodeCliAdapter implements AgentAdapter {
     } catch { return { available: false, reason: 'OpenCode CLI not found or version check failed' }; }
   }
   async models() {
+    // model/list (variants included) needs a short-lived serve instance;
+    // `opencode models` is the degraded fallback — ids only, no efforts.
     try {
-      const { stdout } = await execFileAsync(this.options.executable ?? 'opencode', ['models'], { timeout: 15_000, windowsHide: true });
-      return stdout.split('\n').map(line => line.trim()).filter(id => id.includes('/')).map(id => ({ id }));
-    } catch { return []; }
+      const server = await OpenCodeServer.start(this.options.executable ? { executable: this.options.executable } : {});
+      try { return await listOpenCodeModels(server); } finally { server.close(); }
+    } catch {
+      try {
+        const { stdout } = await execFileAsync(this.options.executable ?? 'opencode', ['models'], { timeout: 15_000, windowsHide: true });
+        return stdout.split('\n').map(line => line.trim()).filter(id => id.includes('/')).map(id => ({ id }));
+      } catch { return []; }
+    }
   }
   async start(spec: StartSpec): Promise<Handle> { return this.create(spec); }
   async resume(ref: NativeRef): Promise<Handle> {

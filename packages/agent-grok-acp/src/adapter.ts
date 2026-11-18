@@ -1,4 +1,7 @@
 import { execFile } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { EventQueue, NO_CAPABILITIES, RawLog } from '@ormicode/agent-core';
@@ -13,6 +16,23 @@ import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from 'n
 type Spawn = (command: string, args: string[], options: SpawnOptionsWithoutStdio) => ChildProcessWithoutNullStreams;
 type Session = { connection: AcpConnection; nativeId: string; queue: EventQueue; broker: GrokPermissionBroker; active: boolean; disposed: boolean; needsRecovery: boolean; mapper?: GrokTurnMapper; running?: Promise<void>; cancelRequested: boolean; options: ConfigOption[]; modes: Mode[]; currentMode?: string };
 const execFileAsync = promisify(execFile);
+
+/** ~/.grok/models_cache.json — `grok models` prints ids only; the cache carries
+ *  display names and the per-model reasoning_efforts the API advertises. */
+function grokModelCatalog(): Map<string, { name: string; efforts: string[] }> {
+  try {
+    const home = process.env.GROK_HOME ?? join(homedir(), '.grok');
+    const raw = JSON.parse(readFileSync(join(home, 'models_cache.json'), 'utf8')) as { models?: Record<string, { info?: { hidden?: boolean; name?: string; reasoning_efforts?: { value?: string }[] } }> };
+    const out = new Map<string, { name: string; efforts: string[] }>();
+    for (const [id, entry] of Object.entries(raw.models ?? {})) {
+      const info = entry.info;
+      if (!info || info.hidden) continue;
+      const efforts = (info.reasoning_efforts ?? []).map(e => e.value).filter((v): v is string => typeof v === 'string' && v.length > 0);
+      out.set(id, { name: info.name ?? id, efforts });
+    }
+    return out;
+  } catch { return new Map(); }
+}
 
 /** Grok ACP adapter. Permission choices are forwarded without changing their scope. */
 export class GrokAcpAdapter implements AgentAdapter {
@@ -32,7 +52,11 @@ export class GrokAcpAdapter implements AgentAdapter {
   async models() {
     try {
       const { stdout } = await execFileAsync(this.options.executable ?? 'grok', ['models'], { timeout: 15_000, windowsHide: true });
-      return stdout.split('\n').map(line => /^\s*[-*]\s+(\S+)/.exec(line)?.[1]).filter((id): id is string => Boolean(id)).map(id => ({ id }));
+      const catalog = grokModelCatalog();
+      return stdout.split('\n')
+        .map(line => /^\s*[-*]\s+(\S+)/.exec(line)?.[1])
+        .filter((id): id is string => Boolean(id))
+        .map(id => ({ id, ...(catalog.get(id)?.name ? { name: catalog.get(id)!.name } : {}), ...(catalog.get(id)?.efforts.length ? { efforts: catalog.get(id)!.efforts } : {}) }));
     } catch { return []; }
   }
   async start(spec: StartSpec): Promise<Handle> {

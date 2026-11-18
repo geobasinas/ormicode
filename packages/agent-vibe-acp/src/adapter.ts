@@ -33,11 +33,19 @@ export class VibeAcpAdapter implements AgentAdapter {
     } catch { return { available: false, reason: 'Vibe ACP not found or version check failed' }; }
   }
   async models() {
-    // Vibe model ids are user aliases declared in the models table of config.toml.
+    // Model ids are user aliases in the models table of config.toml; a
+    // model's `thinking_levels` (else its `thinking` default) is what the
+    // ACP effort option can send.
     try {
       const config = readFileSync(join(process.env.VIBE_HOME ?? join(homedir(), '.vibe'), 'config.toml'), 'utf8');
       const block = /\bmodels\s*=\s*\[([\s\S]*?)\]/.exec(config)?.[1] ?? '';
-      return [...block.matchAll(/\balias\s*=\s*"([^"]+)"/g)].map(match => ({ id: match[1]! }));
+      const levels = (entry: string) => [...(entry.match(/thinking_levels\s*=\s*\[([^\]]*)\]/)?.[1]?.matchAll(/"([^"]+)"/g) ?? [])].map(level => level[1] ?? '');
+      return [...block.matchAll(/\{([^}]*)\}/g)].map(match => match[1] ?? '').map(entry => {
+        const alias = /\balias\s*=\s*"([^"]+)"/.exec(entry)?.[1];
+        const thinking = /\bthinking\s*=\s*"([^"]+)"/.exec(entry)?.[1];
+        const declared = levels(entry);
+        return { id: alias, efforts: declared.length ? declared : thinking ? [thinking] : [] };
+      }).filter((model): model is { id: string; efforts: string[] } => Boolean(model.id));
     } catch { return []; }
   }
   async start(spec: StartSpec): Promise<Handle> {

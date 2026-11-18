@@ -4,6 +4,7 @@ import { randomBytes } from 'node:crypto';
 import { OpenCode } from '@opencode/client';
 import type { OpenCodeClient } from '@opencode/client';
 import * as z from 'zod/mini';
+import type { ModelList } from '@ormicode/agent-core';
 
 type Spawn = (command: string, args: string[], options: SpawnOptionsWithoutStdio) => ChildProcessWithoutNullStreams;
 
@@ -66,4 +67,14 @@ export class OpenCodeServer {
     if (this.closed) return;
     this.closed = true; this.child.kill();
   }
+}
+
+const modelRef = z.looseObject({ id: z.string().check(z.minLength(1)), modelID: z.optional(z.string()), providerID: z.string().check(z.minLength(1)), name: z.optional(z.string()), variants: z.optional(z.array(z.looseObject({ id: z.string() }))) });
+
+/** Catalog from model/list: ids, display names and variant ids (the effort pickers). */
+export async function listOpenCodeModels(server: OpenCodeServer): Promise<ModelList> {
+  const listed = await server.client.model.list();
+  const data = z.safeParse(z.looseObject({ data: z.array(modelRef) }), listed);
+  if (!data.success) return [];
+  return data.data.data.map(model => ({ id: `${model.providerID}/${model.modelID ?? model.id}`, ...(model.name !== undefined ? { name: model.name } : {}), ...(model.variants?.length ? { efforts: model.variants.map(variant => variant.id) } : {}) }));
 }
