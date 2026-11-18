@@ -48,6 +48,21 @@ test('models.list contracts include transport, model availability and per-adapte
   assert.equal(parseResponseBody('models.list', { models: [{ ...entry, efforts: 'high' }] }).success, false);
 });
 
+test('project.branches contracts include repository status and busy branches', () => {
+  const branch = { name: 'main', sha: 'abc123', subject: 'initial', ts: 1, upstream: null, ahead: 0, behind: 0, current: true, gone: false };
+  const response = {
+    isRepo: true, detached: false, dirty: 2, busyBranches: ['main'],
+    current: 'main', local: [branch], remote: [],
+  };
+  assert.equal(parseRequestBody('project.branches', { project: '/repo' }).success, true);
+  assert.equal(parseResponseBody('project.branches', response).success, true);
+  assert.equal(parseResponseBody('project.branches', { ...response, dirty: -1 }).success, false);
+  assert.equal(parseResponseBody('project.branches', { ...response, detached: 'false' }).success, false);
+  assert.equal(parseResponseBody('project.branches', {
+    isRepo: false, detached: false, dirty: 0, busyBranches: [], current: null, local: [], remote: [],
+  }).success, true);
+});
+
 test('secret listing exposes only names and scope metadata', () => {
   assert.equal(parseRequestBody('secret.list', {}).success, true);
   assert.equal(parseRequestBody('secret.list', { project: '/repo' }).success, true);

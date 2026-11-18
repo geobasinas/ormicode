@@ -1,4 +1,5 @@
 import { getSession, setBranch } from '@ormicode/session-store';
+import { busyBranches } from './branch-busy.ts';
 import {
   branches, checkout, createBranch, createPr, deleteBranch, isGitRepo, log, merge, mergePr,
   NothingToCommit, commit, prStatus, push, revert, show, stage, stash, status, unstage, cherryPick,
@@ -90,8 +91,19 @@ export async function gitMethod(
 
 /** Branch catalog for a project dir before a session exists — feeds the
  * composer's workspace picker. Non-repos and 'scratch' reply isRepo:false. */
-export function projectBranches(client: Client, id: string, body: Record<string, unknown>): void {
+export function projectBranches(ctx: DispatchCtx, client: Client, id: string, body: Record<string, unknown>): void {
   const project = String(body.project);
-  if (project === 'scratch' || !isGitRepo(project)) return client.link.reply(id, { isRepo: false, current: null, local: [], remote: [] });
-  return client.link.reply(id, { isRepo: true, ...branches(project) });
+  if (project === 'scratch' || !isGitRepo(project)) {
+    return client.link.reply(id, {
+      isRepo: false, current: null, local: [], remote: [], detached: false, dirty: 0, busyBranches: [],
+    });
+  }
+  const info = branches(project);
+  const local = info.local
+    .sort((a, b) => Number(b.current) - Number(a.current) || b.ts - a.ts || a.name.localeCompare(b.name))
+    .slice(0, 50);
+  return client.link.reply(id, {
+    isRepo: true, ...info, local, detached: info.current === null,
+    dirty: status(project, null).files.length, busyBranches: busyBranches(ctx.db, project),
+  });
 }

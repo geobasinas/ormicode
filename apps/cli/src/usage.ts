@@ -17,6 +17,7 @@ export function usage(code: number): never {
   ormi session notes <id>
   ormi session tail <id>                          stream live + replayed events
   ormi models [--agent x] [--transport y] [--refresh]  list agent models and effort levels
+  ormi project branches <path>                     inspect a project's Git branches and workspace state
   ormi pricing status | refresh | get <model>       OpenRouter price table (cached a day)
   ormi cost totals [--since <ms>]                   stored token and price totals
   ormi secret set <NAME> [--project p] (value on stdin) | delete <NAME> [--project p] | status <project>

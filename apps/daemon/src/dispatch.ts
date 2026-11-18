@@ -1,6 +1,6 @@
 import type { Frame } from '@ormicode/protocol';
 import { parseRequestBody, newId } from '@ormicode/protocol';
-import { getSession, listSessions, sessionsInStates, setState, setTitle, listNotes, setNote, deleteNote, archiveSession, createSession, type Store } from '@ormicode/session-store';
+import { getSession, listSessions, setState, setTitle, listNotes, setNote, deleteNote, archiveSession, createSession, type Store } from '@ormicode/session-store';
 import { replay, setCursor } from '@ormicode/journal';
 import { listDevices, renameDevice, revokeDevice } from '@ormicode/session-store';
 import { handleJoin, type Pairing } from './pair.ts';
@@ -27,8 +27,7 @@ import { costMethod } from './cost-methods.ts';
 import { gitMethod, projectBranches } from './git-methods.ts';
 import { fileMethod } from './file-methods.ts';
 import { listModels } from './models.ts';
-
-const LIVE_STATES = ['idle', 'starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying', 'paused_rate_limited', 'interrupted'] as const;
+import { branchIsBusy } from './branch-busy.ts';
 
 /** What a client transport must do: send frames and answer requests. */
 export interface ClientLink {
@@ -82,7 +81,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         return client.link.reply(id, { agents: agentList() });
       case 'models.list':
         return client.link.reply(id, await listModels(body as { agent?: string; transport?: string; refresh?: boolean }));
-      case 'project.branches': return projectBranches(client, id, body);
+      case 'project.branches': return projectBranches(ctx, client, id, body);
       case 'daemon.status':
         return client.link.reply(id, { version: '0.0.0', uptimeMs: Date.now() - ctx.startedAt, liveWorkers: ctx.liveWorkers(), relay: ctx.relay()?.connected() ? 'connected' : 'disconnected', lastError: ctx.lastError() });
       case 'session.start': {
@@ -99,8 +98,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
           mkdirSync(resolved.cwd, { recursive: true });
         } else {
           // Busy = another live session holds this project+branch already.
-          const busy = (branch: string) => sessionsInStates(db, LIVE_STATES)
-            .some(s => s.id !== sessionId && s.project === project && s.branch === branch);
+          const busy = (branch: string) => branchIsBusy(db, project, branch, sessionId);
           const r = resolveWorkspace(project, workspace as WorkspaceChoice, body.workspaceName as string | undefined, sessionId, busy);
           if ('err' in r) return client.link.replyError(id, r.err, r.detail ?? r.err);
           resolved = r;
@@ -167,7 +165,8 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         if (!s) return client.link.replyError(id, 'session.not_found', String(body.session));
         return client.link.reply(id, {
           id: s.id, title: s.title, state: s.state, project: s.project, vendor: s.vendor,
-          transport: s.transport, updatedAt: s.updated_at, branch: s.branch, model: s.model, effort: s.effort, mode: s.mode,
+          transport: s.transport, updatedAt: s.updated_at, branch: s.branch, worktree: Boolean(s.worktree),
+          model: s.model, effort: s.effort, mode: s.mode,
           nativeId: s.native_id, acpVersion: s.acp_version, parent: s.parent,
         });
       }

@@ -2,7 +2,7 @@
  * is working), Shift+Enter newline. Images by picker or paste; model, effort and
  * mode chips call session.setModel/setEffort/setMode; Stop calls session.abort. */
 import { useEffect, useRef, useState } from 'react';
-import { Plus, AtSign, Mic, ArrowUp, Square, Cpu, Gauge } from 'lucide-react';
+import { Plus, AtSign, Mic, ArrowUp, Square, Cpu, Gauge, GitBranch } from 'lucide-react';
 import { usePlatform } from '../../lib/platform.ts';
 import type { SessionDetails } from './useSession.ts';
 import { useImages, ImageStrip, MenuChip, ModelChip, EffortChip, chip, iconBtn } from './composer-parts.tsx';
@@ -10,7 +10,7 @@ import { useModels } from './useModels.ts';
 
 const LIVE = new Set(['running', 'starting', 'retrying']);
 
-export function Composer({ session, details }: { session: string; details?: SessionDetails }) {
+export function Composer({ session, details, onGit }: { session: string; details?: SessionDetails; onGit?: () => void }) {
   const { transport } = usePlatform();
   const area = useRef<HTMLTextAreaElement>(null);
   const [text, setText] = useState('');
@@ -70,6 +70,22 @@ export function Composer({ session, details }: { session: string; details?: Sess
           <button className="ormi-narrow-hide" style={{ ...iconBtn, opacity: 0.45, cursor: 'default' }} title="mention files (soon)" disabled><AtSign size={15} /></button>
           <button className="ormi-narrow-hide" style={{ ...iconBtn, opacity: 0.45, cursor: 'default' }} title="voice (soon)" disabled><Mic size={15} /></button>
           <span style={{ flex: 1, minWidth: 4 }} />
+          {details?.branch ? (
+            <button
+              className="ormi-narrow-hide hv-sub"
+              onClick={onGit}
+              title={`${details.branch} · ${details.worktree ? 'worktree' : 'main checkout'}`}
+              aria-label={`Git branch ${details.branch}${details.worktree ? ', worktree' : ', main checkout'}`}
+              style={{
+                ...chip, maxWidth: 140, minWidth: 0, flexShrink: 1,
+                fontFamily: 'var(--font-mono)', fontSize: 11, cursor: onGit ? 'pointer' : 'default',
+              }}
+            >
+              <GitBranch size={12} style={{ color: 'var(--text-hint)', flexShrink: 0 }} />
+              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{details.branch}</span>
+              {details.worktree ? <span style={{ color: 'var(--text-hint)', fontSize: 9, flexShrink: 0 }}>wt</span> : null}
+            </button>
+          ) : null}
           {details?.vendor ? <span className="ormi-narrow-hide" style={{ ...chip, cursor: 'default', flexShrink: 0 }} title="agent · transport">{details.vendor}<span style={{ color: 'var(--text-hint)' }}>{details.transport}</span></span> : null}
           {modes.length ? <MenuChip title="mode" label="Mode" value={mode ?? modes[0]!.id} choices={modes.map(m => ({ value: m.id, name: m.name }))} onChange={v => void call('session.setMode', { mode: v })} /> : null}
           {details ? <ModelChip title="model — the vendor's model id" icon={<Cpu size={11} style={{ color: 'var(--text-hint)' }} />} value={model} models={modelList.models} loading={modelList.loading} refresh={modelList.refresh} onChange={v => { setModelOverride(v); if (v !== 'default') void call('session.setModel', { model: v }).then(ok => { if (!ok) setModelOverride(undefined); }); }} /> : null}

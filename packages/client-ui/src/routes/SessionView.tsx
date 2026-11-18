@@ -22,7 +22,7 @@ interface SessionCost {
   usd: number | null; source: 'reported' | 'estimate' | 'none'; priceVersion: string | null; model: string | null;
 }
 
-export function SessionView({ session, rail = 'none', onOpen }: { session: string; rail?: RailPane; onRail?: (r: RailPane) => void; onOpen?: (session: string) => void }) {
+export function SessionView({ session, rail = 'none', onRail, onOpen }: { session: string; rail?: RailPane; onRail?: (r: RailPane) => void; onOpen?: (session: string) => void }) {
   const { events, approvals } = useTranscript(session);
   const details = useSession(session);
   const { transport } = usePlatform();
@@ -50,7 +50,7 @@ export function SessionView({ session, rail = 'none', onOpen }: { session: strin
       </div> : null}
       <Transcript events={events} session={session} />
       <Approvals session={session} pending={approvals} events={events} />
-      <Composer session={session} details={details} />
+      <Composer session={session} details={details} onGit={onRail ? () => onRail('git') : undefined} />
     </div>
   );
   if (rail === 'none') return <div style={{ height: '100%', background: 'var(--bg-main)' }}>{chat}</div>;

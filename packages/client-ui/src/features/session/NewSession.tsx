@@ -33,6 +33,8 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
   const [error, setError] = useState<string>();
   const [workspace, setWorkspace] = useState<WorkspaceChoice>({ kind: 'current' });
   const [repo, setRepo] = useState<RepoInfo | null>(null);
+  const projectRef = useRef(project);
+  projectRef.current = project;
   const img = useImages();
   useEffect(() => {
     let alive = true;
@@ -65,14 +67,24 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
     let alive = true;
     transport.request('project.branches', { project }).then(r => {
       if (!alive || r.type !== 'res') return;
-      const b = r.body as { isRepo: boolean; current: string | null; local: { name: string }[] };
-      if (b.isRepo) setRepo({ current: b.current, local: b.local });
+      const b = r.body as unknown as { isRepo: boolean } & RepoInfo;
+      if (b.isRepo) setRepo(b);
     }).catch(() => {});
     return () => { alive = false; };
   }, [transport, project]);
+  const refreshRepo = () => {
+    const path = project;
+    if (path === 'scratch') return;
+    void transport.request('project.branches', { project: path }).then(r => {
+      if (projectRef.current !== path || r.type !== 'res') return;
+      const b = r.body as unknown as { isRepo: boolean } & RepoInfo;
+      setRepo(b.isRepo ? b : null);
+    }).catch(() => {});
+  };
   const transports = agents.find(a => a.vendor === vendor)?.transports ?? ['cli'];
   const chosen = via && transports.includes(via) ? via : transports[0]!;
   const modelList = useModels(vendor, agentsLoaded ? chosen : undefined);
+  const detachedBlocked = Boolean(repo?.detached && workspace.kind === 'current');
 
   const grow = () => {
     const el = area.current;
@@ -81,7 +93,7 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
 
   const send = async () => {
     const t = text.trim();
-    if (!t || busy) return;
+    if (!t || busy || detachedBlocked) return;
     setBusy(true); setError(undefined);
     try {
       const res = await transport.request('session.start', {
@@ -89,7 +101,7 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
         model, effort, mode: 'default',
         workspace: project === 'scratch' ? { kind: 'scratch' } : workspace,
       });
-      if (res.type === 'err') { setError(res.message); setBusy(false); return; }
+      if (res.type === 'err') { setError(workspaceError(res.code, res.message)); setBusy(false); return; }
       const session = (res.body as { session: string }).session;
       const images = img.wire.length ? img.wire : undefined;
       setText(''); img.clear(); grow();
@@ -118,7 +130,7 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
           minHeight: 42, maxHeight: 168, overflow: 'hidden',
         }}
       />
-      {error || img.error ? <div style={{ color: 'var(--accent-red)', fontSize: 'var(--text-xs)', marginBottom: 4 }}>{error ?? img.error}</div> : null}
+      {error || img.error || detachedBlocked ? <div style={{ color: 'var(--accent-red)', fontSize: 'var(--text-xs)', marginBottom: 4 }}>{error ?? img.error ?? 'HEAD is detached — pick a new branch or a worktree'}</div> : null}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <button className="hv-sub" style={iconBtn} title="attach images" aria-label="attach images" onClick={img.pick}><Plus size={17} /></button>
         <button style={{ ...iconBtn, opacity: 0.45, cursor: 'default' }} title="mention files (soon)" disabled><AtSign size={16} /></button>
@@ -139,14 +151,22 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
           model={model} models={modelList.models} onModel={setModel}
           effort={effort} onEffort={setEffort}
           loading={modelList.loading} refresh={modelList.refresh} />
-        {repo ? <GitChip title="where the agent works" icon={<GitBranch size={12} style={{ color: 'var(--text-hint)' }} />}
-          value={workspace} onChange={setWorkspace} info={repo} /> : null}
-        <button onClick={() => void send()} disabled={!text.trim() || busy} title="start session" style={{
+        {repo ? <GitChip title="where the agent works" icon={<GitBranch size={12} style={{ color: repo.detached && workspace.kind === 'current' ? 'var(--accent-amber)' : 'var(--text-hint)' }} />}
+          value={workspace} onChange={setWorkspace} info={repo} onOpen={refreshRepo} /> : null}
+        <button onClick={() => void send()} disabled={!text.trim() || busy || detachedBlocked} title={detachedBlocked ? 'HEAD is detached — pick a new branch or a worktree' : 'start session'} style={{
           width: 26, height: 26, borderRadius: '50%', border: 'none', cursor: 'pointer', marginLeft: 2,
-          background: 'var(--text-active)', color: 'var(--text-onAccent)', opacity: text.trim() ? 1 : 0.5,
+          background: 'var(--text-active)', color: 'var(--text-onAccent)', opacity: text.trim() && !detachedBlocked ? 1 : 0.5,
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
         }}><ArrowUp size={15} strokeWidth={2.5} /></button>
       </div>
     </div>
   );
+}
+
+function workspaceError(code: string, message: string) {
+  if (code === 'workspace.detached') return 'HEAD is detached — pick a new branch or a worktree';
+  if (code === 'workspace.not_repo') return 'This folder is not a Git repository. Choose a Git project or use the current workspace.';
+  if (code === 'workspace.failed') return message;
+  if (code === 'lease.conflict') return 'This workspace is already in use by another session. Choose a different workspace.';
+  return message;
 }

@@ -5,6 +5,7 @@ import { daemonMain, statusMain, pairMain, connectMain, devicesMain, relayMain }
 import { sessionCommand } from './session.ts';
 import { checkpointCommand } from './checkpoint.ts';
 import { fileCommand } from './file.ts';
+import { projectCommand } from './project.ts';
 import { secretCommand } from './secret.ts';
 import { costCommand, pricingCommand } from './pricing.ts';
 import { modelsCommand } from './models.ts';
@@ -34,6 +35,8 @@ if (group === 'agent' && command === 'smoke') {
   process.exit(await checkpointCommand(command, rest));
 } else if (group === 'file') {
   process.exit(await fileCommand(command, rest));
+} else if (group === 'project') {
+  process.exit(await projectCommand(command, rest));
 } else if (group === 'status' && !command) {
   process.exit(await statusMain());
 } else if (group === 'pair' && !command) {

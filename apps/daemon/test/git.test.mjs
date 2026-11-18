@@ -80,6 +80,9 @@ test('kind worktree creates .ormi/worktrees/<slug> and kind branch switches a ne
   assert.equal(wt.type, 'res');
   const row = getSession(daemon.db, wt.body.session);
   assert.ok(row.worktree.includes(join('.ormi', 'worktrees')));
+  const details = await client.request('session.get', { session: wt.body.session });
+  assert.equal(details.body.worktree, true);
+  assert.equal(details.body.branch, row.branch);
   const br = await start(client, dir, { kind: 'branch', branch: 'hotfix-x' });
   assert.equal(br.type, 'res');
   const row2 = getSession(daemon.db, br.body.session);
@@ -101,6 +104,53 @@ test('non-git project rejects branch/worktree but allows current', async () => {
   assert.equal(getSession(daemon.db, ok.body.session).branch, null);
   await daemon.close(); client.close();
   rmSync(dir, { recursive: true, force: true });
+});
+
+test('project.branches reports dirty, busy and detached state and empty non-repositories', async () => {
+  const dir = repo();
+  const storeDir = mkdtempSync(join(tmpdir(), 'ormi-project-branches-store-'));
+  const nonRepo = mkdtempSync(join(tmpdir(), 'ormi-project-branches-nonrepo-'));
+  git(dir, 'switch', '-c', 'feature/recent');
+  writeFileSync(join(dir, 'branch.txt'), 'branch\n');
+  git(dir, 'add', '.'); git(dir, 'commit', '-m', 'feature');
+  git(dir, 'switch', 'main');
+  const { daemon, client } = await boot(storeDir);
+  try {
+    const started = await start(client, dir, { kind: 'current' });
+    assert.equal(started.type, 'res');
+
+    const initial = await client.request('project.branches', { project: dir });
+    assert.equal(initial.type, 'res');
+    assert.equal(initial.body.isRepo, true);
+    assert.equal(initial.body.detached, false);
+    assert.equal(initial.body.current, 'main');
+    assert.equal(initial.body.local[0].name, 'main');
+    assert.ok(initial.body.local.some(branch => branch.name === 'feature/recent'));
+    assert.equal(initial.body.dirty, 0);
+    assert.deepEqual(initial.body.busyBranches, ['main']);
+
+    writeFileSync(join(dir, 'f.txt'), 'changed\n');
+    writeFileSync(join(dir, 'untracked.txt'), 'untracked\n');
+    const dirty = await client.request('project.branches', { project: dir });
+    assert.equal(dirty.body.dirty, 2);
+
+    git(dir, 'checkout', '--detach', 'HEAD');
+    const detached = await client.request('project.branches', { project: dir });
+    assert.equal(detached.body.current, null);
+    assert.equal(detached.body.detached, true);
+
+    const other = await client.request('project.branches', { project: nonRepo });
+    assert.deepEqual({
+      isRepo: other.body.isRepo, detached: other.body.detached, dirty: other.body.dirty,
+      busyBranches: other.body.busyBranches, current: other.body.current, local: other.body.local, remote: other.body.remote,
+    }, { isRepo: false, detached: false, dirty: 0, busyBranches: [], current: null, local: [], remote: [] });
+  } finally {
+    await daemon.close();
+    client.close();
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(storeDir, { recursive: true, force: true });
+    rmSync(nonRepo, { recursive: true, force: true });
+  }
 });
 
 test('a failed worktree add cleans up and leaves the repo untouched', async () => {

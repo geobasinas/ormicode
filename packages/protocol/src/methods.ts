@@ -266,7 +266,9 @@ export const responseBodies = {
     files: z.array(gitFileStat), patch: z.string(), truncated: z.boolean(),
   }),
   'git.branches': branchInfo,
-  'project.branches': z.object({ isRepo: z.boolean(), ...branchInfo.shape }),
+  'project.branches': z.object({
+    isRepo: z.boolean(), detached: z.boolean(), dirty: count, busyBranches: z.array(nonEmpty), ...branchInfo.shape,
+  }),
   'git.checkout': z.object({ branch: nonEmpty }),
   'git.createBranch': z.object({ branch: nonEmpty }),
   'git.deleteBranch': z.object({}),

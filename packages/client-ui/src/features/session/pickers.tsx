@@ -150,13 +150,16 @@ export function AgentChip({ vendor, via, agents, onPick, model, models, onModel,
 }
 
 export interface WorkspaceChoice { kind: 'current' | 'branch' | 'worktree'; branch?: string }
-export interface RepoInfo { current: string | null; local: { name: string }[] }
+export interface RepoInfo {
+  current: string | null; detached: boolean; dirty: number; busyBranches: string[];
+  local: { name: string; subject: string; ts: number; current: boolean }[];
+}
 
 /** Git workspace picker: work on the current branch, on a new branch, or in a
  * fresh worktree cut from a listed branch. Only rendered for git projects. */
-export function GitChip({ value, onChange, info, icon, title }: {
+export function GitChip({ value, onChange, info, icon, title, onOpen }: {
   value: WorkspaceChoice; onChange: (w: WorkspaceChoice) => void;
-  info: RepoInfo; icon?: ReactNode; title?: string;
+  info: RepoInfo; icon?: ReactNode; title?: string; onOpen?: () => void;
 }) {
   const [naming, setNaming] = useState(false);
   if (naming) {
@@ -166,32 +169,71 @@ export function GitChip({ value, onChange, info, icon, title }: {
         onCommit={v => { if (v !== 'default') onChange({ kind: 'branch', branch: v }); }} />
     );
   }
-  const label = value.kind === 'current' ? (info.current ?? 'current')
+  const label = value.kind === 'current' ? (info.detached ? 'detached' : info.current ?? 'current')
     : value.kind === 'branch' ? `+${value.branch}` : `wt:${value.branch}`;
+  const branches = [...info.local]
+    .sort((a, b) => Number(b.current) - Number(a.current) || b.ts - a.ts || a.name.localeCompare(b.name))
+    .slice(0, 50);
+  const dirtyHint = info.dirty > 0 && value.kind !== 'current'
+    ? value.kind === 'worktree'
+      ? `${info.dirty} uncommitted ${info.dirty === 1 ? 'change stays' : 'changes stay'} in the main checkout`
+      : `${info.dirty} uncommitted ${info.dirty === 1 ? 'change comes' : 'changes come'} along to the new branch`
+    : null;
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={open => { if (open) onOpen?.(); }}>
       <DropdownMenuTrigger asChild>
-        <button className="hv-sub" style={chip} title={title}>{icon}<span className="ormi-chip-text">{label}</span>{chev}</button>
+        <button className="hv-sub" style={chip} title={title}>
+          {icon}
+          {info.detached && value.kind === 'current' ? <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-amber)', flexShrink: 0 }} /> : null}
+          <span className="ormi-chip-text">{label}</span>{chev}
+        </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" style={{ width: 220, maxWidth: 'calc(100vw - 16px)' }}>
+      <DropdownMenuContent align="end" style={{ width: 260, maxWidth: 'calc(100vw - 16px)' }}>
         <DropdownMenuLabel>Workspace</DropdownMenuLabel>
-        <DropdownMenuItem onSelect={() => onChange({ kind: 'current' })} className="text-xs" title="work directly on the checked-out branch">
-          {mark(value.kind === 'current')}<span className="min-w-0 flex-1 truncate">Current branch</span>
-          {info.current ? right(info.current) : null}
+        <DropdownMenuItem
+          disabled={info.detached}
+          onSelect={() => onChange({ kind: 'current' })}
+          className="text-xs"
+          title={info.detached ? 'HEAD is detached — choose a new branch or a worktree' : 'work directly on the checked-out branch'}
+          style={{ alignItems: 'flex-start', paddingTop: 6, paddingBottom: 6 }}
+        >
+          {mark(value.kind === 'current')}
+          <span className="min-w-0 flex-1" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>Current branch</span>
+              <span style={{ marginLeft: 'auto', color: 'var(--text-hint)', fontFamily: 'var(--font-mono)', fontSize: 10 }}>{info.current ?? 'detached'}</span>
+            </span>
+            {info.detached ? <span style={{ color: 'var(--text-hint)', fontSize: 10, whiteSpace: 'normal' }}>HEAD is detached — choose a new branch or a worktree</span>
+              : info.busyBranches.includes(info.current ?? '') ? <span style={{ color: 'var(--text-hint)', fontSize: 10, whiteSpace: 'normal' }}>In use by another session — a new worktree will be made</span> : null}
+          </span>
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => setNaming(true)} className="text-xs" title="create a branch in the project checkout">
           {mark(value.kind === 'branch')}<span className="truncate">New branch…{value.kind === 'branch' ? ` ${value.branch}` : ''}</span>
         </DropdownMenuItem>
-        {info.local.length ? <DropdownMenuSeparator /> : null}
-        {info.local.length ? <DropdownMenuLabel>New worktree from</DropdownMenuLabel> : null}
-        {info.local.map(b => (
-          <DropdownMenuItem key={b.name} onSelect={() => onChange({ kind: 'worktree', branch: b.name })} className="text-xs"
-            title="fresh worktree under .ormi/worktrees, cut from this branch">
-            {mark(value.kind === 'worktree' && value.branch === b.name)}
-            <span className="min-w-0 flex-1 truncate">{b.name}</span>
-            {b.name === info.current ? <span style={{ color: 'var(--text-hint)', fontSize: 10 }}>current</span> : null}
-          </DropdownMenuItem>
-        ))}
+        {branches.length ? (
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger className="text-xs">
+              <span style={{ width: 16 }} />
+              <span>New worktree from</span>
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent style={{ minWidth: 260, maxWidth: 'calc(100vw - 16px)', maxHeight: 320, overflowY: 'auto' }}>
+              {branches.map(b => (
+                <DropdownMenuItem key={b.name} onSelect={() => onChange({ kind: 'worktree', branch: b.name })} className="text-xs"
+                  title={b.subject || 'fresh worktree under .ormi/worktrees, cut from this branch'}>
+                  {mark(value.kind === 'worktree' && value.branch === b.name)}
+                  <span className="min-w-0 flex-1 truncate" style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{b.name}</span>
+                  <span className="max-w-32 truncate" style={{ color: 'var(--text-hint)', fontSize: 10 }}>{b.subject}</span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        ) : null}
+        {dirtyHint ? (
+          <>
+            <DropdownMenuSeparator />
+            <div style={{ padding: '5px 10px', color: 'var(--text-hint)', fontSize: 10, whiteSpace: 'normal' }}>{dirtyHint}</div>
+          </>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );
