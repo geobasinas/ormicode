@@ -15,6 +15,7 @@ const workspaceSchema = z.union([
   z.object({ kind: z.literal('scratch') }),
 ]);
 const terminalInfo = z.looseObject({ terminal: nonEmpty, cwd: nonEmpty, shell: nonEmpty, device: z.string(), openedAt: timestampSchema, pid: cursorSchema, exited: z.boolean(), code: z.nullable(z.number()), offset: cursorSchema });
+const priceStatus = z.object({ version: z.nullable(z.string()), source: z.enum(['openrouter', 'cache', 'none']), fetchedAt: z.nullable(timestampSchema), models: cursorSchema, error: z.optional(z.string()) });
 const summarySchema = z.object({
   id: sessionIdSchema, title: z.nullable(z.string()), state: sessionStateSchema,
   project: nonEmpty, vendor: nonEmpty, transport: nonEmpty, updatedAt: timestampSchema,
@@ -89,6 +90,9 @@ export const requestBodies = {
   'agents.list': z.object({}),
   'git.diff': z.object(session),
   'session.cost': z.object(session),
+  'pricing.status': z.object({}),
+  'pricing.refresh': z.object({}),
+  'pricing.get': z.object({ model: nonEmpty }),
   'session.digest': z.object({ since: timestampSchema }),
   'secret.set': z.object({ name: z.string().check(z.regex(/^[A-Z_][A-Z0-9_]*$/)), value: nonEmpty, project: z.optional(nonEmpty) }),
   'secret.delete': z.object({ name: z.string().check(z.regex(/^[A-Z_][A-Z0-9_]*$/)), project: z.optional(nonEmpty) }),
@@ -152,6 +156,9 @@ export const responseBodies = {
   'secret.status': z.object({ keyring: z.string(), declared: z.array(z.string()), missing: z.array(z.string()) }),
   'checkpoint.list': z.object({ checkpoints: z.array(z.object({ id: nonEmpty, seq: cursorSchema, tool: z.string(), ts: timestampSchema })) }),
   'session.digest': z.object({ since: timestampSchema, computedAt: timestampSchema, entries: z.array(jsonObjectSchema) }),
+  'pricing.status': priceStatus,
+  'pricing.refresh': priceStatus,
+  'pricing.get': z.object({ model: nonEmpty, version: z.nullable(z.string()), price: z.nullable(z.object({ input: z.number(), output: z.number(), cacheRead: z.optional(z.number()), cacheWrite: z.optional(z.number()) })) }),
   'session.cost': z.object({
     input: cursorSchema, output: cursorSchema, cacheRead: cursorSchema, cacheWrite: cursorSchema, turns: cursorSchema,
     usd: z.nullable(z.number()), source: z.enum(['reported', 'estimate', 'none']), priceVersion: z.nullable(z.string()), model: z.nullable(z.string()),

@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { startDaemon, connect } from '../src/index.ts';
 import { newId } from '@ormicode/protocol';
 
-const env = { ORMICODE_FAKE_SCRIPT: 'tool', ORMICODE_FAKE_DELAY_MS: '400' };
+const env = { ORMICODE_FAKE_SCRIPT: 'tool', ORMICODE_FAKE_DELAY_MS: '400', ORMICODE_PRICES_URL: 'off' };
 const until = async (fn, ms = 10_000) => {
   const end = Date.now() + ms;
   for (;;) { const v = await fn(); if (v) return v; if (Date.now() > end) throw new Error('timeout'); await new Promise(r => setTimeout(r, 50)); }

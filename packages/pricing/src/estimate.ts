@@ -29,6 +29,6 @@ export function summarize(events: { kind: string; payload: Record<string, unknow
   }
   sum.source = estimated ? 'estimate' : reported ? 'reported' : 'none';
   if (sum.source === 'none' && sum.usd === 0) sum.usd = null;
-  if (estimated) sum.priceVersion = table.version;
+  if (estimated) sum.priceVersion = table.version ?? null;
   return sum;
 }

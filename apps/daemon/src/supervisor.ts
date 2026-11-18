@@ -14,6 +14,7 @@ import { append } from '@ormicode/journal';
 import { Checkpoints, DEFAULT_LIMITS } from '@ormicode/checkpoints';
 import { SecretBroker } from './secrets.ts';
 import { TerminalHub } from './terminal-methods.ts';
+import { PriceBook } from '@ormicode/pricing';
 import { serve, defaultSocketPath, ormicodeDir, sessionLogDir, type Link } from './socket.ts';
 
 const WORKER_MAIN = join(dirname(fileURLToPath(import.meta.url)), 'worker-main.ts');
@@ -293,6 +294,11 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     lastError: () => lastError, liveWorkers: () => workers.size,
     spawnWorker, toWorker, sendPrompt,
     pairing, relay: () => relay, checkpoints, record, secrets, terminals: new TerminalHub(),
+    prices: new PriceBook({
+      cachePath: join(ormicodeDir(), 'cache', 'prices.json'), overridesPath: join(ormicodeDir(), 'prices.json'),
+      url: process.env.ORMICODE_PRICES_URL === 'off' ? null : process.env.ORMICODE_PRICES_URL,
+      maxAgeMs: (Number(process.env.ORMICODE_PRICING_CACHE_MINUTES) || 1440) * 60_000,
+    }),
   };
 
   // idx summaries keep remote session lists fresh without streaming transcripts.

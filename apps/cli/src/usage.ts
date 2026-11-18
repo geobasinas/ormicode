@@ -16,6 +16,7 @@ export function usage(code: number): never {
   ormi session note <id> <title> [body]
   ormi session notes <id>
   ormi session tail <id>                          stream live + replayed events
+  ormi pricing status | refresh | get <model>       OpenRouter price table (cached a day)
   ormi secret set <NAME> [--project p] (value on stdin) | delete <NAME> [--project p] | status <project>
   ormi checkpoint list <id> | diff <id> <from> [to] | restore <id> <cp> [--conversation] | fork <id> <cp> [--branch b]
   ormi run <vendor> [--transport t] [agent args]   start a session and attach (Ctrl+] detaches)

@@ -5,6 +5,7 @@ import { daemonMain, statusMain, pairMain, connectMain, devicesMain, relayMain }
 import { sessionCommand } from './session.ts';
 import { checkpointCommand } from './checkpoint.ts';
 import { secretCommand } from './secret.ts';
+import { pricingCommand } from './pricing.ts';
 import { attachSession } from './attach.ts';
 import { withDaemon } from './daemon.ts';
 import { newId } from '@ormicode/protocol';
@@ -19,6 +20,8 @@ if (group === 'agent' && command === 'smoke') {
   process.exit(await daemonMain());
 } else if (group === 'session' && command) {
   process.exit(await sessionCommand(command, rest));
+} else if (group === 'pricing') {
+  process.exit(await pricingCommand(command, rest));
 } else if (group === 'secret') {
   process.exit(await secretCommand(command, rest));
 } else if (group === 'checkpoint') {
