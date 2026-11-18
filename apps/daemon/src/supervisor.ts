@@ -13,6 +13,7 @@ import { RelayClient, RemoteLink } from './relay.ts';
 import { append } from '@ormicode/journal';
 import { Checkpoints, DEFAULT_LIMITS } from '@ormicode/checkpoints';
 import { SecretBroker } from './secrets.ts';
+import { TerminalHub } from './terminal-methods.ts';
 import { serve, defaultSocketPath, ormicodeDir, sessionLogDir, type Link } from './socket.ts';
 
 const WORKER_MAIN = join(dirname(fileURLToPath(import.meta.url)), 'worker-main.ts');
@@ -291,7 +292,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     db, notesDir, startedAt, paused, heldPrompts, lastPrompt, handoffsInTurn,
     lastError: () => lastError, liveWorkers: () => workers.size,
     spawnWorker, toWorker, sendPrompt,
-    pairing, relay: () => relay, checkpoints, record, secrets,
+    pairing, relay: () => relay, checkpoints, record, secrets, terminals: new TerminalHub(),
   };
 
   // idx summaries keep remote session lists fresh without streaming transcripts.
@@ -343,7 +344,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
       }
     };
     link.onClose = () => {
-      for (const c of clients) if (c.link === link) clients.delete(c);
+      for (const c of clients) if (c.link === link) { clients.delete(c); dispatchCtx.terminals.drop(c); }
       const s = sessionByLink.get(link);
       if (s) { workerLinks.delete(s); sessionByLink.delete(link); }
     };

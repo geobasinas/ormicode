@@ -1,5 +1,5 @@
 import * as z from 'zod/mini';
-import { cursorSchema, deviceIdSchema, jsonObjectSchema, requestIdSchema, sequenceSchema, sessionIdSchema, timestampSchema } from './schema.ts';
+import { cursorSchema, deviceIdSchema, jsonObjectSchema, requestIdSchema, sequenceSchema, sessionIdSchema, terminalIdSchema, timestampSchema } from './schema.ts';
 import { methodNameSchema } from './methods.ts';
 
 export const PROTOCOL_VERSION = 1 as const;
@@ -15,7 +15,12 @@ const ack = z.looseObject({ ...base, type: z.literal('ack'), session: sessionIdS
 const hello = z.looseObject({ ...base, type: z.literal('hello'), role: z.enum(['hub', 'node', 'client', 'worker']), proto: sequenceSchema, daemon: z.optional(z.string()), device: z.optional(z.string()) });
 const index = z.looseObject({ ...base, type: z.literal('idx'), to: deviceIdSchema, ts: timestampSchema, body: jsonObjectSchema });
 const hook = z.looseObject({ ...base, type: z.literal('hook'), account: z.string(), delivery: z.string(), body: jsonObjectSchema });
-export const frameSchema = z.union([request, response, error, event, delta, ack, hello, index, hook]);
+// Terminal stream (not journaled): base64 output chunks at a byte offset, then an exit marker.
+const term = z.looseObject({ ...base, type: z.literal('term'), terminal: terminalIdSchema, body: z.union([
+  z.looseObject({ kind: z.literal('terminal_output'), offset: cursorSchema, data: z.string() }),
+  z.looseObject({ kind: z.literal('terminal_exit'), code: z.nullable(z.number()) }),
+]) });
+export const frameSchema = z.union([request, response, error, event, delta, ack, hello, index, hook, term]);
 export type Frame = z.infer<typeof frameSchema>;
 export { cursorSchema };
 

@@ -68,7 +68,7 @@ export class WsLink {
   private feed(raw: string): void {
     let msg: Record<string, unknown> | undefined;
     try { msg = JSON.parse(raw); } catch { /* fall through to protocol parse */ }
-    if (msg && !['req', 'res', 'err', 'evt', 'ack', 'hello', 'idx'].includes(String(msg.type))) {
+    if (msg && !['req', 'res', 'err', 'evt', 'ack', 'hello', 'idx', 'term'].includes(String(msg.type))) {
       this.onRelayMessage?.(msg);
       return;
     }

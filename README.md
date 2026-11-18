@@ -1860,6 +1860,8 @@ The hub sends a short summary through the relay Worker to Firebase (FCM); the ap
 
 **Test:** run coloured output, kill the supervisor, restart, check the replayed buffer is identical.
 
+**Implementation status:** `packages/pty-broker` (node-pty) runs as a detached process on `~/.ormicode/pty.sock` (a named pipe on Windows), started by the daemon on first use and left running across daemon restarts. Defined lifetime: it exits after 30 s (`ORMICODE_PTY_IDLE_MS`) with no live terminals and no connections; a machine reboot ends it. Scrollback is the last 5000 lines (4 MB cap) addressed by byte offset. Methods (dotted, like the rest of the protocol): `terminal.open {cwd, cols?, rows?, shell?, args?}`, `terminal.attach {terminal, from?}` (replays from the offset, then streams), `terminal.detach`, `terminal.write {terminal, data (base64)}`, `terminal.resize`, `terminal.close`, `terminal.list`; output arrives as `{type: 'term', terminal, body: {kind: 'terminal_output', offset, data} | {kind: 'terminal_exit', code}}` frames, not journaled. Limit 4 per device; `devices.revoke` kills that device's terminals. Tested: identical replay of coloured output after the reader reconnects, per-device limit, idle exit, detached start. Still to come: journaling open/close, the 1 MB/s throttle, ACP terminal requests, and the desktop Terminal panel.
+
 ## Browser preview
 
 > **Status:** later · **Needs:** [Sessions](#sessions)

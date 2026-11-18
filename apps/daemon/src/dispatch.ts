@@ -19,6 +19,7 @@ const PATCH_INLINE = 256 * 1024;
 import type { Checkpoints } from '@ormicode/checkpoints';
 import type { SecretBroker } from './secrets.ts';
 import { secretMethod } from './secret-methods.ts';
+import type { TerminalHub } from './terminal-methods.ts';
 import { loadTable, summarize } from '@ormicode/pricing';
 import { summarize as digestOf, rank as rankDigest } from '@ormicode/digest';
 import { checkpointMethod } from './checkpoint-methods.ts';
@@ -52,6 +53,7 @@ export interface DispatchCtx {
   relay(): RelayClient | undefined;
   checkpoints: Checkpoints;
   secrets: SecretBroker;
+  terminals: TerminalHub;
   record(session: string, kind: string, payload: Record<string, unknown>): void;
 }
 
@@ -363,11 +365,13 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         if (!target) return client.link.replyError(id, 'devices.not_found', String(body.device));
         if (body.confirm !== target.name) return client.link.replyError(id, 'devices.confirm_mismatch', 'confirm must equal the device name');
         revokeDevice(db, target.id);
+        ctx.terminals.killDevice(target.id).catch(() => undefined);
         const relay = ctx.relay();
         relay?.deviceRevoke(target.id);
         return client.link.reply(id, { revoked: true, relaySynced: relay?.connected() ?? false });
       }
       default:
+        if (method.startsWith('terminal.')) return await ctx.terminals.method(client, id, method, body);
         if (method.startsWith('secret.')) return secretMethod(ctx, client, id, method, body);
         if (method.startsWith('checkpoint.')) return await checkpointMethod(ctx, client, id, method, body);
         return client.link.replyError(id, 'protocol.unimplemented', method);

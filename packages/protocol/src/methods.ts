@@ -14,6 +14,7 @@ const workspaceSchema = z.union([
   // No project folder: the session gets ~/.ormicode/scratch/<id> as its cwd.
   z.object({ kind: z.literal('scratch') }),
 ]);
+const terminalInfo = z.looseObject({ terminal: nonEmpty, cwd: nonEmpty, shell: nonEmpty, device: z.string(), openedAt: timestampSchema, pid: cursorSchema, exited: z.boolean(), code: z.nullable(z.number()), offset: cursorSchema });
 const summarySchema = z.object({
   id: sessionIdSchema, title: z.nullable(z.string()), state: sessionStateSchema,
   project: nonEmpty, vendor: nonEmpty, transport: nonEmpty, updatedAt: timestampSchema,
@@ -92,6 +93,13 @@ export const requestBodies = {
   'secret.set': z.object({ name: z.string().check(z.regex(/^[A-Z_][A-Z0-9_]*$/)), value: nonEmpty, project: z.optional(nonEmpty) }),
   'secret.delete': z.object({ name: z.string().check(z.regex(/^[A-Z_][A-Z0-9_]*$/)), project: z.optional(nonEmpty) }),
   'secret.status': z.object({ project: nonEmpty }),
+  'terminal.open': z.object({ cwd: nonEmpty, cols: z.optional(cursorSchema), rows: z.optional(cursorSchema), shell: z.optional(nonEmpty), args: z.optional(z.array(z.string())) }),
+  'terminal.attach': z.object({ terminal: nonEmpty, from: z.optional(cursorSchema) }),
+  'terminal.detach': z.object({ terminal: nonEmpty }),
+  'terminal.write': z.object({ terminal: nonEmpty, data: z.string() }),
+  'terminal.resize': z.object({ terminal: nonEmpty, cols: cursorSchema, rows: cursorSchema }),
+  'terminal.close': z.object({ terminal: nonEmpty }),
+  'terminal.list': z.object({}),
   'checkpoint.list': z.object(session),
   // Without `to`: what `from` changed since the checkpoint before it.
   'checkpoint.diff': z.object({ ...session, from: nonEmpty, to: z.optional(nonEmpty) }),
@@ -134,6 +142,13 @@ export const responseBodies = {
   'session.answer': z.object({ answered: z.literal(true) }),
   'secret.set': z.object({ ok: z.literal(true) }),
   'secret.delete': z.object({ ok: z.literal(true) }),
+  'terminal.open': terminalInfo,
+  'terminal.attach': terminalInfo,
+  'terminal.detach': z.object({}),
+  'terminal.write': z.object({}),
+  'terminal.resize': z.object({}),
+  'terminal.close': z.object({}),
+  'terminal.list': z.object({ terminals: z.array(terminalInfo) }),
   'secret.status': z.object({ keyring: z.string(), declared: z.array(z.string()), missing: z.array(z.string()) }),
   'checkpoint.list': z.object({ checkpoints: z.array(z.object({ id: nonEmpty, seq: cursorSchema, tool: z.string(), ts: timestampSchema })) }),
   'session.digest': z.object({ since: timestampSchema, computedAt: timestampSchema, entries: z.array(jsonObjectSchema) }),
