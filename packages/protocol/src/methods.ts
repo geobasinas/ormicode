@@ -83,6 +83,11 @@ export const requestBodies = {
   'session.answer': z.object({ ...session, request: requestIdSchema, answers: z.record(nonEmpty, nonEmpty) }),
   // Installed agent adapters: which vendor/transport pairs session.start accepts.
   'agents.list': z.object({}),
+  'checkpoint.list': z.object(session),
+  // Without `to`: what `from` changed since the checkpoint before it.
+  'checkpoint.diff': z.object({ ...session, from: nonEmpty, to: z.optional(nonEmpty) }),
+  'checkpoint.restore': z.object({ ...session, id: nonEmpty, mode: z.enum(['files', 'conversation']) }),
+  'checkpoint.fork': z.object({ ...session, id: nonEmpty, branch: z.optional(nonEmpty) }),
   'devices.list': z.object({}),
   'devices.rename': z.object({ device: nonEmpty, name: nonEmpty }),
   // confirm must equal the device name, so a revoke can't fire by accident.
@@ -118,6 +123,10 @@ export const responseBodies = {
   'session.unsubscribe': z.object({ unsubscribed: z.literal(true) }),
   'session.decide': z.object({ decided: z.literal(true) }),
   'session.answer': z.object({ answered: z.literal(true) }),
+  'checkpoint.list': z.object({ checkpoints: z.array(z.object({ id: nonEmpty, seq: cursorSchema, tool: z.string(), ts: timestampSchema })) }),
+  'checkpoint.diff': z.object({ patch: z.string(), truncated: z.boolean() }),
+  'checkpoint.restore': z.object({ restored: z.literal(true), id: nonEmpty }),
+  'checkpoint.fork': z.object({ session: sessionIdSchema, branch: nonEmpty, cwd: nonEmpty, from: nonEmpty }),
   'agents.list': z.object({ agents: z.array(z.object({ vendor: nonEmpty, transports: z.array(nonEmpty) })) }),
   'devices.list': z.object({ devices: z.array(z.object({ id: nonEmpty, name: nonEmpty, trustedAt: timestampSchema })) }),
   'devices.rename': z.object({ renamed: z.literal(true) }),

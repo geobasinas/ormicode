@@ -32,6 +32,9 @@ export const eventBodies = {
   error: z.looseObject({ kind: z.literal('error'), code: nonEmpty, message: text }),
   interrupted: z.looseObject({ kind: z.literal('interrupted'), reason: nonEmpty }),
   resumed: z.looseObject({ kind: z.literal('resumed') }),
+  // A restore point after a tool call (seq = the tool_result); overCap = bytes when one checkpoint alone exceeds the cap.
+  checkpoint: z.looseObject({ kind: z.literal('checkpoint'), id: nonEmpty, seq: count, tool: text, overCap: z.optional(count) }),
+  checkpoint_restored: z.looseObject({ kind: z.literal('checkpoint_restored'), id: nonEmpty, mode: nonEmpty }),
   handoff_brief: z.looseObject({ kind: z.literal('handoff_brief'), text }),
   evicted: z.looseObject({ kind: z.literal('evicted'), reason: nonEmpty, idleMs: count }),
   compacted: z.looseObject({ kind: z.literal('compacted') }),

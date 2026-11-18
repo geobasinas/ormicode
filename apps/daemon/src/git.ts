@@ -50,10 +50,9 @@ function uniqueWorktreeDir(project: string, slug: string): string {
   }
 }
 
-function addWorktree(project: string, slug: string, commit: string): { dir: string; branch: string } {
+function addWorktree(project: string, slug: string, commit: string, branch = uniqueBranch(project, slug)): { dir: string; branch: string } {
   mkdirSync(join(project, '.ormi', 'worktrees'), { recursive: true });
   const dir = uniqueWorktreeDir(project, slug);
-  const branch = uniqueBranch(project, slug);
   try {
     git(project, 'worktree', 'add', dir, '-b', branch, commit);
   } catch (e) {
@@ -106,4 +105,22 @@ export function resolveWorkspace(
     return { cwd: project, branch: name, baseBranch: branch ?? undefined, baseCommit: commit };
   }
   return { cwd: project, branch: branch ?? undefined, baseBranch: branch ?? undefined, baseCommit: commit };
+}
+
+/** New worktree on a new `branch` from `fromCwd`'s HEAD (checkpoint.fork). */
+export function forkWorktree(project: string, fromCwd: string, branch: string): { dir: string; branch: string; commit: string } | WorkspaceErr {
+  if (!isRepo(project) || !isRepo(fromCwd)) return { err: 'workspace.not_repo', detail: `${project} is not a git repository` };
+  try {
+    git(project, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`);
+    return { err: 'workspace.failed', detail: `branch ${branch} already exists` };
+  } catch { /* name is free */ }
+  const commit = git(fromCwd, 'rev-parse', 'HEAD');
+  try { return { ...addWorktree(project, sanitize(branch).replace(/\//g, '-'), commit, branch), commit }; }
+  catch (e) { return { err: 'workspace.failed', detail: String(e) }; }
+}
+
+export function removeWorktree(project: string, dir: string, branch: string): void {
+  try { git(project, 'worktree', 'remove', '--force', dir); } catch { /* best effort */ }
+  try { rmSync(dir, { recursive: true, force: true }); git(project, 'worktree', 'prune'); } catch { /* best effort */ }
+  try { git(project, 'branch', '-D', branch); } catch { /* best effort */ }
 }

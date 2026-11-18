@@ -3,6 +3,7 @@ import { usage } from './usage.ts';
 import { agentSmoke } from './smoke.ts';
 import { daemonMain, statusMain, pairMain, connectMain, devicesMain, relayMain } from './daemon.ts';
 import { sessionCommand } from './session.ts';
+import { checkpointCommand } from './checkpoint.ts';
 import { attachSession } from './attach.ts';
 import { withDaemon } from './daemon.ts';
 import { newId } from '@ormicode/protocol';
@@ -17,6 +18,8 @@ if (group === 'agent' && command === 'smoke') {
   process.exit(await daemonMain());
 } else if (group === 'session' && command) {
   process.exit(await sessionCommand(command, rest));
+} else if (group === 'checkpoint') {
+  process.exit(await checkpointCommand(command, rest));
 } else if (group === 'status' && !command) {
   process.exit(await statusMain());
 } else if (group === 'pair' && !command) {

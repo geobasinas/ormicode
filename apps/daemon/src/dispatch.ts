@@ -13,6 +13,8 @@ import { ormicodeDir, sessionLogDir } from './socket.ts';
 import { acquireWorkspace, releaseForSession } from './leases.ts';
 import { hasTransport, agentList } from './registry.ts';
 import { resolveWorkspace, type WorkspaceChoice } from './git.ts';
+import type { Checkpoints } from '@ormicode/checkpoints';
+import { checkpointMethod } from './checkpoint-methods.ts';
 
 const LIVE_STATES = ['idle', 'starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying', 'paused_rate_limited', 'interrupted'] as const;
 
@@ -41,6 +43,8 @@ export interface DispatchCtx {
   sendPrompt(session: string, text: string, images?: unknown[], opts?: { journal?: boolean }): Promise<boolean>;
   pairing: Pairing;
   relay(): RelayClient | undefined;
+  checkpoints: Checkpoints;
+  record(session: string, kind: string, payload: Record<string, unknown>): void;
 }
 
 /** Client-facing session.* / daemon.* request dispatch. */
@@ -176,6 +180,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         }
         if (method === 'session.delete') {
           try { rmSync(sessionLogDir(session), { recursive: true, force: true }); } catch { /* best effort */ }
+          void ctx.checkpoints.remove(session).catch(() => undefined);
         }
         return client.link.reply(id, method === 'session.delete' ? { deleted: true } : { archived: true });
       }
@@ -327,6 +332,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         return client.link.reply(id, { revoked: true, relaySynced: relay?.connected() ?? false });
       }
       default:
+        if (method.startsWith('checkpoint.')) return await checkpointMethod(ctx, client, id, method, body);
         return client.link.replyError(id, 'protocol.unimplemented', method);
     }
   } catch (error) {

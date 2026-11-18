@@ -1,7 +1,7 @@
 /** Transcript view: prompts as right-aligned bubbles, assistant text left,
  * tool calls as compact action cards, system events as muted lines. */
 import { useEffect, useRef } from 'react';
-import { Pencil, Wrench, CircleAlert, ArrowRight, RotateCw, Pause, ChevronRight } from 'lucide-react';
+import { Pencil, Wrench, CircleAlert, ArrowRight, RotateCw, Pause, ChevronRight, History } from 'lucide-react';
 import type { TranscriptEvent } from './useTranscript.ts';
 
 const mono = { fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap' as const, wordBreak: 'break-word' as const };
@@ -78,6 +78,12 @@ function line(e: TranscriptEvent) {
       return <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--accent-mint)', ...small }}><RotateCw size={12} /> resumed</div>;
     case 'interrupted':
       return <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--accent-amber)', ...small }}><Pause size={12} /> interrupted{typeof b.reason === 'string' ? ` — ${b.reason}` : ''}</div>;
+    case 'checkpoint':
+    case 'checkpoint_restored':
+      return <div style={{ ...mono, ...small, color: 'var(--text-hint)', display: 'flex', gap: 6, alignItems: 'center' }} title={String(b.id ?? '')}>
+        <History size={11} />{e.kind === 'checkpoint' ? `checkpoint · ${String(b.tool ?? '')}` : 'restored files to'} · {String(b.id ?? '').slice(0, 7)}
+        {typeof b.overCap === 'number' ? <span style={{ color: 'var(--accent-amber)' }}>over the size cap</span> : null}
+      </div>;
     case 'state':
       return null;
     case 'agent_version':

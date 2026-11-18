@@ -11,6 +11,7 @@ import { onClientFrame, type Client, type DispatchCtx } from './dispatch.ts';
 import { Pairing, loadHubConfig, handleJoin } from './pair.ts';
 import { RelayClient, RemoteLink } from './relay.ts';
 import { append } from '@ormicode/journal';
+import { Checkpoints, DEFAULT_LIMITS } from '@ormicode/checkpoints';
 import { serve, defaultSocketPath, ormicodeDir, sessionLogDir, type Link } from './socket.ts';
 
 const WORKER_MAIN = join(dirname(fileURLToPath(import.meta.url)), 'worker-main.ts');
@@ -43,6 +44,12 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   const idleTimers = new Map<string, NodeJS.Timeout>();
   const idleTimeoutMs = Number(process.env.ORMICODE_IDLE_TIMEOUT_MS ?? 20 * 60_000);
   const poolMax = Number(process.env.ORMICODE_POOL_MAX ?? 8);
+  const checkpoints = new Checkpoints(join(ormicodeDir(), 'checkpoints'), {
+    max: Number(process.env.ORMICODE_CHECKPOINTS_MAX ?? DEFAULT_LIMITS.max),
+    maxBytes: Number(process.env.ORMICODE_CHECKPOINTS_MAX_BYTES ?? DEFAULT_LIMITS.maxBytes),
+  });
+  const checkpointsOn = process.env.ORMICODE_CHECKPOINTS !== '0';
+  const toolNames = new Map<string, string>();
   // Boot: interrupt in-flight sessions, expire pending interactions, reap stale
   // pids; auto-resume candidates are spawned once spawnWorker exists below.
   const resuming = new Set<string>();
@@ -66,6 +73,16 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     const mapped = stateFor[kind];
     if (mapped) setState(db, session, mapped, typeof payload.reason === 'string' ? payload.reason : undefined, ts);
     else if (kind === 'state' && typeof payload.state === 'string') setState(db, session, payload.state as SessionState, typeof payload.reason === 'string' ? payload.reason : undefined, ts);
+  };
+
+  // After each tool call (and once before the first), commit the worktree to the shadow repo.
+  const checkpointSoon = (session: string, seq: number, tool: string) => {
+    const cwd = getSession(db, session)?.cwd;
+    // Scratch sessions have no checkpoints (README: Scratch sessions).
+    if (!checkpointsOn || !cwd || !existsSync(cwd) || cwd.startsWith(join(ormicodeDir(), 'scratch'))) return;
+    checkpoints.snapshot(session, cwd, seq, tool).then(r => {
+      if (r.checkpoint) record(session, 'checkpoint', { id: r.checkpoint.id, seq, tool, ...(r.overCap ? { overCap: r.overCap } : {}) });
+    }).catch((e: unknown) => { lastError = `checkpoint ${session}: ${e instanceof Error ? e.message : String(e)}`; });
   };
 
   const spawnWorker = (session: string) => {
@@ -154,6 +171,13 @@ export async function startDaemon(opts: DaemonOptions = {}) {
         relay?.sendEvt(session, seq, JSON.parse(frameOut));
         idxSoon();
         const payload = body.payload as Record<string, unknown>;
+        if (kind === 'tool_call') {
+          toolNames.set(`${session}/${String(payload?.callId)}`, String(payload?.name ?? 'tool'));
+          if (!checkpoints.repo(session).exists()) checkpointSoon(session, seq, 'baseline');
+        } else if (kind === 'tool_result') {
+          const key = `${session}/${String(payload?.callId)}`;
+          checkpointSoon(session, seq, toolNames.get(key) ?? 'tool'); toolNames.delete(key);
+        }
         const mapped = stateFor[kind];
         if (mapped) {
           setState(db, session, mapped, typeof payload?.reason === 'string' ? payload.reason as string : undefined);
@@ -264,7 +288,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     db, notesDir, startedAt, paused, heldPrompts, lastPrompt, handoffsInTurn,
     lastError: () => lastError, liveWorkers: () => workers.size,
     spawnWorker, toWorker, sendPrompt,
-    pairing, relay: () => relay,
+    pairing, relay: () => relay, checkpoints, record,
   };
 
   // idx summaries keep remote session lists fresh without streaming transcripts.

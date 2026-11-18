@@ -741,7 +741,7 @@ An uncertain in-flight tool call is marked interrupted, never automatically repl
 
 ## Checkpoints
 
-> **Status:** next · **Needs:** [Sessions](#sessions), [Git rules](#git-rules)
+> **Status:** built — conversation restore still to come · **Needs:** [Sessions](#sessions), [Git rules](#git-rules)
 
 **Every tool call leaves a restore point. Go back without losing the conversation, and forward again without redoing work.**
 
@@ -788,6 +788,8 @@ Checking afterwards and rolling back is faster than reviewing every change upfro
 **Teams:** each child has its own shadow repo and timeline. Restoring a child doesn't touch the parent or siblings; the parent's timeline notes it.
 
 **Automations:** a bad overnight run can be rolled back to its first checkpoint.
+
+**Implementation status:** `packages/checkpoints` (`ShadowRepo` + per-session `Checkpoints` queue) and `apps/daemon/src/checkpoint-methods.ts`. The supervisor takes a `baseline` checkpoint at a session's first `tool_call`, then one after every `tool_result`, and journals a `checkpoint` event (`checkpoint_restored` after a restore). Checkpoints are parentless commits under `refs/ormi/cp/<seq>`, so pruning a ref frees its objects; the shadow repo also excludes `.ormi/` so sibling worktrees are never captured. Until `settings.*` exists, the settings are env vars: `ORMICODE_CHECKPOINTS=0` (off), `ORMICODE_CHECKPOINTS_MAX`, `ORMICODE_CHECKPOINTS_MAX_BYTES`. Until blob storage exists, `checkpoint.diff` returns the patch inline as `{patch, truncated}`, capped at 1 MiB. `checkpoint.restore` with `mode: 'conversation'` returns `checkpoint.unimplemented`. The desktop timeline shows checkpoint rows; restore/fork buttons are still to come.
 
 ## Replay
 

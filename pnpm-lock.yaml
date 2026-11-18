@@ -83,6 +83,9 @@ importers:
       '@ormicode/agent-vibe-cli':
         specifier: workspace:*
         version: link:../../packages/agent-vibe-cli
+      '@ormicode/checkpoints':
+        specifier: workspace:*
+        version: link:../../packages/checkpoints
       '@ormicode/crypto':
         specifier: workspace:*
         version: link:../../packages/crypto
@@ -366,6 +369,8 @@ importers:
       zod:
         specifier: 4.6.7
         version: 4.6.7
+
+  packages/checkpoints: {}
 
   packages/client-platform:
     dependencies:
