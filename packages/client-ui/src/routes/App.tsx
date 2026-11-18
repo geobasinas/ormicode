@@ -61,6 +61,7 @@ function Tab({ id, n, active, onSelect, onClose }: { id: string; n?: number; act
       <span className={active ? undefined : 'hv-tab'} style={{ position: 'relative', zIndex: 2, display: 'inline-flex', alignItems: 'center', gap: 8, padding: '4px 11px', borderRadius: 8 }}>
         {n !== undefined ? <span style={{ width: 18, height: 18, borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: active ? 'var(--bg-badge)' : 'var(--bg-raised)', color: active ? 'var(--text-onAccent)' : 'var(--text-label)', fontSize: 10, fontWeight: 700 }}>{n}</span> : null}
         <span style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
+        {active && details?.branch ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'var(--font-mono)', fontSize: 10.5, fontWeight: 400, color: 'var(--text-secondary)' }}><GitBranch size={10} />{details.branch}</span> : null}
         {onClose ? <X size={12} className="hv-x" style={{ color: 'var(--text-hint)', borderRadius: 4 }} onClick={e => { e.stopPropagation(); onClose(); }} /> : null}
       </span>
       {active ? fillet('right') : null}
@@ -72,14 +73,17 @@ function Tab({ id, n, active, onSelect, onClose }: { id: string; n?: number; act
 const FILTER_TABS = ['All', 'Sessions', 'Bots'] as const;
 
 const RAIL_ICONS: { id: string; icon: LucideIcon; label: string; soon?: boolean }[] = [
-  { id: 'git', icon: GitBranch, label: 'git — soon', soon: true },
+  { id: 'git', icon: GitBranch, label: 'git' },
   { id: 'files', icon: FolderOpen, label: 'files — soon', soon: true },
-  { id: 'terminal', icon: SquareTerminal, label: 'terminal — soon', soon: true },
+  { id: 'terminal', icon: SquareTerminal, label: 'terminal' },
   { id: 'notes', icon: NotebookPen, label: 'notes' },
   { id: 'web', icon: Globe, label: 'web — soon', soon: true },
 ];
 
-function Rail({ route, rail, onRail }: { route: string; rail: string; onRail: (r: 'none' | 'notes') => void }) {
+export type RailPane = 'none' | 'notes' | 'git' | 'terminal';
+const PANES: string[] = ['notes', 'git', 'terminal'];
+
+function Rail({ route, rail, onRail }: { route: string; rail: RailPane; onRail: (r: RailPane) => void }) {
   const isSession = route !== 'now';
   return (
     <div style={{
@@ -87,11 +91,11 @@ function Rail({ route, rail, onRail }: { route: string; rail: string; onRail: (r
       padding: '12px 0 0', gap: 4, background: 'var(--bg-window)', alignSelf: 'flex-start',
     }}>
       {RAIL_ICONS.map(({ id, icon: Icon, label, soon }) => {
-        const enabled = id === 'notes' ? isSession : !soon;
-        const active = id === 'notes' && rail === 'notes';
+        const enabled = PANES.includes(id) ? isSession : !soon;
+        const active = id === rail;
         return (
           <button key={id} className={enabled && !active ? 'hv' : undefined} title={enabled ? label : `${label} — soon`} aria-disabled={!enabled}
-            onClick={() => enabled && id === 'notes' && onRail(rail === 'notes' ? 'none' : 'notes')}
+            onClick={() => enabled && PANES.includes(id) && onRail(rail === id ? 'none' : id as RailPane)}
             style={{
               width: 32, height: 32, border: 'none', borderRadius: 8, cursor: enabled ? 'pointer' : 'default',
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
@@ -117,7 +121,7 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
   const [route, setRoute] = useState<string>('now');
   const [state, setState] = useState<string>('connecting');
   const [query, setQuery] = useState('');
-  const [rail, setRail] = useState<'none' | 'notes'>('none');
+  const [rail, setRail] = useState<RailPane>('none');
   const [filter, setFilter] = useState<(typeof FILTER_TABS)[number]>('All');
   const resolved = useMemo(() => {
     if (!layout) return defaultLayout;

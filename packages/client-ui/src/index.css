@@ -5,6 +5,7 @@
 @import "@fontsource-variable/inter";
 @import "@fontsource/jetbrains-mono/400.css";
 @import "@fontsource/jetbrains-mono/500.css";
+@import "@xterm/xterm/css/xterm.css";
 
 /*
  * shadcn theme bound to our design tokens. applyTheme() sets the

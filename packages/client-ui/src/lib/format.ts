@@ -11,6 +11,12 @@ export function ago(ts: number, now = Date.now()): string {
   return `${Math.floor(h / 24)}d`;
 }
 
+/** `12m ago`, or `just now` under a minute. */
+export function agoText(ts: number, now = Date.now()): string {
+  const a = ago(ts, now);
+  return a === 'now' ? 'just now' : `${a} ago`;
+}
+
 /** Display name for a project path — basename for paths, as-is otherwise. */
 export function projectName(project: string): string {
   const trimmed = project.replace(/[\\/]+$/, '');
