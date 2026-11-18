@@ -3,6 +3,7 @@ import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from 'n
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { EventQueue, NO_CAPABILITIES, RawLog, attachRawLog } from '@ormicode/agent-core';
+import { ClaudeSdkAdapter } from '@ormicode/agent-claude-sdk';
 import type { AgentAdapter, Handle, NativeRef, PromptInput, StartSpec } from '@ormicode/agent-core';
 import { monotonicFactory } from 'ulid';
 import { mapCliMessage } from './map.ts';
@@ -45,7 +46,12 @@ export class ClaudeCliAdapter implements AgentAdapter {
       return { available: false, reason: 'Claude CLI not found or version check failed; authentication not checked' };
     }
   }
-  async models() { return []; }
+  private modelProbe?: ClaudeSdkAdapter;
+  async models() {
+    // The CLI takes the same --model values the SDK enumerates via supportedModels().
+    this.modelProbe ??= new ClaudeSdkAdapter();
+    return this.modelProbe.models();
+  }
   async start(spec: StartSpec): Promise<Handle> { return this.create(spec); }
   async resume(ref: NativeRef): Promise<Handle> { if (!ref.id) throw new Error('native session ID is required'); return this.create({ ...ref }, ref.id); }
   private create(spec: StartSpec, nativeId?: string): Handle {

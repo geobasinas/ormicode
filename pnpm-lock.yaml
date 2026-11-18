@@ -50,6 +50,9 @@ importers:
       '@ormicode/agent-claude-sdk':
         specifier: workspace:*
         version: link:../../packages/agent-claude-sdk
+      '@ormicode/agent-codex-cli':
+        specifier: workspace:*
+        version: link:../../packages/agent-codex-cli
       '@ormicode/agent-codex-sdk':
         specifier: workspace:*
         version: link:../../packages/agent-codex-sdk
@@ -201,6 +204,9 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: 1.32.2
         version: 1.32.2(supports-color@10.2.2)(zod@4.6.7)
+      '@ormicode/agent-claude-sdk':
+        specifier: workspace:*
+        version: link:../agent-claude-sdk
       '@ormicode/agent-core':
         specifier: workspace:*
         version: link:../agent-core
@@ -252,6 +258,9 @@ importers:
       '@openai/codex-sdk':
         specifier: 0.169.0
         version: 0.169.0
+      '@ormicode/agent-codex-cli':
+        specifier: workspace:*
+        version: link:../agent-codex-cli
       '@ormicode/agent-core':
         specifier: workspace:*
         version: link:../agent-core

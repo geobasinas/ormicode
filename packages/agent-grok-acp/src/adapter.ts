@@ -29,7 +29,12 @@ export class GrokAcpAdapter implements AgentAdapter {
       return { available: Boolean(version), ...(version ? { version } : {}), reason: 'Authentication and ACP support not checked' };
     } catch { return { available: false, reason: 'Grok CLI not found or version check failed' }; }
   }
-  async models() { return []; }
+  async models() {
+    try {
+      const { stdout } = await execFileAsync(this.options.executable ?? 'grok', ['models'], { timeout: 15_000, windowsHide: true });
+      return stdout.split('\n').map(line => /^\s*[-*]\s+(\S+)/.exec(line)?.[1]).filter((id): id is string => Boolean(id)).map(id => ({ id }));
+    } catch { return []; }
+  }
   async start(spec: StartSpec): Promise<Handle> {
     return this.create(spec.cwd, undefined, spec);
   }

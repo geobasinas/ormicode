@@ -30,7 +30,12 @@ export class OpenCodeCliAdapter implements AgentAdapter {
       return { available: Boolean(version), ...(version ? { version } : {}), reason: 'Authentication not checked' };
     } catch { return { available: false, reason: 'OpenCode CLI not found or version check failed' }; }
   }
-  async models() { return []; }
+  async models() {
+    try {
+      const { stdout } = await execFileAsync(this.options.executable ?? 'opencode', ['models'], { timeout: 15_000, windowsHide: true });
+      return stdout.split('\n').map(line => line.trim()).filter(id => id.includes('/')).map(id => ({ id }));
+    } catch { return []; }
+  }
   async start(spec: StartSpec): Promise<Handle> { return this.create(spec); }
   async resume(ref: NativeRef): Promise<Handle> {
     if (!ref.id) throw new Error('native session ID is required');

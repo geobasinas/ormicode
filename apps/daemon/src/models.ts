@@ -48,7 +48,9 @@ function cacheKey(agent: string, transport: string, version?: string): string {
 function validEntry(value: unknown): value is CacheEntry {
   if (!value || typeof value !== 'object') return false;
   const entry = value as CacheEntry;
-  return Number.isFinite(entry.cachedAt) && Array.isArray(entry.models) && entry.models.every(model =>
+  // Empty lists are not cached knowledge — the adapter may have been
+  // unauthenticated or mid-install; the next call should probe again.
+  return Number.isFinite(entry.cachedAt) && Array.isArray(entry.models) && entry.models.length > 0 && entry.models.every(model =>
     model && typeof model.agent === 'string' && typeof model.transport === 'string' &&
     typeof model.id === 'string' && typeof model.label === 'string' && Array.isArray(model.efforts) &&
     model.efforts.every(effort => typeof effort === 'string') && typeof model.available === 'boolean' &&
@@ -124,8 +126,10 @@ export async function listModels(body: { agent?: string; transport?: string; ref
         return previous.models;
       try {
         const listed = toListedModels(pair.agent, pair.transport, await timedModels(adapter), Date.now());
-        cache.entries[key] = { cachedAt: listed[0]?.cachedAt ?? Date.now(), models: listed };
-        cacheChanged = true;
+        if (listed.length) {
+          cache.entries[key] = { cachedAt: listed[0].cachedAt, models: listed };
+          cacheChanged = true;
+        }
         return listed;
       } catch (error) {
         const fallback = lastEntry(cache, pair.agent, pair.transport, key);

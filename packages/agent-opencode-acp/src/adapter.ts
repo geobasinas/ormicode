@@ -28,7 +28,12 @@ export class OpenCodeAcpAdapter implements AgentAdapter {
       return { available: Boolean(version), ...(version ? { version } : {}), reason: 'Authentication and ACP support not checked' };
     } catch { return { available: false, reason: 'OpenCode CLI not found or version check failed' }; }
   }
-  async models() { return []; }
+  async models() {
+    try {
+      const { stdout } = await execFileAsync(this.options.executable ?? 'opencode', ['models'], { timeout: 15_000, windowsHide: true });
+      return stdout.split('\n').map(line => line.trim()).filter(id => id.includes('/')).map(id => ({ id }));
+    } catch { return []; }
+  }
   async start(spec: StartSpec): Promise<Handle> {
     if (spec.model || spec.mode || spec.effort) throw new Error('OpenCode ACP configuration is not yet supported');
     return this.create(spec.cwd, undefined, spec.logDir, spec.mcpServers);

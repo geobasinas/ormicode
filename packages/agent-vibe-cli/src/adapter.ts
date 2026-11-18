@@ -1,7 +1,8 @@
 import { spawn, execFile } from 'node:child_process';
 import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { mkdtemp, writeFile, unlink, rmdir } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
@@ -29,7 +30,14 @@ export class VibeCliAdapter implements AgentAdapter {
       return { available: Boolean(version), ...(version ? { version } : {}), reason: 'Authentication not checked' };
     } catch { return { available: false, reason: 'Vibe CLI not found or version check failed' }; }
   }
-  async models() { return []; }
+  async models() {
+    // Vibe model ids are user aliases declared in the models table of config.toml.
+    try {
+      const config = readFileSync(join(process.env.VIBE_HOME ?? join(homedir(), '.vibe'), 'config.toml'), 'utf8');
+      const block = /\bmodels\s*=\s*\[([\s\S]*?)\]/.exec(config)?.[1] ?? '';
+      return [...block.matchAll(/\balias\s*=\s*"([^"]+)"/g)].map(match => ({ id: match[1]! }));
+    } catch { return []; }
+  }
   async start(spec: StartSpec): Promise<Handle> { return this.create(spec); }
   async resume(ref: NativeRef): Promise<Handle> {
     if (!ref.id) throw new Error('native session ID is required');

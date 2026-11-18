@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { Codex } from '@openai/codex-sdk';
 import type { CyberAccessProgram, Input, Thread, ThreadOptions, TurnOptions } from '@openai/codex-sdk';
 import { EventQueue, NO_CAPABILITIES, RawLog } from '@ormicode/agent-core';
+import { CodexAppServer } from '@ormicode/agent-codex-cli';
 import type { AgentAdapter, Handle, NativeRef, PromptInput, StartSpec } from '@ormicode/agent-core';
 import { CodexEventMapper } from './map.ts';
 
@@ -27,7 +28,12 @@ export class CodexSdkAdapter implements AgentAdapter {
     this.onNativeId = options.onNativeId;
   }
   async detect() { return { available: true, reason: 'SDK package loaded; executable and authentication not checked' }; }
-  async models() { return []; }
+  async models() {
+    // The SDK exposes no model list; the backing codex binary answers
+    // model/list over app-server stdio, same as the cli transport.
+    const server = await CodexAppServer.start();
+    try { return await server.models(); } finally { server.close(); }
+  }
   async start(spec: StartSpec): Promise<Handle> { return this.create(spec); }
   async resume(ref: NativeRef): Promise<Handle> {
     if (!ref.id) throw new Error('native thread ID is required');
