@@ -5,6 +5,7 @@ import { useTranscript } from '../features/session/useTranscript.ts';
 import { useSession } from '../features/session/useSession.ts';
 import { Transcript } from '../features/session/Transcript.tsx';
 import { Approvals } from '../features/session/Approvals.tsx';
+import { FilesPane } from '../features/files/FilesPane.tsx';
 import { Composer } from '../features/session/Composer.tsx';
 import { NotesPanel } from '../features/notes/NotesPanel.tsx';
 import { TerminalPane } from '../features/terminal/TerminalPane.tsx';
@@ -21,7 +22,7 @@ interface SessionCost {
   usd: number | null; source: 'reported' | 'estimate' | 'none'; priceVersion: string | null; model: string | null;
 }
 
-export function SessionView({ session, rail = 'none' }: { session: string; rail?: RailPane; onRail?: (r: RailPane) => void }) {
+export function SessionView({ session, rail = 'none', onOpen }: { session: string; rail?: RailPane; onRail?: (r: RailPane) => void; onOpen?: (session: string) => void }) {
   const { events, approvals } = useTranscript(session);
   const details = useSession(session);
   const { transport } = usePlatform();
@@ -59,7 +60,7 @@ export function SessionView({ session, rail = 'none' }: { session: string; rail?
       <Separator className="ormi-handle ormi-handle-line" />
       <Panel id="notes" defaultSize="42" minSize={340} maxSize="65">
         <div className="ormi-pane" style={{ height: '100%', background: 'var(--bg-main)', minWidth: 0, overflow: 'hidden' }}>
-          {rail === 'notes' ? <NotesPanel session={session} /> : rail === 'git' ? <GitPane session={session} /> : <TerminalPane session={session} />}
+          {rail === 'notes' ? <NotesPanel session={session} /> : rail === 'git' ? <GitPane session={session} /> : rail === 'files' ? <FilesPane session={session} onOpenSession={onOpen} /> : <TerminalPane session={session} />}
         </div>
       </Panel>
     </Group>

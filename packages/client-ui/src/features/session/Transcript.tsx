@@ -2,7 +2,7 @@
  * tool calls as compact expandable rows (result folded in, checkpoint as a
  * hover-only icon), system events as muted lines. */
 import { useEffect, useMemo, useRef } from 'react';
-import { CircleAlert, ArrowRight, RotateCw, Pause, ChevronRight, History, CircleCheck, MessageCircle, Clock3 } from 'lucide-react';
+import { Pencil, CircleAlert, ArrowRight, RotateCw, Pause, ChevronRight, History, CircleCheck, MessageCircle, Clock3 } from 'lucide-react';
 import { ToolRow, ThinkingRow, CheckpointMark } from './ToolRow.tsx';
 import type { TranscriptEvent } from './useTranscript.ts';
 
@@ -86,6 +86,8 @@ function line(e: TranscriptEvent, ctx: Ctx) {
       return eventLine(<MessageCircle size={12} />, 'Answered');
     case 'interaction_expired':
       return eventLine(<Clock3 size={12} />, 'Request expired');
+    case 'file_edit':
+      return eventLine(<Pencil size={12} />, `Edited ${String(b.path ?? 'a file')} by hand`);
     case 'terminal_open':
     case 'terminal_close':
       return null;

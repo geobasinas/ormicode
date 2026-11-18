@@ -1,0 +1,144 @@
+/** Open file: viewer (syntax highlighted, huge-file guard), diff against
+ *  HEAD, blame, history, plain-text editing (daemon checkpoints first) and
+ *  "Ask about this" for a selection. */
+import { useCallback, useEffect, useState } from 'react';
+import { ArrowLeft, GitCompareArrows, UserRound, History, Pencil, Check, X, ExternalLink, MessageSquarePlus, FileWarning, Loader2 } from 'lucide-react';
+import { useFileRequest } from './useFiles.ts';
+import { CodeView } from './CodeView.tsx';
+import { AskBox } from './AskBox.tsx';
+import { type FileData, type Blame, type FileCommit, type GitMark, GIT_COLOR, GIT_LETTER, baseName, dirName, formatSize, formatDate } from './types.ts';
+import { ago } from '../../lib/format.ts';
+
+const mono = { fontFamily: 'var(--font-mono)' } as const;
+
+function Tool({ title, on, disabled, onClick, children }: { title: string; on?: boolean; disabled?: boolean; onClick?: () => void; children: React.ReactNode }) {
+  return <button title={title} aria-pressed={on} disabled={disabled} onClick={onClick} className={disabled || on ? undefined : 'hv'} style={{
+    border: 'none', width: 24, height: 24, borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+    background: on ? 'var(--bg-raised)' : 'transparent', color: on ? 'var(--text-title)' : 'var(--text-hint)',
+    cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.4 : 1,
+  }}>{children}</button>;
+}
+
+const ERRORS: Record<string, string> = {
+  'file.busy': 'The agent is working in this folder; stop the turn before editing.',
+  'file.conflict': 'The file changed on disk since you opened it. Reload to see the new version.',
+  'file.binary': 'Binary files can’t be edited here.',
+};
+
+export function FileView({ session, path, line, git, isGit, onBack, onOpenExternal, onOpenSession }: {
+  session: string; path: string; line?: number; git?: GitMark; isGit: boolean;
+  onBack: () => void; onOpenExternal?: () => void; onOpenSession?: (id: string) => void;
+}) {
+  const request = useFileRequest(session);
+  const [data, setData] = useState<FileData>();
+  const [error, setError] = useState<string>();
+  const [force, setForce] = useState(false);
+  const [diff, setDiff] = useState<string | null>(null);
+  const [blame, setBlame] = useState<Blame>();
+  const [commits, setCommits] = useState<FileCommit[]>();
+  const [at, setAt] = useState<FileCommit>();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<string>();
+  const [saving, setSaving] = useState(false);
+  const [sel, setSel] = useState<{ from: number; to: number; text: string } | null>(null);
+  const [asking, setAsking] = useState(false);
+
+  const load = useCallback(async () => {
+    const r = await request<FileData>('file.read', { path, ...(at ? { ref: at.sha } : {}), ...(force ? { force: true } : {}) });
+    if (r.error) { setError(r.error); return; }
+    setError(undefined); setData(r.body); setDraft(undefined);
+  }, [request, path, at, force]);
+  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { setDiff(null); setBlame(undefined); setCommits(undefined); setAt(undefined); setEditing(false); setForce(false); }, [path]);
+
+  const toggleDiff = async () => {
+    if (diff !== null) { setDiff(null); return; }
+    const r = await request<FileData>('file.read', { path, ref: 'HEAD' });
+    setDiff(r.body?.content ?? '');
+  };
+  const toggleBlame = async () => {
+    if (blame) { setBlame(undefined); return; }
+    const r = await request<Blame>('file.blame', { path });
+    if (r.error) setError(r.error); else setBlame(r.body);
+  };
+  const toggleHistory = async () => {
+    if (commits) { setCommits(undefined); setAt(undefined); return; }
+    const r = await request<{ commits: FileCommit[] }>('file.history', { path, limit: 50 });
+    if (r.error) setError(r.error); else setCommits(r.body!.commits);
+  };
+  const save = async () => {
+    if (!data || draft === undefined || saving) return;
+    setSaving(true);
+    const r = await request<{ mtime: number }>('file.write', { path, content: draft, ...(data.mtime !== null ? { baseMtime: data.mtime } : {}) });
+    setSaving(false);
+    if (r.error) { setError(ERRORS[r.code ?? ''] ?? r.error); return; }
+    setEditing(false); await load();
+  };
+
+  const text = data && data.encoding === 'utf8' ? data.content : null;
+  const canEdit = Boolean(text !== null && !at && !data?.binary);
+  const dir = dirName(path);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, height: 38, flexShrink: 0, padding: '0 8px 0 6px', borderBottom: '1px solid var(--line-subtle)' }}>
+        <Tool title="Back to folder" onClick={onBack}><ArrowLeft size={13} /></Tool>
+        <span style={{ display: 'flex', alignItems: 'baseline', gap: 6, minWidth: 0, flex: 1, padding: '0 4px', whiteSpace: 'nowrap', overflow: 'hidden' }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: git ? GIT_COLOR[git] ?? 'var(--text-title)' : 'var(--text-title)' }}>{baseName(path)}</span>
+          {git && GIT_LETTER[git] ? <span style={{ ...mono, fontSize: 10, color: GIT_COLOR[git] }}>{GIT_LETTER[git]}</span> : null}
+          <span style={{ ...mono, fontSize: 10.5, color: 'var(--text-hint)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{dir}</span>
+        </span>
+        {editing ? <>
+          {saving ? <Loader2 size={13} className="animate-spin" style={{ color: 'var(--text-hint)' }} /> : null}
+          <button onClick={() => { setEditing(false); setDraft(undefined); }} className="hv" style={{ ...btn }}><X size={12} />Cancel</button>
+          <button onClick={() => void save()} disabled={draft === undefined || saving} style={{ ...btn, background: 'var(--text-title)', color: 'var(--bg-main)', fontWeight: 600, opacity: draft === undefined ? 0.5 : 1 }}><Check size={12} />Save</button>
+        </> : <>
+          <Tool title="Ask about the selected lines" disabled={!sel} onClick={() => setAsking(true)}><MessageSquarePlus size={13} /></Tool>
+          {isGit ? <Tool title="Diff against HEAD" on={diff !== null} disabled={!text || Boolean(at)} onClick={() => void toggleDiff()}><GitCompareArrows size={13} /></Tool> : null}
+          {isGit ? <Tool title="Blame" on={Boolean(blame)} disabled={!text || Boolean(at)} onClick={() => void toggleBlame()}><UserRound size={13} /></Tool> : null}
+          {isGit ? <Tool title="File history" on={Boolean(commits)} onClick={() => void toggleHistory()}><History size={13} /></Tool> : null}
+          <Tool title="Edit (a checkpoint is taken before saving)" disabled={!canEdit} onClick={() => { setDiff(null); setBlame(undefined); setEditing(true); }}><Pencil size={12} /></Tool>
+          {onOpenExternal ? <Tool title="Open in external editor" onClick={onOpenExternal}><ExternalLink size={12} /></Tool> : null}
+        </>}
+      </div>
+      {at ? <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', fontSize: 11, color: 'var(--text-hint)', borderBottom: '1px solid var(--line-subtle)' }}>
+        <span>At <span style={mono}>{at.sha.slice(0, 7)}</span> · {at.subject}</span><span style={{ flex: 1 }} />
+        <button className="hv" style={btn} onClick={() => setAt(undefined)}>Back to working copy</button>
+      </div> : null}
+      {error ? <div style={{ padding: '6px 12px', fontSize: 11.5, color: 'var(--accent-red)', display: 'flex', gap: 8, alignItems: 'center' }}>
+        {error}<span style={{ flex: 1 }} /><button className="hv" style={btn} onClick={() => { setError(undefined); void load(); }}>Reload</button>
+      </div> : null}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ flex: 1, minHeight: 0, background: 'var(--bg-inset)' }}>
+          {!data ? null
+            : data.tooLarge ? <Placeholder icon={<FileWarning size={18} />} title={`${formatSize(data.size)} — too large to show here`}
+                action={data.size <= 10 * 1024 * 1024 ? <button className="hv" style={btn} onClick={() => setForce(true)}>Open anyway</button> : undefined} />
+            : data.encoding === 'base64' && data.mime?.startsWith('image/') ? <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, boxSizing: 'border-box' }}>
+                <img alt={baseName(path)} src={`data:${data.mime};base64,${data.content}`} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 6 }} /></div>
+            : text === null ? <Placeholder icon={<FileWarning size={18} />} title="Binary file" sub={`${data.mime ?? 'unknown type'} · ${formatSize(data.size)}${data.mtime ? ` · ${formatDate(data.mtime)}` : ''}`} />
+            : <CodeView path={path} doc={text} editable={editing} line={line} original={diff ?? undefined} blame={blame}
+                onChange={d => setDraft(d)} onSelection={setSel} onSave={() => void save()} />}
+        </div>
+        {asking && sel ? <AskBox session={session} path={path} sel={sel} onClose={() => setAsking(false)} onStarted={id => { setAsking(false); onOpenSession?.(id); }} /> : null}
+        {commits ? <div style={{ maxHeight: '38%', overflowY: 'auto', borderTop: '1px solid var(--line-subtle)', padding: '4px 0' }}>
+          {!commits.length ? <div style={{ padding: '6px 12px', fontSize: 11.5, color: 'var(--text-hint)' }}>No commits touch this file yet.</div> : null}
+          {commits.map(c => (
+            <div key={c.sha} onClick={() => setAt(c)} className={at?.sha === c.sha ? undefined : 'hv-row'} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 12px', fontSize: 11.5, cursor: 'pointer', background: at?.sha === c.sha ? 'var(--bg-raised)' : 'transparent' }}>
+              <span style={{ ...mono, fontSize: 10.5, color: 'var(--text-hint)' }}>{c.sha.slice(0, 7)}</span>
+              <span style={{ color: 'var(--text-label)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.subject}</span>
+              {c.session ? <button title="Open the session that made this commit" onClick={e => { e.stopPropagation(); onOpenSession?.(c.session!); }} className="hv" style={{ ...btn, height: 20, padding: '0 6px', fontSize: 10.5 }}>session</button> : null}
+              <span style={{ fontSize: 10.5, color: 'var(--text-hint)', whiteSpace: 'nowrap' }}>{c.author} · {ago(c.ts)}</span>
+            </div>
+          ))}
+        </div> : null}
+      </div>
+    </div>
+  );
+}
+
+const btn = { font: 'inherit', fontSize: 11, height: 24, padding: '0 8px', borderRadius: 6, border: 'none', background: 'transparent', color: 'var(--text-label)', display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer', whiteSpace: 'nowrap' as const, flexShrink: 0 };
+
+function Placeholder({ icon, title, sub, action }: { icon: React.ReactNode; title: string; sub?: string; action?: React.ReactNode }) {
+  return <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, color: 'var(--text-hint)', fontSize: 12 }}>
+    {icon}<span style={{ color: 'var(--text-label)' }}>{title}</span>{sub ? <span style={{ fontSize: 11 }}>{sub}</span> : null}{action}
+  </div>;
+}

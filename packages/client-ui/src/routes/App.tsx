@@ -74,14 +74,14 @@ const FILTER_TABS = ['All', 'Sessions', 'Bots'] as const;
 
 const RAIL_ICONS: { id: string; icon: LucideIcon; label: string; soon?: boolean }[] = [
   { id: 'git', icon: GitBranch, label: 'git' },
-  { id: 'files', icon: FolderOpen, label: 'files — soon', soon: true },
+  { id: 'files', icon: FolderOpen, label: 'files' },
   { id: 'terminal', icon: SquareTerminal, label: 'terminal' },
   { id: 'notes', icon: NotebookPen, label: 'notes' },
   { id: 'web', icon: Globe, label: 'web — soon', soon: true },
 ];
 
-export type RailPane = 'none' | 'notes' | 'git' | 'terminal';
-const PANES: string[] = ['notes', 'git', 'terminal'];
+export type RailPane = 'none' | 'notes' | 'git' | 'terminal' | 'files';
+const PANES: string[] = ['notes', 'git', 'terminal', 'files'];
 
 function Rail({ route, rail, onRail }: { route: string; rail: RailPane; onRail: (r: RailPane) => void }) {
   const isSession = route !== 'now';
@@ -233,7 +233,7 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
             }}>
               {route === 'now' ? <Now onOpen={open} state={state} />
                 : route === 'settings' ? <SettingsView prefs={prefs} onPrefs={setPrefs} connection={state} />
-                : <SessionView key={route} session={route} rail={rail} onRail={setRail} />}
+                : <SessionView key={route} session={route} rail={rail} onRail={setRail} onOpen={open} />}
             </div>
           </main>
           </Panel>
