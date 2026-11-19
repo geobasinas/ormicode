@@ -258,7 +258,7 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
       <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-window)', color: 'var(--text-label)', fontFamily: 'var(--font-ui)', fontSize: 14, borderRadius: 14, overflow: 'hidden' }}>
         <Titlebar platform={platform} workspace={inDesign ? 'design' : 'code'} onWorkspaceChange={workspace => workspace === 'design' ? open('design') : setRoute(codeWorkspaceRoute(lastCodeRoute.current, tabs))}
           sidebarOpen={inDesign ? designSidebarOpen : codeSidebarOpen} onSidebarToggle={() => inDesign ? setDesignSidebarOpen(value => !value) : setCodeSidebarOverride(!codeSidebarOpen)} />
-        {inDesign ? <DesignPage initialSession={designSession} onSessionChange={setDesignSession} onOpen={open} sidebarOpen={designSidebarOpen} onShowSidebar={() => setDesignSidebarOpen(true)} /> : <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+        {inDesign ? <DesignPage initialSession={designSession} onSessionChange={setDesignSession} onOpen={open} sidebarOpen={designSidebarOpen} onShowSidebar={() => setDesignSidebarOpen(true)} connection={state} /> : <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         <Group id="ormi.shell" orientation="horizontal" defaultLayout={shellLayout.defaultLayout} onLayoutChanged={onShellLayoutChanged} style={{ flex: 1, minWidth: 0 }}>
           {codeSidebarOpen ? <>
             <Panel id="sidebar" defaultSize={sidebar?.size ?? 268} minSize={220} maxSize={420}>

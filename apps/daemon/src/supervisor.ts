@@ -74,8 +74,8 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   };
   const record = (session: string, kind: string, payload: Record<string, unknown>, ts?: number, origin?: string) => {
     if (closing) return;
-    const { frame } = append(db, session, { kind, payload: { kind, ...secrets.redact(session, payload) }, ...(ts ? { ts } : {}), ...(origin ? { origin } : {}) });
-    fanout(session, frame);
+    const { frame, seq } = append(db, session, { kind, payload: { kind, ...secrets.redact(session, payload) }, ...(ts ? { ts } : {}), ...(origin ? { origin } : {}) });
+    fanout(session, frame); if (kind === 'design_changed' || kind === 'queue_changed' || kind === 'prompt') relay?.sendEvt(session, seq, JSON.parse(frame));
     const mapped = stateFor[kind];
     if (mapped) setState(db, session, mapped, typeof payload.reason === 'string' ? payload.reason : undefined, ts);
     else if (kind === 'state' && typeof payload.state === 'string') setState(db, session, payload.state as SessionState, typeof payload.reason === 'string' ? payload.reason : undefined, ts);

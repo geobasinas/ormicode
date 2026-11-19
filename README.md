@@ -3294,6 +3294,7 @@ There are no per-package root scripts and no `lint:js`-style variants. A script 
 - Bodies are plain JSON; the relay link is protected by TLS and token auth ([Tokens and transport](#tokens-and-transport)). Clients order by `seq`, never by `ts`.
 - `idx` = the per-device session summary ([Relay](#relay)). `hook` = a verified GitHub delivery ([GitHub](#github)).
 - **Long-running methods** return once the daemon has accepted the work, not when the turn ends: `session.prompt`, `session.steer`, `session.handoff`, `session.fork`, `session.digest`. Follow the turn through events.
+- `design.activity {session, slug}` returns recent journaled board revisions in the session's canonical working tree. New `design_changed` events include the originating session, an edit summary, and `source: "mcp"` for the built-in MCP connection.
 
 **Versioning:** `v` = envelope version, bumped only on breaking shape changes. `hello.proto` = feature level. A peer that sees a newer `proto` than it supports refuses and says so once. New fields are optional, never repurposed, and unknown fields are ignored.
 

@@ -77,5 +77,28 @@ test('design events fan out by canonical cwd; CLI file/stdin and MCP stay sessio
     const document = JSON.parse(got.result.content[0].text).document;
     assert.equal(document.name, 'Home');
     assert.equal(document.frames[0].html, '<p>Stdin input</p>');
+    const edits = [];
+    client.onFrame = frame => { if (frame.type === 'evt' && frame.body.kind === 'design_changed') edits.push(frame); };
+    const updated = await callMcp('tools/call', { name: 'ormi_design_update', arguments: {
+      slug: 'home', expectedRevision: 3, operations: [{ type: 'frame.update', frameId, patch: { html: '<p>Sibling MCP edit</p>' } }],
+    } }, env);
+    assert.equal(JSON.parse(updated.result.content[0].text).document.revision, 4);
+    assert.deepEqual(edits.map(frame => frame.session).sort(), [self, sibling].sort());
+    assert.deepEqual(edits.find(frame => frame.session === sibling).body, {
+      kind: 'design_changed', slug: 'home', revision: 4, originSession: self, source: 'mcp', summary: 'frame.update',
+    });
+    assert.equal((await client.request('design.get', { session: sibling, slug: 'home' })).body.document.frames[0].html, '<p>Sibling MCP edit</p>');
+    assert.equal((await client.request('design.get', { session: other, slug: 'home' })).body.document.revision, 1);
+    const journal = await callMcp('tools/call', { name: 'ormi_design_activity', arguments: { slug: 'home', session: other } }, env);
+    const activity = JSON.parse(journal.result.content[0].text);
+    assert.deepEqual(activity.edits.map(edit => edit.revision), [4, 3, 2, 1]);
+    assert.equal(activity.edits[0].source, 'mcp');
+    assert.equal(activity.edits[0].originSession, self);
+    assert.equal((await client.request('design.activity', { session: other, slug: 'home' })).body.edits[0].originSession, other);
+    assert.deepEqual((await client.request('design.activity', { session: sibling, slug: 'home' })).body.edits, activity.edits);
+    const replayFrom = edits.find(frame => frame.session === sibling).seq;
+    edits.length = 0;
+    await client.request('session.subscribe', { session: sibling, after: replayFrom - 1 });
+    assert.deepEqual(edits.map(frame => [frame.seq, frame.body.source]), [[replayFrom, 'mcp']]);
   } finally { client.close(); await daemon.close(); rmSync(dir, { recursive: true, force: true }); }
 });

@@ -7,6 +7,7 @@ const descriptions = {
   'design.create': 'Create a repository-backed design board in the current session’s working tree.',
   'design.update': 'Apply one atomic batch of design operations. Use the current board revision as expectedRevision. On design.conflict, read the board again and reconcile the changes before submitting a new batch.',
   'design.history': 'List retained board revision summaries.',
+  'design.activity': 'List recent board edits and their recorded originating sessions in the current working tree.',
   'design.restore': 'Restore a retained board revision as a new revision. Set expectedRevision to the current board revision.',
 } satisfies Partial<Record<keyof typeof designRequests, string>>;
 

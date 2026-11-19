@@ -1,13 +1,14 @@
 import * as z from 'zod/mini';
 import { requestIdSchema, timestampSchema } from './schema.ts';
 import { sessionStateSchema } from './methods.ts';
+import { designChangeFields } from './design-activity.ts';
 
 const text = z.string();
 const nonEmpty = z.string().check(z.minLength(1));
 const count = z.number().check(z.int(), z.gte(0));
 const quantity = z.number().check(z.gte(0));
 export const eventBodies = {
-  design_changed: z.looseObject({ kind: z.literal('design_changed'), slug: nonEmpty, revision: count }),
+  design_changed: z.looseObject({ kind: z.literal('design_changed'), slug: nonEmpty, ...designChangeFields }),
   prompt: z.looseObject({ kind: z.literal('prompt'), text }),
   queue_changed: z.looseObject({
     kind: z.literal('queue_changed'),

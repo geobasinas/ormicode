@@ -1,5 +1,7 @@
 import * as z from 'zod/mini';
 import { sessionIdSchema } from './schema.ts';
+import { designActivityResponseSchema } from './design-activity.ts';
+export { DESIGN_ACTIVITY_LIMIT, type DesignActivityItem } from './design-activity.ts';
 
 export const DESIGN_DOCUMENT_BYTES = 96 * 1024;
 export const DESIGN_STORAGE_BYTES = 224 * 1024;
@@ -50,12 +52,14 @@ export const designRequests = {
   'design.create': z.object({ ...board, name }),
   'design.update': z.object({ ...board, expectedRevision: revision, operations: z.array(designOperationSchema).check(z.minLength(1), z.maxLength(16)) }).check(z.refine(request => encodedBytes(request) <= 192 * 1024)),
   'design.history': z.object(board),
+  'design.activity': z.object(board),
   'design.restore': z.object({ ...board, expectedRevision: revision, targetRevision: revision }),
 };
 export const designResponses = {
   'design.list': z.object({ boards: z.array(z.object({ slug: designSlugSchema, name, revision, frames: z.number().check(z.int(), z.gte(0), z.lte(24)) })).check(z.maxLength(100)) }),
   'design.get': result, 'design.create': result, 'design.update': result, 'design.restore': result,
   'design.history': z.object({ history }),
+  'design.activity': designActivityResponseSchema,
 };
 export type DesignDocument = z.infer<typeof designDocumentSchema>;
 export type DesignFrame = z.infer<typeof designFrameSchema>;

@@ -12,10 +12,13 @@ import { sanitizeMarkup } from './sanitize.ts';
 import { clampPosition, fitCanvas, reconcileFrameSelection, resizeRect, zoomAt, type Rect, type View } from './design-model.ts';
 import { validateStyleEdit } from './design-style.ts';
 import { useDesignDrag } from './useDesignDrag.ts';
+import { acceptsDesignRevision, sourceMatches } from './design-live.ts';
+import { useDesignLive } from './useDesignLive.ts';
+import type { DesignAgentContext } from './design-agent-context.ts';
 
 type BoardSummary = { slug: string; name: string; revision: number; frames: number };
 type Result = { document: DesignDocument; history: DesignHistorySummary[] };
-type Props = { session: string; project: string; workspacePath: string; sessionError: string; sidebarOpen: boolean; onShowSidebar(): void; agentSlot: ReactNode };
+type Props = { session: string; project: string; workspacePath: string; sessionError: string; sidebarOpen: boolean; onShowSidebar(): void; agentSlot(board: DesignAgentContext | undefined, sourceDirty: boolean): ReactNode };
 
 const startHtml = '<main style="min-height:100%;padding:32px;font-family:Inter,system-ui,sans-serif;color:var(--text-title);background:var(--bg-main)"><h1>Start designing</h1><p>Select this text to edit it, or add an element from the toolbar.</p></main>';
 
@@ -41,7 +44,6 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [remoteRevision, setRemoteRevision] = useState<number | null>(null);
   const [view, setView] = useState<View>({ x: 0, y: 0, scale: 1 });
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   const board = useRef<DesignDocument | null>(null);
@@ -49,20 +51,23 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
   selectedFrameRef.current = selectedFrame;
   const slugRef = useRef('');
   const dirtyRef = useRef(false);
+  const draftBase = useRef<DesignFrame | undefined>(undefined);
   const savingRef = useRef(false);
   const generation = useRef(0);
   const canvas = useRef<HTMLDivElement>(null);
   const fittedSlug = useRef('');
   const bridge: MutableRefObject<(type: string, body?: Record<string, unknown>) => void> = useRef(() => undefined);
 
-  const setCurrent = useCallback((next: Result) => {
+  const setCurrent = useCallback((next: Result, token: number) => {
+    if (!acceptsDesignRevision(board.current, next.document, token === generation.current)) return;
     board.current = next.document;
     setDocument(next.document);
     setHistory(next.history);
     setBoards(current => current.map(item => item.slug === slugRef.current ? { ...item, name: next.document.name, revision: next.document.revision, frames: next.document.frames.length } : item));
-    setRemoteRevision(null);
-    const selected = reconcileFrameSelection(next.document.frames, selectedFrameRef.current);
-    if (selected !== selectedFrameRef.current) { setSelectedFrame(selected); setSelectedElement(null); }
+    const selected = dirtyRef.current ? selectedFrameRef.current : reconcileFrameSelection(next.document.frames, selectedFrameRef.current);
+    if (selected !== selectedFrameRef.current) {
+      selectedFrameRef.current = selected; setSelectedFrame(selected); setSelectedElement(null); setSelectionRequest(undefined);
+    }
     if (!dirtyRef.current) {
       const frame = next.document.frames.find(item => item.id === selected);
       setSourceHtml(frame?.html ?? ''); setSourceStyles(frame?.styles ?? '');
@@ -76,14 +81,15 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
     const token = ++generation.current;
     fittedSlug.current = slugRef.current === target ? fittedSlug.current : '';
     savingRef.current = false; setSaving(false);
+    dirtyRef.current = false; draftBase.current = undefined; setSourceDirty(false);
     setLoading(true); setError(''); setSlug(target); slugRef.current = target; setDocument(null); board.current = null;
+    setSelectedElement(null);
     try {
       const response = await transport.request('design.get', { session, slug: target });
       if (token !== generation.current) return;
       if (response.type === 'err') throw new Error(`${response.code}: ${response.message}`);
       const result = response.body as Result;
-      setCurrent(result);
-      setSelectedElement(null); dirtyRef.current = false; setSourceDirty(false);
+      setCurrent(result, token);
     } catch (reason) { if (token === generation.current) setError(reason instanceof Error ? reason.message : String(reason)); }
     finally { if (token === generation.current) setLoading(false); }
   }, [session, transport, setCurrent]);
@@ -91,7 +97,7 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
   useEffect(() => {
     const token = ++generation.current;
     setBoards([]); setSlug(''); slugRef.current = ''; setDocument(null); board.current = null; setSelectedFrame('');
-    setHistory([]); setError(''); dirtyRef.current = false; setSourceDirty(false); setRemoteRevision(null); fittedSlug.current = ''; savingRef.current = false; setSaving(false); setLoading(true);
+    setHistory([]); setError(''); dirtyRef.current = false; draftBase.current = undefined; setSourceDirty(false); fittedSlug.current = ''; savingRef.current = false; setSaving(false); setLoading(true);
     void transport.request('design.list', { session }).then(response => {
       if (token !== generation.current) return;
       if (response.type === 'err') throw new Error(`${response.code}: ${response.message}`);
@@ -104,47 +110,52 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
   }, [session, transport, readBoard]);
 
   const reloadCurrent = useCallback(async () => {
-    const currentSlug = slugRef.current;
-    if (currentSlug) await readBoard(currentSlug);
-  }, [readBoard]);
-
-  useEffect(() => transport.subscribeEvents(frame => {
-    if (frame.type !== 'evt' || frame.session !== session) return;
-    const event = frame.body as Record<string, unknown>;
-    if (event.kind !== 'design_changed' || typeof event.revision !== 'number') return;
+    const target = slugRef.current;
     const token = generation.current;
-    void transport.request('design.list', { session }).then(response => { if (token === generation.current && response.type === 'res') setBoards((response.body as { boards: BoardSummary[] }).boards); }).catch(() => undefined);
-    if (event.slug !== slugRef.current) return;
-    if ((board.current?.revision ?? 0) >= event.revision) return;
-    setRemoteRevision(event.revision);
-    if (!dirtyRef.current && !savingRef.current) void reloadCurrent();
-  }), [session, transport, reloadCurrent]);
+    if (!target) return;
+    try {
+      const response = await transport.request('design.get', { session, slug: target });
+      if (token !== generation.current) return;
+      if (response.type === 'err') throw new Error(`${response.code}: ${response.message}`);
+      setCurrent(response.body as Result, token);
+    } catch (reason) { if (token === generation.current) setError(reason instanceof Error ? reason.message : String(reason)); }
+  }, [transport, session, setCurrent]);
+
+  useDesignLive(transport, session, useCallback(async revisions => {
+    const token = generation.current;
+    const list = transport.request('design.list', { session }).then(response => {
+      if (token !== generation.current || response.type !== 'res') return;
+      const items = (response.body as { boards: BoardSummary[] }).boards;
+      setBoards(current => items.map(item => current.find(previous => previous.slug === item.slug && previous.revision > item.revision) ?? item));
+    });
+    await Promise.allSettled([list, (revisions.get(slugRef.current) ?? 0) > (board.current?.revision ?? 0) ? reloadCurrent() : undefined]);
+  }, [session, transport, reloadCurrent]));
 
   const mutate = useCallback(async (operations: DesignOperation[]) => {
     const current = board.current; const currentSlug = slugRef.current; const token = generation.current;
     if (!current || !currentSlug || savingRef.current) return false;
-    const sourceSave = sourceDirty && operations.length === 1 && operations[0].type === 'frame.update' && operations[0].frameId === selectedFrame && (operations[0].patch.html !== undefined || operations[0].patch.styles !== undefined);
-    if (sourceDirty && !sourceSave) { setError('Save or discard the unsaved HTML before changing the board.'); return false; }
+    const sourceSave = dirtyRef.current && operations.length === 1 && operations[0].type === 'frame.update' && operations[0].frameId === selectedFrame && (operations[0].patch.html !== undefined || operations[0].patch.styles !== undefined);
+    if (dirtyRef.current && !sourceSave) { setError('Save or discard the unsaved HTML before changing the board.'); return false; }
+    if (sourceSave && !sourceMatches(current.frames.find(frame => frame.id === selectedFrame), draftBase.current)) return false;
     savingRef.current = true; setSaving(true); setError('');
     try {
       const response = await transport.request('design.update', { session, slug: currentSlug, expectedRevision: current.revision, operations });
       if (token !== generation.current) return false;
       if (response.type === 'err') {
         setError(`${response.code}: ${response.message}`);
-        if (response.code === 'design.conflict') setRemoteRevision(null);
+        if (response.code === 'design.conflict') void reloadCurrent();
         return false;
       }
       const result = response.body as Result;
-      if (!board.current || result.document.revision >= board.current.revision) setCurrent(result);
       if (sourceSave) {
-        dirtyRef.current = false; setSourceDirty(false);
-        const saved = result.document.frames.find(frame => frame.id === selectedFrame);
-        if (saved) { setSourceHtml(saved.html); setSourceStyles(saved.styles); }
+        dirtyRef.current = false; draftBase.current = undefined; setSourceDirty(false);
       }
-      return true;
+      setCurrent(result, token);
+      if (sourceSave && board.current) chooseFrame(reconcileFrameSelection(board.current.frames, selectedFrameRef.current), board.current);
+      return result;
     } catch (reason) { if (token === generation.current) setError(reason instanceof Error ? reason.message : String(reason)); return false; }
     finally { if (token === generation.current) { savingRef.current = false; setSaving(false); } }
-  }, [session, transport, setCurrent, sourceDirty, selectedFrame]);
+  }, [session, transport, setCurrent, reloadCurrent, selectedFrame]);
 
   const createBoard = async () => {
     if (dirtyRef.current) { setError('Save or discard the unsaved HTML before creating another board.'); return; }
@@ -164,9 +175,11 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
   };
 
   const activeFrame = document?.frames.find(frame => frame.id === selectedFrame);
+  const sourceConflict = sourceDirty && !sourceMatches(activeFrame, draftBase.current);
   const previewFrame = activeFrame && sourceDirty ? { ...activeFrame, html: sourceHtml, styles: sourceStyles } : activeFrame;
   const updateSource = (field: 'html' | 'styles', value: string) => {
     if (value.length > (field === 'html' ? 24576 : 16384)) { setError(`${field} exceeds its size limit.`); return; }
+    if (!dirtyRef.current) draftBase.current = activeFrame;
     if (field === 'html') setSourceHtml(value); else setSourceStyles(value);
     dirtyRef.current = true; setSourceDirty(true); setError('');
   };
@@ -183,8 +196,11 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
   const saveSource = () => { if (selectedFrame) void mutate([{ type: 'frame.update', frameId: selectedFrame, patch: { html: sanitizeMarkup(sourceHtml), styles: sourceStyles } }]); };
   const directMarkup = (id: string, html: string) => {
     const token = generation.current;
+    const base = board.current?.frames.find(frame => frame.id === id);
     if (!dirtyRef.current) void mutate([{ type: 'frame.update', frameId: id, patch: { html } }]).then(ok => {
-      if (!ok && token === generation.current && selectedFrameRef.current === id) { dirtyRef.current = true; setSourceDirty(true); setSourceHtml(html); setTab('html'); }
+      if (!ok && base && token === generation.current && selectedFrameRef.current === id) {
+        dirtyRef.current = true; draftBase.current = base; setSourceDirty(true); setSourceHtml(html); setSourceStyles(base.styles); setTab('html');
+      }
     });
   };
   const addFrame = (kind: 'desktop' | 'phone' | 'blank') => {
@@ -195,10 +211,10 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
     const x = index ? clampPosition(Math.max(...document.frames.map(frame => frame.x + frame.width)) + 64) : 0;
     const y = index ? Math.min(...document.frames.map(frame => frame.y)) : 0;
     const frame = { name: `${kind === 'phone' ? 'Phone' : kind === 'desktop' ? 'Desktop' : 'Blank'} ${index + 1}`, x, y, width, height, html: kind === 'blank' ? '<main style="min-height:100%;padding:24px"></main>' : startHtml, styles: '' };
-    void mutate([{ type: 'frame.add', ...frame }]).then(ok => {
+    void mutate([{ type: 'frame.add', ...frame }]).then(result => {
       const current = board.current;
-      const added = current?.frames.at(-1);
-      if (ok && current && added) { chooseFrame(added.id, current); setView(fitCanvas(current.frames, canvasSize.width, canvasSize.height)); }
+      const added = result && result.document.frames.at(-1);
+      if (current && added && current.frames.some(item => item.id === added.id)) { chooseFrame(added.id, current); setView(fitCanvas(current.frames, canvasSize.width, canvasSize.height)); }
     });
   };
 
@@ -222,9 +238,9 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
     else setView(current => ({ ...current, x: current.x - event.deltaX, y: current.y - event.deltaY }));
   }, []);
   useEffect(() => {
-    if (document?.frames.length && slug && fittedSlug.current !== slug && canvasSize.width > 0 && canvasSize.height > 0) {
+    if (document && slug && fittedSlug.current !== slug && canvasSize.width > 0 && canvasSize.height > 0) {
       fittedSlug.current = slug;
-      setView(fitCanvas(document.frames, canvasSize.width, canvasSize.height));
+      if (document.frames.length) setView(fitCanvas(document.frames, canvasSize.width, canvasSize.height));
     }
   }, [slug, document, canvasSize.width, canvasSize.height]);
 
@@ -245,9 +261,9 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
   };
 
   const frames = document?.frames ?? [];
-  const status = error || sessionError || (remoteRevision ? 'A newer revision is available.' : sourceDirty ? 'Unsaved source' : saving ? 'Saving…' : document ? 'Saved · r' + document.revision : '');
-  const failure = Boolean(error || sessionError);
-  const canReload = (remoteRevision || error.startsWith('design.conflict:') || (!document && slug)) && !sourceDirty;
+  const status = error || sessionError || (sourceConflict ? 'This frame’s source changed or was removed. Copy or discard your draft in HTML.' : sourceDirty ? 'Unsaved source' : saving ? 'Saving…' : document ? 'Saved · r' + document.revision : '');
+  const failure = Boolean(error || sessionError || sourceConflict);
+  const canReload = error.startsWith('design.conflict:') || (!document && slug);
   const fit = (items = frames) => setView(fitCanvas(items, canvasSize.width, canvasSize.height));
   const insertFrame = <DropdownMenu>
     <DropdownMenuTrigger asChild><button type="button" className="design-button primary" disabled={!document || saving || sourceDirty}><Plus size={15} /><span>Add frame</span><ChevronDown size={12} /></button></DropdownMenuTrigger>
@@ -273,7 +289,7 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
           setSelectionRequest({ frameId, path });
           setTab('inspect'); setInspectorOpen(true);
         }} />
-      {agentSlot}
+      {agentSlot(document ? { slug, name: document.name, revision: document.revision, frame: activeFrame } : undefined, sourceDirty)}
     </aside>
     <section className="design-main" aria-label="Board editor">
       <header className="design-canvas-header">
@@ -287,13 +303,13 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
           </DropdownMenuContent>
         </DropdownMenu>
         <span className="design-header-space" />
-        {document && !failure && !remoteRevision ? <span className="design-status" data-dirty={sourceDirty || saving} role="status"><i />{status}</span> : null}
+        {document && !failure ? <span className="design-status" data-dirty={sourceDirty || saving} role="status"><i />{status}</span> : null}
         {document ? insertFrame : null}
         <button type="button" className="design-icon-button design-inspector-toggle" title="Toggle inspector" aria-label="Toggle inspector" aria-expanded={inspectorOpen} onClick={() => setInspectorOpen(shown => !shown)}><PanelRight size={17} /></button>
       </header>
-      {failure || remoteRevision ? <div className="design-alert" role={failure ? 'alert' : 'status'}><span>{status}</span>
+      {failure ? <div className="design-alert" role="alert"><span>{status}</span>
         {canReload ? <button className="design-button" type="button" onClick={() => void reloadCurrent()}>Reload changes</button> : null}
-        <button type="button" className="design-icon-button" aria-label="Dismiss message" onClick={() => { setError(''); setRemoteRevision(null); }}><X size={14} /></button>
+        {error ? <button type="button" className="design-icon-button" aria-label="Dismiss message" onClick={() => setError('')}><X size={14} /></button> : null}
       </div> : null}
       {createOpen ? <form className="design-create" onSubmit={event => { event.preventDefault(); void createBoard(); }}>
         <input className="design-input" aria-label="New board name" placeholder="Board name" autoFocus maxLength={120} value={newName} onChange={event => setNewName(event.target.value)} />
@@ -336,8 +352,8 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
     </section>
     {inspectorOpen ? <DesignInspector tab={tab} onTab={setTab} document={document} activeFrame={activeFrame} selectedElement={selectedElement}
       onElementText={text => setSelectedElement(current => current ? { ...current, text } : null)} onSaveText={sendText} onStyle={sendStyle}
-      sourceHtml={sourceHtml} sourceStyles={sourceStyles} sourceDirty={sourceDirty} onSource={updateSource} onSaveSource={saveSource}
-      onDiscardSource={() => { dirtyRef.current = false; setSourceDirty(false); setSourceHtml(activeFrame?.html ?? ''); setSourceStyles(activeFrame?.styles ?? ''); }}
+      sourceHtml={sourceHtml} sourceStyles={sourceStyles} sourceDirty={sourceDirty} sourceConflict={sourceConflict} onSource={updateSource} onSaveSource={saveSource}
+      onDiscardSource={() => { dirtyRef.current = false; draftBase.current = undefined; setSourceDirty(false); chooseFrame(reconcileFrameSelection(frames, selectedFrame)); setError(''); }}
       history={history} onRestore={revision => void restore(revision)} feedback={feedback} onFeedback={setFeedback} onAddComment={createComment}
       onChat={text => { onShowSidebar(); pushToComposer(session, { text }); }} onMutate={operations => void mutate(operations)} saving={saving} /> : null}
   </main>;
@@ -350,9 +366,9 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
     try {
       const response = await transport.request('design.restore', { session, slug: currentSlug, expectedRevision: current.revision, targetRevision });
       if (token !== generation.current) return;
-      if (response.type === 'err') { setError(`${response.code}: ${response.message}`); return; }
-      setCurrent(response.body as Result); setSelectedElement(null); dirtyRef.current = false; setSourceDirty(false);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
+      if (response.type === 'err') { setError(`${response.code}: ${response.message}`); if (response.code === 'design.conflict') void reloadCurrent(); return; }
+      setCurrent(response.body as Result, token);
+    } catch (reason) { if (token === generation.current) setError(reason instanceof Error ? reason.message : String(reason)); }
     finally { if (token === generation.current) { savingRef.current = false; setSaving(false); } }
   }
 }

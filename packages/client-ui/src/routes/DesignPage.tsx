@@ -1,21 +1,24 @@
 import { useEffect, useState } from 'react';
-import { ArrowUpRight, GitBranch, PanelsTopLeft, Workflow } from 'lucide-react';
+import { ArrowUpRight, PanelsTopLeft } from 'lucide-react';
 import { DesignWorkspace } from '../features/design/DesignWorkspace.tsx';
-import { Composer } from '../features/session/Composer.tsx';
+import { DesignAgentDock } from '../features/design/DesignAgentDock.tsx';
 import type { SessionDetails } from '../features/session/useSession.ts';
 import { usePlatform } from '../lib/platform.ts';
 import { projectName } from '../lib/format.ts';
 
-export function DesignPage({ initialSession, onSessionChange, onOpen, sidebarOpen, onShowSidebar }: {
-  initialSession?: string; onSessionChange(session: string): void; onOpen(session: string): void; sidebarOpen: boolean; onShowSidebar(): void;
+export function DesignPage({ initialSession, onSessionChange, onOpen, sidebarOpen, onShowSidebar, connection }: {
+  initialSession?: string; onSessionChange(session: string): void; onOpen(session: string): void; sidebarOpen: boolean; onShowSidebar(): void; connection: string;
 }) {
   const { transport } = usePlatform();
   const [sessions, setSessions] = useState<SessionDetails[]>([]);
   const [selected, setSelected] = useState(initialSession ?? '');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [reachable, setReachable] = useState(false);
+  const online = connection === 'online' || (connection === 'connecting' && reachable);
   useEffect(() => { if (initialSession) setSelected(initialSession); }, [initialSession]);
   useEffect(() => {
+    setReachable(false);
     let alive = true;
     let generation = 0;
     const refresh = async () => {
@@ -26,22 +29,27 @@ export function DesignPage({ initialSession, onSessionChange, onOpen, sidebarOpe
         const listed = (response.body as { sessions: { id: string; project: string }[] }).sessions.filter(item => item.project !== 'scratch');
         const details = await Promise.all(listed.map(item => transport.request('session.get', { session: item.id })));
         if (!alive || token !== generation) return;
-        const next = details.flatMap(item => item.type === 'res' ? [item.body as unknown as SessionDetails] : []);
-        setSessions(next); setError('');
-        setSelected(current => next.some(item => item.id === current) ? current : next[0]?.id ?? '');
+        setReachable(true);
+        setSessions(previous => details.flatMap((item, index) => {
+          const next = item.type === 'res' ? item.body as unknown as SessionDetails : previous.find(row => row.id === listed[index]?.id);
+          return next ? [next] : [];
+        }));
+        setError('');
+        setSelected(current => listed.some(item => item.id === current) ? current : listed[0]?.id ?? '');
       } catch (reason) { if (alive && token === generation) setError(String(reason)); }
       finally { if (alive && token === generation) setLoading(false); }
     };
     void refresh();
     const unsubscribe = transport.subscribeEvents(frame => { if (frame.type === 'idx') void refresh(); });
     return () => { alive = false; unsubscribe(); };
-  }, [transport]);
-  useEffect(() => {
-    if (!selected) return;
-    transport.subscribe(selected);
-    return () => transport.unsubscribe(selected);
-  }, [transport, selected]);
+  }, [transport, connection]);
   const details = sessions.find(item => item.id === selected);
+  const linkedSession = details?.id;
+  useEffect(() => {
+    if (!linkedSession || !online) return;
+    transport.subscribe(linkedSession);
+    return () => transport.unsubscribe(linkedSession);
+  }, [transport, linkedSession, online]);
   if (!details) return <main aria-label="Design workspace" className="design-no-session">
     <div className="design-empty">
       <div className="design-empty-icon"><PanelsTopLeft size={24} /></div>
@@ -52,25 +60,8 @@ export function DesignPage({ initialSession, onSessionChange, onOpen, sidebarOpe
     </div>
   </main>;
 
-  const sameWorkspace = sessions.filter(item => item.cwd === details.cwd);
-  const otherWorkspaces = sessions.filter(item => item.cwd !== details.cwd);
-  const sessionChoice = (item: SessionDetails) => <option key={item.id} value={item.id}>
-    {item.title ?? item.id} · {projectName(item.project)}{item.branch ? ` · ${item.branch}` : ''}
-  </option>;
-
   return <DesignWorkspace key={selected} session={selected} sidebarOpen={sidebarOpen} onShowSidebar={onShowSidebar}
-    project={projectName(details.project)} workspacePath={details.cwd ?? details.project} sessionError={error} agentSlot={
-      <div className="design-agent">
-        <div className="design-section-heading"><Workflow size={13} /> <span>Linked session</span>
-          <button type="button" className="design-icon-button" aria-label="Open session chat" title="Open session chat" onClick={() => onOpen(selected)}><ArrowUpRight size={15} /></button>
-        </div>
-        <select aria-label="Design project and session" className="design-input design-session-select" title={details.title ?? selected} value={selected}
-          onChange={event => { setSelected(event.target.value); onSessionChange(event.target.value); }}>
-          <optgroup label="This working tree">{sameWorkspace.map(sessionChoice)}</optgroup>
-          {otherWorkspaces.length ? <optgroup label="Other working trees">{otherWorkspaces.map(sessionChoice)}</optgroup> : null}
-        </select>
-        <div className="design-branch" title={details.cwd}><GitBranch size={12} /> <span>{details.branch ?? details.cwd}</span></div>
-        <Composer session={selected} details={details} compact />
-      </div>
-    } />;
+    project={projectName(details.project)} workspacePath={details.cwd ?? details.project} sessionError={error}
+    agentSlot={(board, sourceDirty) => <DesignAgentDock details={details} sessions={sessions} online={online} board={board} sourceDirty={sourceDirty} onOpen={onOpen}
+      onChange={id => { setSelected(id); onSessionChange(id); }} />} />;
 }

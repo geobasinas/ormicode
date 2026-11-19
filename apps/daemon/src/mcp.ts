@@ -89,6 +89,7 @@ export async function serveOrmiMcp(socketPath: string, self: string): Promise<vo
       case 'ormi_design_create': return text(JSON.stringify(await req('design.create', { session: self, slug: String(args.slug), name: String(args.name) })));
       case 'ormi_design_update': return text(JSON.stringify(await req('design.update', { session: self, slug: String(args.slug), expectedRevision: args.expectedRevision, operations: args.operations })));
       case 'ormi_design_history': return text(JSON.stringify(await req('design.history', { session: self, slug: String(args.slug) })));
+      case 'ormi_design_activity': return text(JSON.stringify(await req('design.activity', { session: self, slug: String(args.slug) })));
       case 'ormi_design_restore': return text(JSON.stringify(await req('design.restore', { session: self, slug: String(args.slug), expectedRevision: args.expectedRevision, targetRevision: args.targetRevision })));
       default: return errText(`unknown tool ${name}`);
     }

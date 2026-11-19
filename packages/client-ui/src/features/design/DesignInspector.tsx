@@ -24,6 +24,7 @@ type Props = {
   sourceHtml: string;
   sourceStyles: string;
   sourceDirty: boolean;
+  sourceConflict?: boolean;
   onSource(field: 'html' | 'styles', value: string): void;
   onSaveSource(): void;
   onDiscardSource(): void;
@@ -102,12 +103,12 @@ export function DesignInspector(props: Props) {
         </>}
       </> : null}
       {tab === 'inspect' && !frame ? <p className="design-inspector-hint">Select a frame to inspect its properties.</p> : null}
-      {tab === 'html' && frame ? <section className="design-properties design-source">
+      {tab === 'html' && (frame || sourceDirty) ? <section className="design-properties design-source">
         <label className="design-property"><span>HTML</span><textarea className="design-input" aria-label="Frame HTML source" spellCheck={false} rows={12} disabled={saving} value={props.sourceHtml} onChange={event => props.onSource('html', event.target.value)} /></label>
         <label className="design-property"><span>CSS</span><textarea className="design-input" aria-label="Frame CSS source" spellCheck={false} rows={8} disabled={saving} value={props.sourceStyles} onChange={event => props.onSource('styles', event.target.value)} /></label>
-        <div className="design-inline"><button className="design-button primary" type="button" disabled={!sourceDirty || saving} onClick={props.onSaveSource}>Save source</button><button className="design-button" type="button" disabled={!sourceDirty || saving} onClick={props.onDiscardSource}>Discard</button></div>
+        <div className="design-inline"><button className="design-button primary" type="button" disabled={!sourceDirty || props.sourceConflict || saving} onClick={props.onSaveSource}>Save source</button><button className="design-button" type="button" disabled={!sourceDirty || saving} onClick={props.onDiscardSource}>Discard</button></div>
       </section> : null}
-      {tab === 'html' && !frame ? <p className="design-inspector-hint">Select a frame to edit its source.</p> : null}
+      {tab === 'html' && !frame && !sourceDirty ? <p className="design-inspector-hint">Select a frame to edit its source.</p> : null}
       {tab === 'feedback' && document ? <section className="design-properties">
         <h3>{frame ? 'Feedback on ' + frame.name : 'Board feedback'}</h3>
         <textarea className="design-input" aria-label="Frame feedback" rows={4} placeholder="Describe a change…" value={props.feedback} onChange={event => props.onFeedback(event.target.value)} />
