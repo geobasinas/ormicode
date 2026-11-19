@@ -7,6 +7,7 @@
  */
 import { connect } from './socket.ts';
 import { newId } from '@ormicode/protocol';
+import { designMcpTools } from './design-mcp-tools.ts';
 
 interface JsonRpc { jsonrpc?: string; id?: string | number; method: string; params?: Record<string, unknown> }
 
@@ -20,12 +21,7 @@ const TOOLS = [
   { name: 'ormi_wait', description: 'Wait for a session this one started to finish its turn (idle/done), need approval, or fail', inputSchema: { type: 'object', required: ['session'], properties: { session: { type: 'string' }, until: { type: 'string', enum: ['idle', 'done', 'approval'] }, timeoutMs: { type: 'number' } } } },
   { name: 'ormi_handoff', description: 'Hand this task to another agent or model. You write the brief.', inputSchema: { type: 'object', required: ['reason'], properties: { vendor: { type: 'string' }, transport: { type: 'string' }, model: { type: 'string' }, effort: { type: 'string' }, mode: { type: 'string', enum: ['in_place', 'rehydrate', 'fork'] }, brief: { type: 'string' }, reason: { type: 'string' } } } },
   { name: 'ormi_notes', description: 'Read this session\'s notes, or write one (title + body)', inputSchema: { type: 'object', properties: { title: { type: 'string' }, body: { type: 'string' } } } },
-  { name: 'ormi_design_list', description: 'List design boards in this agent session workspace.', inputSchema: { type: 'object', properties: {} } },
-  { name: 'ormi_design_get', description: 'Read a board document, frame HTML/styles, feedback and retained revision summaries.', inputSchema: { type: 'object', required: ['slug'], properties: { slug: { type: 'string' } } } },
-  { name: 'ormi_design_create', description: 'Create a repository-backed design board in this session workspace.', inputSchema: { type: 'object', required: ['slug', 'name'], properties: { slug: { type: 'string' }, name: { type: 'string' } } } },
-  { name: 'ormi_design_update', description: 'Apply operations using compare-and-swap: frame.add {name,x,y,width,height,html,styles}; frame.update {frameId,patch}; frame.remove or frame.duplicate {frameId}; direction.select {frameId|null}; board.rename {name}; comment.add {frameId|null,text,element?}; comment.resolve {commentId,resolved}; comment.remove {commentId}. Every operation also has its type field. On design.conflict, read and reconcile; never retry blindly.', inputSchema: { type: 'object', required: ['slug', 'expectedRevision', 'operations'], properties: { slug: { type: 'string' }, expectedRevision: { type: 'integer', minimum: 1 }, operations: { type: 'array', items: { type: 'object' }, minItems: 1, maxItems: 16 } } } },
-  { name: 'ormi_design_history', description: 'List retained restore points for a board.', inputSchema: { type: 'object', required: ['slug'], properties: { slug: { type: 'string' } } } },
-  { name: 'ormi_design_restore', description: 'Restore a retained revision as a new monotonic revision using compare-and-swap.', inputSchema: { type: 'object', required: ['slug', 'expectedRevision', 'targetRevision'], properties: { slug: { type: 'string' }, expectedRevision: { type: 'integer', minimum: 1 }, targetRevision: { type: 'integer', minimum: 1 } } } },
+  ...designMcpTools(),
 ];
 
 /** Run the stdio server until stdin closes. `self` is the owning session id. */

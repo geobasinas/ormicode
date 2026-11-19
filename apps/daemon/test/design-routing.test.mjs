@@ -66,7 +66,13 @@ test('design events fan out by canonical cwd; CLI file/stdin and MCP stay sessio
     assert.equal(JSON.parse(fromStdin.stdout).document.frames[0].html, '<p>Stdin input</p>');
     assert.equal((await runCli(['design', 'update', self, 'home', '3', '-'], '{', env)).status, 2);
     const tools = await callMcp('tools/list', {}, env);
-    assert.equal(tools.result.tools.find(tool => tool.name === 'ormi_design_get').inputSchema.properties.session, undefined);
+    for (const tool of tools.result.tools.filter(tool => tool.name.startsWith('ormi_design_'))) {
+      assert.equal(tool.inputSchema.properties.session, undefined);
+    }
+    const operationsSchema = tools.result.tools.find(tool => tool.name === 'ormi_design_update').inputSchema.properties.operations;
+    const frameUpdate = operationsSchema.items.anyOf.find(item => item.properties?.type?.const === 'frame.update');
+    assert.ok(frameUpdate?.required.includes('frameId'));
+    assert.equal(frameUpdate.properties.patch.properties.width.minimum, 80);
     const got = await callMcp('tools/call', { name: 'ormi_design_get', arguments: { slug: 'home', session: other } }, env);
     const document = JSON.parse(got.result.content[0].text).document;
     assert.equal(document.name, 'Home');
