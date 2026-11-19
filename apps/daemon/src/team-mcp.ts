@@ -1,6 +1,8 @@
 const string = { type: 'string' };
 const session = { session: string };
 const props: Record<string, { method: string; required?: string[]; properties: Record<string, unknown> }> = {
+  team_ask_user: { method: 'team.askUser', required: ['question'], properties: { question: string, options: { type: 'array', items: string } } },
+  team_open_pr: { method: 'team.openPr', required: ['title', 'body'], properties: { ...session, title: string, body: string, base: string, draft: { type: 'boolean' } } },
   team_approve: { method: 'team.approve', required: ['session', 'request', 'option', 'reason'], properties: { ...session, request: string, option: string, reason: string } },
   team_spawn: { method: 'team.spawn', required: ['task'], properties: { task: string, vendor: string, transport: string, model: string, effort: string, mode: string, toolAllowlist: { type: 'array', items: string } } },
   team_roster: { method: 'team.tree', properties: {} },
@@ -18,7 +20,9 @@ const props: Record<string, { method: string; required?: string[]; properties: R
   team_board_write: { method: 'team.board', required: ['text'], properties: { text: string, action: { type: 'string', enum: ['append', 'setState'] } } },
 };
 export const TEAM_TOOLS = Object.entries(props).map(([name, spec]) => ({
-  name, description: `${name.replaceAll('_', ' ')} in this session's team`,
+  name, description: name === 'team_ask_user' ? 'Parent only: ask the user and wait for their answer. Optional choices; otherwise free text.'
+    : name === 'team_open_pr' ? 'Parent only: ask the user to approve pushing a committed child/team branch and opening a PR. Child must be idle. Waits for PR URL; never automatically retry.'
+    : `${name.replaceAll('_', ' ')} in this session's team`,
   inputSchema: { type: 'object', properties: spec.properties, ...(spec.required ? { required: spec.required } : {}) },
 }));
 export async function callTeamTool(

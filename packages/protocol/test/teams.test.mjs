@@ -5,6 +5,9 @@ import { newId, parseRequestBody, parseResponseBody, parseEventBody } from '../s
 test('team contracts validate actors, targets, board actions and journal events', () => {
   const actor = newId('s'), child = newId('s'), team = newId('t');
   for (const [method, body] of [
+    ['session.askUser', { session: actor, question: 'Why?' }],
+    ['team.askUser', { actor, question: 'Proceed?', options: ['Yes', 'No'] }],
+    ['team.openPr', { actor, session: child, title: 'Change', body: '', draft: true }],
     ['team.approve', { actor, session: child, request: newId('req'), option: 'allow', reason: 'safe' }],
     ['team.spawn', { actor, task: 'implement' }], ['team.tree', { actor }], ['team.status', { actor, session: child }],
     ['team.message', { actor, to: child, text: 'hello' }], ['team.inbox', { actor }],
@@ -13,6 +16,12 @@ test('team contracts validate actors, targets, board actions and journal events'
     ['team.diff', { actor, session: child }], ['team.report', { actor, session: child }],
   ]) assert.equal(parseRequestBody(method, body).success, true, method);
   assert.equal(parseRequestBody('team.spawn', { actor, task: '' }).success, false);
+  for (const method of ['team.askUser', 'session.askUser']) {
+    assert.equal(parseRequestBody(method, { actor, session: actor, question: '' }).success, false);
+    assert.equal(parseResponseBody(method, { request: newId('req'), answers: { 'Why?': 'Because' } }).success, true);
+  }
+  assert.equal(parseRequestBody('team.openPr', { actor, title: '' }).success, false);
+  assert.equal(parseResponseBody('team.openPr', { number: 42, url: 'https://github.com/test/repo/pull/42' }).success, true);
   assert.equal(parseRequestBody('team.spawn', { actor: 'wrong', task: 'task' }).success, false);
   assert.equal(parseRequestBody('team.board', { actor, action: 'replace' }).success, false);
   assert.equal(parseRequestBody('team.cancel', { actor }).success, false);
@@ -30,6 +39,7 @@ test('team contracts validate actors, targets, board actions and journal events'
     assert.equal(parseResponseBody('session.get', { ...summary, cwd: '/repo', model: null, effort: null }).data.parentless, parentless);
   }
   for (const body of [
+    { kind: 'team_pr_result', session: child, branch: 'feature', head: 'abc', number: 42, url: 'https://github.com/test/repo/pull/42' },
     { kind: 'team_parent_changed', parent: actor, parentless: true },
     { kind: 'team_approval_request', parent: actor, request: newId('req'), options: [{ id: 'allow', label: 'Allow' }] },
     { kind: 'agent_spawned', team, child },

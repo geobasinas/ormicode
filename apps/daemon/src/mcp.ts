@@ -16,6 +16,7 @@ const text = (s: string) => ({ content: [{ type: 'text', text: s }] });
 const errText = (s: string) => ({ content: [{ type: 'text', text: s }], isError: true });
 
 export const TOOLS = [
+  { name: 'ormi_ask_user', description: 'Ask the user a question and wait for their answer. Optional choices; otherwise free text. Team children must ask their parent.', inputSchema: { type: 'object', required: ['question'], properties: { question: { type: 'string' }, options: { type: 'array', items: { type: 'string' } } } } },
   ...TEAM_TOOLS,
   { name: 'ormi_sessions', description: 'List sessions in this project, or read one session\'s state', inputSchema: { type: 'object', properties: { session: { type: 'string', description: 'session id to get; omit to list all' } } } },
   { name: 'ormi_start', description: 'Start a sibling session (own worktree) with an agent and prompt. Returns its session id.', inputSchema: { type: 'object', required: ['prompt'], properties: { prompt: { type: 'string' }, vendor: { type: 'string' }, transport: { type: 'string' }, model: { type: 'string' }, effort: { type: 'string' } } } },
@@ -80,7 +81,7 @@ export async function serveOrmiMcp(socketPath: string, self: string, token: stri
   const proof = { session: self, token };
   const link = await connect(socketPath, { v: 1, type: 'hello', role: 'client', proto: 1, device: 'mcp' });
   const req = async (method: string, body: Record<string, unknown>, timeoutMs = 120_000) => {
-    const res = await link.request(method, body, timeoutMs, proof);
+    const res = await link.request(method, body, ['session.askUser', 'team.askUser', 'team.openPr'].includes(method) ? 0 : timeoutMs, proof);
     if (res.type === 'err') throw new Error(`${res.code}: ${res.message}`);
     return res.body as Record<string, unknown>;
   };
@@ -95,6 +96,7 @@ export async function serveOrmiMcp(socketPath: string, self: string, token: stri
     if (name.startsWith('team_')) return text(await callTeamTool(name, args, self, req,
       (session, until, timeout) => waitFor(link, session, until, timeout, proof)));
     switch (name) {
+      case 'ormi_ask_user': return text(JSON.stringify(await req('session.askUser', { session: self, question: args.question, options: args.options })));
       case 'ormi_sessions': {
         if (args.session) return text(JSON.stringify(await req('session.get', { session: args.session })));
         const r = await req('session.list', {}) as { sessions: unknown[] };

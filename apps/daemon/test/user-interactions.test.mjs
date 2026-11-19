@@ -1,0 +1,43 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { openStore, createSession, getSession, setState } from '@ormicode/session-store';
+import { newId } from '@ormicode/protocol';
+import { append, replay } from '@ormicode/journal';
+import { UserInteractions } from '../src/user-interactions.ts';
+import { stateFor } from '../src/supervisor-state.ts';
+import { recoverSessions } from '../src/recovery.ts';
+
+test('daemon questions expire after ten minutes, reject repeats, and cannot be answered after restart', async t => {
+  const dir = mkdtempSync(join(tmpdir(), 'ormi-user-interactions-')), db = openStore(join(dir, 'db'));
+  const session = newId('s');
+  createSession(db, { id: session, machine: 'm', project: 'p', vendor: 'fake', transport: 'cli', cwd: dir });
+  setState(db, session, 'idle');
+  const ctx = { db, record(s, kind, payload) {
+    append(db, s, { kind, payload: { kind, ...payload } });
+    const state = kind === 'state' ? payload.state : stateFor[kind];
+    if (state) setState(db, s, state);
+  } };
+  const interactions = new UserInteractions(() => ctx), replies = [];
+  const client = { device: 'user-device', link: { reply: (id, body) => replies.push({ body }), replyError: (id, code, message) => replies.push({ code, message }) } };
+  t.after(() => { interactions.close(); db.close(); rmSync(dir, { recursive: true, force: true }); });
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const pending = interactions.ask(client, 'question', session, { question: 'Why?' });
+  const request = JSON.parse(replay(db, session).at(-1).payload).request;
+  t.mock.timers.tick(600_000); await pending;
+  assert.equal(replies.at(-1).code, 'agent.failed'); assert.equal(getSession(db, session).state, 'idle');
+  assert.equal(replay(db, session).filter(e => e.kind === 'interaction_expired').length, 1);
+  await interactions.method(client, 'answer', 'session.answer', { session, request, answers: { 'Why?': 'late' } });
+  assert.equal(replies.at(-1).code, 'session.already_decided');
+  const restarted = new UserInteractions(() => ctx);
+  const request2 = newId('req');
+  ctx.record(session, 'question_request', { request: request2, daemonInteraction: true, questions: [] });
+  recoverSessions(db, 'wait');
+  const expired = JSON.parse(replay(db, session).findLast(e => e.kind === 'interaction_expired').payload);
+  assert.equal(expired.request, request2);
+  await restarted.method(client, 'answer', 'session.answer', { session, request: request2, answers: { 'Why?': 'late' } });
+  assert.equal(replies.at(-1).code, 'session.already_decided');
+  restarted.close();
+});

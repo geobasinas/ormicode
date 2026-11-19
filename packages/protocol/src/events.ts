@@ -7,6 +7,7 @@ const nonEmpty = z.string().check(z.minLength(1));
 const count = z.number().check(z.int(), z.gte(0));
 const quantity = z.number().check(z.gte(0));
 export const eventBodies = {
+  team_pr_result: z.looseObject({ kind: z.literal('team_pr_result'), session: nonEmpty, branch: nonEmpty, head: nonEmpty, number: z.optional(count), url: z.optional(text), error: z.optional(text) }),
   team_approval_request: z.looseObject({ kind: z.literal('team_approval_request'), parent: nonEmpty, request: requestIdSchema, options: z.array(z.looseObject({ id: nonEmpty, label: text })) }),
   team_parent_changed: z.looseObject({ kind: z.literal('team_parent_changed'), parent: nonEmpty, parentless: z.boolean() }),
   agent_spawned: z.looseObject({ kind: z.literal('agent_spawned'), team: nonEmpty, child: nonEmpty }),

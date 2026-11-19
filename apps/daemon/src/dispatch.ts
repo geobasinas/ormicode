@@ -1,4 +1,5 @@
 import type { Frame, PromptAttachment, PromptContext } from '@ormicode/protocol';
+import type { UserInteractions } from './user-interactions.ts';
 import { parseRequestBody, newId } from '@ormicode/protocol';
 import {
   getSession, listSessions, setState, setTitle, listNotes, setNote, deleteNote, archiveSession, releaseSessionPorts,
@@ -64,6 +65,7 @@ export interface DispatchCtx {
   mcpCredentials: McpCredentials;
   teamApprovals: TeamApprovals;
   teamLifecycle: TeamLifecycle;
+  interactions: UserInteractions;
   db: Store;
   notesDir: string;
   startedAt: number;
@@ -109,6 +111,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
   const authError = authorizeMcp(ctx, method, body, frame.mcp);
   if (authError) return client.link.replyError(id, authError, 'MCP session proof is missing, invalid, expired or does not authorize this actor');
   try {
+    if (['session.askUser', 'session.answer', 'session.decide'].includes(method)) return await ctx.interactions.method(client, id, method, body);
     if (method.startsWith('team.')) return await teamMethod(ctx, client, id, method, body);
     switch (method) {
       case 'agents.list':
@@ -297,11 +300,6 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         if (column) db.prepare(`UPDATE sessions SET ${column} = ? WHERE id = ?`).run(String(body[column] ?? ''), session);
         return client.link.reply(id, { updated: true });
       }
-      case 'session.answer': {
-        if (await ctx.teamLifecycle.answer(client, id, body)) return;
-        const res = await ctx.toWorker(String(body.session), 'worker.answer', { request: body.request, answers: body.answers });
-        return res?.type === 'res' ? client.link.reply(id, { answered: true }) : client.link.replyError(id, 'agent.unsupported', 'answer');
-      }
       case 'session.getNotes':
         return client.link.reply(id, { notes: listNotes(ctx.notesDir, String(body.session)) });
       case 'session.setNotes': {
@@ -335,9 +333,6 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
       case 'session.abort': {
         const res = await ctx.toWorker(String(body.session), 'worker.abort', {});
         return res?.type === 'res' ? client.link.reply(id, { interrupted: true }) : client.link.replyError(id, 'agent.unsupported', 'abort');
-      }
-      case 'session.decide': {
-        return await ctx.teamApprovals.userDecision(client, id, body);
       }
       case 'session.subscribe': {
         const session = String(body.session);

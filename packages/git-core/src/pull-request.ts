@@ -72,12 +72,12 @@ export function prStatus(cwd: string) {
   }
 }
 
-export function createPr(cwd: string, base: string | null, title: string, body: string, draft = false) {
+export function createPr(cwd: string, base: string | null, title: string, body: string, draft = false, approved?: { branch: string; repo: string }) {
   if (!base) throw new Error('session has no recorded base branch');
-  const branch = currentBranch(cwd);
+  const branch = approved?.branch ?? currentBranch(cwd);
   if (!branch) throw new Error('cannot create a PR from detached HEAD');
   try {
-    const url = run(process.env.ORMICODE_GH ?? 'gh', cwd, ['pr', 'create', '--base', base, '--head', branch, '--title', title, '--body', body, ...(draft ? ['--draft'] : [])]).trim();
+    const url = run(process.env.ORMICODE_GH ?? 'gh', cwd, ['pr', 'create', '--base', base, '--head', branch, '--title', title, '--body', body, ...(draft ? ['--draft'] : []), ...(approved ? ['--repo', approved.repo] : [])]).trim();
     const number = Number(/\/pull\/(\d+)/.exec(url)?.[1]);
     if (!number) throw new Error(`gh returned an unexpected PR URL: ${url}`);
     return { number, url };

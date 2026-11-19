@@ -34,8 +34,8 @@ function expirePending(db: Store, session: string): void {
   const row = db.prepare(
     "SELECT payload FROM events WHERE session = ? AND kind IN ('approval_request','question_request') ORDER BY seq DESC LIMIT 1",
   ).get(session) as { payload: string } | undefined;
-  const id = row ? (JSON.parse(row.payload) as Record<string, unknown>).id : undefined;
-  append(db, session, { kind: 'interaction_expired', payload: { kind: 'interaction_expired', ...(id ? { id } : {}) } });
+  const payload = row ? JSON.parse(row.payload) as Record<string, unknown> : {};
+  append(db, session, { kind: 'interaction_expired', payload: { kind: 'interaction_expired', reason: 'host_restart', request: payload.request ?? payload.id, ...(payload.id ? { id: payload.id } : {}) } });
 }
 
 /**

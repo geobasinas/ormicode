@@ -5,12 +5,16 @@ const text = z.string();
 const nonEmpty = z.string().check(z.minLength(1));
 const team = idSchema('t');
 const target = { actor: session, session };
+export const userQuestion = { question: nonEmpty, options: z.optional(z.array(nonEmpty).check(z.maxLength(20))) };
+export const userAnswer = z.object({ request: idSchema('req'), answers: z.record(z.string(), text) });
 const message = z.object({
   id: idSchema('q'), team, from_session: session, to_session: session, reply_to: z.nullable(idSchema('q')),
   body: text, urgent: z.number(), created_at: timestampSchema, read_at: z.nullable(timestampSchema),
 });
 const child = z.object({ session, state: text, parentless: z.optional(z.boolean()), lastActivity: timestampSchema, tokens: z.nullable(z.number()) });
 export const teamRequests = {
+  'team.askUser': z.object({ actor: session, ...userQuestion }),
+  'team.openPr': z.object({ actor: session, session: z.optional(session), title: nonEmpty, body: text, base: z.optional(nonEmpty), draft: z.optional(z.boolean()) }),
   'team.approve': z.object({ ...target, request: idSchema('req'), option: nonEmpty, reason: nonEmpty }),
   'team.spawn': z.object({ actor: session, task: nonEmpty, vendor: z.optional(nonEmpty), transport: z.optional(nonEmpty), model: z.optional(nonEmpty), effort: z.optional(nonEmpty), mode: z.optional(nonEmpty), toolAllowlist: z.optional(z.array(nonEmpty)) }),
   'team.tree': z.object({ actor: session }),
@@ -25,6 +29,8 @@ export const teamRequests = {
   'team.report': z.object(target),
 } as const;
 export const teamResponses = {
+  'team.askUser': userAnswer,
+  'team.openPr': z.object({ number: z.number(), url: nonEmpty }),
   'team.approve': z.object({ decided: z.boolean() }),
   'team.spawn': z.object({ team, session }),
   'team.tree': z.object({ team, parent: session, children: z.array(child) }),

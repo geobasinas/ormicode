@@ -1,7 +1,7 @@
 import * as z from 'zod/mini';
 import { cursorSchema, jsonObjectSchema, requestIdSchema, sessionIdSchema, idSchema, timestampSchema } from './schema.ts';
 import { portBlock, serviceRequests, serviceResponses, browserRequests, browserResponses } from './service-contracts.ts';
-import { teamRequests, teamResponses } from './team-contracts.ts';
+import { teamRequests, teamResponses, userQuestion, userAnswer } from './team-contracts.ts';
 import { workspaceSchema } from './workspace-schema.ts';
 import { promptContextSchema } from './prompt-context-schema.ts';
 export type { PromptContext } from './prompt-context-schema.ts';
@@ -100,6 +100,7 @@ const handoffEstimateSchema = z.object({ ...session, to: handoffTargetSchema, mo
 // A registered body schema does not expose the operation; the server must implement it separately.
 export const requestBodies = {
   ...teamRequests,
+  'session.askUser': z.object({ ...session, ...userQuestion }),
   'daemon.status': z.object({}),
   'session.start': z.object({
     machine: idSchema('m'), project: nonEmpty, vendor: nonEmpty, transport: nonEmpty,
@@ -226,6 +227,7 @@ export const requestBodies = {
 
 export const responseBodies = {
   ...teamResponses,
+  'session.askUser': userAnswer,
   'daemon.status': z.object({ version: nonEmpty, uptimeMs: cursorSchema, liveWorkers: cursorSchema, relay: z.enum(['connected', 'disconnected']), lastError: z.nullable(z.string()) }),
   'session.start': z.object({ session: sessionIdSchema }),
   'session.get': detailsSchema,

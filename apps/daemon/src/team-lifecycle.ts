@@ -52,6 +52,7 @@ export class TeamLifecycle {
     for (const child of setChildrenParentless(ctx.db, parent, true))
       ctx.record(child, 'team_parent_changed', { parent, parentless: true });
     ctx.teamApprovals.unavailable(parent);
+    ctx.interactions?.unavailable(parent);
   }
   event(session: string, kind: string, payload: Record<string, unknown>, now = Date.now()): void {
     if (this.closed) return;

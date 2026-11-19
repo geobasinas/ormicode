@@ -14,6 +14,7 @@ import { interrupt } from './team-interrupt.ts';
 
 const locks = new WeakMap<DispatchCtx, Promise<void>>();
 export async function teamMethod(ctx: DispatchCtx, client: Client, id: string, method: string, body: Record<string, unknown>): Promise<void> {
+  if (method === 'team.askUser' || method === 'team.openPr') return handle(ctx, client, id, method, body);
   const previous = locks.get(ctx) ?? Promise.resolve();
   const next = previous.catch(() => undefined).then(() => handle(ctx, client, id, method, body));
   locks.set(ctx, next);
@@ -35,6 +36,8 @@ async function handle(ctx: DispatchCtx, client: Client, id: string, method: stri
     return fail('team.not_member', 'target is not in this team');
   const reply = (result: Record<string, unknown>) => client.link.reply(id, result);
   switch (method) {
+    case 'team.askUser': return ctx.interactions.ask(client, id, actor.id, body);
+    case 'team.openPr': return ctx.interactions.openPr(client, id, actor.id, target?.id ?? actor.id, body);
     case 'team.approve': return ctx.teamApprovals.approve(client, id, body);
     case 'team.tree': return reply({ team: team.id, parent: team.parent, children: teamChildren(ctx.db, team.id).map(s => status(ctx, s)) });
     case 'team.status': return reply(status(ctx, target!));

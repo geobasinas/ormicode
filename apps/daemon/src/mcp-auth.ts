@@ -38,7 +38,7 @@ export class McpCredentials {
 }
 
 export function authorizeMcp(ctx: DispatchCtx, method: string, body: Record<string, unknown>, proof: unknown): string | undefined {
-  const required = method.startsWith('team.') || (method === 'session.start' && body.parent !== undefined)
+  const required = method.startsWith('team.') || method === 'session.askUser' || (method === 'session.start' && body.parent !== undefined)
     || (method === 'session.handoff' && body.agentApproval === true);
   if (proof === undefined && !required) return undefined;
   if (!ctx.mcpCredentials.verify(proof)) return 'mcp.unauthorized';
@@ -51,7 +51,7 @@ export function authorizeMcp(ctx: DispatchCtx, method: string, body: Record<stri
   const child = typeof body.session === 'string' && getSession(ctx.db, body.session)?.parent === self;
   if (['session.prompt', 'session.subscribe', 'session.unsubscribe'].includes(method)) return own || child ? undefined : 'mcp.forbidden';
   if (['session.get', 'session.list'].includes(method)) return undefined;
-  if (['session.handoff', 'session.getNotes', 'session.setNotes', 'preview.console'].includes(method) || method.startsWith('browser.'))
+  if (['session.askUser', 'session.handoff', 'session.getNotes', 'session.setNotes', 'preview.console'].includes(method) || method.startsWith('browser.'))
     return own ? undefined : 'mcp.forbidden';
   return 'mcp.forbidden';
 }

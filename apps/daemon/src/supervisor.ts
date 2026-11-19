@@ -25,6 +25,7 @@ import { workerEnvironment } from './worker-env.ts';
 import { McpCredentials } from './mcp-auth.ts';
 import { TeamApprovals } from './team-approvals.ts';
 import { TeamLifecycle } from './team-lifecycle.ts';
+import { UserInteractions } from './user-interactions.ts';
 import { rateRetries } from './rate-retry.ts';
 import { PreviewProxy } from './preview-proxy.ts';
 import { Services } from './services.ts';
@@ -300,6 +301,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   let relay: RelayClient | undefined;
   dispatchCtx = {
     teamLifecycle: new TeamLifecycle(() => dispatchCtx, session => Boolean(workers.get(session)?.ready) && workerLinks.has(session) && mcpCredentials.activeFor(session)),
+    interactions: new UserInteractions(() => dispatchCtx),
     teamApprovals: new TeamApprovals(() => dispatchCtx, session => workers.has(session) && mcpCredentials.activeFor(session)),
     db, notesDir, startedAt, paused, heldPrompts, lastPrompt, handoffsInTurn, mcpCredentials,
     lastError: () => lastError, liveWorkers: () => workers.size,
@@ -361,7 +363,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     link.onClose = () => {
       for (const c of clients) if (c.link === link) { clients.delete(c); dispatchCtx.terminals.drop(c); }
       const s = sessionByLink.get(link);
-      if (s) { workerLinks.delete(s); sessionByLink.delete(link); dispatchCtx.teamLifecycle.unavailable(s); }
+      if (s) { sessionByLink.delete(link); if (workerLinks.get(s) === link) { workerLinks.delete(s); mcpCredentials.revoke(s); dispatchCtx.teamLifecycle.unavailable(s); } }
     };
   });
   const addr = server.address();
@@ -374,7 +376,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
       await agentBrowser.closeAll();
       await services.shutdown();
       await previewProxy.close();
-      closing = true;
+      dispatchCtx.interactions.close(); closing = true;
       dispatchCtx.teamLifecycle.close();
       if (idxTimer) clearTimeout(idxTimer);
       for (const t of idleTimers.values()) clearTimeout(t);
