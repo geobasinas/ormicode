@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
 import { Check, ChevronDown, GitBranch, Loader2, RefreshCw, Search } from 'lucide-react';
 import { Popover } from 'radix-ui';
 import { chip } from './composer-parts.tsx';
@@ -68,6 +68,8 @@ export function GitChip({ value, onChange, info, project, mode, onModeChange, br
   title?: string; onOpen?: () => void; onFetch: () => Promise<unknown>;
 }) {
   const [open, setOpen] = useState(false);
+  const [side, setSide] = useState<'top' | 'bottom'>('top');
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const [baseSearch, setBaseSearch] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const [fetching, setFetching] = useState(false);
@@ -199,10 +201,21 @@ export function GitChip({ value, onChange, info, project, mode, onModeChange, br
   return (
     <Popover.Root open={open} onOpenChange={next => {
       setOpen(next);
-      if (next) { setBaseSearch(''); setActiveIndex(0); onOpen?.(); }
+      if (next) {
+        const rect = triggerRef.current?.getBoundingClientRect();
+        if (rect) {
+          const below = window.innerHeight - rect.bottom - 8;
+          const above = rect.top - 8;
+          setSide(below > above ? 'bottom' : 'top');
+          setWorktreesExpanded(info.worktrees.length <= 3 && Math.max(below, above) >= 560);
+        }
+        setBaseSearch('');
+        setActiveIndex(0);
+        onOpen?.();
+      }
     }}>
       <Popover.Trigger asChild>
-        <button className="hv-sub" style={{ ...chip, maxWidth: 245, minWidth: 0 }} title={title}>
+        <button ref={triggerRef} className="hv-sub" style={{ ...chip, maxWidth: 245, minWidth: 0 }} title={title}>
           <GitBranch size={12} style={{ color: amber ? 'var(--accent-amber)' : 'var(--text-hint)', flexShrink: 0 }} />
           {amber || (value.kind === 'current' && info.dirty > 0) ? <span style={{
             width: 5, height: 5, borderRadius: '50%', flexShrink: 0,
@@ -216,17 +229,18 @@ export function GitChip({ value, onChange, info, project, mode, onModeChange, br
         </button>
       </Popover.Trigger>
       <Popover.Portal>
-        <Popover.Content side="top" align="end" sideOffset={6} collisionPadding={8} avoidCollisions
+        <Popover.Content side={side} align="end" sideOffset={6} collisionPadding={8} avoidCollisions
           onEscapeKeyDown={() => setOpen(false)}
           style={{
             zIndex: 80, width: 380, maxWidth: 'calc(100vw - 16px)',
             maxHeight: 'min(560px, var(--radix-popover-content-available-height))',
-            overflowY: 'auto', boxSizing: 'border-box', padding: 12,
+            display: 'flex', flexDirection: 'column', overflow: 'hidden',
+            boxSizing: 'border-box', padding: 12,
             background: 'var(--bg-raised)', border: '1px solid var(--line-card)', borderRadius: 10,
             color: 'var(--text-active)', fontSize: 12,
             boxShadow: '0 12px 32px rgba(0,0,0,.24)', outline: 'none',
           }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexShrink: 0 }}>
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ color: 'var(--text-title)', fontWeight: 600, fontSize: 13 }} className="truncate">{repoLabel}</div>
               <div style={{ ...quiet, fontSize: 10 }} className="truncate">{statusParts.join(' · ')}</div>
@@ -238,7 +252,7 @@ export function GitChip({ value, onChange, info, project, mode, onModeChange, br
           </div>
           <div role="group" aria-label="Workspace mode" style={{
             height: 28, boxSizing: 'border-box', display: 'flex', gap: 2, padding: 2,
-            borderRadius: 7, background: 'var(--bg-chip)',
+            borderRadius: 7, background: 'var(--bg-chip)', flexShrink: 0,
           }}>
             {([
               ['local', 'Local', info.detached || currentBusy, info.detached ? 'HEAD is detached — choose a new branch or worktree' : currentBusy ? `${info.current} is in use by another session` : undefined],
@@ -256,8 +270,8 @@ export function GitChip({ value, onChange, info, project, mode, onModeChange, br
               </span>
             ))}
           </div>
-          {currentBusy ? <div style={{ ...quiet, marginTop: 6 }}>{info.current} is in use by another session — Worktree is selected</div> : null}
-          <div style={{ paddingTop: 12, display: 'grid', gap: 11 }}>
+          {currentBusy ? <div style={{ ...quiet, marginTop: 6, flexShrink: 0 }}>{info.current} is in use by another session — Worktree is selected</div> : null}
+          <div style={{ paddingTop: 4, display: 'grid', gap: 4, flex: '1 1 auto', minHeight: 0, overflowY: 'auto' }}>
             {mode === 'local' ? <div style={{ ...quiet, lineHeight: 1.5 }}>
               Work directly in the main checkout on <span style={{ color: 'var(--text-title)', fontFamily: 'var(--font-mono)' }}>{info.current}</span>
               {info.dirty ? <div style={{ marginTop: 5 }}>{info.dirty} uncommitted {info.dirty === 1 ? 'change' : 'changes'}</div> : null}
@@ -275,7 +289,8 @@ export function GitChip({ value, onChange, info, project, mode, onModeChange, br
                       onKeyDown={onBaseKeyDown} placeholder={base ? `Filter branches · ${base}` : 'Filter branches…'} style={{ ...fieldStyle, paddingLeft: 25 }} />
                   </div>
                   <div id="ormi-git-base-options" role="listbox" aria-label="Base branches" style={{
-                    maxHeight: 172, overflowY: 'auto', marginTop: 5, border: '1px solid var(--line-card)', borderRadius: 6, padding: 3,
+                    maxHeight: 'min(180px, max(72px, calc(var(--radix-popover-content-available-height) - 400px)))',
+                    overflowY: 'auto', marginTop: 5, border: '1px solid var(--line-card)', borderRadius: 6, padding: 3,
                   }}>
                     {options.map((option, index) => {
                       const inUse = info.busyBranches.includes(option.name);
@@ -325,7 +340,7 @@ export function GitChip({ value, onChange, info, project, mode, onModeChange, br
                   Run setup script (.ormi/setup)
                 </label> : null}
               </> : null}
-              <div style={{ borderTop: '1px solid var(--line-card)', paddingTop: 8 }}>
+              <div style={{ borderTop: '1px solid var(--line-card)', paddingTop: 3 }}>
                 <button type="button" onClick={() => setWorktreesExpanded(expanded => !expanded)} style={{
                   width: '100%', display: 'flex', alignItems: 'center', gap: 7, border: 0,
                   background: 'transparent', color: 'var(--text-label)', font: 'inherit', fontSize: 11,
@@ -359,11 +374,15 @@ export function GitChip({ value, onChange, info, project, mode, onModeChange, br
             </> : null}
           </div>
           <div style={{
-            position: 'sticky', bottom: -12, display: 'flex', alignItems: 'center', gap: 10,
+            display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0,
             margin: '10px -12px -12px', padding: '9px 12px', background: 'var(--bg-raised)',
             borderTop: '1px solid var(--line-card)',
           }}>
-            <span style={{ ...quiet, fontSize: 10, minWidth: 0, flex: 1, lineHeight: 1.4 }} className="truncate">{summary}</span>
+            <span style={{
+              ...quiet, fontSize: 10, minWidth: 0, flex: 1, lineHeight: 1.35,
+              display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2,
+              overflow: 'hidden', overflowWrap: 'normal', wordBreak: 'normal',
+            }}>{summary}</span>
             <button type="button" onClick={() => setOpen(false)} style={{
               border: '1px solid var(--line-card)', borderRadius: 6, padding: '4px 10px',
               background: 'var(--bg-card)', color: 'var(--text-title)', font: 'inherit', fontSize: 11, cursor: 'pointer',
