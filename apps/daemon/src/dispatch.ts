@@ -1,5 +1,6 @@
 import type { Frame, PromptAttachment, PromptContext } from '@ormicode/protocol';
 import type { UserInteractions } from './user-interactions.ts';
+import { resumeSession } from './team-resume.ts';
 import { parseRequestBody, newId } from '@ormicode/protocol';
 import {
   getSession, listSessions, setState, setTitle, listNotes, setNote, deleteNote, archiveSession, releaseSessionPorts,
@@ -263,9 +264,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         return client.link.reply(id, { paused: true });
       case 'session.resume': {
         const session = String(body.session);
-        ctx.paused.delete(session);
-        await ctx.ensureWorker(session); ctx.teamLifecycle.available(session);
-        if (!await ctx.drainQueue(session)) return client.link.replyError(id, 'agent.failed', 'held or queued prompt rejected');
+        if (!await resumeSession(ctx, session)) return client.link.replyError(id, 'agent.failed', 'held or queued prompt rejected');
         return client.link.reply(id, { resumed: true });
       }
       case 'session.retry': return await retryPrompt(ctx, client, id, body);

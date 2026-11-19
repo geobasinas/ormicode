@@ -34,6 +34,7 @@ export async function callTeamTool(
   if (!spec) throw new Error(`unknown tool ${name}`);
   const body = Object.fromEntries(Object.keys(spec.properties).filter(key => args[key] !== undefined).map(key => [key, args[key]]));
   if (name === 'team_board_read') body.action = 'read';
+  if (name === 'team_wait') body.wake = true;
   if (name === 'team_board_write') body.action = args.action ?? 'append';
   const result = await req(spec.method, { ...body, actor });
   if (name === 'team_wait') {

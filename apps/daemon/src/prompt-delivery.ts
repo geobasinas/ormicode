@@ -14,6 +14,7 @@ interface PromptDeliveryOptions {
   paused: Set<string>;
   heldPrompts: Map<string, Prompt[]>;
   lastPrompt: Map<string, Prompt>;
+  closed?(): boolean;
   ensureWorker(session: string): Promise<void>;
   toWorker(session: string, method: string, body: Record<string, unknown>): Promise<Frame | undefined>;
   terminals: TerminalHub;
@@ -44,6 +45,7 @@ export function createPromptDelivery(options: PromptDeliveryOptions) {
     sending.add(session);
     try {
       await options.ensureWorker(session);
+      if (options.closed?.()) return false;
       const messages = unreadTeamMessages(options.db, session);
       const deliveredText = messages.length
         ? `Team inbox:\n${messages.map(m => `[${m.id}] From ${m.from_session}: ${m.body}`).join('\n')}\n\n${text}` : text;
@@ -86,16 +88,18 @@ export function createPromptDelivery(options: PromptDeliveryOptions) {
     } finally { sending.delete(session); }
   };
 
-  const drainQueue = async (session: string, afterTurnEnd = false): Promise<boolean> => {
+  const drainQueue = async (session: string, afterTurnEnd = false, siblingsOnly = false): Promise<boolean> => {
+    if (options.closed?.()) return false;
     if (afterTurnEnd) {
       const team = getSession(options.db, session)?.team;
       if (team) for (const child of teamChildren(options.db, team)) {
         if (child.id !== session && !child.archived) void drainQueue(child.id).catch(() => undefined);
       }
     }
+    if (siblingsOnly) return true;
     if (options.paused.has(session)) return true;
     const current = getSession(options.db, session);
-    if (!current || !['idle', 'done'].includes(current.state)) return true;
+    if (!current || current.archived || !['idle', 'done', 'interrupted'].includes(current.state)) return true;
     if (queueSending.has(session)) {
       if (afterTurnEnd) queueRequested.add(session);
       return true;
@@ -134,7 +138,7 @@ export function createPromptDelivery(options: PromptDeliveryOptions) {
       return true;
     } finally {
       queueSending.delete(session);
-      const latest = getSession(options.db, session);
+      const latest = options.closed?.() ? undefined : getSession(options.db, session);
       if (sent && queueRequested.delete(session) && !options.paused.has(session)
         && latest && ['idle', 'done'].includes(latest.state)) void drainQueue(session);
     }

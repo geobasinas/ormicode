@@ -5,6 +5,7 @@ import {
   type SessionRow, type TeamMessage,
 } from '@ormicode/session-store';
 import type { Client, DispatchCtx } from './dispatch.ts';
+import { hasUnansweredUserQuestion } from './late-question.ts';
 
 export function silenceInterval(value: unknown): number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : 600_000;
@@ -103,7 +104,8 @@ export class TeamLifecycle {
     });
   }
   state(session: SessionRow): string {
-    return session.team && !session.archived && hasTeamUserMessages(this.context().db, session.id) ? 'awaiting_input' : session.state;
+    return !session.archived && session.state !== 'awaiting_approval'
+      && (session.team && hasTeamUserMessages(this.context().db, session.id) || hasUnansweredUserQuestion(this.context().db, session.id)) ? 'awaiting_input' : session.state;
   }
   async answer(client: Client, id: string, body: Record<string, unknown>): Promise<boolean> {
     const ctx = this.context();

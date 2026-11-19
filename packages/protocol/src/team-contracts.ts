@@ -18,7 +18,7 @@ export const teamRequests = {
   'team.approve': z.object({ ...target, request: idSchema('req'), option: nonEmpty, reason: nonEmpty }),
   'team.spawn': z.object({ actor: session, task: nonEmpty, vendor: z.optional(nonEmpty), transport: z.optional(nonEmpty), model: z.optional(nonEmpty), effort: z.optional(nonEmpty), mode: z.optional(nonEmpty), toolAllowlist: z.optional(z.array(nonEmpty)) }),
   'team.tree': z.object({ actor: session }),
-  'team.status': z.object(target),
+  'team.status': z.object({ ...target, wake: z.optional(z.boolean()) }),
   'team.message': z.object({ actor: session, to: z.optional(session), replyTo: z.optional(idSchema('q')), text: nonEmpty, urgent: z.optional(z.boolean()) }),
   'team.inbox': z.object({ actor: session }),
   'team.board': z.object({ actor: session, action: z.enum(['read', 'append', 'setState']), text: z.optional(text) }),

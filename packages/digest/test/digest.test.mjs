@@ -4,6 +4,15 @@ import { summarize, rank } from '../src/index.ts';
 
 const ev = (seq, kind, payload = {}, ts = seq) => ({ seq, ts, kind, payload: { kind, ...payload } });
 
+test('answerable expired questions stay in Needs You until answered; approvals and agent questions expire', () => {
+  const session = { id: 's', state: 'idle', updatedAt: 10 };
+  const events = [ev(1, 'question_request', { request: 'q' }), ev(2, 'interaction_expired', { request: 'q', answerable: true })];
+  assert.equal(summarize(session, events, 0, 100).wants.kind, 'question');
+  assert.equal(summarize(session, [...events, ev(3, 'question_answer', { request: 'q' })], 0, 100).wants, null);
+  assert.equal(summarize(session, [ev(1, 'question_request', { request: 'q' }), ev(2, 'interaction_expired', { request: 'q' })], 0, 100).wants, null);
+  assert.equal(summarize(session, [ev(1, 'approval_request', { request: 'q' }), ev(2, 'interaction_expired', { request: 'q', answerable: true })], 0, 100).wants, null);
+});
+
 test('mechanical digest reports only what the events say', () => {
   const events = [
     ev(1, 'tool_call', { callId: 'a', name: 'Edit', input: { file_path: 'src/x.ts' } }),

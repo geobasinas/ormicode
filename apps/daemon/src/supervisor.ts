@@ -26,6 +26,7 @@ import { McpCredentials } from './mcp-auth.ts';
 import { TeamApprovals } from './team-approvals.ts';
 import { TeamLifecycle } from './team-lifecycle.ts';
 import { UserInteractions } from './user-interactions.ts';
+import { beforeWorkerResume, resumeSession, resumeQueuedChildren, workerReadiness } from './team-resume.ts';
 import { rateRetries } from './rate-retry.ts';
 import { PreviewProxy } from './preview-proxy.ts';
 import { Services } from './services.ts';
@@ -169,6 +170,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
           }
         }
         answer({ ok: true });
+        resumeQueuedChildren(dispatchCtx, session);
         if (!recap) void drainQueue(session);
         break;
       }
@@ -211,7 +213,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
           retries.schedule(session, payload.resetAt);
         }
         answer({ seq });
-        if (kind === 'turn_end') void drainQueue(session, true);
+        if (kind === 'turn_end' || kind === 'interrupted') void drainQueue(session, true, kind === 'interrupted');
         break;
       }
       case 'worker.state':
@@ -274,22 +276,14 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   };
   const workerLinks = new Map<string, Link>();
   const sessionByLink = new Map<Link, string>();
-  const ensureWorker = (session: string, timeoutMs = 30_000): Promise<void> => new Promise((resolve, reject) => {
-    if (workers.get(session)?.ready) return resolve();
-    if (!workers.has(session)) spawnWorker(session);
-    const deadline = Date.now() + timeoutMs;
-    const poll = () => {
-      if (workers.get(session)?.ready) return resolve();
-      const failure = spawnFailures.get(session);
-      if (failure) { spawnFailures.delete(session); return reject(failure); }
-      if (!workers.has(session) && !pendingWorkers.has(session)) return reject(new Error('worker exited before ready'));
-      if (Date.now() > deadline) return reject(new Error('worker.ready timeout'));
-      setTimeout(poll, 25).unref();
-    };
-    poll();
+  const ensureWorker = workerReadiness({
+    ready: session => Boolean(workers.get(session)?.ready), exists: session => workers.has(session),
+    pending: session => pendingWorkers.has(session), spawn: spawnWorker,
+    failure: session => { const error = spawnFailures.get(session); spawnFailures.delete(session); return error; },
+    before: session => beforeWorkerResume(dispatchCtx, session, () => closing), closed: () => closing,
   });
   const { sendPrompt, drainQueue } = createPromptDelivery({
-    db, notesDir, paused, heldPrompts, lastPrompt, ensureWorker, toWorker, terminals, record,
+    db, notesDir, paused, heldPrompts, lastPrompt, ensureWorker, toWorker, terminals, record, closed: () => closing,
     previewEntries: (session, ids) => services.previewEntries(session, ids),
   });
   const retries = rateRetries(db, session => {
@@ -368,7 +362,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   });
   const addr = server.address();
   if (typeof addr === 'object' && addr) socketPath = `127.0.0.1:${addr.port}`;
-  for (const c of recovery.autoResume) { resuming.add(c.s.id); if (c.recapOnly) recapPending.set(c.s.id, Number.MAX_SAFE_INTEGER); spawnWorker(c.s.id); }
+  for (const c of recovery.autoResume) { resuming.add(c.s.id); if (c.recapOnly) recapPending.set(c.s.id, Number.MAX_SAFE_INTEGER); void resumeSession(dispatchCtx, c.s.id).catch(error => { lastError = String(error); }); }
   for (const r of recovery.rateLimited) retries.schedule(r.id, r.resetAt);
   return {
     socketPath, storePath, db, workers,

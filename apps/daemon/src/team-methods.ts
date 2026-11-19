@@ -14,7 +14,7 @@ import { interrupt } from './team-interrupt.ts';
 
 const locks = new WeakMap<DispatchCtx, Promise<void>>();
 export async function teamMethod(ctx: DispatchCtx, client: Client, id: string, method: string, body: Record<string, unknown>): Promise<void> {
-  if (method === 'team.askUser' || method === 'team.openPr') return handle(ctx, client, id, method, body);
+  if (method === 'team.askUser' || method === 'team.openPr' || method === 'team.status' && body.wake) return handle(ctx, client, id, method, body);
   const previous = locks.get(ctx) ?? Promise.resolve();
   const next = previous.catch(() => undefined).then(() => handle(ctx, client, id, method, body));
   locks.set(ctx, next);
@@ -40,7 +40,9 @@ async function handle(ctx: DispatchCtx, client: Client, id: string, method: stri
     case 'team.openPr': return ctx.interactions.openPr(client, id, actor.id, target?.id ?? actor.id, body);
     case 'team.approve': return ctx.teamApprovals.approve(client, id, body);
     case 'team.tree': return reply({ team: team.id, parent: team.parent, children: teamChildren(ctx.db, team.id).map(s => status(ctx, s)) });
-    case 'team.status': return reply(status(ctx, target!));
+    case 'team.status':
+      if (body.wake && !target!.archived) await ctx.ensureWorker(target!.id);
+      return reply(status(ctx, getSession(ctx.db, target!.id)!));
     case 'team.inbox': {
       const messages = unreadTeamMessages(ctx.db, actor.id).filter(m => m.team === team.id);
       markTeamMessagesRead(ctx.db, messages.map(m => m.id));
@@ -60,7 +62,9 @@ async function handle(ctx: DispatchCtx, client: Client, id: string, method: stri
       if (target!.id === team.parent || target!.archived) return fail('team.invalid', 'target must be a live child');
       await interrupt(ctx, target!.id);
       if (method === 'team.cancel') return reply({ interrupted: true });
-      return reply({ accepted: await ctx.sendPrompt(target!.id, String(body.task)) });
+      addQueuedPrompt(ctx.db, target!.id, { id: newId('q'), text: String(body.task), createdAt: Date.now() });
+      await ctx.drainQueue(target!.id);
+      return reply({ accepted: true });
     }
     case 'team.close': {
       const children = target!.id === team.parent ? teamChildren(ctx.db, team.id) : [target!];
@@ -118,11 +122,8 @@ async function message(ctx: DispatchCtx, client: Client, id: string, body: Recor
   if (actor.id !== team.parent && to !== team.parent) ctx.record(team.parent, 'team_message', { ...event, quiet: true, text: `${actor.id} → ${to}` });
   if (body.urgent) await interrupt(ctx, to);
   if (['idle', 'done', 'interrupted'].includes(getSession(ctx.db, to)!.state)) {
-    if (ctx.paused.has(to) || getSession(ctx.db, to)!.state !== 'interrupted') {
-      addQueuedPrompt(ctx.db, to, { id: newId('q'), text: 'New team message.', createdAt: Date.now() });
-      await ctx.drainQueue(to);
-    } else if (!await ctx.sendPrompt(to, 'New team message.'))
-      return client.link.replyError(id, 'team.delivery_failed', `message ${messageId} saved unread; prompt delivery failed`);
+    addQueuedPrompt(ctx.db, to, { id: newId('q'), text: 'New team message.', createdAt: Date.now() });
+    await ctx.drainQueue(to);
   }
   client.link.reply(id, { id: messageId });
 }

@@ -2,6 +2,7 @@ import { newId } from '@ormicode/protocol';
 import { getSession, getTeam, ownedTeam, type SessionState } from '@ormicode/session-store';
 import { preparePr, publishPr, type PreparedPr } from '@ormicode/git-core';
 import type { Client, DispatchCtx } from './dispatch.ts';
+import { lateQuestionAnswer, validQuestionAnswer } from './late-question.ts';
 
 type Body = Record<string, unknown>;
 type Pending = {
@@ -35,7 +36,7 @@ export class UserInteractions {
     pending.done = true;
     clearTimeout(pending.timer);
     this.pending.delete(request);
-    ctx.record(pending.session, kind, { request, ...payload, daemonInteraction: true });
+    ctx.record(pending.session, kind, { request, ...payload, ...(kind === 'interaction_expired' && pending.kind === 'question' ? { answerable: true } : {}), daemonInteraction: true });
     const row = getSession(ctx.db, pending.session);
     if (row && !row.archived && ['awaiting_approval', 'awaiting_input', 'running'].includes(row.state))
       ctx.record(row.id, 'state', { state: pending.previous });
@@ -95,6 +96,7 @@ export class UserInteractions {
     const ctx = this.context(), session = String(body.session), request = String(body.request);
     if (method === 'session.askUser') return this.ask(client, id, session, body);
     const pending = this.find(session, request);
+    if (!pending && method === 'session.answer' && lateQuestionAnswer(ctx, client, id, session, request, body.answers as Record<string, string>)) return;
     if (!pending && !this.known(session, request)) {
       if (method === 'session.decide') return ctx.teamApprovals.userDecision(client, id, body);
       if (await ctx.teamLifecycle.answer(client, id, body)) return;
@@ -103,8 +105,8 @@ export class UserInteractions {
     }
     if (!pending || pending.done) return client.link.replyError(id, 'session.already_decided', 'interaction already answered or expired');
     if (pending.kind === 'question' && method === 'session.answer') {
-      const answers = body.answers as Record<string, string>, answer = Object.hasOwn(answers, pending.question!) ? answers[pending.question!] : undefined;
-      if (Object.keys(answers).length !== 1 || !answer?.trim() || pending.options?.length && !pending.options.includes(answer))
+      const answers = body.answers as Record<string, string>;
+      if (!validQuestionAnswer(pending.question!, pending.options ?? [], answers))
         return client.link.replyError(id, 'team.invalid', 'answer the offered question with one offered choice or non-empty text');
       this.finish(request, pending, 'question_answer', { answers, actor: client.device }, answers);
       return client.link.reply(id, { answered: true });
