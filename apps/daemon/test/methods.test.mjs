@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startDaemon, connect } from '../src/index.ts';
@@ -9,8 +9,10 @@ import { getSession, listSessions } from '@ormicode/session-store';
 import { newId } from '@ormicode/protocol';
 
 const pendingCleanup = new Set();
+const projectDir = mkdtempSync(join(tmpdir(), 'ormi-daemon-project-'));
 test.after(async () => {
   for (const cleanup of pendingCleanup) await cleanup();
+  rmSync(projectDir, { recursive: true, force: true });
 });
 
 const boot = async (env = {}) => {
@@ -37,10 +39,23 @@ const boot = async (env = {}) => {
 };
 
 const startSession = async (client, vendor = 'fake') => {
-  const res = await client.request('session.start', { machine: newId('m'), project: 'p_t', vendor, transport: 'cli', model: 'x', effort: 'x', mode: 'x', workspace: { kind: 'current' } });
+  const res = await client.request('session.start', { machine: newId('m'), project: projectDir, vendor, transport: 'cli', model: 'x', effort: 'x', mode: 'x', workspace: { kind: 'current' } });
   assert.equal(res.type, 'res', JSON.stringify(res));
   return res.body.session;
 };
+
+test('session.start rejects missing project paths without creating them', async () => {
+  const { client, cleanup } = await boot();
+  const missing = join(projectDir, 'missing-project');
+  const res = await client.request('session.start', {
+    machine: newId('m'), project: missing, vendor: 'fake', transport: 'cli',
+    model: 'x', effort: 'x', mode: 'x', workspace: { kind: 'current' },
+  });
+  assert.equal(res.type, 'err');
+  assert.equal(res.code, 'workspace.not_found');
+  assert.equal(existsSync(missing), false);
+  await cleanup();
+});
 
 test('session.delete hides the session from the default list', async () => {
   const { daemon, client, cleanup } = await boot();
@@ -56,7 +71,7 @@ test('session.delete hides the session from the default list', async () => {
 test('a second session on the same workspace is a lease conflict', async () => {
   const { daemon, client, cleanup } = await boot();
   await startSession(client);
-  const dup = await client.request('session.start', { machine: newId('m'), project: 'p_t', vendor: 'fake', transport: 'cli', model: 'x', effort: 'x', mode: 'x', workspace: { kind: 'current' } });
+  const dup = await client.request('session.start', { machine: newId('m'), project: projectDir, vendor: 'fake', transport: 'cli', model: 'x', effort: 'x', mode: 'x', workspace: { kind: 'current' } });
   assert.equal(dup.type, 'err');
   assert.equal(dup.code, 'lease.conflict');
   await cleanup();
@@ -76,12 +91,45 @@ test('pause holds prompts and resume replays them in order', async () => {
   assert.ok(!replay(daemon.db, session).some(r => r.kind === 'turn_start'));
   await client.request('session.resume', { session });
   const turnDeadline = Date.now() + 15_000;
-  while (replay(daemon.db, session).filter(r => r.kind === 'turn_start').length < 2) {
+  while (replay(daemon.db, session).filter(r => r.kind === 'turn_end').length < 2) {
     if (Date.now() > turnDeadline) throw new Error('held prompts did not replay');
     await new Promise(r => setTimeout(r, 25));
   }
   const texts = replay(daemon.db, session).filter(r => r.kind === 'text').map(r => JSON.parse(r.payload).text);
   assert.deepEqual(texts, ['one', 'two']);
+  await cleanup();
+});
+
+test('session queue edits, reorders, journals and waits while paused', async () => {
+  const { daemon, client, cleanup } = await boot();
+  const session = await startSession(client);
+  const readyDeadline = Date.now() + 15_000;
+  while (daemon.workers.get(session)?.ready !== true) {
+    if (Date.now() > readyDeadline) throw new Error('worker never ready');
+    await new Promise(r => setTimeout(r, 25));
+  }
+  await client.request('session.pause', { session });
+  const first = await client.request('session.queue.add', { session, text: 'one' });
+  const second = await client.request('session.queue.add', { session, text: 'two' });
+  const third = await client.request('session.queue.add', { session, text: 'three' });
+  assert.equal((await client.request('session.queue.move', { session, id: third.body.id, index: 0 })).body.moved, true);
+  assert.equal((await client.request('session.queue.update', { session, id: first.body.id, text: 'one updated' })).body.updated, true);
+  assert.equal((await client.request('session.queue.remove', { session, id: second.body.id })).body.removed, true);
+  assert.deepEqual((await client.request('session.queue.list', { session })).body.items.map(item => item.text), ['three', 'one updated']);
+  assert.equal(replay(daemon.db, session).some(event => event.kind === 'turn_start'), false);
+  assert.ok(replay(daemon.db, session).filter(event => event.kind === 'queue_changed').length >= 6);
+
+  await client.request('session.resume', { session });
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    const prompts = replay(daemon.db, session).filter(event => event.kind === 'prompt');
+    const items = (await client.request('session.queue.list', { session })).body.items;
+    if (prompts.length >= 2 && items.length === 0) break;
+    await new Promise(r => setTimeout(r, 25));
+  }
+  assert.deepEqual(replay(daemon.db, session).filter(event => event.kind === 'prompt')
+    .map(event => JSON.parse(event.payload).text), ['three', 'one updated']);
+  assert.deepEqual((await client.request('session.queue.list', { session })).body.items, []);
   await cleanup();
 });
 
@@ -115,6 +163,61 @@ test('notes round-trip through the daemon', async () => {
   assert.equal(got.body.notes[0].title, 'api flag');
   assert.ok(got.body.notes[0].updatedAt > 1_000_000_000_000);
   assert.equal((await client.request('session.deleteNote', { session, id: set.body.id })).body.deleted, true);
+  await cleanup();
+});
+
+test('prompt history is project-scoped, newest-first, and distinct', async () => {
+  const { daemon, client, cleanup } = await boot();
+  const session = await startSession(client);
+  for (const [index, text] of ['alpha', 'beta', 'alpha'].entries()) {
+    await client.request('session.prompt', { session, text });
+    const deadline = Date.now() + 5000;
+    while (replay(daemon.db, session).filter(event => event.kind === 'turn_end').length < index + 1) {
+      if (Date.now() > deadline) throw new Error('prompt turn did not finish');
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+  }
+  const all = await client.request('prompts.history', { project: projectDir, limit: 20 });
+  assert.deepEqual(all.body.items.map(item => item.text), ['alpha', 'beta']);
+  const filtered = await client.request('prompts.history', { project: projectDir, query: 'bet' });
+  assert.deepEqual(filtered.body.items.map(item => item.text), ['beta']);
+  const otherProject = await client.request('prompts.history', { project: '/other' });
+  assert.deepEqual(otherProject.body.items, []);
+  await cleanup();
+});
+
+test('invalid prompt inputs return prompt.invalid and failed queued items stay marked', async () => {
+  const { daemon, client, cleanup } = await boot();
+  const invalidStart = await client.request('session.start', {
+    machine: newId('m'), project: projectDir, vendor: 'fake', transport: 'cli', model: 'x', effort: 'x', mode: 'x',
+    workspace: { kind: 'current' }, context: [{ kind: 'file', path: 'missing.ts' }],
+  });
+  assert.equal(invalidStart.code, 'prompt.invalid');
+  const session = await startSession(client);
+  const row = getSession(daemon.db, session);
+  const validPath = join(row.cwd, 'referenced.ts');
+  writeFileSync(validPath, 'present');
+  const invalidPrompt = await client.request('session.prompt', { session, text: 'bad path', context: [{ kind: 'file', path: 'missing.ts' }] });
+  assert.equal(invalidPrompt.code, 'prompt.invalid');
+  const invalidQueue = await client.request('session.queue.add', { session, text: 'bad path', context: [{ kind: 'file', path: 'missing.ts' }] });
+  assert.equal(invalidQueue.code, 'prompt.invalid');
+
+  const deadline = Date.now() + 5000;
+  while (getSession(daemon.db, session).state !== 'idle') {
+    if (Date.now() > deadline) throw new Error('session did not become idle');
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  await client.request('session.pause', { session });
+  const queued = await client.request('session.queue.add', { session, text: 'file goes missing', context: [{ kind: 'file', path: 'referenced.ts' }] });
+  assert.equal(queued.type, 'res');
+  rmSync(validPath);
+  const resumed = await client.request('session.resume', { session });
+  assert.equal(resumed.code, 'agent.failed');
+  const items = (await client.request('session.queue.list', { session })).body.items;
+  assert.equal(items.length, 1);
+  assert.match(items[0].error, /referenced\.ts|ENOENT/i);
+  await client.request('session.resume', { session });
+  assert.equal((await client.request('session.queue.list', { session })).body.items[0].error, items[0].error);
   await cleanup();
 });
 

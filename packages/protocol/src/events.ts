@@ -1,5 +1,5 @@
 import * as z from 'zod/mini';
-import { requestIdSchema } from './schema.ts';
+import { requestIdSchema, timestampSchema } from './schema.ts';
 import { sessionStateSchema } from './methods.ts';
 
 const text = z.string();
@@ -8,6 +8,10 @@ const count = z.number().check(z.int(), z.gte(0));
 const quantity = z.number().check(z.gte(0));
 export const eventBodies = {
   prompt: z.looseObject({ kind: z.literal('prompt'), text }),
+  queue_changed: z.looseObject({
+    kind: z.literal('queue_changed'),
+    items: z.array(z.object({ id: nonEmpty, text: nonEmpty, createdAt: timestampSchema, images: z.optional(count), error: z.optional(text) })),
+  }),
   turn_start: z.looseObject({ kind: z.literal('turn_start') }),
   turn_end: z.looseObject({ kind: z.literal('turn_end') }),
   text: z.looseObject({ kind: z.literal('text'), text }),

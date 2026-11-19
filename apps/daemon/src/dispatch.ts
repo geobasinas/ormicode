@@ -1,6 +1,9 @@
-import type { Frame } from '@ormicode/protocol';
+import type { Frame, PromptAttachment, PromptContext } from '@ormicode/protocol';
 import { parseRequestBody, newId } from '@ormicode/protocol';
-import { getSession, listSessions, setState, setTitle, listNotes, setNote, deleteNote, archiveSession, createSession, type Store } from '@ormicode/session-store';
+import {
+  getSession, listSessions, setState, setTitle, listNotes, setNote, deleteNote, archiveSession, createSession,
+  getPendingPromptData, deletePendingPromptData, type Store,
+} from '@ormicode/session-store';
 import { replay, setCursor } from '@ormicode/journal';
 import { listDevices, renameDevice, revokeDevice } from '@ormicode/session-store';
 import { handleJoin, type Pairing } from './pair.ts';
@@ -29,6 +32,11 @@ import { costMethod } from './cost-methods.ts';
 import { gitMethod, projectBranches, projectFetch } from './git-methods.ts';
 import { projectBranchMethod } from './project-branch-methods.ts';
 import { fileMethod } from './file-methods.ts';
+import { projectSearchFiles } from './project-search.ts';
+import { queueMethod } from './queue-methods.ts';
+import { composerMethod } from './composer-methods.ts';
+import { expandPrompt, PromptInvalidError, validatePrompt } from './prompt-context.ts';
+import { retryPrompt } from './prompt-methods.ts';
 import { listModels } from './models.ts';
 import { startSession } from './session-start.ts';
 
@@ -48,13 +56,15 @@ export interface DispatchCtx {
   lastError: () => string | null | undefined;
   liveWorkers: () => number;
   paused: Set<string>;
-  heldPrompts: Map<string, { text: string; images?: unknown[] }[]>;
-  lastPrompt: Map<string, { text: string; images?: unknown[] }>;
+  heldPrompts: Map<string, { text: string; images?: unknown[]; context?: PromptContext[]; attachments?: PromptAttachment[] }[]>;
+  lastPrompt: Map<string, { text: string; images?: unknown[]; context?: PromptContext[]; attachments?: PromptAttachment[] }>;
   /** Handoffs since the session's last turn_start — cleared by the supervisor. */
   handoffsInTurn: Map<string, number>;
   spawnWorker(session: string): void;
+  ensureWorker(session: string): Promise<void>;
   toWorker(session: string, method: string, body: Record<string, unknown>): Promise<Frame | undefined>;
-  sendPrompt(session: string, text: string, images?: unknown[], opts?: { journal?: boolean }): Promise<boolean>;
+  sendPrompt(session: string, text: string, images?: unknown[], opts?: { journal?: boolean; context?: PromptContext[]; attachments?: PromptAttachment[] }): Promise<boolean>;
+  drainQueue(session: string, afterTurnEnd?: boolean): Promise<boolean>;
   pairing: Pairing;
   relay(): RelayClient | undefined;
   checkpoints: Checkpoints;
@@ -85,6 +95,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
       case 'models.list':
         return client.link.reply(id, await listModels(body as { agent?: string; transport?: string; refresh?: boolean }));
       case 'project.branches': return projectBranches(ctx, client, id, body);
+      case 'project.searchFiles': return projectSearchFiles(client, id, body);
       case 'project.fetch': return await projectFetch(ctx, client, id, body);
       case 'project.pull':
       case 'project.renameBranch':
@@ -146,10 +157,16 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         const s = getSession(db, session);
         if (!s) return client.link.replyError(id, 'session.not_found', session);
         if (s.state === 'running') return client.link.replyError(id, 'session.busy', 'turn in progress');
+        const pending = getPendingPromptData(db, session);
+        const context = [...(pending?.context ?? []), ...(body.context as PromptContext[] | undefined ?? [])];
+        const attachments = [...(pending?.attachments ?? []), ...(body.attachments as PromptAttachment[] | undefined ?? [])];
+        try { validatePrompt(s.cwd, { text: String(body.text), context, attachments }); }
+        catch (error) { return client.link.replyError(id, 'prompt.invalid', error instanceof Error ? error.message : String(error)); }
         if (ctx.paused.has(session)) {
           const held = ctx.heldPrompts.get(session) ?? [];
-          held.push({ text: String(body.text), ...(body.images ? { images: body.images as unknown[] } : {}) });
+          held.push({ text: String(body.text), ...(body.images ? { images: body.images as unknown[] } : {}), ...(context.length ? { context } : {}), ...(attachments.length ? { attachments } : {}) });
           ctx.heldPrompts.set(session, held);
+          if (pending) deletePendingPromptData(db, session);
           return client.link.reply(id, { accepted: true });
         }
         // Untitled sessions pick up the first real prompt as their title.
@@ -157,38 +174,32 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
           const first = String(body.text).split('\n').map(l => l.trim()).find(Boolean) ?? '';
           if (first) setTitle(ctx.db, session, first.length > 60 ? `${first.slice(0, 57)}…` : first);
         }
-        const sent = await ctx.sendPrompt(session, String(body.text), body.images as unknown[] | undefined);
+        let sent: boolean;
+        try {
+          sent = await ctx.sendPrompt(session, String(body.text), body.images as unknown[] | undefined, { context, attachments });
+        } catch (error) {
+          if (error instanceof PromptInvalidError) return client.link.replyError(id, 'prompt.invalid', error.message);
+          throw error;
+        }
+        if (sent && pending) deletePendingPromptData(db, session);
         return sent ? client.link.reply(id, { accepted: true }) : client.link.replyError(id, 'agent.failed', 'worker rejected prompt');
       }
+      case 'session.queue.add':
+      case 'session.queue.list':
+      case 'session.queue.update':
+      case 'session.queue.remove':
+      case 'session.queue.move':
+        return queueMethod(ctx, client, id, method, body);
       case 'session.pause':
         ctx.paused.add(String(body.session));
         return client.link.reply(id, { paused: true });
       case 'session.resume': {
         const session = String(body.session);
         ctx.paused.delete(session);
-        const held = ctx.heldPrompts.get(session) ?? [];
-        ctx.heldPrompts.delete(session);
-        for (const p of held) {
-          try {
-            if (!await ctx.sendPrompt(session, p.text, p.images)) {
-              ctx.heldPrompts.set(session, held.slice(held.indexOf(p)));
-              return client.link.replyError(id, 'agent.failed', 'held prompt rejected');
-            }
-          } catch (error) {
-            ctx.heldPrompts.set(session, held.slice(held.indexOf(p)));
-            return client.link.replyError(id, 'agent.failed', error instanceof Error ? error.message : String(error));
-          }
-        }
+        if (!await ctx.drainQueue(session)) return client.link.replyError(id, 'agent.failed', 'held or queued prompt rejected');
         return client.link.reply(id, { resumed: true });
       }
-      case 'session.retry': {
-        const session = String(body.session);
-        const last = ctx.lastPrompt.get(session);
-        if (!last) return client.link.replyError(id, 'session.not_found', 'no prompt to retry');
-        return await ctx.sendPrompt(session, last.text, last.images, { journal: false })
-          ? client.link.reply(id, { accepted: true })
-          : client.link.replyError(id, 'agent.failed', 'worker rejected retry');
-      }
+      case 'session.retry': return await retryPrompt(ctx, client, id, body);
       case 'session.delete': case 'session.archive': {
         const session = String(body.session);
         archiveSession(db, session);
@@ -301,8 +312,24 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
           ? client.link.reply(id, { deleted: true })
           : client.link.replyError(id, 'session.not_found', String(body.id));
       case 'session.steer': {
-        const res = await ctx.toWorker(String(body.session), 'worker.steer', { text: body.text });
-        return res?.type === 'res' ? client.link.reply(id, { accepted: true, queued: false }) : client.link.replyError(id, 'agent.unsupported', 'steer');
+        const session = String(body.session);
+        const row = getSession(db, session);
+        if (!row) return client.link.replyError(id, 'session.not_found', session);
+        const pending = getPendingPromptData(db, session);
+        const context = [...(pending?.context ?? []), ...(body.context as PromptContext[] | undefined ?? [])];
+        const attachments = [...(pending?.attachments ?? []), ...(body.attachments as PromptAttachment[] | undefined ?? [])];
+        let prepared: ReturnType<typeof expandPrompt>;
+        try {
+          prepared = expandPrompt({ cwd: row.cwd, session, baseCommit: row.base_commit, notesDir: ctx.notesDir, terminalOutput: (s, terminal) => ctx.terminals.recentOutput(s, terminal) },
+            { text: String(body.text), context, attachments });
+        } catch (error) {
+          return client.link.replyError(id, 'prompt.invalid', error instanceof Error ? error.message : String(error));
+        }
+        const res = await ctx.toWorker(session, 'worker.steer', { text: prepared.text });
+        if (res?.type !== 'res') return client.link.replyError(id, 'agent.unsupported', 'steer');
+        ctx.record(session, 'prompt', { text: String(body.text), ...(context.length ? { context } : {}), ...(prepared.attachments.length ? { attachments: prepared.attachments } : {}) });
+        if (pending) deletePendingPromptData(db, session);
+        return client.link.reply(id, { accepted: true, queued: false });
       }
       case 'session.abort': {
         const res = await ctx.toWorker(String(body.session), 'worker.abort', {});
@@ -354,6 +381,8 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         return client.link.reply(id, { revoked: true, relaySynced: relay?.connected() ?? false });
       }
       default:
+        if (method === 'session.draft.get' || method === 'session.draft.set' || method === 'session.commands' || method === 'prompts.history')
+          return await composerMethod(ctx, client, id, method, body);
         if (method.startsWith('git.')) return await gitMethod(ctx, client, id, method, body);
         if (method === 'terminal.open') return await ctx.terminals.open(db, client, id, body);
         if (method.startsWith('terminal.')) return await ctx.terminals.method(client, id, method, body);

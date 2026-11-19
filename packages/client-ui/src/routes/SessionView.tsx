@@ -50,7 +50,8 @@ export function SessionView({ session, rail = 'none', onRail, onOpen }: { sessio
       </div> : null}
       <Transcript events={events} session={session} />
       <Approvals session={session} pending={approvals} events={events} />
-      <Composer session={session} details={details} onGit={onRail ? () => onRail('git') : undefined} />
+      <Composer session={session} details={details} onGit={onRail ? () => onRail('git') : undefined}
+        onOpenRail={onRail ? pane => onRail(pane) : undefined} />
     </div>
   );
   if (rail === 'none') return <div style={{ height: '100%', background: 'var(--bg-main)' }}>{chat}</div>;

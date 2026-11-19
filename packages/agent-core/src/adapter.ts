@@ -19,6 +19,7 @@ export interface StartSpec { cwd: string; model?: string; effort?: string; mode?
 export interface NativeRef { id: string; cwd: string; model?: string; effort?: string; mode?: string; logDir?: string; mcpServers?: Record<string, McpServerSpec> }
 export interface Handle { readonly id: string }
 export interface PromptInput { text: string; images?: { data: string; mimeType: string }[] }
+export interface AgentCommand { name: string; description: string; source: 'agent' }
 export interface HandoffState { summary: string }
 
 /** Capabilities describe verified behavior; unsupported operations are omitted. */
@@ -42,6 +43,7 @@ export interface AgentAdapter {
   compact?(handle: Handle, instructions?: string): Promise<void>;
   exportState?(handle: Handle): Promise<HandoffState>;
   events(handle: Handle): AsyncIterable<AgentEvent>;
+  commands?(handle: Handle): Promise<AgentCommand[]>;
   dispose(handle: Handle): Promise<void>;
 }
 

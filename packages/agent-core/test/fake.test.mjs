@@ -18,6 +18,20 @@ test('fake adapter emits a valid deterministic turn and closes', async () => {
   await assert.rejects(adapter.prompt(handle, { text: 'late' }), /disposed/);
 });
 
+test('fake adapter can expose configured commands for composer previews', async () => {
+  const previous = process.env.ORMICODE_FAKE_COMMANDS;
+  process.env.ORMICODE_FAKE_COMMANDS = JSON.stringify([{ name: 'review', description: 'Review the current changes' }]);
+  try {
+    const adapter = new FakeAdapter();
+    const handle = await adapter.start({ cwd: '/test' });
+    assert.deepEqual(await adapter.commands(handle), [{ name: 'review', description: 'Review the current changes', source: 'agent' }]);
+    await adapter.dispose(handle);
+  } finally {
+    if (previous === undefined) delete process.env.ORMICODE_FAKE_COMMANDS;
+    else process.env.ORMICODE_FAKE_COMMANDS = previous;
+  }
+});
+
 test('sessions are isolated and capability claims require implementations', async () => {
   const adapter = new FakeAdapter();
   const one = await adapter.start({ cwd: '/one' });

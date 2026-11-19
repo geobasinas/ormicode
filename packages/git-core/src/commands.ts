@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { realpathSync, statSync } from 'node:fs';
 
 const MAX_BUFFER = 256 * 1024 * 1024;
 
@@ -13,7 +14,7 @@ export class CommandError extends Error {
 
 export function run(command: string, cwd: string, args: string[], input?: string): string {
   try {
-    return execFileSync(command, command === 'git' ? ['-C', cwd, ...args] : args, {
+    return execFileSync(command, args, {
       cwd, encoding: 'utf8', input, maxBuffer: MAX_BUFFER,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -27,7 +28,11 @@ export function run(command: string, cwd: string, args: string[], input?: string
 export const git = (cwd: string, ...args: string[]) => run('git', cwd, args);
 
 export function isGitRepo(cwd: string): boolean {
-  try { return git(cwd, 'rev-parse', '--is-inside-work-tree').trim() === 'true'; }
+  try {
+    const directory = realpathSync(cwd);
+    if (!statSync(directory).isDirectory()) return false;
+    return git(directory, 'rev-parse', '--is-inside-work-tree').trim() === 'true';
+  }
   catch { return false; }
 }
 

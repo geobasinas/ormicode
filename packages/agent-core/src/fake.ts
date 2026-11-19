@@ -1,5 +1,5 @@
 import { NO_CAPABILITIES } from './adapter.ts';
-import type { AgentAdapter, Handle, ModelList, PromptInput, StartSpec } from './adapter.ts';
+import type { AgentAdapter, AgentCommand, Handle, ModelList, PromptInput, StartSpec } from './adapter.ts';
 import { EventQueue } from './event-queue.ts';
 import type { AgentEvent } from '@ormicode/protocol';
 
@@ -30,6 +30,17 @@ export class FakeAdapter implements AgentAdapter {
   async models(): Promise<ModelList> {
     const models = process.env.ORMICODE_FAKE_MODELS;
     return models ? JSON.parse(models) as ModelList : [];
+  }
+  async commands(): Promise<AgentCommand[]> {
+    const commands = process.env.ORMICODE_FAKE_COMMANDS;
+    if (!commands) return [];
+    try {
+      const parsed = JSON.parse(commands) as unknown;
+      return Array.isArray(parsed) ? parsed.filter((item): item is AgentCommand =>
+        Boolean(item) && typeof item === 'object' && typeof (item as AgentCommand).name === 'string'
+          && typeof (item as AgentCommand).description === 'string',
+      ).map(item => ({ name: item.name, description: item.description, source: 'agent' as const })) : [];
+    } catch { return []; }
   }
   async start(spec: StartSpec): Promise<Handle> {
     if (!spec.cwd) throw new Error('cwd is required');

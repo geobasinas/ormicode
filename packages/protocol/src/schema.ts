@@ -1,6 +1,6 @@
 import * as z from 'zod/mini';
 
-export const idPrefixes = ['s', 'req', 'a', 'bl', 'd', 'n', 'm', 't'] as const;
+export const idPrefixes = ['s', 'req', 'a', 'bl', 'd', 'n', 'm', 't', 'q'] as const;
 export const ulidSchema = z.string().check(z.regex(/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/));
 
 export function idSchema(prefix: (typeof idPrefixes)[number]) {

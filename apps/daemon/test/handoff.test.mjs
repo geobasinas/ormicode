@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -15,7 +15,13 @@ const boot = async () => {
   const client = await connect(daemon.socketPath);
   return { dir, daemon, client };
 };
-const startFake = (client, project = 'p_t') =>
+const projectDir = mkdtempSync(join(tmpdir(), 'ormi-handoff-project-'));
+const otherProjectDir = mkdtempSync(join(tmpdir(), 'ormi-handoff-other-project-'));
+test.after(() => {
+  rmSync(projectDir, { recursive: true, force: true });
+  rmSync(otherProjectDir, { recursive: true, force: true });
+});
+const startFake = (client, project = projectDir) =>
   client.request('session.start', { machine: newId('m'), project, vendor: 'fake', transport: 'cli', model: 'x', effort: 'x', mode: 'x', workspace: { kind: 'current' } });
 
 test('rehydrate handoff links parent, marks old session handed off, brief reaches the child', async () => {
@@ -52,7 +58,7 @@ test('a task cannot bounce back to the vendor it just left', async () => {
   // Seed a session row on a different vendor; the hub only knows 'fake'
   // transports, so hand it to fake, then try to hand the child back.
   const other = newId('s');
-  createSession(daemon.db, { id: other, machine: newId('m'), project: 'p_t', vendor: 'other', transport: 'acp', cwd: daemon.storePath });
+  createSession(daemon.db, { id: other, machine: newId('m'), project: otherProjectDir, vendor: 'other', transport: 'acp', cwd: otherProjectDir });
   const s2 = (await client.request('session.handoff', { session: other, to: { vendor: 'fake', transport: 'cli' }, mode: 'rehydrate' })).body.session;
   const bounce = await client.request('session.handoff', { session: s2, to: { vendor: 'other' }, mode: 'rehydrate' });
   assert.equal(bounce.type, 'err');
@@ -119,7 +125,7 @@ test('the ormi MCP server answers initialize, tools/list and ormi_notes over std
     const read = await next(m => m.id === 4);
     assert.equal(JSON.parse(read.result.content[0].text).notes[0].body, 'hello');
     // Message to a foreign session is refused.
-    const other = (await startFake(client, 'p_t2')).body.session;
+    const other = (await startFake(client, otherProjectDir)).body.session;
     rpc({ jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'ormi_message', arguments: { session: other, text: 'hi' } } });
     const refused = await next(m => m.id === 5);
     assert.equal(refused.result.isError, true);

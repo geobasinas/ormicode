@@ -1,7 +1,8 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { parseWorktrees, sanitize, type WorktreeEntry } from './worktree-common.ts';
+import { isGitRepo } from './commands.ts';
 
 export type WorkspaceChoice =
   | { kind: 'current' }
@@ -29,10 +30,6 @@ export type { WorktreeEntry } from './worktree-common.ts';
 
 const gitSync = (cwd: string, ...args: string[]): string =>
   execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-
-function isRepo(dir: string): boolean {
-  try { return gitSync(dir, 'rev-parse', '--is-inside-work-tree') === 'true'; } catch { return false; }
-}
 
 interface SyncHead { branch: string | null; commit: string }
 function headSync(dir: string): SyncHead {
@@ -91,13 +88,15 @@ export function defaultBranch(project: string): string | null {
 }
 
 export function forkWorktree(project: string, fromCwd: string, branch: string): { dir: string; branch: string; commit: string } | WorkspaceErr {
-  if (!isRepo(project) || !isRepo(fromCwd)) return { err: 'workspace.not_repo', detail: `${project} is not a git repository` };
+  const projectPath = resolve(project);
+  const fromPath = resolve(fromCwd);
+  if (!isGitRepo(projectPath) || !isGitRepo(fromPath)) return { err: 'workspace.not_repo', detail: `${project} is not a git repository` };
   try {
-    gitSync(project, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`);
+    gitSync(projectPath, 'rev-parse', '--verify', '--quiet', `refs/heads/${branch}`);
     return { err: 'workspace.failed', detail: `branch ${branch} already exists` };
   } catch { /* name is free */ }
-  const commit = headSync(fromCwd).commit;
-  try { return { ...addWorktree(project, sanitize(branch).replace(/\//g, '-'), commit, branch), commit }; }
+  const commit = headSync(fromPath).commit;
+  try { return { ...addWorktree(projectPath, sanitize(branch).replace(/\//g, '-'), commit, branch), commit }; }
   catch (error) { return { err: 'workspace.failed', detail: String(error) }; }
 }
 

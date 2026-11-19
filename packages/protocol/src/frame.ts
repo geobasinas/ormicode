@@ -30,7 +30,7 @@ export function parseFrame(value: unknown) {
   return json.success ? z.safeParse(frameSchema, json.data) : json;
 }
 
-export const MAX_FRAME_BYTES = 256 * 1024;
+export const MAX_FRAME_BYTES = 36 * 1024 * 1024;
 /** Parse one UTF-8 JSON frame; the transport is responsible for enforcing its own limits too. */
 export function parseWireFrame(input: string) {
   if (new TextEncoder().encode(input).byteLength > MAX_FRAME_BYTES) {

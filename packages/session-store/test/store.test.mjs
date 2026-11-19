@@ -4,13 +4,16 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openStore, createSession, getSession, listSessions, sessionsInStates, setState, setTitle, archiveSession, setNativeId,
-  addDevice, getDeviceByHash, listDevices, renameDevice, revokeDevice, listNotes, setNote, deleteNote, getPinnedPrice, pinPrice } from '../src/index.ts';
+  addDevice, getDeviceByHash, listDevices, renameDevice, revokeDevice, listNotes, setNote, deleteNote, getPinnedPrice, pinPrice,
+  addQueuedPrompt, listQueuedPrompts, moveQueuedPrompt, removeQueuedPrompt, updateQueuedPrompt,
+  setQueuedPromptError,
+  setPendingPromptData, getPendingPromptData, getDraft, setDraft } from '../src/index.ts';
 
 test('openStore applies migrations and is idempotent on reopen', () => {
   const path = join(mkdtempSync(join(tmpdir(), 'ormi-store-')), 'nested', 'store.db');
   const db = openStore(path);
   const version = db.pragma('user_version', { simple: true });
-  assert.ok(version >= 1);
+  assert.ok(version >= 6);
   assert.equal(db.pragma('journal_mode', { simple: true }), 'wal');
   db.close();
   const again = openStore(path);
@@ -73,6 +76,57 @@ test('session prices pin a model price and keep the first version', () => {
   assert.deepEqual(getPinnedPrice(db, 's_1', 'claude-sonnet-4-6'), { price: first, version: 'openrouter-old' });
   pinPrice(db, 's_1', 'claude-sonnet-4-6', { input: 9, output: 30 }, 'openrouter-new');
   assert.deepEqual(getPinnedPrice(db, 's_1', 'claude-sonnet-4-6'), { price: first, version: 'openrouter-old' });
-  assert.equal(db.pragma('user_version', { simple: true }), 3);
+  assert.ok(db.pragma('user_version', { simple: true }) >= 4);
+  db.close();
+});
+
+test('queued prompts retain order, edits, and images across a store restart', () => {
+  const path = join(mkdtempSync(join(tmpdir(), 'ormi-queue-')), 'store.db');
+  let db = openStore(path);
+  createSession(db, { id: 's_queue', machine: 'm', project: '/p', vendor: 'fake', transport: 'cli', cwd: '/p' });
+  addQueuedPrompt(db, 's_queue', { id: 'q_1', text: 'one', createdAt: 1 });
+  addQueuedPrompt(db, 's_queue', {
+    id: 'q_2', text: 'two', createdAt: 2, images: [{ data: 'aW1hZ2U=', mimeType: 'image/png' }],
+    context: [{ kind: 'file', path: 'src/main.ts' }],
+    attachments: [{ name: 'notes.txt', mimeType: 'text/plain', data: 'aGVsbG8=' }],
+  });
+  assert.equal(updateQueuedPrompt(db, 's_queue', 'q_1', 'updated'), true);
+  assert.equal(setQueuedPromptError(db, 's_queue', 'q_1', 'Referenced file is gone'), true);
+  assert.equal(moveQueuedPrompt(db, 's_queue', 'q_2', 0), true);
+  db.close();
+
+  db = openStore(path);
+  assert.deepEqual(listQueuedPrompts(db, 's_queue'), [
+    { id: 'q_2', text: 'two', createdAt: 2, images: [{ data: 'aW1hZ2U=', mimeType: 'image/png' }], context: [{ kind: 'file', path: 'src/main.ts' }], attachments: [{ name: 'notes.txt', mimeType: 'text/plain', data: 'aGVsbG8=' }] },
+    { id: 'q_1', text: 'updated', createdAt: 1, error: 'Referenced file is gone' },
+  ]);
+  assert.equal(updateQueuedPrompt(db, 's_queue', 'q_1', 'fixed'), true);
+  assert.deepEqual(listQueuedPrompts(db, 's_queue').find(item => item.id === 'q_1'), { id: 'q_1', text: 'fixed', createdAt: 1 });
+  assert.equal(removeQueuedPrompt(db, 's_queue', 'q_2'), true);
+  assert.deepEqual(listQueuedPrompts(db, 's_queue').map(item => item.id), ['q_1']);
+  db.close();
+});
+
+test('initial prompt context and attachments survive a store restart', () => {
+  const path = join(mkdtempSync(join(tmpdir(), 'ormi-pending-prompt-')), 'store.db');
+  let db = openStore(path);
+  const data = { context: [{ kind: 'notes' }], attachments: [{ name: 'file.txt', mimeType: 'text/plain', data: 'aGVsbG8=' }] };
+  setPendingPromptData(db, 's_pending', data);
+  db.close();
+  db = openStore(path);
+  assert.deepEqual(getPendingPromptData(db, 's_pending'), data);
+  db.close();
+});
+
+test('session and home drafts persist across a store restart', () => {
+  const path = join(mkdtempSync(join(tmpdir(), 'ormi-drafts-')), 'store.db');
+  let db = openStore(path);
+  setDraft(db, 'home', 'new session draft');
+  setDraft(db, 's_draft', 'reply draft');
+  db.close();
+  db = openStore(path);
+  assert.equal(getDraft(db, 'home'), 'new session draft');
+  assert.equal(getDraft(db, 's_draft'), 'reply draft');
+  assert.equal(getDraft(db, 's_missing'), '');
   db.close();
 });

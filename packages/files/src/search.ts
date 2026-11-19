@@ -37,21 +37,44 @@ function walkFiles(root: string): { files: string[]; truncated: boolean } {
   return { files, truncated };
 }
 
+function candidates(root: string): { files: string[]; truncated: boolean } {
+  const safe = resolvePath(root, '');
+  if (isGitRepo(safe.root)) {
+    try { return { files: gitFiles(safe.root), truncated: false }; }
+    catch (error) { throw new FileError('file.failed', error instanceof Error ? error.message : String(error)); }
+  }
+  return walkFiles(safe.root);
+}
+
 export function searchNames(root: string, query: string, limit = 100) {
   if (!query) throw new FileError('file.bad_query', 'Search query must not be empty');
   if (limit < 1 || limit > 500) throw new FileError('file.bad_query', 'Name search limit must be between 1 and 500');
-  const safe = resolvePath(root, '');
-  const tracked = isGitRepo(safe.root);
-  const walked = tracked ? undefined : walkFiles(safe.root);
-  let candidates: string[];
-  try { candidates = tracked ? gitFiles(safe.root) : walked!.files; }
-  catch (error) { throw new FileError('file.failed', error instanceof Error ? error.message : String(error)); }
-  const matches = new Fzf(candidates).find(query) as FzfResultItem<string>[];
+  return searchPaths(root, query, limit);
+}
+
+export function searchPaths(root: string, query: string, limit = 100) {
+  if (limit < 1 || limit > 500) throw new FileError('file.bad_query', 'Name search limit must be between 1 and 500');
+  const found = candidates(root);
+  const kinds = new Map<string, 'file' | 'folder'>();
+  for (const file of found.files) {
+    const normalized = file.replace(/\\/g, '/');
+    kinds.set(normalized, 'file');
+    let parent = normalized.slice(0, normalized.lastIndexOf('/'));
+    while (parent) {
+      if (!kinds.has(parent)) kinds.set(parent, 'folder');
+      parent = parent.slice(0, parent.lastIndexOf('/'));
+    }
+  }
+  const all = [...kinds.keys()];
+  const matches = query
+    ? new Fzf(all).find(query) as FzfResultItem<string>[]
+    : all.slice(0, limit).map(item => ({ item, score: 0, positions: new Set<number>() }));
   return {
     files: matches.slice(0, limit).map(match => ({
-      path: match.item, score: match.score, positions: [...match.positions].sort((a, b) => a - b),
+      path: match.item, kind: kinds.get(match.item)!, score: match.score,
+      positions: [...match.positions].sort((a, b) => a - b),
     })),
-    truncated: (walked?.truncated ?? false) || matches.length > limit,
+    truncated: found.truncated || (query ? matches.length > limit : all.length > limit),
   };
 }
 

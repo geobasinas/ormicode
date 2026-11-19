@@ -145,6 +145,51 @@ test('session controls and notes use matching request and response contracts', (
   assert.equal(parseResponseBody('session.steer', { accepted: true }).success, false);
 });
 
+test('session queue methods and queue change events preserve item summaries', () => {
+  const item = { id: 'q_01J8Z3K4M5N6P7WXYZ12345678', text: 'follow up', createdAt: 1, images: 2 };
+  const context = [{ kind: 'file', path: 'src/main.ts' }];
+  const attachments = [{ name: 'notes.txt', mimeType: 'text/plain', data: 'aGVsbG8=' }];
+  assert.equal(parseRequestBody('session.queue.add', { session, text: 'follow up', context, attachments, images: [{ data: 'aW1hZ2U=', mimeType: 'image/png' }] }).success, true);
+  assert.equal(parseRequestBody('session.prompt', { session, text: 'with context', context, attachments }).success, true);
+  assert.equal(parseRequestBody('session.start', {
+    machine: 'm_01J8Z3K4M5N6P7Q8R9S0T1V2W3', project: '/repo', vendor: 'fake', transport: 'cli',
+    model: 'default', effort: 'default', mode: 'default', workspace: { kind: 'current' }, context, attachments,
+  }).success, true);
+  assert.equal(parseRequestBody('session.queue.list', { session }).success, true);
+  assert.equal(parseRequestBody('session.queue.update', { session, id: item.id, text: 'updated' }).success, true);
+  assert.equal(parseRequestBody('session.queue.remove', { session, id: item.id }).success, true);
+  assert.equal(parseRequestBody('session.queue.move', { session, id: item.id, index: 0 }).success, true);
+  assert.equal(parseResponseBody('session.queue.add', { id: item.id }).success, true);
+  assert.equal(parseResponseBody('session.queue.list', { items: [item] }).success, true);
+  assert.equal(parseResponseBody('session.queue.update', { updated: true }).success, true);
+  assert.equal(parseResponseBody('session.queue.remove', { removed: true }).success, true);
+  assert.equal(parseResponseBody('session.queue.move', { moved: true }).success, true);
+  assert.equal(parseEventBody({ kind: 'queue_changed', items: [item] }).success, true);
+  const failed = { ...item, error: 'Referenced file no longer exists' };
+  assert.equal(parseResponseBody('session.queue.list', { items: [failed] }).success, true);
+  assert.equal(parseEventBody({ kind: 'queue_changed', items: [failed] }).success, true);
+});
+
+test('project.searchFiles returns file and folder matches', () => {
+  assert.equal(parseRequestBody('project.searchFiles', { project: '/repo', query: '', limit: 100 }).success, true);
+  assert.equal(parseResponseBody('project.searchFiles', {
+    files: [{ path: 'src', kind: 'folder', score: 1, positions: [0] }], truncated: false,
+  }).success, true);
+});
+
+test('draft and prompt history contracts support the home composer', () => {
+  assert.equal(parseRequestBody('session.draft.get', { session: 'home' }).success, true);
+  assert.equal(parseRequestBody('session.draft.set', { session, text: 'draft text' }).success, true);
+  assert.equal(parseResponseBody('session.draft.get', { text: '' }).success, true);
+  assert.equal(parseResponseBody('session.draft.set', { saved: true }).success, true);
+  assert.equal(parseRequestBody('session.commands', { session }).success, true);
+  assert.equal(parseResponseBody('session.commands', { commands: [{ name: 'review', description: 'Review changes', source: 'agent' }] }).success, true);
+  assert.equal(parseRequestBody('prompts.history', { project: '/repo', query: 'fix', limit: 20 }).success, true);
+  assert.equal(parseResponseBody('prompts.history', {
+    items: [{ text: 'fix it', createdAt: Date.now(), session, project: '/repo' }],
+  }).success, true);
+});
+
 test('file methods validate their requests, responses and edit journal event', () => {
   for (const method of ['file.list', 'file.read', 'file.write', 'file.search', 'file.blame', 'file.history']) {
     const body = method === 'file.list' ? { session }

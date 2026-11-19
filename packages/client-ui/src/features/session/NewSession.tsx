@@ -1,13 +1,16 @@
 /** New-session composer card: prompt + project/machine/agent chips → session.start.
  *  Enter sends, Shift+Enter newline; the textarea grows with the prompt. */
 import { useEffect, useRef, useState } from 'react';
-import { Plus, AtSign, Mic, ArrowUp, ChevronDown, Folder, Laptop, Loader2 } from 'lucide-react';
+import { Plus, AtSign, Mic, ArrowUp, ChevronDown, Folder, Laptop, Loader2, FileText, X } from 'lucide-react';
 import { newId } from '@ormicode/protocol';
+import type { PromptContext } from '@ormicode/protocol';
 import { usePlatform } from '../../lib/platform.ts';
 import { VENDORS, loadPrefs, rememberProject } from '../../routes/Settings.tsx';
-import { useImages, ImageStrip, ProjectChip, iconBtn } from './composer-parts.tsx';
+import { useImages, useFiles, ImageStrip, ProjectChip, iconBtn } from './composer-parts.tsx';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../components/ui/dropdown-menu.tsx';
 import { AgentChip, GitChip, branchNameIssue, type RepoInfo, type WorkspaceChoice, type WorkspaceMode } from './pickers.tsx';
 import { useModels } from './useModels.ts';
+import { useComposerDraft } from './useComposerDraft.ts';
 
 const chip = {
   font: 'inherit', fontSize: 11, fontWeight: 500, color: 'var(--text-title)',
@@ -35,7 +38,14 @@ const FALLBACK: Agent[] = VENDORS.map(vendor => ({ vendor, transports: ['cli'] }
 export function NewSession({ onStarted }: { onStarted: (session: string) => void }) {
   const { transport, desktop } = usePlatform();
   const area = useRef<HTMLTextAreaElement>(null);
-  const [text, setText] = useState('');
+  const { text, setText } = useComposerDraft('home');
+  const [context, setContext] = useState<PromptContext[]>([]);
+  const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [mentionItems, setMentionItems] = useState<{ label: string; context: PromptContext }[]>([]);
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const mentionRange = useRef<{ start: number; end: number } | undefined>(undefined);
+  const [dropping, setDropping] = useState(false);
   const [vendor, setVendor] = useState(() => loadPrefs().defaultVendor);
   const [project, setProject] = useState(() => loadPrefs().defaultProject);
   const [projects, setProjects] = useState<string[]>(() => loadPrefs().projects ?? []);
@@ -56,6 +66,25 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
   const projectRef = useRef(project);
   projectRef.current = project;
   const img = useImages();
+  const files = useFiles();
+  useEffect(() => {
+    if (!mentionOpen) return;
+    const specials: { label: string; context: PromptContext }[] = [
+      { label: 'Diff', context: { kind: 'diff' } }, { label: 'Terminal', context: { kind: 'terminal' } }, { label: 'Notes', context: { kind: 'notes' } },
+    ];
+    let active = true;
+    void transport.request('project.searchFiles', { project, query: mentionQuery, limit: 100 }).then(res => {
+      const files = res.type === 'res' ? (res.body as { files: { path: string; kind: 'file' | 'folder' }[] }).files : [];
+      if (active) { setMentionItems([...specials, ...files.map(file => ({ label: file.path, context: { kind: file.kind, path: file.path } as PromptContext }))].filter(item => item.label.toLowerCase().includes(mentionQuery.toLowerCase())).slice(0, 100)); setMentionIndex(0); }
+    }).catch(() => { if (active) setMentionItems(specials); });
+    return () => { active = false; };
+  }, [mentionOpen, mentionQuery, project, transport]);
+  const openMention = () => { const caret = area.current?.selectionStart ?? text.length; mentionRange.current = { start: caret, end: caret }; setMentionQuery(''); setMentionOpen(true); };
+  const chooseMention = (item: { label: string; context: PromptContext }) => {
+    const range = mentionRange.current ?? { start: text.length, end: text.length };
+    setText(`${text.slice(0, range.start)}@${item.label} ${text.slice(range.end)}`);
+    setContext(current => [...current, item.context]); setMentionOpen(false); area.current?.focus();
+  };
   useEffect(() => {
     let alive = true;
     let timer: ReturnType<typeof setInterval> | undefined;
@@ -215,6 +244,8 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
       const res = await transport.request('session.start', {
         machine: newId('m'), project, vendor, transport: chosen,
         model, effort, mode: 'default',
+        ...(context.length ? { context } : {}),
+        ...(files.wire.length ? { attachments: files.wire } : {}),
         workspace: project === 'scratch' ? { kind: 'scratch' }
           : workspace.kind === 'worktree' ? { ...workspace, name: branchName.trim() || branchNameFor(t, branchPrefix) }
             : workspace.kind === 'branch' ? { ...workspace, branch: branchName.trim() || branchNameFor(t, branchPrefix) } : workspace,
@@ -222,25 +253,33 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
       if (res.type === 'err') { setError(workspaceError(res.code, res.message)); setBusy(false); return; }
       const session = (res.body as { session: string }).session;
       const images = img.wire.length ? img.wire : undefined;
-      setText(''); img.clear(); grow();
+      setText(''); setContext([]); img.clear(); files.clear(); grow();
       void transport.request('session.prompt', { session, text: t, ...(images ? { images } : {}) });
       onStarted(session);
     } catch (e) { setError(String(e)); setBusy(false); }
   };
 
   return (
-    <div style={{
+    <div onDragOver={event => { event.preventDefault(); setDropping(true); }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDropping(false); }} onDrop={event => { event.preventDefault(); setDropping(false); const all = [...event.dataTransfer.files]; void img.add(all.filter(file => file.type.startsWith('image/'))); void files.add(all.filter(file => !file.type.startsWith('image/'))); }} style={{
       background: 'var(--bg-card)', border: '1px solid var(--line-card)', borderRadius: 12,
-      padding: '11px 14px 10px', width: '100%',
+      padding: '11px 14px 10px', width: '100%', position: 'relative',
     }}>
       {img.picker}
+      {files.picker}
       <ImageStrip images={img.images} onRemove={img.remove} />
+      {files.files.length ? <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', padding: '2px 0 6px' }}>{files.files.map((file, index) => <span key={`${file.name}-${index}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, maxWidth: 190, fontSize: 10, color: 'var(--text-secondary)', background: 'var(--bg-inset)', borderRadius: 5, padding: '3px 5px' }}><FileText size={11} /><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name} · {Math.ceil(file.size / 1024)} KB</span><button onClick={() => files.remove(index)} style={iconBtn}><X size={10} /></button></span>)}</div> : null}
+      {context.length ? <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 5 }}>{context.map((entry, i) => <span key={i} style={{ padding: '2px 5px', borderRadius: 4, background: 'var(--bg-inset)', color: 'var(--text-hint)', fontSize: 10 }}>@{entry.path ?? (entry.kind === 'diff' ? 'Diff' : entry.kind === 'terminal' ? 'Terminal' : 'Notes')}</span>)}</div> : null}
       <textarea
         ref={area}
-        onPaste={img.onPaste}
+        onPaste={event => { const all = [...event.clipboardData.files]; if (all.length) { event.preventDefault(); void img.add(all.filter(file => file.type.startsWith('image/'))); void files.add(all.filter(file => !file.type.startsWith('image/'))); } }}
         value={text}
-        onChange={e => { setText(e.target.value); grow(); }}
-        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
+        onChange={e => { const value = e.target.value; setText(value); grow(); setContext(current => current.filter(entry => value.includes(`@${entry.path ?? (entry.kind === 'diff' ? 'Diff' : entry.kind === 'terminal' ? 'Terminal' : 'Notes')}`))); const match = /(^|\s)@([^\s]*)$/.exec(value.slice(0, e.target.selectionStart)); if (match) { mentionRange.current = { start: e.target.selectionStart - match[2]!.length - 1, end: e.target.selectionStart }; setMentionQuery(match[2]!); setMentionOpen(true); } else setMentionOpen(false); }}
+        onKeyDown={e => {
+          if (mentionOpen && (e.key === 'ArrowDown' || e.key === 'ArrowUp') && mentionItems.length) { e.preventDefault(); setMentionIndex(index => (index + (e.key === 'ArrowDown' ? 1 : mentionItems.length - 1)) % mentionItems.length); }
+          else if (mentionOpen && (e.key === 'Enter' || e.key === 'Tab') && mentionItems.length) { e.preventDefault(); chooseMention(mentionItems[mentionIndex]!); }
+          else if (mentionOpen && e.key === 'Escape') setMentionOpen(false);
+          else if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); }
+        }}
         placeholder="What do you want to work on?" rows={1}
         style={{
           width: '100%', resize: 'none', font: 'inherit', fontSize: 13, lineHeight: 1.5,
@@ -250,10 +289,10 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
       />
       {preparingWorktree ? <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-hint)', fontSize: 11, marginBottom: 4 }}><Loader2 size={12} className="animate-spin" />Preparing worktree…</div> : null}
       {busyHint && !preparingWorktree ? <div style={{ color: 'var(--text-hint)', fontSize: 11, marginBottom: 4 }}>{busyHint}</div> : null}
-      {error || img.error || detachedBlocked ? <div style={{ color: 'var(--accent-red)', fontSize: 'var(--text-xs)', marginBottom: 4, whiteSpace: 'pre-wrap' }}>{error ?? img.error ?? 'HEAD is detached — pick a new branch or a worktree'}</div> : null}
+      {error || img.error || files.error || detachedBlocked ? <div style={{ color: 'var(--accent-red)', fontSize: 'var(--text-xs)', marginBottom: 4, whiteSpace: 'pre-wrap' }}>{error ?? img.error ?? files.error ?? 'HEAD is detached — pick a new branch or a worktree'}</div> : null}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <button className="hv-sub" style={iconBtn} title="attach images" aria-label="attach images" onClick={img.pick}><Plus size={17} /></button>
-        <button style={{ ...iconBtn, opacity: 0.45, cursor: 'default' }} title="mention files (soon)" disabled><AtSign size={16} /></button>
+        <DropdownMenu><DropdownMenuTrigger asChild><button className="hv-sub" style={iconBtn} title="attach" aria-label="attach"><Plus size={17} /></button></DropdownMenuTrigger><DropdownMenuContent align="start"><DropdownMenuItem onSelect={() => img.pick()}>Images…</DropdownMenuItem><DropdownMenuItem onSelect={() => files.pick()}>Files…</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
+        <button style={iconBtn} title="Mention files or context" onClick={openMention}><AtSign size={16} /></button>
         <button style={{ ...iconBtn, opacity: 0.45, cursor: 'default' }} title="voice (soon)" disabled><Mic size={16} /></button>
         <span style={{ flex: 1 }} />
         <ProjectChip title="project folder or 'scratch'" icon={<Folder size={12} style={{ color: 'var(--text-hint)' }} />}
@@ -284,6 +323,8 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
         }}>{preparingWorktree ? <Loader2 size={14} className="animate-spin" /> : <ArrowUp size={15} strokeWidth={2.5} />}</button>
       </div>
+      {mentionOpen ? <div style={{ position: 'absolute', left: 22, bottom: 52, width: 280, maxHeight: 220, overflowY: 'auto', zIndex: 20, background: 'var(--bg-raised)', border: '1px solid var(--line-card)', borderRadius: 8, boxShadow: 'var(--shadow-md)', padding: 4 }}>{mentionItems.map((item, index) => <button key={`${item.context.kind}-${item.label}`} onMouseDown={event => event.preventDefault()} onClick={() => chooseMention(item)} style={{ width: '100%', border: 0, borderRadius: 5, background: index === mentionIndex ? 'var(--bg-card)' : 'transparent', color: 'var(--text-secondary)', textAlign: 'left', padding: '5px 7px', fontSize: 11, cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.label}</button>)}</div> : null}
+      {dropping ? <div style={{ position: 'absolute', inset: 4, border: '1px dashed var(--text-hint)', borderRadius: 9, background: 'color-mix(in srgb, var(--bg-raised) 88%, transparent)', display: 'grid', placeItems: 'center', color: 'var(--text-secondary)', fontSize: 12, pointerEvents: 'none' }}>Drop to attach</div> : null}
     </div>
   );
 }

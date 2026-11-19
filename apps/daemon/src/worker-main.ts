@@ -70,6 +70,10 @@ link.onFrame = async (frame: Frame) => {
         await adapter.answerQuestion(handle, String(body.request), body.answers as Record<string, string>);
         link.reply(id, { answered: true });
         break;
+      case 'worker.commands':
+        if (!adapter || !handle) return fail(id, 'agent.failed', 'no live session');
+        link.reply(id, { commands: adapter.commands ? await adapter.commands(handle) : [] });
+        break;
       case 'worker.abort':
         if (!adapter?.interrupt || !handle) return fail(id, 'agent.unsupported', 'no interrupt');
         await adapter.interrupt(handle);

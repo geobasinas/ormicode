@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { EventQueue, NO_CAPABILITIES, RawLog } from '@ormicode/agent-core';
-import type { AgentAdapter, Handle, NativeRef, PromptInput, StartSpec } from '@ormicode/agent-core';
+import type { AgentAdapter, AgentCommand, Handle, NativeRef, PromptInput, StartSpec } from '@ormicode/agent-core';
 import { AcpError, JsonRpcPeer } from './jsonrpc.ts';
 import type { Spawn } from './jsonrpc.ts';
 import { acpMcpServers, type AcpProfile, type ConfigOption, type SessionBootstrap, type TurnMapper } from './profile.ts';
@@ -11,6 +11,7 @@ type Session = SessionBootstrap & {
   peer: JsonRpcPeer; profile: AcpProfile; queue: EventQueue; broker: AcpPermissionBroker;
   active: boolean; disposed: boolean; needsRecovery: boolean; cancelRequested: boolean;
   mapper?: TurnMapper; running?: Promise<void>; turnDone?: Promise<string>; resolveTurn?: (reason: string) => void; agentVersion?: string;
+  commands: AgentCommand[];
 };
 
 /** Negotiate v2 first; a v1 answer on the same connection selects v1. -32022 with a supported list respawns at the highest common version. */
@@ -67,12 +68,24 @@ export class AcpAdapter implements AgentAdapter {
     const { createV2Profile } = await import('./v2.ts');
     const { createV1Profile } = await import('./v1.ts');
     let session: Session | undefined;
+    let pendingCommands: AgentCommand[] = [];
     const primary = this.options.preferV1 ? createV1Profile() : createV2Profile();
     const endpoint = await connect({
       executable: this.options.command, args: this.options.args ?? [], cwd, spawn: this.options.spawn,
       log: spec?.logDir ? new RawLog(spec.logDir) : undefined,
       onNotification: (method, params) => {
-        if (method === 'session/update' && session?.active && session.mapper) session.queue.push(session.mapper.update(params));
+        if (method !== 'session/update') return;
+        const update = (params as { update?: Record<string, unknown> } | undefined)?.update;
+        if (update?.sessionUpdate === 'available_commands_update' && Array.isArray(update.availableCommands)) {
+          pendingCommands = update.availableCommands.flatMap(command => {
+            if (!command || typeof command !== 'object') return [];
+            const item = command as { name?: unknown; description?: unknown };
+            return typeof item.name === 'string' ? [{ name: item.name, description: typeof item.description === 'string' ? item.description : '', source: 'agent' as const }] : [];
+          });
+          if (session) session.commands = pendingCommands;
+          return;
+        }
+        if (session?.active && session.mapper) session.queue.push(session.mapper.update(params));
       },
       onRequest: (_method, params) => session?.active ? session.broker.request(params, session.nativeId) : Promise.resolve({ outcome: { outcome: 'cancelled' } }),
     }, primary, createV1Profile);
@@ -84,7 +97,7 @@ export class AcpAdapter implements AgentAdapter {
       session = {
         ...bootstrap, peer: endpoint.peer, profile: endpoint.profile, queue,
         broker: new AcpPermissionBroker(event => queue.push([event])),
-        active: false, disposed: false, needsRecovery: false, cancelRequested: false,
+        active: false, disposed: false, needsRecovery: false, cancelRequested: false, commands: pendingCommands,
       };
       this.options.onNativeId?.(handle, bootstrap.nativeId);
       this.sessions.set(handle, session);
@@ -179,6 +192,7 @@ export class AcpAdapter implements AgentAdapter {
   agentVersion(handle: Handle): string | undefined { return this.get(handle).agentVersion; }
   configOptions(handle: Handle): ConfigOption[] { return this.get(handle).options; }
   events(handle: Handle) { return this.get(handle).queue.subscribe(); }
+  async commands(handle: Handle): Promise<AgentCommand[]> { return this.get(handle).commands; }
   async dispose(handle: Handle): Promise<void> {
     const session = this.sessions.get(handle); if (!session) return;
     session.disposed = true; session.broker.expireAll('disposed'); session.peer.close(); await session.running; session.queue.close(); this.sessions.delete(handle);

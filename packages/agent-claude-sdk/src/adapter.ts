@@ -1,7 +1,7 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { CanUseTool, Options, PermissionResult, Query, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { EventQueue, NO_CAPABILITIES, classifyCommand, loadDestructivePatterns, type DestructivePattern } from '@ormicode/agent-core';
-import type { AgentAdapter, Handle, NativeRef, PromptInput, StartSpec } from '@ormicode/agent-core';
+import type { AgentAdapter, AgentCommand, Handle, NativeRef, PromptInput, StartSpec } from '@ormicode/agent-core';
 import { monotonicFactory } from 'ulid';
 import { parseEventBody } from '@ormicode/protocol';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -22,6 +22,8 @@ interface Session {
   abort?: AbortController;
   running?: Promise<void>;
   stream?: Query;
+  commandsQuery?: Query;
+  commands: AgentCommand[];
   inputs?: TurnInput;
   needsResumeId: boolean;
   approvals: Map<string, PendingApproval>;
@@ -117,7 +119,7 @@ export class ClaudeSdkAdapter implements AgentAdapter {
     if (spec.mode && !modes.has(spec.mode)) throw new Error('Unsupported or unsafe Claude permission mode');
     if (spec.effort && !efforts.has(spec.effort)) throw new Error('Unsupported Claude effort');
     const handle = Object.freeze({ id: `claude-${makeId()}` });
-    this.sessions.set(handle, { spec, nativeId, queue: new EventQueue(), active: false, disposed: false, needsResumeId: false, approvals: new Map(), steerBacklog: [], logBytes: 0 });
+    this.sessions.set(handle, { spec, nativeId, queue: new EventQueue(), active: false, disposed: false, needsResumeId: false, approvals: new Map(), steerBacklog: [], logBytes: 0, commands: [] });
     return handle;
   }
   async prompt(handle: Handle, input: PromptInput): Promise<void> {
@@ -189,6 +191,7 @@ export class ClaudeSdkAdapter implements AgentAdapter {
       session.inputs = inputs;
       const stream = (this.options.query ?? query)({ prompt: inputs.iterable, options });
       session.stream = stream;
+      session.commandsQuery = stream;
       for await (const message of stream) {
         if (session.disposed || abort.signal.aborted) break;
         this.log(session, 'stdout.log', JSON.stringify(message));
@@ -281,6 +284,16 @@ export class ClaudeSdkAdapter implements AgentAdapter {
     await session.running;
   }
   events(handle: Handle) { return this.get(handle).queue.subscribe(); }
+  async commands(handle: Handle): Promise<AgentCommand[]> {
+    const session = this.get(handle);
+    if (session.commandsQuery) {
+      try {
+        const commands = await withTimeout(session.commandsQuery.supportedCommands(), 5000);
+        session.commands = commands.map(command => ({ name: command.name, description: command.description, source: 'agent' }));
+      } catch { /* keep the last discovered commands */ }
+    }
+    return session.commands;
+  }
   async dispose(handle: Handle): Promise<void> {
     const session = this.sessions.get(handle);
     if (!session) return;

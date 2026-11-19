@@ -1,13 +1,15 @@
 import { newId } from '@ormicode/protocol';
 import { acquireWorkspace } from '@ormicode/leases';
-import { createSession, listSessions } from '@ormicode/session-store';
+import { createSession, listSessions, setPendingPromptData } from '@ormicode/session-store';
 import { defaultBranch, resolveWorkspace, type ResolvedWorkspace, type WorkspaceChoice } from '@ormicode/git-core';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Client, DispatchCtx } from './dispatch.ts';
 import { branchIsBusy, mainCheckoutIsBusy } from './branch-busy.ts';
 import { hasTransport } from './registry.ts';
 import { ormicodeDir } from './socket.ts';
+import { validatePrompt } from './prompt-context.ts';
+import type { PromptAttachment, PromptContext } from '@ormicode/protocol';
 
 export async function startSession(
   ctx: DispatchCtx, client: Client, id: string, body: Record<string, unknown>,
@@ -16,9 +18,14 @@ export async function startSession(
   if (!hasTransport(vendor, transport)) return client.link.replyError(id, 'agent.unsupported', `${vendor}/${transport}`);
   const sessionId = newId('s');
   const project = String(body.project);
+  const workspace = body.workspace as WorkspaceChoice | { kind: 'scratch' };
+  if (workspace.kind !== 'scratch') {
+    let isDirectory = false;
+    try { isDirectory = statSync(project).isDirectory(); } catch { /* missing project */ }
+    if (!isDirectory) return client.link.replyError(id, 'workspace.not_found', `project directory not found: ${project}`);
+  }
   const missing = ctx.secrets.missing(project);
   if (missing.length) return client.link.replyError(id, 'secrets.missing', `missing secrets: ${missing.join(', ')} (ormi secret set NAME --project ${project})`);
-  const workspace = body.workspace as WorkspaceChoice | { kind: 'scratch' };
   let resolved: ResolvedWorkspace;
   if (workspace.kind === 'scratch') {
     resolved = { cwd: join(ormicodeDir(), 'scratch', sessionId) };
@@ -41,6 +48,15 @@ export async function startSession(
     }
   }
   const cwd = resolved.cwd;
+  try {
+    validatePrompt(cwd, {
+      text: '',
+      context: body.context as PromptContext[] | undefined,
+      attachments: body.attachments as PromptAttachment[] | undefined,
+    });
+  } catch (error) {
+    return client.link.replyError(id, 'prompt.invalid', error instanceof Error ? error.message : String(error));
+  }
   const machine = String(body.machine ?? 'm_local');
   const lease = acquireWorkspace(ctx.db, cwd, sessionId, machine);
   if (lease.conflict) return client.link.replyError(id, 'lease.conflict', `workspace held by ${lease.conflict}`);
@@ -55,6 +71,12 @@ export async function startSession(
     ...(body.agentArgs ? { agentArgs: body.agentArgs as string[] } : {}),
     ...(body.parent ? { parent: String(body.parent) } : {}),
   });
+  if (Array.isArray(body.context) || Array.isArray(body.attachments)) {
+    setPendingPromptData(ctx.db, sessionId, {
+      ...(Array.isArray(body.context) ? { context: body.context as never[] } : {}),
+      ...(Array.isArray(body.attachments) ? { attachments: body.attachments as never[] } : {}),
+    });
+  }
   for (const step of resolved.steps ?? []) ctx.record(sessionId, 'workspace_step', { ...step });
   ctx.spawnWorker(sessionId);
   client.link.reply(id, { session: sessionId });

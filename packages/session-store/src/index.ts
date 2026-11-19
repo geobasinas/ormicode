@@ -3,3 +3,6 @@ export * from './sessions.ts';
 export * from './notes.ts';
 export * from './devices.ts';
 export * from './prices.ts';
+export * from './queue.ts';
+export * from './pending-prompts.ts';
+export * from './drafts.ts';

@@ -14,6 +14,8 @@ const boot = async () => {
   const client = await connect(daemon.socketPath);
   return { dir, daemon, client };
 };
+const projectDir = mkdtempSync(join(tmpdir(), 'ormi-daemon-project-'));
+test.after(() => rmSync(projectDir, { recursive: true, force: true }));
 
 const events = async (client, session, untilKind, timeoutMs = 30_000) => {
   const seen = [];
@@ -31,7 +33,7 @@ const events = async (client, session, untilKind, timeoutMs = 30_000) => {
 
 test('fake session: start, prompt, turn events are journaled and replayable', async () => {
   const { daemon, client } = await boot();
-  const started = await client.request('session.start', { machine: newId('m'), project: 'p_t', vendor: 'fake', transport: 'cli', model: 'x', effort: 'x', mode: 'x', workspace: { kind: 'current' } });
+  const started = await client.request('session.start', { machine: newId('m'), project: projectDir, vendor: 'fake', transport: 'cli', model: 'x', effort: 'x', mode: 'x', workspace: { kind: 'current' } });
   assert.equal(started.type, 'res');
   const session = started.body.session;
   const collecting = events(client, session, 'turn_end');
@@ -50,7 +52,7 @@ test('fake session: start, prompt, turn events are journaled and replayable', as
 
 test('events survive a daemon restart with seq continuity', async () => {
   const { daemon, client, dir } = await boot();
-  const started = await client.request('session.start', { machine: newId('m'), project: 'p_t', vendor: 'fake', transport: 'cli', model: 'x', effort: 'x', mode: 'x', workspace: { kind: 'current' } });
+  const started = await client.request('session.start', { machine: newId('m'), project: projectDir, vendor: 'fake', transport: 'cli', model: 'x', effort: 'x', mode: 'x', workspace: { kind: 'current' } });
   const session = started.body.session;
   const collecting = events(client, session, 'turn_end');
   await client.request('session.subscribe', { session });
@@ -74,7 +76,7 @@ test('worker killed mid-turn marks the session interrupted with committed events
   process.env.ORMICODE_FAKE_DELAY_MS = '60000';
   try {
     const { daemon, client } = await boot();
-    const started = await client.request('session.start', { machine: newId('m'), project: 'p_t', vendor: 'fake', transport: 'cli', model: 'x', effort: 'x', mode: 'x', workspace: { kind: 'current' } });
+    const started = await client.request('session.start', { machine: newId('m'), project: projectDir, vendor: 'fake', transport: 'cli', model: 'x', effort: 'x', mode: 'x', workspace: { kind: 'current' } });
     const session = started.body.session;
     const collecting = events(client, session, 'interrupted');
     await client.request('session.subscribe', { session });
@@ -121,7 +123,7 @@ test('a completed session auto-resumes on daemon restart under the safe policy',
   const storePath = join(dir, 'store.db');
   const daemon = await startDaemon({ socketPath: '127.0.0.1:0', storePath });
   const client = await connect(daemon.socketPath);
-  const res = await client.request('session.start', { machine: newId('m'), project: 'p_t', vendor: 'fake', transport: 'cli', model: 'x', effort: 'x', mode: 'x', workspace: { kind: 'current' } });
+  const res = await client.request('session.start', { machine: newId('m'), project: projectDir, vendor: 'fake', transport: 'cli', model: 'x', effort: 'x', mode: 'x', workspace: { kind: 'current' } });
   const session = res.body.session;
   await client.request('session.prompt', { session, text: 'hi' });
   const deadline = Date.now() + 15_000;
@@ -149,7 +151,7 @@ test('a non-resumable session under the all policy gets a recap injected as cont
   // fake/sdk is not in the resumable set, so 'all' recovery respawns it recap-only.
   const daemon = await startDaemon({ socketPath: '127.0.0.1:0', storePath });
   const client = await connect(daemon.socketPath);
-  const res = await client.request('session.start', { machine: newId('m'), project: 'p_t', vendor: 'fake', transport: 'sdk', model: 'x', effort: 'x', mode: 'x', workspace: { kind: 'current' } });
+  const res = await client.request('session.start', { machine: newId('m'), project: projectDir, vendor: 'fake', transport: 'sdk', model: 'x', effort: 'x', mode: 'x', workspace: { kind: 'current' } });
   const session = res.body.session;
   await client.request('session.prompt', { session, text: 'hi' });
   const deadline = Date.now() + 15_000;
@@ -183,7 +185,7 @@ test('hello device identity drives ack cursors per device', async () => {
   const daemon = await startDaemon({ socketPath: '127.0.0.1:0', storePath: join(dir, 'store.db') });
   const hello = { v: 1, type: 'hello', role: 'client', proto: 1, device: 'd_testbox' };
   const client = await connect(daemon.socketPath, hello);
-  const res = await client.request('session.start', { machine: newId('m'), project: 'p_t', vendor: 'fake', transport: 'cli', model: 'x', effort: 'x', mode: 'x', workspace: { kind: 'current' } });
+  const res = await client.request('session.start', { machine: newId('m'), project: projectDir, vendor: 'fake', transport: 'cli', model: 'x', effort: 'x', mode: 'x', workspace: { kind: 'current' } });
   const session = res.body.session;
   await client.request('session.subscribe', { session });
   await client.request('session.prompt', { session, text: 'hi' });
@@ -227,7 +229,7 @@ test('reconnect with a cursor replays only newer events, no gaps or dupes', asyn
   const dir = mkdtempSync(join(tmpdir(), 'ormi-daemon-test-'));
   const daemon = await startDaemon({ socketPath: '127.0.0.1:0', storePath: join(dir, 'store.db') });
   const client = await connect(daemon.socketPath);
-  const res = await client.request('session.start', { machine: newId('m'), project: 'p_t', vendor: 'fake', transport: 'cli', model: 'x', effort: 'x', mode: 'x', workspace: { kind: 'current' } });
+  const res = await client.request('session.start', { machine: newId('m'), project: projectDir, vendor: 'fake', transport: 'cli', model: 'x', effort: 'x', mode: 'x', workspace: { kind: 'current' } });
   const session = res.body.session;
   await client.request('session.subscribe', { session });
   await client.request('session.prompt', { session, text: 'hi' });
@@ -259,7 +261,7 @@ test('reconnect with a cursor replays only newer events, no gaps or dupes', asyn
 
 test("session.start treats 'default' placeholders as unset", async () => {
   const { daemon, client } = await boot();
-  const res = await client.request('session.start', { machine: newId('m'), project: 'p_t', vendor: 'fake', transport: 'cli', model: 'default', effort: 'default', mode: 'default', workspace: { kind: 'current' } });
+  const res = await client.request('session.start', { machine: newId('m'), project: projectDir, vendor: 'fake', transport: 'cli', model: 'default', effort: 'default', mode: 'default', workspace: { kind: 'current' } });
   const row = getSession(daemon.db, res.body.session);
   assert.equal(row.model, null);
   assert.equal(row.effort, null);

@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { realpath, stat } from 'node:fs/promises';
 
 export interface CommandResult {
   code: number | null;
@@ -93,7 +94,12 @@ export async function maybeGit(project: string, ...args: string[]): Promise<stri
 }
 
 export async function isRepoAsync(dir: string): Promise<boolean> {
-  return await maybeGit(dir, 'rev-parse', '--is-inside-work-tree') === 'true';
+  let directory: string;
+  try {
+    directory = await realpath(dir);
+    if (!(await stat(directory)).isDirectory()) return false;
+  } catch { return false; }
+  return await maybeGit(directory, 'rev-parse', '--is-inside-work-tree') === 'true';
 }
 
 export interface Head { branch: string | null; commit: string }

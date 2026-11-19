@@ -2,8 +2,11 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { rmSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Frame } from '@ormicode/protocol';
-import { openStore, getSession, setState, setWorkerPid, setNativeId, listSessions, type SessionState } from '@ormicode/session-store';
+import type { Frame, PromptAttachment, PromptContext } from '@ormicode/protocol';
+import {
+  openStore, getSession, setState, setWorkerPid, setNativeId, listSessions,
+  type SessionState,
+} from '@ormicode/session-store';
 import { killTree } from './proctree.ts';
 import { recoverSessions, resumePolicy, sweepLogs } from './recovery.ts';
 import { handoffBrief } from './handoff.ts';
@@ -11,6 +14,7 @@ import { onClientFrame, type Client, type DispatchCtx } from './dispatch.ts';
 import { Pairing, loadHubConfig, handleJoin } from './pair.ts';
 import { RelayClient, RemoteLink } from './relay.ts';
 import { append } from '@ormicode/journal';
+import { createPromptDelivery } from './prompt-delivery.ts';
 import { Checkpoints, DEFAULT_LIMITS } from '@ormicode/checkpoints';
 import { SecretBroker } from './secrets.ts';
 import { TerminalHub } from './terminal-methods.ts';
@@ -21,6 +25,7 @@ const WORKER_MAIN = join(dirname(fileURLToPath(import.meta.url)), 'worker-main.t
 const startedAt = Date.now();
 
 interface Worker { proc: ChildProcess; session: string; pid: number | undefined; ready: boolean }
+type HeldPrompt = { text: string; images?: unknown[]; context?: PromptContext[]; attachments?: PromptAttachment[] };
 
 const stateFor: Record<string, SessionState> = {
   turn_start: 'running', turn_end: 'idle', approval_request: 'awaiting_approval',
@@ -42,8 +47,8 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   let closing = false;
   const notesDir = join(ormicodeDir(), 'notes');
   const paused = new Set<string>();
-  const heldPrompts = new Map<string, { text: string; images?: unknown[] }[]>();
-  const lastPrompt = new Map<string, { text: string; images?: unknown[] }>();
+  const heldPrompts = new Map<string, HeldPrompt[]>();
+  const lastPrompt = new Map<string, { text: string; images?: unknown[]; context?: PromptContext[]; attachments?: PromptAttachment[] }>();
   const idleTimers = new Map<string, NodeJS.Timeout>();
   const idleTimeoutMs = Number(process.env.ORMICODE_IDLE_TIMEOUT_MS ?? 20 * 60_000);
   const poolMax = Number(process.env.ORMICODE_POOL_MAX ?? 8);
@@ -78,6 +83,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     if (mapped) setState(db, session, mapped, typeof payload.reason === 'string' ? payload.reason : undefined, ts);
     else if (kind === 'state' && typeof payload.state === 'string') setState(db, session, payload.state as SessionState, typeof payload.reason === 'string' ? payload.reason : undefined, ts);
   };
+  const terminals = new TerminalHub(record, ormicodeDir());
 
   // After each tool call (and once before the first), commit the worktree to the shadow repo.
   const checkpointSoon = (session: string, seq: number, tool: string) => {
@@ -144,11 +150,13 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     switch (method) {
       case 'worker.ready': {
         const w = workers.get(session);
+        let recap = false;
         if (w) {
           w.ready = true; w.pid = Number(body.pid) || w.pid; setWorkerPid(db, session, w.pid ?? null); setState(db, session, 'idle'); armIdle(session, 'idle'); enforcePool();
           if (resuming.delete(session)) {
             record(session, 'resumed', {});
             if (recapPending.delete(session)) {
+              recap = true;
               const brief = handoffBrief(db, session);
               record(session, 'handoff_brief', { text: brief });
               // No native transcript exists, so the brief is the context: send
@@ -158,6 +166,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
           }
         }
         answer({ ok: true });
+        if (!recap) void drainQueue(session);
         break;
       }
       case 'worker.event': {
@@ -195,6 +204,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
           scheduleRateRetry(session, payload.resetAt);
         }
         answer({ seq });
+        if (kind === 'turn_end') void drainQueue(session, true);
         break;
       }
       case 'worker.state':
@@ -261,16 +271,9 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     poll();
   });
 
-  const sendPrompt = async (session: string, text: string, images?: unknown[], opts?: { journal?: boolean }): Promise<boolean> => {
-    await ensureWorker(session);
-    const res = await toWorker(session, 'worker.prompt', { text, ...(images ? { images } : {}) });
-    if (!res || res.type === 'err') return false;
-    lastPrompt.set(session, { text, ...(images ? { images } : {}) });
-    // Real user prompts are journaled so transcripts can show them as bubbles;
-    // internal replays (recaps, retries, handoff briefs) pass journal:false.
-    if (opts?.journal !== false) record(session, 'prompt', { text });
-    return true;
-  };
+  const { sendPrompt, drainQueue } = createPromptDelivery({
+    db, notesDir, paused, heldPrompts, lastPrompt, ensureWorker, toWorker, terminals, record,
+  });
 
   // Sessions paused by a rate limit wake at the provider's reset time and retry
   // the held prompt; timers are in-memory and re-armed from the journal on boot.
@@ -293,8 +296,8 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   const dispatchCtx: DispatchCtx = {
     db, notesDir, startedAt, paused, heldPrompts, lastPrompt, handoffsInTurn,
     lastError: () => lastError, liveWorkers: () => workers.size,
-    spawnWorker, toWorker, sendPrompt,
-    pairing, relay: () => relay, checkpoints, record, secrets, terminals: new TerminalHub(record, ormicodeDir()),
+    spawnWorker, ensureWorker, toWorker, sendPrompt, drainQueue,
+    pairing, relay: () => relay, checkpoints, record, secrets, terminals,
     prices: new PriceBook({
       cachePath: join(ormicodeDir(), 'cache', 'prices.json'), overridesPath: join(ormicodeDir(), 'prices.json'),
       url: process.env.ORMICODE_PRICES_URL === 'off' ? null : process.env.ORMICODE_PRICES_URL,

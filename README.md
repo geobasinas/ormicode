@@ -455,6 +455,9 @@ States with several causes carry a `reason` (e.g. `interrupted`: `host_restart`,
 **Turns**
 - `session.prompt` returns once the worker has the input; follow the turn via `turn_start` … `turn_end` events.
 - **pause** finishes the current tool call and holds new prompts (state doesn't change). **resume** sends held prompts in order; if one fails, it and the rest stay queued.
+- `session.queue.add/list/update/remove/move` stores follow-ups in the session store. Queue changes are journaled as `queue_changed`; when a turn ends idle, the supervisor sends one queued prompt and continues in order. Pause holds queued prompts until resume.
+- `session.draft.get/set` persists per-session composer drafts (the home composer uses the `home` key); clients debounce saves. `prompts.history {project?, query?, limit}` returns distinct recent prompt text, newest first.
+- `session.commands` discovers agent slash commands. Claude SDK uses `supportedCommands()`; ACP uses `available_commands_update`; other adapters may return an empty list. App commands run UI actions, while agent commands are sent as prompt text.
 - **abort** requests an immediate stop; if supported, the tool call is marked `interrupted`. If unsupported, return `agent.unsupported` and do not claim it stopped.
 - **steer** goes into the running turn if the agent supports it; otherwise it's queued (visibly) for the next turn. Nothing is dropped.
 - **answer** replies to a pending clarifying question with `session.answer {session, request, answers}`. `answers` maps each original question text to the user's answer. The adapter preserves the question's own text and choices; the first valid response wins. A question is not an approval.
@@ -3303,17 +3306,17 @@ Example request and response bodies (inside their corresponding envelopes):
 {"body":{"decided":true}}
 ```
 
-**Ids:** `<prefix>_<26-char Crockford ULID>`. Prefixes: `s` session, `req` request, `a` artifact, `bl` blob, `d` device, `n` note, `m` machine. Ids sort by creation time.
+**Ids:** `<prefix>_<26-char Crockford ULID>`. Prefixes: `s` session, `req` request, `a` artifact, `bl` blob, `d` device, `n` note, `m` machine, `q` queued prompt. Ids sort by creation time.
 
 **Methods**
 | Area | Methods |
 | --- | --- |
-| Sessions | `session.list`, `get`, `start`, `prompt`, `steer`, `pause`, `resume`, `abort`, `decide`, `answer`, `setModel`, `setEffort`, `setMode`, `setOption`, `retry`, `handoff`, `fork`, `commit`, `archive`, `delete`, `events`, `subscribe`, `unsubscribe`, `logs`, `getNotes`, `setNotes`, `deleteNote` |
+| Sessions | `session.list`, `get`, `start`, `prompt`, `steer`, `queue.add`, `queue.list`, `queue.update`, `queue.remove`, `queue.move`, `pause`, `resume`, `abort`, `decide`, `answer`, `setModel`, `setEffort`, `setMode`, `setOption`, `retry`, `handoff`, `fork`, `commit`, `archive`, `delete`, `events`, `subscribe`, `unsubscribe`, `logs`, `getNotes`, `setNotes`, `deleteNote` |
 | Pairing (local only) | `pairing.start`, `pairing.status`, `pairing.confirm` |
 | Machines | `machine.list`, `status`, `projects`, `terminalOpen`, `terminalWrite`, `terminalResize`, `terminalClose` |
 | Git | Built: `git.status`, `stage`, `unstage`, `commit`, `push`, `log`, `show`, `branches`, `checkout`, `createBranch`, `deleteBranch`, `merge`, `cherryPick`, `revert`, `stash`, `prStatus`, `pr`, `prMerge`, `diff`. Planned: `worktrees`, `createWorktree`, `removeWorktree`, `graph`, `conflict`, `reflog`, `fetch`, `pull`, `rebase`, `tag` |
 | Review | `review.queue`, `comment`, `batch` |
-| Files | `file.list`, `file.read`, `file.write`, `file.search`, `file.blame`, `file.history` |
+| Files | `file.list`, `file.read`, `file.write`, `file.search`, `file.blame`, `file.history`, `project.searchFiles` |
 | Artifacts | `artifact.list`, `get`, `publish`, `reject`, `blob.get` |
 | Preview | `preview.start`, `stop`, `urls`, `capture` |
 | Secrets | `secret.list`, `set`, `remove`, `import` |
@@ -3337,7 +3340,7 @@ Example request and response bodies (inside their corresponding envelopes):
 | Skills | `skills.list`, `read`, `write`, `install`, `update`, `project` |
 | Daemon | `daemon.status`, `health`, `repair`, `logs`, `upgrade`, `restart` |
 
-**Events** (the same across every agent): `turn_start`, `turn_end`, `text`, `thinking`, `plan`, `tool_call`, `tool_result`, `approval_request`, `approval_decision`, `question_request`, `question_answer`, `interaction_expired`, `permission_denied`, `state`, `model_changed`, `effort_changed`, `mode_changed`, `config_option`, `usage`, `rate_limited`, `retry_scheduled`, `error`, `interrupted`, `resumed`, `evicted`, `compacted`, `agent_version`, `terminal_open`, `terminal_close`, `team_message`, `agent_spawned`, `agent_state`, `board_entry`, `automation_run`, `artifact_published`, `artifact_rejected`, `lease_conflict`, `lease_drift`, `digest_ready`, `handoff_brief`, `plugin_hook`, `bot_message`, `bot_started_session`, `bot_memory_changed`.
+**Events** (the same across every agent): `turn_start`, `turn_end`, `text`, `thinking`, `plan`, `tool_call`, `tool_result`, `approval_request`, `approval_decision`, `question_request`, `question_answer`, `interaction_expired`, `permission_denied`, `state`, `model_changed`, `effort_changed`, `mode_changed`, `config_option`, `usage`, `rate_limited`, `retry_scheduled`, `error`, `interrupted`, `resumed`, `queue_changed`, `evicted`, `compacted`, `agent_version`, `terminal_open`, `terminal_close`, `team_message`, `agent_spawned`, `agent_state`, `board_entry`, `automation_run`, `artifact_published`, `artifact_rejected`, `lease_conflict`, `lease_drift`, `digest_ready`, `handoff_brief`, `plugin_hook`, `bot_message`, `bot_started_session`, `bot_memory_changed`.
 - Each has `seq`, `ts`, `kind` and a body. Vendor-specific data goes in `body.raw` and never leaks into the shared shape.
 - Exception: the live-only `text_delta` and `thinking_delta` frames have no `seq`, aren't journaled, and aren't acked. They only exist for streaming ([Journal](#journal)).
 
@@ -3347,7 +3350,7 @@ Example request and response bodies (inside their corresponding envelopes):
 - `session.subscribe {session, after?}` registers the socket and first sends events after `after`. `session.unsubscribe` stops them.
 
 **Big payloads**
-- Frames over 256 KB are never sent inline. The payload is stored once and referenced by id and size, and the client fetches it with `blob.get` over HTTP (the one method not on the socket). Tool output and diffs always go this way.
+- Frames over 256 KB are normally stored once and referenced by id and size; the client fetches them with `blob.get` over HTTP (the one method not on the socket). Prompt attachment requests are the exception: they may be up to 36 MiB on the wire, with a 10 MiB per-file and 25 MiB total decoded limit. Tool output and diffs always use blobs.
 - Blobs have `bl_` ids, max 25 MB, stored at `blobs/<id>` next to the store and indexed in `blobs`. They are swept hourly past `retention.toolOutputDays`, subject to retention exemptions. Local same-user clients retrieve blobs through the local transport. Remote clients use an account-scoped authenticated relay HTTP endpoint; an id alone is never authorization. The hub uploads before returning a remote reference. If upload or retrieval fails, return a retryable error and retain the durable event reference. When the hub is offline an unavailable blob returns a retryable error.
 
 **Efficiency:** batch frames per tick, merge text deltas, put several messages in one frame, enable `web_socket_compression`, and send snapshot + deltas by `seq` rather than full replays ([Performance](#performance)).

@@ -12,6 +12,7 @@ interface TerminalMeta { terminal: string; device: string; cwd: string; shell: s
 export class TerminalHub {
   private readonly conns = new Map<Client, Promise<BrokerClient>>();
   private readonly meta = new Map<string, TerminalMeta>();
+  private readonly output = new Map<string, string>();
   private readonly auditPath: string;
   private readonly record: (session: string, kind: string, payload: Record<string, unknown>) => void;
   constructor(record: (session: string, kind: string, payload: Record<string, unknown>) => void, home: string) {
@@ -44,6 +45,13 @@ export class TerminalHub {
       p = ensureBroker(this.socketPath).then(b => {
         b.onEvent = e => {
           if (client.link.closed) return;
+          if (e.ev === 'output') {
+            const meta = this.meta.get(e.terminal);
+            if (meta?.session) {
+              const value = `${this.output.get(e.terminal) ?? ''}${Buffer.from(e.data ?? '', 'base64').toString('utf8')}`;
+              this.output.set(e.terminal, value.split(/\r?\n/).slice(-200).join('\n'));
+            }
+          }
           if (e.ev === 'exit') {
             const meta = this.meta.get(e.terminal);
             if (meta) { this.audit('exit', meta, e.code); this.ended(meta, e.code); }
@@ -61,6 +69,13 @@ export class TerminalHub {
   }
 
   drop(client: Client): void { void this.conns.get(client)?.then(b => b.close(), () => undefined); this.conns.delete(client); }
+
+  recentOutput(session: string, terminal?: string): { terminal: string; output: string } | undefined {
+    const candidates = [...this.meta.values()].filter(meta =>
+      meta.session === session && !meta.closed && (!terminal || meta.terminal === terminal));
+    const latest = candidates.at(-1);
+    return latest ? { terminal: latest.terminal, output: this.output.get(latest.terminal) ?? '' } : undefined;
+  }
 
   /** Revoking a device kills its terminals immediately. */
   async killDevice(device: string): Promise<void> {

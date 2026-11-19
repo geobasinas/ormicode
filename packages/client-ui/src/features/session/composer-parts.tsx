@@ -6,7 +6,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioG
 import { projectName } from '../../lib/format.ts';
 import type { ListedModel } from './useModels.ts';
 
-export interface Attached { data: string; mimeType: string; url: string; name: string }
+export interface Attached { data: string; mimeType: string; url: string; name: string; size: number }
 const MAX_BYTES = 5 * 1024 * 1024;
 
 export const chip = {
@@ -19,7 +19,7 @@ const chev = <ChevronDown size={11} style={{ color: 'var(--text-hint)', flexShri
 
 const read = (f: File) => new Promise<Attached>((ok, fail) => {
   const r = new FileReader();
-  r.onload = () => ok({ data: String(r.result).split(',')[1] ?? '', mimeType: f.type, url: String(r.result), name: f.name });
+  r.onload = () => ok({ data: String(r.result).split(',')[1] ?? '', mimeType: f.type || 'application/octet-stream', url: String(r.result), name: f.name, size: f.size });
   r.onerror = () => fail(r.error); r.readAsDataURL(f);
 });
 
@@ -42,8 +42,27 @@ export function useImages() {
     if (files.length) { e.preventDefault(); void add(files); }
   };
   const picker = <input ref={input} type="file" accept="image/*" multiple hidden onChange={e => { void add(e.target.files ?? []); e.target.value = ''; }} />;
-  const wire = images.map(({ data, mimeType }) => ({ data, mimeType }));
+  const wire = images.map(({ data, mimeType, name, size }) => ({ data, mimeType, name, size }));
   return { images, wire, error, add, remove, clear, onPaste, picker, pick: () => input.current?.click() };
+}
+
+export function useFiles() {
+  const [files, setFiles] = useState<Attached[]>([]);
+  const [error, setError] = useState<string>();
+  const input = useRef<HTMLInputElement>(null);
+  const add = async (list: Iterable<File>) => {
+    const accepted = [...list].filter(file => !file.type.startsWith('image/'));
+    const next = await Promise.all(accepted.map(read));
+    const total = [...files, ...next].reduce((sum, file) => sum + file.size, 0);
+    const tooBig = next.find(file => file.size > 10 * 1024 * 1024);
+    setError(tooBig ? `${tooBig.name} is over 10 MB` : total > 25 * 1024 * 1024 ? 'Attachments are over 25 MB total' : undefined);
+    if (!tooBig && total <= 25 * 1024 * 1024) setFiles(cur => [...cur, ...next]);
+  };
+  const remove = (index: number) => setFiles(cur => cur.filter((_, i) => i !== index));
+  const clear = () => setFiles([]);
+  const wire = files.map(({ name, mimeType, data }) => ({ name, mimeType, data }));
+  const picker = <input ref={input} type="file" multiple hidden onChange={event => { void add(event.target.files ?? []); event.target.value = ''; }} />;
+  return { files, wire, error, add, remove, clear, picker, pick: () => input.current?.click() };
 }
 
 export function ImageStrip({ images, onRemove }: { images: Attached[]; onRemove: (i: number) => void }) {
@@ -53,6 +72,7 @@ export function ImageStrip({ images, onRemove }: { images: Attached[]; onRemove:
       {images.map((im, i) => (
         <span key={i} title={im.name} style={{ position: 'relative', width: 44, height: 44, borderRadius: 7, overflow: 'hidden', border: '1px solid var(--line-card)' }}>
           <img src={im.url} alt={im.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          <span style={{ position: 'absolute', left: 2, bottom: 2, borderRadius: 3, padding: '1px 3px', background: 'rgba(0,0,0,0.65)', color: '#fff', fontSize: 8, lineHeight: 1.2, pointerEvents: 'none' }}>Image #{i + 1}</span>
           <button aria-label={`remove ${im.name}`} onClick={() => onRemove(i)} style={{
             position: 'absolute', top: 2, right: 2, width: 16, height: 16, borderRadius: 999, border: 'none', padding: 0, cursor: 'pointer',
             background: 'rgba(0,0,0,0.65)', color: '#ddd', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',

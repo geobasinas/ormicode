@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync, statSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startDaemon, connect } from '../src/index.ts';
@@ -69,6 +69,31 @@ test('file.write journals a manual checkpoint and file_edit event', async t => {
   assert.deepEqual(JSON.parse(edited.payload), {
     kind: 'file_edit', path: 'note.txt', size: 5, checkpoint: result.body.checkpoint,
   });
+});
+
+test('project.searchFiles returns folders and files before a session exists', async t => {
+  const dir = mkdtempSync(join(tmpdir(), 'ormi-project-search-'));
+  const root = repo();
+  mkdirSync(join(root, 'src'));
+  writeFileSync(join(root, 'src/main.ts'), 'export {};\n');
+  const keys = ['ORMICODE_HOME'];
+  const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  process.env.ORMICODE_HOME = join(dir, 'home');
+  let daemon;
+  let client;
+  t.after(async () => {
+    client?.close();
+    await daemon?.close();
+    restoreEnv(previous);
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
+  });
+  daemon = await startDaemon({ socketPath: '127.0.0.1:0', storePath: join(dir, 'store.db') });
+  client = await connect(daemon.socketPath);
+  const result = await client.request('project.searchFiles', { project: root, query: 'src', limit: 50 });
+  assert.equal(result.type, 'res');
+  assert.equal(result.body.files.some(file => file.path === 'src' && file.kind === 'folder'), true);
+  assert.equal(result.body.files.some(file => file.path === 'src/main.ts' && file.kind === 'file'), true);
 });
 
 test('file.write returns file.busy during a slow agent turn', async t => {

@@ -2,11 +2,41 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, truncateSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative, resolve as resolvePath } from 'node:path';
 import { fixture, git } from './helpers.mjs';
 import { resolveWorkspace } from '../src/worktree.ts';
+import { isGitRepo } from '../src/commands.ts';
+import { isRepoAsync } from '../src/worktree-process.ts';
 
 const resolve = (repo, workspace) => resolveWorkspace(repo.cwd, workspace, undefined, 's_testworktree', () => false);
+
+test('Git detection requires an existing directory and accepts repository subdirectories', async () => {
+  const repo = fixture();
+  try {
+    const nested = join(repo.cwd, 'nested');
+    mkdirSync(nested);
+    assert.equal(isGitRepo(repo.cwd), true);
+    assert.equal(isGitRepo(nested), true);
+    assert.equal(await isRepoAsync(nested), true);
+    assert.equal(isGitRepo(join(repo.root, 'missing')), false);
+    assert.equal(await isRepoAsync(join(repo.root, 'missing')), false);
+    assert.equal((await resolveWorkspace(nested, { kind: 'current' }, undefined, 's_nested', () => false)).cwd, nested);
+    assert.deepEqual(await resolveWorkspace(join(repo.root, 'missing'), { kind: 'current' }, undefined, 's_missing', () => false), {
+      cwd: join(repo.root, 'missing'),
+    });
+  } finally { repo.cleanup(); }
+});
+
+test('relative project paths create worktrees under the project exactly once', async () => {
+  const repo = fixture();
+  try {
+    const relativeProject = relative(process.cwd(), repo.cwd);
+    const result = await resolveWorkspace(relativeProject, { kind: 'worktree', branch: 'main' }, 'relative-path', 's_relative', () => false);
+    assert.ok(!('err' in result), JSON.stringify(result));
+    assert.equal(result.cwd, resolvePath(repo.cwd, '.ormi', 'worktrees', 'relative-path'));
+    assert.equal(existsSync(result.cwd), true);
+  } finally { repo.cleanup(); }
+});
 
 test('remote worktree fetches the latest origin base before creating its branch', async () => {
   const repo = fixture();

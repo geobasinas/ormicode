@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdtempSync, mkdirSync, readdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { FileError, fileBlame, fileHistory, listFiles, normalizePath, prepareWrite, readFile, resolvePath, searchContent, searchNames, writeFile } from '../src/index.ts';
+import { FileError, fileBlame, fileHistory, listFiles, normalizePath, prepareWrite, readFile, resolvePath, searchContent, searchNames, searchPaths, writeFile } from '../src/index.ts';
 
 const temp = prefix => mkdtempSync(join(tmpdir(), prefix));
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
@@ -153,6 +153,9 @@ test('file.search ranks names and returns content ranges, regex, no-match and tr
   const names = searchNames(root, 'server');
   assert.equal(names.files[0]?.path, 'src/server.ts');
   assert.equal(names.truncated, false);
+  const paths = searchPaths(root, 'src');
+  assert.equal(paths.files.some(file => file.path === 'src' && file.kind === 'folder'), true);
+  assert.equal(paths.files.some(file => file.path === 'src/server.ts' && file.kind === 'file'), true);
 
   const content = await searchContent(root, 'target');
   const unicode = content.matches.find(match => match.path === 'src/server.ts');

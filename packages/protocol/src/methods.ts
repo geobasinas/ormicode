@@ -2,6 +2,7 @@ import * as z from 'zod/mini';
 import { cursorSchema, jsonObjectSchema, requestIdSchema, sessionIdSchema, idSchema, timestampSchema } from './schema.ts';
 
 const session = { session: sessionIdSchema };
+const draftSession = z.union([sessionIdSchema, z.literal('home')]);
 const nonEmpty = z.string().check(z.minLength(1));
 const secretName = z.string().check(z.regex(/^[A-Z_][A-Z0-9_]*$/));
 const count = z.number().check(z.int(), z.gte(0));
@@ -29,7 +30,7 @@ const fileEntry = z.object({
   git: z.optional(z.enum(['modified', 'added', 'deleted', 'renamed', 'untracked', 'ignored', 'conflicted'])),
 });
 const fileSearchResponse = z.union([
-  z.object({ files: z.array(z.object({ path: nonEmpty, score: z.number(), positions: z.array(count) })), truncated: z.boolean() }),
+  z.object({ files: z.array(z.object({ path: nonEmpty, kind: z.optional(z.enum(['file', 'folder'])), score: z.number(), positions: z.array(count) })), truncated: z.boolean() }),
   z.object({ matches: z.array(z.object({ path: nonEmpty, line: count, text: z.string(), ranges: z.array(z.tuple([count, count])) })), truncated: z.boolean() }),
 ]);
 const gitPr = z.object({
@@ -72,7 +73,27 @@ const configOptionSchema = z.object({
   choices: z.optional(z.array(z.object({ value: z.union([z.string(), z.boolean()]), name: z.optional(z.string()) }))),
 });
 const sessionModeSchema = z.object({ id: nonEmpty, name: z.string() });
-const imageSchema = z.object({ data: nonEmpty, mimeType: nonEmpty });
+export const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
+export const ATTACHMENTS_MAX_BYTES = 25 * 1024 * 1024;
+const imageSchema = z.object({
+  data: nonEmpty, mimeType: nonEmpty, name: z.optional(nonEmpty), size: z.optional(count),
+});
+const promptContextSchema = z.object({
+  kind: z.enum(['file', 'folder', 'diff', 'terminal', 'notes']),
+  path: z.optional(nonEmpty), terminal: z.optional(nonEmpty),
+});
+export type PromptContext = z.infer<typeof promptContextSchema>;
+const attachmentSchema = z.object({
+  name: nonEmpty, mimeType: nonEmpty,
+  data: z.string().check(z.minLength(1), z.maxLength(14 * 1024 * 1024)),
+});
+export type PromptAttachment = z.infer<typeof attachmentSchema>;
+const attachmentsSchema = z.optional(z.array(attachmentSchema)
+  .check(z.refine(items => items.reduce((total, item) => total + item.data.length, 0) <= 35_000_000)));
+const contextSchema = z.optional(z.array(promptContextSchema));
+const queuedPrompt = z.object({
+  id: nonEmpty, text: nonEmpty, createdAt: timestampSchema, images: z.optional(count), error: z.optional(z.string()),
+});
 const detailsSchema = z.extend(summarySchema, {
   model: z.nullable(z.string()), effort: z.nullable(z.string()), mode: z.optional(z.nullable(z.string())),
   // What actually ran: the agent's own session id for resume, its reported version,
@@ -91,13 +112,26 @@ export const requestBodies = {
     model: nonEmpty, effort: nonEmpty, mode: nonEmpty, workspace: workspaceSchema,
     workspaceName: z.optional(nonEmpty), agentCommand: z.optional(nonEmpty),
     agentArgs: z.optional(z.array(z.string())),
+    context: contextSchema, attachments: attachmentsSchema,
     // Which session started this one (ormi_start via the MCP server).
     parent: z.optional(sessionIdSchema),
   }),
   'session.get': z.object(session),
   'session.list': z.object({ archived: z.optional(z.boolean()) }),
-  'session.prompt': z.object({ ...session, text: nonEmpty, images: z.optional(z.array(imageSchema)) }),
-  'session.steer': z.object({ ...session, text: nonEmpty, images: z.optional(z.array(imageSchema)) }),
+  'session.prompt': z.object({ ...session, text: nonEmpty, images: z.optional(z.array(imageSchema)), context: contextSchema, attachments: attachmentsSchema }),
+  'session.draft.get': z.object({ session: draftSession }),
+  'session.draft.set': z.object({ session: draftSession, text: z.string().check(z.maxLength(1_000_000)) }),
+  'session.commands': z.object({ session: sessionIdSchema }),
+  'prompts.history': z.object({
+    project: z.optional(nonEmpty), query: z.optional(z.string()),
+    limit: z.optional(z.number().check(z.int(), z.gte(1), z.lte(100))),
+  }),
+  'session.steer': z.object({ ...session, text: nonEmpty, images: z.optional(z.array(imageSchema)), context: contextSchema, attachments: attachmentsSchema }),
+  'session.queue.add': z.object({ ...session, text: nonEmpty, images: z.optional(z.array(imageSchema)), context: contextSchema, attachments: attachmentsSchema }),
+  'session.queue.list': z.object(session),
+  'session.queue.update': z.object({ ...session, id: nonEmpty, text: nonEmpty }),
+  'session.queue.remove': z.object({ ...session, id: nonEmpty }),
+  'session.queue.move': z.object({ ...session, id: nonEmpty, index: z.number().check(z.int(), z.gte(0), z.lte(1000)) }),
   'session.pause': z.object(session),
   'session.resume': z.object(session),
   'session.abort': z.object(session),
@@ -189,6 +223,7 @@ export const requestBodies = {
   'models.list': z.object({ agent: z.optional(nonEmpty), transport: z.optional(nonEmpty), refresh: z.optional(z.boolean()) }),
   // Branch catalog for a project dir before a session exists (composer workspace picker).
   'project.branches': z.object({ project: nonEmpty }),
+  'project.searchFiles': z.object({ project: nonEmpty, query: z.string(), limit: z.optional(z.number().check(z.int(), z.gte(1), z.lte(500))) }),
   'project.fetch': z.object({ project: nonEmpty }),
   'project.pull': z.object({ project: nonEmpty, branch: nonEmpty }),
   'project.renameBranch': z.object({ project: nonEmpty, from: nonEmpty, to: nonEmpty }),
@@ -205,7 +240,18 @@ export const responseBodies = {
   'session.get': detailsSchema,
   'session.list': z.object({ sessions: z.array(summarySchema) }),
   'session.prompt': z.object({ accepted: z.literal(true) }),
+  'session.draft.get': z.object({ text: z.string() }),
+  'session.draft.set': z.object({ saved: z.literal(true) }),
+  'session.commands': z.object({ commands: z.array(z.object({ name: z.string(), description: z.string(), source: z.literal('agent') })) }),
+  'prompts.history': z.object({ items: z.array(z.object({
+    text: z.string(), createdAt: timestampSchema, session: sessionIdSchema, project: nonEmpty,
+  })) }),
   'session.steer': z.object({ accepted: z.literal(true), queued: z.boolean() }),
+  'session.queue.add': z.object({ id: nonEmpty }),
+  'session.queue.list': z.object({ items: z.array(queuedPrompt) }),
+  'session.queue.update': z.object({ updated: z.literal(true) }),
+  'session.queue.remove': z.object({ removed: z.literal(true) }),
+  'session.queue.move': z.object({ moved: z.literal(true) }),
   'session.pause': z.object({ paused: z.literal(true) }),
   'session.resume': z.object({ resumed: z.literal(true) }),
   'session.abort': z.object({ interrupted: z.literal(true) }),
@@ -284,6 +330,10 @@ export const responseBodies = {
     defaultBranch: z.nullable(nonEmpty),
     worktrees: z.array(z.object({ path: nonEmpty, branch: z.nullable(z.string()), session: z.nullable(nonEmpty), state: z.nullable(z.string()), dirty: count })),
     ...branchInfo.shape,
+  }),
+  'project.searchFiles': z.object({
+    files: z.array(z.object({ path: nonEmpty, kind: z.enum(['file', 'folder']), score: z.number(), positions: z.array(count) })),
+    truncated: z.boolean(),
   }),
   'project.fetch': z.object({ ok: z.boolean(), error: z.optional(z.string()) }),
   'project.pull': z.object({ updated: z.boolean(), from: nonEmpty, to: nonEmpty }),

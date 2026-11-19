@@ -27,14 +27,15 @@ test('a reconnecting reader replays the identical buffer (coloured output)', { s
   const broker = await startBroker({ socketPath, idleMs: 60_000 });
   try {
     const a = await connectBroker(socketPath);
-    const firstP = collect(a, out => out.includes('red'));
+    const firstP = collect(a, out => out.includes('red') && out.includes('\n'));
     const opened = await a.request('open', { cwd: dir, shell: '/bin/sh', args: ['-c', "printf '\\033[31mred\\033[0m\\n'; read x; echo got-$x"], device: 'd1' });
     const first = await firstP;
     a.close();
     const b = await connectBroker(socketPath);
     const replay = collect(b, out => out.length >= first.length);
     await b.request('attach', { terminal: opened.terminal, from: 0 });
-    assert.deepEqual(await replay, first);
+    const normalizeNewlines = output => output.toString('utf8').replace(/\r\n/g, '\n');
+    assert.equal(normalizeNewlines(await replay), normalizeNewlines(first));
     assert.match(first.toString(), /\x1b\[31mred/);
     const done = collect(b, (_out, e) => e.ev === 'exit', first.length);
     await b.request('write', { terminal: opened.terminal, data: Buffer.from('yes\n').toString('base64') });

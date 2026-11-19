@@ -1,5 +1,5 @@
 import { access, mkdir, rm } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { worktreeSlug } from './worktree-common.ts';
 import { copyDirty, includeIgnored } from './worktree-copy.ts';
 import { commandMessage, git, gitResult, maybeGit, run } from './worktree-process.ts';
@@ -39,6 +39,7 @@ export async function createWorkspaceWorktree(
   project: string, baseRef: string, slugInput: string, explicitName: string | undefined,
   includeDirty: boolean, mainBranch: string | null, skipInclude = false, skipSetup = false,
 ): Promise<ResolvedWorkspace | WorkspaceErr> {
+  project = resolve(project);
   const steps: WorkspaceStep[] = [];
   const remotes = (await maybeGit(project, 'remote') ?? '').split(/\r?\n/).filter(Boolean);
   const remote = remoteName(baseRef, remotes);
