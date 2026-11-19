@@ -1,11 +1,68 @@
+const selectionChrome = `<style>
+  div {
+    position: absolute;
+    box-sizing: border-box;
+    box-shadow: inset 0 0 0 calc(1px * var(--grip-scale)) #6b7688,
+      0 0 0 calc(1px * var(--grip-scale)) #fff9;
+  }
+  button {
+    --edge: #6b7688;
+    --fill: #fafbfc;
+    --shadow: 0 1px 3px #161c303d;
+    position: absolute;
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #535e70;
+    pointer-events: auto;
+    touch-action: none;
+    scale: var(--grip-scale);
+  }
+  button[hidden] { display: none; }
+  button:is(:hover, :active) {
+    --edge: #434f61;
+    --fill: #e7ebf1;
+    --shadow: 0 0 0 2px #68738945, 0 1px 3px #161c303d;
+  }
+  button::before {
+    content: "";
+    grid-area: 1 / 1;
+    width: 10px;
+    height: 10px;
+    box-sizing: border-box;
+    border: 1px solid var(--edge);
+    border-radius: 3px;
+    background: var(--fill);
+    box-shadow: var(--shadow);
+  }
+  button[data-grip=move] { left: 50%; top: 0; translate: -50% -50%; cursor: move; }
+  button[data-grip=move]::before { width: 22px; height: 12px; border-radius: 6px; }
+  button[data-grip=move]::after {
+    content: "";
+    grid-area: 1 / 1;
+    width: 12px;
+    height: 8px;
+    background: radial-gradient(circle, currentColor 1px, transparent 1.2px) 0 0 / 4px 4px;
+  }
+  button[data-grip=e] { right: 0; top: 50%; translate: 50% -50%; cursor: ew-resize; }
+  button[data-grip=e]::before { width: 6px; height: 14px; border-radius: 4px; }
+  button[data-grip=s] { left: 50%; bottom: 0; translate: -50% 50%; cursor: ns-resize; }
+  button[data-grip=s]::before { width: 14px; height: 6px; border-radius: 4px; }
+  button[data-grip=se] { right: 0; bottom: 0; translate: 50% 50%; cursor: nwse-resize; }
+</style><div></div>`;
+
 export const ELEMENT_BRIDGE_SCRIPT = String.raw`
-let editable=false, interactive=false, gripSize=10, chrome, box, gesture, textEdit;
+let editable=false, interactive=false, gripScale=1, chrome, box, gesture, textEdit;
 const supported=el=>el instanceof HTMLElement && !['STYLE','TEMPLATE','BR','HR'].includes(el.tagName);
 const textLayer=el=>supported(el)&&el.tagName!=='IMG'&&!el.children.length;
 function configureEditor(enabled,direct,zoom){
   editable=enabled===true;
   interactive=editable&&direct===true;
-  if(typeof zoom==='number'&&Number.isFinite(zoom))gripSize=Math.max(8,Math.min(28,10/zoom));
+  if(typeof zoom==='number'&&Number.isFinite(zoom)&&zoom>0)gripScale=1/zoom;
   if(!interactive){endGesture(false);finishText(false)}
   paintSelection();
 }
@@ -15,12 +72,11 @@ function paintSelection(){
     chrome=document.createElement('div');
     chrome.style.cssText='position:fixed;inset:0;pointer-events:none;z-index:2147483647';
     const shadow=chrome.attachShadow({mode:'closed'});
-    shadow.innerHTML='<style>div{position:absolute;box-sizing:border-box;border:1px solid #687387;box-shadow:0 0 0 1px #fff8}button{position:absolute;width:var(--grip);height:var(--grip);padding:0;border:1px solid #687387;border-radius:2px;background:white;color:#253044;pointer-events:auto;touch-action:none;font:12px system-ui;line-height:1}button[data-grip=move]{left:50%;top:0;transform:translate(-50%,-50%);cursor:move}button[data-grip=e]{right:0;top:50%;transform:translate(50%,-50%);cursor:ew-resize}button[data-grip=s]{left:50%;bottom:0;transform:translate(-50%,50%);cursor:ns-resize}button[data-grip=se]{right:0;bottom:0;transform:translate(50%,50%);cursor:nwse-resize}</style><div></div>';
+    shadow.innerHTML=${JSON.stringify(selectionChrome)};
     box=shadow.querySelector('div');
     for(const [kind,label] of [['move','Move element'],['e','Resize element width'],['s','Resize element height'],['se','Resize element']]){
       const grip=document.createElement('button');
       grip.type='button';grip.dataset.grip=kind;grip.title=label;grip.setAttribute('aria-label',label);grip.tabIndex=-1;
-      if(kind==='move')grip.textContent='✥';
       grip.addEventListener('pointerdown',event=>startGesture(event,kind));
       grip.addEventListener('pointermove',previewGesture);
       grip.addEventListener('pointerup',event=>{if(gesture?.pointer===event.pointerId)endGesture(true)});
@@ -32,7 +88,7 @@ function paintSelection(){
   if(!selected||!root.contains(selected)||textEdit){box.hidden=true;return}
   box.hidden=false;
   const r=selected.getBoundingClientRect();
-  box.style.cssText='--grip:'+gripSize+'px;left:'+r.left+'px;top:'+r.top+'px;width:'+r.width+'px;height:'+r.height+'px';
+  box.style.cssText='--grip-scale:'+gripScale+';left:'+r.left+'px;top:'+r.top+'px;width:'+r.width+'px;height:'+r.height+'px';
   const showGrips=interactive&&supported(selected)&&r.width>0&&r.height>0&&getComputedStyle(selected).display!=='contents';
   for(const grip of box.children)grip.hidden=!showGrips;
 }

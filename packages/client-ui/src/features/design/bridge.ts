@@ -127,5 +127,5 @@ window.addEventListener('message',event=>{
   if(el===root){clearSelection();send({type:'selectionCleared'})}
   else select(el);
 });})();`;
-export const BRIDGE_HASH = 'gVXAwmZeREBqQ1CanHNgGqUCDZus6ovJESrw8aRwOzU=';
+export const BRIDGE_HASH = '9EU2At0yvx7yyFt5XkKtm5z/wFuRCwd0oybsI9bMBpk=';
 export const BRIDGE_SRC_DOC = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-${BRIDGE_HASH}'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; worker-src 'none'"><style>html,body,#root{height:100%;margin:0}*,*::before,*::after{box-sizing:border-box}#root>svg:only-child{display:block}</style></head><body><div id="root"></div><script>${BRIDGE_SCRIPT}</script></body></html>`;

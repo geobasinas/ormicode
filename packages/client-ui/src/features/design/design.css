@@ -146,10 +146,6 @@ textarea.design-input { resize: vertical; }
   padding-top: 8px; position: absolute; top: 100%; left: 0; pointer-events: none;
   font: 12px var(--font-mono); transform: scale(var(--design-label-scale, 1)); transform-origin: left top;
 }
-.design-artboard-handle {
-  position: absolute; z-index: 1; bottom: -6px; right: -6px; width: 13px; height: 13px; padding: 0;
-  background: var(--bg-inset); border: 2px solid var(--design-accent); border-radius: 2px; cursor: nwse-resize;
-}
 .design-snap-guide { position: absolute; z-index: 2; pointer-events: none; filter: drop-shadow(0 0 1px var(--bg-window)); }
 .design-snap-guide[data-axis="x"] { border-left: 1px dashed var(--text-active); }
 .design-snap-guide[data-axis="y"] { border-top: 1px dashed var(--text-active); }

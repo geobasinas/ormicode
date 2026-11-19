@@ -328,7 +328,7 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
         onPointerDown={event => { if (tool === 'select' && event.button === 0 && event.target === event.currentTarget && !event.altKey) frameOps.gestures.startMarquee(event); else drag.startPan(event); }}
         onPointerMove={event => { if (!frameOps.gestures.move(event)) drag.move(event); }} onPointerUp={event => { if (!frameOps.gestures.end(event)) drag.end(event); }}
         onPointerCancel={event => { if (!frameOps.gestures.cancel(event)) drag.cancel(event); }} onWheel={handleWheel}
-        overlay={<FrameOverlay frames={frameOps} />} annotation={document ? <DesignAnnotations document={document} frames={visibleFrames} pageId={pages.active.id} view={view} frameRect={frameRect} commenting={tool === 'comment' && !artwork.drawing} onThread={openThread}
+        overlay={<FrameOverlay frames={frameOps} frameRect={frameRect} />} annotation={document ? <DesignAnnotations document={document} frames={visibleFrames} pageId={pages.active.id} view={view} frameRect={frameRect} commenting={tool === 'comment' && !artwork.drawing} onThread={openThread}
           onCancel={() => { setTool('select'); review.setPending(null); }} onTarget={target => { review.begin(target); setTool('select'); setTab('feedback'); setInspectorOpen(true); }} /> : null} controls={document ? <FrameToolbar frames={frameOps} history={frameHistory} disabled={saving || sourceDirty} /> : null}
         onDrop={frameOps.drop} onDragOver={frameOps.dragOver}
         onNudge={frameOps.nudge} onZoom={zoom} onFit={() => fit()} onFitSelection={visibleFrames.some(frame => frameOps.ids.includes(frame.id)) ? () => fit(visibleFrames.filter(frame => frameOps.ids.includes(frame.id))) : undefined}

@@ -57,7 +57,11 @@ export function DesignCanvas(props: Props) {
     <div ref={canvas} aria-label="Design canvas" className="design-canvas" style={{ background: props.background }} data-tool={tool} data-panning={props.panning}
       onPointerDown={props.onPointerDown} onPointerMove={props.onPointerMove}
       onPointerUp={props.onPointerUp} onPointerCancel={props.onPointerCancel} onLostPointerCapture={props.onPointerCancel} onDrop={props.onDrop} onDragOver={props.onDragOver}>
-      <div className="design-world" style={{ '--design-label-scale': Math.min(2.5, 1 / view.scale), transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` } as CSSProperties}>
+      <div className="design-world" style={{
+        '--design-label-scale': Math.min(2.5, 1 / view.scale),
+        '--design-handle-scale': 1 / view.scale,
+        transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
+      } as CSSProperties}>
         {frames.map(frame => {
           const rect = props.frameRect(frame);
           const active = frame.id === selectedFrame;
@@ -76,7 +80,7 @@ export function DesignCanvas(props: Props) {
               onPointerDown={event => props.onDrag(event, 'move', frame)} onKeyDown={keyboardDrag('move')}><Icon size={17} /><span>{frame.id === props.startFrameId ? '▶ ' : ''}{frame.name}</span></button>
             <div className="design-artboard-preview">{props.preview(frame)}</div>
             <div className="design-artboard-size">{rect.width} × {rect.height}</div>
-            {active && !multiple && !frame.locked ? <button type="button" className="design-artboard-handle" aria-label={'Resize ' + frame.name} title="Resize frame"
+            {active && !multiple && !frame.locked ? <button type="button" className="design-transform-handle design-artboard-handle" aria-label={'Resize ' + frame.name} title="Resize frame"
               onPointerDown={event => props.onDrag(event, 'resize', frame)} onKeyDown={keyboardDrag('resize')} /> : null}
           </div>;
         })}

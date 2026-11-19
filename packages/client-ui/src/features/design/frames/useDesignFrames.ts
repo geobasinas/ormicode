@@ -3,7 +3,7 @@ import type { DesignDocument, DesignFrame, DesignOperation, DesignStackDirection
 import { sanitizeMarkup } from '../sanitize.ts';
 import { clampPosition, resizeRect, type Rect, type View } from '../design-model.ts';
 import type { DragKind } from '../design-snap.ts';
-import { clickSelection, editableFrame, expandGroups, previewFrames, selectedIds, setOperation, unionRect, moveFrames, type FrameSelection } from './frame-selection.ts';
+import { clickSelection, editableFrame, expandGroups, previewFrames, rotatedBounds, selectedIds, setOperation, unionRect, moveFrames, type FrameSelection } from './frame-selection.ts';
 import { droppedFrame, duplicateOperation, FRAME_CLIP_KEY, FRAME_CLIP_MIME, parseFrameClip, pasteOperation, serializeFrames } from './frame-clipboard.ts';
 import { useFrameGestures, type FrameGestureKind } from './useFrameGestures.ts';
 import type { FrameHistory } from './useFrameHistory.ts';
@@ -154,7 +154,7 @@ export function useDesignFrames({ board, frames, pageId, snapLines, primary, cho
     select(clickSelection(frames, selection, frame.id, true)); return true;
   };
   const previewed = gestures.patches.length ? previewFrames(frames, gestures.patches) : frames;
-  const bounds: Rect | null = editable.length > 0 ? unionRect(previewed.filter(frame => editable.some(item => item.id === frame.id))) : null;
+  const bounds: Rect | null = unionRect(previewed.filter(frame => editable.some(item => item.id === frame.id)).map(rotatedBounds));
   return { selection, ids, selected, editable, grouped, actions, gestures, frameDrag, startHandle, nudge, drop, dragOver, layerClick, bounds,
     previewRect: (frame: DesignFrame) => gestures.patches.length ? previewed.find(item => item.id === frame.id) : undefined };
 }
