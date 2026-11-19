@@ -1,15 +1,33 @@
 import createDOMPurify from 'dompurify';
+import { constrainSvg, MAX_SVG_SOURCE, SVG_GEOMETRY_ATTRS, SVG_NS } from './vector-svg.ts';
 
 const DOMPurify = createDOMPurify(window);
 
 export const SANITIZE_CONFIG: Parameters<typeof DOMPurify.sanitize>[1] = {
-  USE_PROFILES: { html: true },
+  USE_PROFILES: { html: true, svg: true },
   FORBID_TAGS: ['script', 'iframe', 'frame', 'object', 'embed', 'form', 'input', 'select', 'textarea', 'a', 'area', 'base', 'meta', 'link', 'video', 'audio', 'source'],
   FORBID_ATTR: ['srcdoc', 'srcset', 'action', 'formaction', 'target', 'download', 'ping', 'autofocus'],
   ALLOW_DATA_ATTR: false,
+  ADD_URI_SAFE_ATTR: SVG_GEOMETRY_ATTRS,
   ALLOWED_URI_REGEXP: /^data:image\/(?:png|jpeg|gif|webp|avif);base64,/i,
 };
 
 export function sanitizeMarkup(input: string): string {
-  return DOMPurify.sanitize(input, SANITIZE_CONFIG);
+  const template = parseMarkup(input);
+  return template.innerHTML;
+}
+
+function parseMarkup(input: string): HTMLTemplateElement {
+  const fragment = DOMPurify.sanitize(input, { ...SANITIZE_CONFIG, RETURN_DOM_FRAGMENT: true });
+  constrainSvg(fragment);
+  const template = window.document.createElement('template');
+  template.content.append(fragment);
+  return template;
+}
+
+export function standaloneSvg(input: string): SVGSVGElement | null {
+  if (input.length > MAX_SVG_SOURCE) return null;
+  const { content } = parseMarkup(input.trim());
+  const svg = content.firstElementChild;
+  return content.childNodes.length === 1 && svg?.namespaceURI === SVG_NS && svg.localName === 'svg' ? svg as SVGSVGElement : null;
 }

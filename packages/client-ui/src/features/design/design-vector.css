@@ -1,0 +1,45 @@
+.design-icon-button.design-vector-trigger { width: auto; min-width: 28px; padding-inline: 5px; gap: 2px; }
+.design-vector-trigger[data-active="true"] { color: var(--text-title); background: var(--bg-selected); }
+.design-vector-surface { position: absolute; z-index: 3; inset: 0; cursor: crosshair; outline: none; touch-action: none; }
+.design-stage:has(.design-vector-surface) .design-stage-bottom { z-index: 4; }
+.design-vector-surface[data-vector-tool="freehand"] { cursor: cell; }
+.design-vector-draft { position: absolute; width: 100%; height: 100%; pointer-events: none; }
+.design-vector-draft :is(rect, ellipse, path, circle, line) { stroke: var(--text-title); stroke-width: 1.5; vector-effect: non-scaling-stroke; stroke-linecap: round; }
+.design-vector-draft :is(rect, ellipse, path:not([fill]), circle) { fill: var(--bg-selected); }
+.design-vector-hint {
+  position: absolute; inset: 10px auto auto 50%; translate: -50%; width: max-content; max-width: calc(100% - 20px);
+  padding: 5px 9px; border: 1px solid var(--line-card); border-radius: 6px; background: var(--bg-main);
+  color: var(--text-label); font-size: 12px; pointer-events: none;
+}
+.design-vector-scrim { position: fixed; z-index: 50; inset: 0; background: var(--bg-scrim); }
+.design-vector-dialog {
+  position: fixed; z-index: 50; top: 50%; left: 50%; translate: -50% -50%;
+  display: grid; gap: 10px; width: min(520px, calc(100vw - 32px)); max-height: 90dvh; overflow: auto;
+  padding: 16px; border: 1px solid var(--line-card); border-radius: 10px;
+  background: var(--bg-card); color: var(--text-title); box-shadow: 0 10px 40px #0005;
+}
+.design-vector-title { font-size: 16px; font-weight: 600; }
+.design-vector-format { display: flex; gap: 6px; flex-wrap: wrap; }
+.design-vector-button {
+  padding: 4px 8px; border: 1px solid var(--line-card); border-radius: 5px;
+  font-size: 12px; color: var(--text-title); background: var(--bg-raised);
+}
+.design-vector-button:hover:not(:disabled) { background: var(--bg-selected); }
+.design-vector-button:disabled { opacity: .6; }
+.design-vector-rich-input, .design-vector-source, .design-vector-path-editor {
+  width: 100%; min-height: 160px; padding: 8px; border: 1px solid var(--line-card); border-radius: 5px;
+  color: var(--text-title); background: var(--bg-inset);
+}
+.design-vector-rich-input { max-height: 45dvh; overflow: auto; overflow-wrap: anywhere; }
+.design-vector-rich-input :is(ul, ol) { padding-inline-start: 1.5em; }
+.design-vector-rich-input ul { list-style: disc; }
+.design-vector-rich-input ol { list-style: decimal; }
+.design-vector-source { font: 12px var(--font-mono); resize: vertical; }
+.design-vector-path-editor { height: min(42dvh, 320px); touch-action: none; }
+.design-vector-edit-curve { fill: none; stroke: var(--text-title); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.design-vector-anchor, .design-vector-handle, .design-vector-arm { stroke: var(--text-label); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.design-vector-anchor, .design-vector-handle { fill: var(--bg-raised); cursor: move; }
+.design-vector-anchor[data-active="true"] { fill: var(--text-title); }
+.design-vector-arm { pointer-events: none; }
+.design-vector-description { color: var(--text-label); font-size: 12px; }
+.design-vector-error { color: var(--accent-red); font-size: 12px; }

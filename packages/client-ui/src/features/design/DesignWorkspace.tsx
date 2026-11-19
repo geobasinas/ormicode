@@ -24,6 +24,7 @@ import { useFrameHistory } from './frames/useFrameHistory.ts';
 import { FrameOverlay } from './frames/FrameOverlay.tsx';
 import { FrameToolbar } from './frames/FrameToolbar.tsx';
 import { FrameLayerControls } from './frames/FrameLayerControls.tsx';
+import { useDesignArtwork } from './useDesignArtwork.tsx';
 
 type BoardSummary = { slug: string; name: string; revision: number; frames: number };
 type Result = { document: DesignDocument; history: DesignHistorySummary[] };
@@ -280,6 +281,19 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
     void mutate([{ type: 'comment.add', frameId: selectedFrame || null, ...(selectedElement ? { element: `${selectedElement.tag}${selectedElement.text ? `: ${selectedElement.text.slice(0, 100)}` : ''}` } : {}), text }]).then(ok => { if (ok) setFeedback(''); });
   };
 
+  const artwork = useDesignArtwork({
+    owner: document, scope: JSON.stringify([session, slug, pages.active.id]), frame: activeFrame, enabled: Boolean(document && !saving && !sourceDirty),
+    view, size: canvasSize, onError: setError,
+    onCommit: async operation => {
+      if (board.current !== document || slugRef.current !== slug || dirtyRef.current || savingRef.current) return false;
+      if (operation.type === 'frame.add' && !frames.length) fittedSlug.current = slug + '/' + pages.active.id;
+      const result = await mutate([operation.type === 'frame.add' ? { ...operation, pageId: pages.active.id } : operation]);
+      if (!result) return false;
+      const added = operation.type === 'frame.add' && result.document.frames.at(-1);
+      if (added) chooseFrame(added.id, board.current);
+      return true;
+    },
+  });
   const status = error || sessionError || (sourceConflict ? 'This frame’s source changed or was removed. Copy or discard your draft in HTML.' : sourceDirty ? 'Unsaved source' : saving ? 'Saving…' : document ? 'Saved · r' + document.revision : '');
   const failure = Boolean(error || sessionError || sourceConflict);
   const canReload = error.startsWith('design.conflict:') || (!document && slug);
@@ -339,7 +353,8 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
         <button type="submit" className="design-button primary" disabled={loading || saving || !newName.trim()}>Create board</button>
         <button type="button" className="design-icon-button" aria-label="Cancel creation" onClick={() => setCreateOpen(false)}><X size={15} /></button>
       </form> : null}
-      <DesignCanvas canvas={canvas} frames={frames.filter(frame => !frame.hidden)} selectedFrame={selectedFrame} selectedIds={frameOps.ids} view={view} tool={tool} panning={drag.panning} onTool={setTool}
+      <DesignCanvas canvas={canvas} frames={frames.filter(frame => !frame.hidden)} selectedFrame={selectedFrame} selectedIds={frameOps.ids} view={view} tool={tool} panning={drag.panning} onTool={next => { artwork.clear(); setTool(next); }}
+        drawing={artwork.overlay} drawingTools={artwork.toolbar}
         background={pages.active.background} startFrameId={pages.start?.id} viewportOverlay={<DesignViewportOverlay page={pages.active} view={view} {...canvasSize} preferences={viewport} disabled={!document || saving || sourceDirty} act={pages.act} />}
         frameRect={frameRect} guides={frameOps.gestures.guides.length ? frameOps.gestures.guides : drag.preview?.guides}
         onDrag={(event, kind, frame) => { if (!frameOps.frameDrag(event, kind, frame)) drag.startDrag(event, kind, frame); }}
@@ -372,7 +387,7 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
             <DropdownMenuItem onSelect={() => addElement('container')}>Container</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu> : null}
-        empty={!frames.length ? <div className="design-empty-stage"><div className="design-empty">
+        empty={!frames.length && !artwork.drawing ? <div className="design-empty-stage"><div className="design-empty">
           <div className="design-empty-icon"><PanelsTopLeft size={24} /></div>
           <h1>{loading ? 'Loading board…' : document ? 'Add your first frame' : slug ? 'Board unavailable' : 'Start a design board'}</h1>
           {!loading && document ? <><p>Add a screen to the canvas to start designing.</p>{insertFrame}</> : null}

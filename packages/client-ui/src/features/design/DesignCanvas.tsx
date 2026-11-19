@@ -37,6 +37,8 @@ type Props = {
   controls?: ReactNode;
   onDrop?(event: DragEvent<HTMLDivElement>): void;
   onDragOver?(event: DragEvent<HTMLDivElement>): void;
+  drawing?: ReactNode;
+  drawingTools?: ReactNode;
 };
 
 const arrows: Record<string, [number, number]> = { ArrowLeft: [-10, 0], ArrowRight: [10, 0], ArrowUp: [0, -10], ArrowDown: [0, 10] };
@@ -86,6 +88,7 @@ export function DesignCanvas(props: Props) {
         return <div key={axis} aria-hidden className="design-snap-guide" data-axis={axis} style={style} />;
       })}
       {props.viewportOverlay}
+      {props.drawing}
     </div>
     {props.empty}
     <div className="design-stage-bottom">
@@ -93,6 +96,7 @@ export function DesignCanvas(props: Props) {
         <button className="design-icon-button" type="button" title="Select" aria-label="Select tool" aria-pressed={tool === 'select'} onClick={() => props.onTool('select')}><MousePointer2 size={16} /></button>
         <button className="design-icon-button" type="button" title="Pan" aria-label="Pan tool" aria-pressed={tool === 'pan'} onClick={() => props.onTool('pan')}><Hand size={16} /></button>
         {props.insert ? <><span className="design-divider" />{props.insert}</> : null}
+        {props.drawingTools}
       </div>
       {props.controls}
       <div className="design-float" role="group" aria-label="Zoom controls">
