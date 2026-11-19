@@ -1386,7 +1386,7 @@ secrets:
 
 ## Teams
 
-> **Status:** later · **Needs:** [Sessions](#sessions), [Approvals](#approvals)
+> **Status:** next (owner asked; first slice in progress) · **Needs:** [Sessions](#sessions), [Approvals](#approvals)
 
 **A session can own child sessions. Together they're a team.** Same session type, plus a parent and a team id.
 
@@ -2010,6 +2010,16 @@ services:
 
 **Limits:** a session can only message, wait on or hand off sessions it started (plus itself). Sessions started by an agent count toward the pool and team caps. A session started through `ormi_start` records which session asked. Nothing here can touch settings, devices, secrets or the destructive list.
 
+**Controller server (`ormi mcp serve`)** — *later*
+
+A stdio MCP server added to any outside MCP client (Claude Desktop, Cursor, VS Code, or Claude Code run by hand) to orchestrate ormicode. Talks to the local daemon socket, or a remote hub through `ormi connect` / the relay.
+
+**Identity:** a paired device with its own token, not a session. Pairing an MCP client = pairing a device; revoke it in the device list. Not bound by the "only sessions it started" rule, but still can't touch settings, devices, secrets or the destructive list.
+
+**Tools:** list/get/start/prompt/wait/cancel sessions; read the Needs You queue; answer approvals and questions (off by default, a per-device setting; destructive approvals never); hand off; read transcript summary and diff; use the team tools (it can be a team's parent from outside).
+
+Every call is journaled with the device as actor, goes through normal approvals, and counts toward pool and team caps. Same thin-wrapper rule: each tool maps to an existing protocol method.
+
 **Built-in server implementation status:** `apps/daemon/src/mcp.ts` + `mcp-serve.ts` implement the `ormi` stdio MCP server (newline-delimited JSON-RPC: `initialize`, `ping`, `tools/list`, `tools/call`). The daemon injects it into every worker via `StartSpec.mcpServers` (`worker-main.ts` builds `{command: node, args: [mcp-serve.ts], env: {ORMICODE_SOCKET, ORMI_SESSION}}` when `ORMICODE_MCP=1`, which `supervisor.ts` sets on every spawn). Shipping tools: `ormi_sessions`, `ormi_start`, `ormi_message`, `ormi_wait`, `ormi_handoff`, `ormi_notes` — the ownership rule is enforced by checking `session.parent` before message/wait, and `session.start` accepts `parent` for the same reason. `ormi_publish`, `ormi_ask_user` and the team tools wait on [Artifacts](#artifacts)/[Teams](#teams) (both *later*). `StartSpec.mcpServers` is honored by `agent-claude-sdk` (`mcpServers` option), `agent-claude-cli` (`--mcp-config` file), and generic/vendor ACP (`session/new|load|resume` via each package's own `acpMcpServers` in `src/options.ts`); adapters without an MCP channel ignore the field.
 
 ## Review
@@ -2128,7 +2138,7 @@ Anything else is stored as a file attachment with a download link.
 - `ormi approvals`, `ormi approve <id>`, `ormi deny <id> --reason`.
 - `ormi logs -f` (NDJSON).
 - `ormi checkpoint list|diff|restore|fork`, `ormi artifacts ls|open`.
-- `ormi mcp list|test|auth`, `ormi skills install|update`, `ormi secret set|list`.
+- `ormi mcp list|test|auth`, `ormi mcp serve`, `ormi skills install|update`, `ormi secret set|list`.
 - `ormi automation list|run|toggle`, `ormi workflow list|run|validate`.
 - `ormi device list|boot|install|ui|tap|type|logcat|record`, `ormi computer screenshot|click|type|find`, `ormi chrome tabs|open|click|read`.
 - `ormi chat setup|send`, `ormi tracker list|link`.
