@@ -23,6 +23,7 @@ export class McpCredentials {
   revoke(session: string, token?: string): void {
     if (token === undefined || this.active.get(session) === token) this.active.delete(session);
   }
+  activeFor(session: string): boolean { return this.active.has(session); }
   clear(): void { this.active.clear(); this.issued.clear(); }
   redact<T>(value: T): T {
     if (typeof value === 'string') {

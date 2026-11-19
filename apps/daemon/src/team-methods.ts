@@ -35,6 +35,7 @@ async function handle(ctx: DispatchCtx, client: Client, id: string, method: stri
     return fail('team.not_member', 'target is not in this team');
   const reply = (result: Record<string, unknown>) => client.link.reply(id, result);
   switch (method) {
+    case 'team.approve': return ctx.teamApprovals.approve(client, id, body);
     case 'team.tree': return reply({ team: team.id, parent: team.parent, children: teamChildren(ctx.db, team.id).map(s => status(ctx, s)) });
     case 'team.status': return reply(status(ctx, target!));
     case 'team.inbox': {
@@ -67,7 +68,7 @@ async function handle(ctx: DispatchCtx, client: Client, id: string, method: stri
         archiveSession(ctx.db, child.id); setState(ctx.db, child.id, 'archived');
         releaseForSession(ctx.db, child.id); releaseSessionPorts(ctx.db, child.id);
       }
-      if (target!.id === team.parent) closeTeam(ctx.db, team.id);
+      if (target!.id === team.parent) { closeTeam(ctx.db, team.id); ctx.teamApprovals.unavailable(team.parent); }
       return reply({ closed: true });
     }
     case 'team.diff': {
@@ -87,7 +88,7 @@ function status(ctx: DispatchCtx, session: SessionRow): Record<string, unknown> 
     const payload = JSON.parse(event.payload) as { input?: number; output?: number };
     return sum + (payload.input ?? 0) + (payload.output ?? 0);
   }, 0) : null;
-  return { session: session.id, state: session.state, lastActivity: session.updated_at, tokens };
+  return { session: session.id, state: ctx.teamApprovals.waiting(session.id) ? 'awaiting_approval' : session.state, lastActivity: session.updated_at, tokens };
 }
 async function interrupt(ctx: DispatchCtx, session: string): Promise<void> {
   if (!['running', 'starting', 'retrying', 'awaiting_input', 'awaiting_approval'].includes(getSession(ctx.db, session)?.state ?? '')) return;

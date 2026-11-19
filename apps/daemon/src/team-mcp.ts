@@ -1,6 +1,7 @@
 const string = { type: 'string' };
 const session = { session: string };
 const props: Record<string, { method: string; required?: string[]; properties: Record<string, unknown> }> = {
+  team_approve: { method: 'team.approve', required: ['session', 'request', 'option', 'reason'], properties: { ...session, request: string, option: string, reason: string } },
   team_spawn: { method: 'team.spawn', required: ['task'], properties: { task: string, vendor: string, transport: string, model: string, effort: string, mode: string, toolAllowlist: { type: 'array', items: string } } },
   team_roster: { method: 'team.tree', properties: {} },
   team_status: { method: 'team.status', required: ['session'], properties: session },

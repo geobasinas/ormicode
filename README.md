@@ -1409,6 +1409,7 @@ secrets:
 | `team_send` | Message parent or sibling |
 | `team_reply` | Answer a message |
 | `team_inbox` | Read unread messages |
+| `team_approve` | Parent: answer a child's offered once-only approval option with a reason |
 | `team_cancel` | Cancel a child's turn |
 | `team_reassign` | Cancel and give a new task |
 | `team_close` | End the child |
@@ -1423,6 +1424,8 @@ Parent-only except `team_send`, `team_reply`, `team_inbox`, `team_board_read`, `
 **Inheritance:** children get the parent's MCP servers, skills and permission mode. The parent picks agent, model, effort, mode and tool allowlist per child. Children never see the parent's transcript — just their task and the board.
 
 **Approvals:** the parent answers nearly all children's approvals (only offered options, never "always"). Destructive ones come to you. Each is journaled as parent-decided with a reason. Children can't approve for each other.
+
+**Approval routing (implemented):** safe child approvals arrive as JSON team inbox messages with the request id, child, tool details and offered once-only options. `team_approve {session, request, option, reason}` wraps authenticated, parent-only `team.approve`; unoffered, always/session-wide and repeat decisions are rejected. Delegated requests are journaled as `team_approval_request`, not user approvals, and do not enter Needs You; `team_status` / `team_wait` still report the child's approval wait. The decision records the parent actor, `parentDecided` and reason. Existing destructive flags and the shared command classifier (including `destructive.json`) keep dangerous requests with the user. Unknown option scopes, an unavailable/archived parent or failed parent delivery also use the user path; losing the parent returns its outstanding requests to the user. No session-wide permission is granted.
 
 **Control**
 - The parent can cancel and reassign a child.
@@ -1441,7 +1444,7 @@ Parent-only except `team_send`, `team_reply`, `team_inbox`, `team_board_read`, `
 
 **Resuming:** a team is one carry-over item. Resuming wakes the parent, then children as needed (or all at once if you ask).
 
-**Teams implementation status:** migration `0008-teams.sql` + `session-store` persist teams and messages; `team-core` owns limits, permissions and the board. The daemon's `team.*` methods and 14 `team_*` MCP tools ship isolated-worktree spawn, roster/status/wait, send/reply/inbox (idle delivery, next-prompt delivery while busy, urgent interrupt), board append/current state, cancel/reassign/close, diff and journal report. Limits read the account settings table; child tools are permission-checked in the daemon. Per-child tool allowlists return `agent.unsupported` (no portable adapter contract yet); MCP and skills use the existing session configuration path. Still deferred: parent approval delegation, the 10-minute silence nudge, `ask_user` / `open_pr`, parentless-children UI, resume ordering, all desktop UI and the controller server.
+**Teams implementation status:** migration `0008-teams.sql` + `session-store` persist teams and messages; `team-core` owns limits, permissions and the board. The daemon's `team.*` methods and 15 `team_*` MCP tools ship isolated-worktree spawn, roster/status/wait, send/reply/inbox (idle delivery, next-prompt delivery while busy, urgent interrupt), board append/current state, cancel/reassign/close, diff, journal report and parent approval delegation with destructive/parentless fallback to the user. Limits read the account settings table; child tools are permission-checked in the daemon. Per-child tool allowlists return `agent.unsupported` (no portable adapter contract yet); MCP and skills use the existing session configuration path. Still deferred: the 10-minute silence nudge, `ask_user` / `open_pr`, parentless-children UI, resume ordering, all desktop UI and the controller server.
 
 **Actor proof:** every `team.*` call requires its actor's worker MCP credential, verified by the daemon before actor lookup. Self-asserted session ids, including from socket/relay clients, are not proof. See [MCP](#mcp) for credential lifetime and ownership checks.
 

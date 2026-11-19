@@ -204,7 +204,7 @@ async function waitFor(link: Awaited<ReturnType<typeof connect>>, session: strin
     link.onFrame = frame => {
       if (frame.type !== 'evt') return;
       const body = frame.body as Record<string, unknown>;
-      if (until === 'approval' && (body.kind === 'approval_request' || body.kind === 'question_request')) void done('awaiting_approval');
+      if (until === 'approval' && ['approval_request', 'team_approval_request', 'question_request'].includes(String(body.kind))) void done('awaiting_approval');
       if (body.kind === 'turn_end' && until !== 'approval') void done('idle');
       if (body.kind === 'done' || (until === 'done' && body.kind === 'turn_end')) void done('done');
       if (body.kind === 'error') void done(`error:${String(body.code ?? 'unknown')}`);

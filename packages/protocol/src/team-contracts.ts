@@ -11,6 +11,7 @@ const message = z.object({
 });
 const child = z.object({ session, state: text, lastActivity: timestampSchema, tokens: z.nullable(z.number()) });
 export const teamRequests = {
+  'team.approve': z.object({ ...target, request: idSchema('req'), option: nonEmpty, reason: nonEmpty }),
   'team.spawn': z.object({ actor: session, task: nonEmpty, vendor: z.optional(nonEmpty), transport: z.optional(nonEmpty), model: z.optional(nonEmpty), effort: z.optional(nonEmpty), mode: z.optional(nonEmpty), toolAllowlist: z.optional(z.array(nonEmpty)) }),
   'team.tree': z.object({ actor: session }),
   'team.status': z.object(target),
@@ -24,6 +25,7 @@ export const teamRequests = {
   'team.report': z.object(target),
 } as const;
 export const teamResponses = {
+  'team.approve': z.object({ decided: z.boolean() }),
   'team.spawn': z.object({ team, session }),
   'team.tree': z.object({ team, parent: session, children: z.array(child) }),
   'team.status': child,

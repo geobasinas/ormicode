@@ -8,7 +8,7 @@ import { replay, setCursor } from '@ormicode/journal';
 import { listDevices, renameDevice, revokeDevice } from '@ormicode/session-store';
 import { handleJoin, type Pairing } from './pair.ts';
 import { handoffMethod } from './handoff-methods.ts';
-import { handoffRequest, resolveHandoffApproval } from './handoff-dispatch.ts';
+import { handoffRequest } from './handoff-dispatch.ts';
 import type { RelayClient } from './relay.ts';
 import { join } from 'node:path';
 import { rmSync } from 'node:fs';
@@ -48,6 +48,7 @@ import type { AgentBrowser } from './agent-browser.ts';
 import { browserMethod } from './browser-methods.ts';
 import { teamMethod } from './team-methods.ts';
 import { authorizeMcp, type McpCredentials } from './mcp-auth.ts';
+import type { TeamApprovals } from './team-approvals.ts';
 
 /** What a client transport must do: send frames and answer requests. */
 export interface ClientLink {
@@ -60,6 +61,7 @@ export interface ClientLink {
 export interface Client { link: ClientLink; subscriptions: Set<string>; device: string }
 export interface DispatchCtx {
   mcpCredentials: McpCredentials;
+  teamApprovals: TeamApprovals;
   db: Store;
   notesDir: string;
   startedAt: number;
@@ -267,6 +269,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         else await ctx.agentBrowser.closeSession(session);
         await ctx.services.stopSession(session);
         archiveSession(db, session);
+        ctx.teamApprovals.unavailable(session);
         releaseForSession(db, session);
         // Scratch sessions own their folder; delete removes it (archive keeps it).
         const row = getSession(db, session);
@@ -330,12 +333,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         return res?.type === 'res' ? client.link.reply(id, { interrupted: true }) : client.link.replyError(id, 'agent.unsupported', 'abort');
       }
       case 'session.decide': {
-        const session = String(body.session);
-        const request = String(body.request);
-        if (resolveHandoffApproval(ctx, session, request, String(body.option)))
-          return client.link.reply(id, { decided: true });
-        const res = await ctx.toWorker(session, 'worker.decide', { request, option: body.option });
-        return res?.type === 'res' ? client.link.reply(id, { decided: true }) : client.link.replyError(id, 'agent.unsupported', 'decide');
+        return await ctx.teamApprovals.userDecision(client, id, body);
       }
       case 'session.subscribe': {
         const session = String(body.session);

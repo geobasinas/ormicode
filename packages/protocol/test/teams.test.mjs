@@ -5,6 +5,7 @@ import { newId, parseRequestBody, parseResponseBody, parseEventBody } from '../s
 test('team contracts validate actors, targets, board actions and journal events', () => {
   const actor = newId('s'), child = newId('s'), team = newId('t');
   for (const [method, body] of [
+    ['team.approve', { actor, session: child, request: newId('req'), option: 'allow', reason: 'safe' }],
     ['team.spawn', { actor, task: 'implement' }], ['team.tree', { actor }], ['team.status', { actor, session: child }],
     ['team.message', { actor, to: child, text: 'hello' }], ['team.inbox', { actor }],
     ['team.board', { actor, action: 'append', text: '' }], ['team.cancel', { actor, session: child }],
@@ -15,11 +16,13 @@ test('team contracts validate actors, targets, board actions and journal events'
   assert.equal(parseRequestBody('team.spawn', { actor: 'wrong', task: 'task' }).success, false);
   assert.equal(parseRequestBody('team.board', { actor, action: 'replace' }).success, false);
   assert.equal(parseRequestBody('team.cancel', { actor }).success, false);
+  assert.equal(parseRequestBody('team.approve', { actor, session: child, request: newId('req'), option: 'allow', reason: '' }).success, false);
   assert.equal(parseResponseBody('team.spawn', { team, session: child }).success, true);
   assert.equal(parseResponseBody('team.report', { text: '' }).success, true);
   assert.equal(parseResponseBody('team.inbox', { messages: [] }).success, true);
   assert.equal(parseResponseBody('team.status', { session: child, state: 'idle', lastActivity: 0, tokens: null }).success, true);
   for (const body of [
+    { kind: 'team_approval_request', parent: actor, request: newId('req'), options: [{ id: 'allow', label: 'Allow' }] },
     { kind: 'agent_spawned', team, child },
     { kind: 'team_message', team, from: actor, to: child, message: newId('q'), quiet: true },
     { kind: 'board_entry', team, actor, action: 'append', text: 'finding' },

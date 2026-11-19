@@ -23,6 +23,7 @@ import { serve, defaultSocketPath, ormicodeDir, type Link } from './socket.ts';
 import { allocateSessionPorts } from './session-ports.ts';
 import { workerEnvironment } from './worker-env.ts';
 import { McpCredentials } from './mcp-auth.ts';
+import { TeamApprovals } from './team-approvals.ts';
 import { PreviewProxy } from './preview-proxy.ts';
 import { Services } from './services.ts';
 import { AgentBrowser } from './agent-browser.ts';
@@ -39,6 +40,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   const storePath = opts.storePath ?? process.env.ORMICODE_STORE ?? join(ormicodeDir(), 'store.db');
   const db = openStore(storePath);
   const mcpCredentials = opts.mcpCredentials ?? new McpCredentials();
+  let dispatchCtx: DispatchCtx;
   const previewProxy = new PreviewProxy();
   await previewProxy.listen();
   if (socketPath !== defaultSocketPath() && existsSync(socketPath)) rmSync(socketPath);
@@ -75,6 +77,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   };
   const record = (session: string, kind: string, payload: Record<string, unknown>, ts?: number, origin?: string) => {
     if (closing) return;
+    [kind, payload] = dispatchCtx?.teamApprovals.event(session, kind, payload) ?? [kind, payload];
     const { frame } = append(db, session, { kind, payload: { kind, ...secrets.redact(session, mcpCredentials.redact(payload)) }, ...(ts ? { ts } : {}), ...(origin ? { origin } : {}) });
     fanout(session, frame);
     const mapped = stateFor[kind];
@@ -120,6 +123,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     proc.on('exit', code => {
       mcpCredentials.revoke(session, mcpToken);
       if (closing) return;
+      dispatchCtx.teamApprovals.unavailable(session);
       const wasResuming = resuming.delete(session);
       const retryTimer = retryTimers.get(session);
       if (retryTimer) { clearTimeout(retryTimer); retryTimers.delete(session); }
@@ -165,7 +169,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
         break;
       }
       case 'worker.event': {
-        const kind = String(body.kind);
+        let kind = String(body.kind);
         if (kind === 'text_delta' || kind === 'thinking_delta') {
           delta(session, kind, String((body.payload as Record<string, unknown>)?.text ?? ''));
           return answer({ seq: 0 });
@@ -176,7 +180,8 @@ export async function startDaemon(opts: DaemonOptions = {}) {
           return answer({ seq: 0 });
         }
         if (kind === 'turn_start') { handoffsInTurn.delete(session); turnCheckpoints.start(session); }
-        const payload = secrets.redact(session, mcpCredentials.redact(body.payload as Record<string, unknown>));
+        let payload = secrets.redact(session, mcpCredentials.redact(body.payload as Record<string, unknown>));
+        [kind, payload] = dispatchCtx.teamApprovals.event(session, kind, payload);
         const { seq } = append(db, session, { kind, payload: { kind, ...payload }, ts: Number(body.ts) || Date.now() });
         const frameOut = JSON.stringify({ v: 1, type: 'evt', session, seq, ts: Number(body.ts) || Date.now(), body: { kind, ...payload } });
         fanout(session, frameOut);
@@ -221,7 +226,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   };
   const evictWorker = async (session: string, reason: string) => {
     if (closing) return;
-    mcpCredentials.revoke(session);
+    mcpCredentials.revoke(session); dispatchCtx.teamApprovals.unavailable(session);
     const w = workers.get(session);
     const link = workerLinks.get(session);
     if (link) { try { await link.request('worker.evict', { session }, 10_000); } catch { if (w) killTree(w.proc); } }
@@ -231,7 +236,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     setState(db, session, 'idle', reason);
   };
   const stopWorker = async (session: string) => {
-    mcpCredentials.revoke(session);
+    mcpCredentials.revoke(session); dispatchCtx.teamApprovals.unavailable(session);
     const w = workers.get(session);
     if (!w) return;
     const link = workerLinks.get(session);
@@ -298,7 +303,8 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   const pairing = new Pairing();
   const handoffsInTurn = new Map<string, number>();
   let relay: RelayClient | undefined;
-  const dispatchCtx: DispatchCtx = {
+  dispatchCtx = {
+    teamApprovals: new TeamApprovals(() => dispatchCtx, session => workers.has(session) && mcpCredentials.activeFor(session)),
     db, notesDir, startedAt, paused, heldPrompts, lastPrompt, handoffsInTurn, mcpCredentials,
     lastError: () => lastError, liveWorkers: () => workers.size,
     spawnWorker, ensureWorker, stopWorker, setRecapPending: (session, uptoSeq) => recapPending.set(session, uptoSeq), toWorker, sendPrompt, drainQueue,
@@ -358,7 +364,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     link.onClose = () => {
       for (const c of clients) if (c.link === link) { clients.delete(c); dispatchCtx.terminals.drop(c); }
       const s = sessionByLink.get(link);
-      if (s) { workerLinks.delete(s); sessionByLink.delete(link); }
+      if (s) { workerLinks.delete(s); sessionByLink.delete(link); dispatchCtx.teamApprovals.unavailable(s); }
     };
   });
   const addr = server.address();
