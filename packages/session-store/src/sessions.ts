@@ -10,7 +10,7 @@ export interface SessionRow {
   agent_command: string | null; agent_args: string | null;
   model: string | null; effort: string | null; mode: string | null; native_id: string | null;
   cwd: string; worktree: string | null; branch: string | null; base_branch: string | null;
-  base_commit: string | null;
+  base_commit: string | null; team: string | null;
   state: SessionState; reason: string | null; options: string | null; parent: string | null;
   attempt: number; handed_off: number; worker_pid: number | null;
   pinned: number; archived: number; last_seq: number; log_dir: string | null;

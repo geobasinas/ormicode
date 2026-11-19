@@ -7,6 +7,7 @@
  */
 import { connect } from './socket.ts';
 import { newId } from '@ormicode/protocol';
+import { TEAM_TOOLS, callTeamTool } from './team-mcp.ts';
 
 interface JsonRpc { jsonrpc?: string; id?: string | number; method: string; params?: Record<string, unknown> }
 
@@ -14,6 +15,7 @@ const text = (s: string) => ({ content: [{ type: 'text', text: s }] });
 const errText = (s: string) => ({ content: [{ type: 'text', text: s }], isError: true });
 
 export const TOOLS = [
+  ...TEAM_TOOLS,
   { name: 'ormi_sessions', description: 'List sessions in this project, or read one session\'s state', inputSchema: { type: 'object', properties: { session: { type: 'string', description: 'session id to get; omit to list all' } } } },
   { name: 'ormi_start', description: 'Start a sibling session (own worktree) with an agent and prompt. Returns its session id.', inputSchema: { type: 'object', required: ['prompt'], properties: { prompt: { type: 'string' }, vendor: { type: 'string' }, transport: { type: 'string' }, model: { type: 'string' }, effort: { type: 'string' } } } },
   { name: 'ormi_message', description: 'Send a follow-up prompt to a session this one started', inputSchema: { type: 'object', required: ['session', 'text'], properties: { session: { type: 'string' }, text: { type: 'string' } } } },
@@ -88,6 +90,8 @@ export async function serveOrmiMcp(socketPath: string, self: string): Promise<vo
   };
 
   const call = async (name: string, args: Record<string, unknown>): Promise<unknown> => {
+    if (name.startsWith('team_')) return text(await callTeamTool(name, args, self, req,
+      (session, until, timeout) => waitFor(link, session, until, timeout)));
     switch (name) {
       case 'ormi_sessions': {
         if (args.session) return text(JSON.stringify(await req('session.get', { session: args.session })));

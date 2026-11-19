@@ -46,6 +46,7 @@ import { serviceMethod } from './service-methods.ts';
 import type { Services } from './services.ts';
 import type { AgentBrowser } from './agent-browser.ts';
 import { browserMethod } from './browser-methods.ts';
+import { teamMethod } from './team-methods.ts';
 
 /** What a client transport must do: send frames and answer requests. */
 export interface ClientLink {
@@ -100,6 +101,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
   if (!parsed.success) return client.link.replyError(id, parsed.error, method);
   const body = parsed.data as Record<string, unknown>;
   try {
+    if (method.startsWith('team.')) return await teamMethod(ctx, client, id, method, body);
     switch (method) {
       case 'agents.list':
         return client.link.reply(id, { agents: agentList() });

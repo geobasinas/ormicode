@@ -5,6 +5,7 @@ export const errorCodes = [
   'git.dirty_worktree', 'git.failed', 'git.worktree_in_use', 'git.nothing_to_commit', 'git.confirm_required',
   'checkpoint.busy', 'terminal.bad_request', 'relay.rate_limited',
   'prompt.invalid',
+  'team.closed', 'team.forbidden', 'team.limit', 'team.failed', 'team.not_found', 'team.not_member', 'team.invalid', 'team.delivery_failed',
   'handoff.confirm_required', 'handoff.declined', 'handoff.failed',
   'workspace.not_found',
   'service.not_found', 'service.not_running', 'service.failed', 'config.error', 'preview.port_denied',

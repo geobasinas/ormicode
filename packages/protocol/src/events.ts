@@ -7,6 +7,9 @@ const nonEmpty = z.string().check(z.minLength(1));
 const count = z.number().check(z.int(), z.gte(0));
 const quantity = z.number().check(z.gte(0));
 export const eventBodies = {
+  agent_spawned: z.looseObject({ kind: z.literal('agent_spawned'), team: nonEmpty, child: nonEmpty }),
+  team_message: z.looseObject({ kind: z.literal('team_message'), team: nonEmpty, from: nonEmpty, to: nonEmpty, message: nonEmpty, quiet: z.optional(z.boolean()) }),
+  board_entry: z.looseObject({ kind: z.literal('board_entry'), team: nonEmpty, actor: nonEmpty, action: z.enum(['append', 'setState']), text }),
   prompt: z.looseObject({ kind: z.literal('prompt'), text }),
   queue_changed: z.looseObject({
     kind: z.literal('queue_changed'),

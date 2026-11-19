@@ -1,6 +1,8 @@
 import * as z from 'zod/mini';
 import { cursorSchema, jsonObjectSchema, requestIdSchema, sessionIdSchema, idSchema, timestampSchema } from './schema.ts';
 import { portBlock, serviceRequests, serviceResponses, browserRequests, browserResponses } from './service-contracts.ts';
+import { teamRequests, teamResponses } from './team-contracts.ts';
+import { workspaceSchema } from './workspace-schema.ts';
 import { promptContextSchema } from './prompt-context-schema.ts';
 export type { PromptContext } from './prompt-context-schema.ts';
 export type { PreviewConsoleEntry } from './service-contracts.ts';
@@ -47,17 +49,6 @@ const gitPr = z.object({
 export const sessionStateSchema = z.enum([
   'idle', 'starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying',
   'paused_rate_limited', 'interrupted', 'failed', 'done', 'archived',
-]);
-const workspaceSchema = z.union([
-  z.object({ kind: z.literal('current') }),
-  z.object({ kind: z.literal('branch'), branch: nonEmpty, from: z.optional(nonEmpty) }),
-  z.object({ kind: z.literal('checkout'), branch: nonEmpty }),
-  z.object({
-    kind: z.literal('worktree'), branch: nonEmpty, name: z.optional(nonEmpty), includeDirty: z.optional(z.boolean()),
-    skipInclude: z.optional(z.boolean()), skipSetup: z.optional(z.boolean()),
-  }),
-  z.object({ kind: z.literal('existing'), path: nonEmpty }),
-  z.object({ kind: z.literal('scratch') }),
 ]);
 const terminalInfo = z.looseObject({ terminal: nonEmpty, cwd: nonEmpty, shell: nonEmpty, device: z.string(), openedAt: timestampSchema, pid: cursorSchema, exited: z.boolean(), code: z.nullable(z.number()), offset: cursorSchema });
 const priceStatus = z.object({ version: z.nullable(z.string()), source: z.enum(['openrouter', 'cache', 'none']), fetchedAt: z.nullable(timestampSchema), models: cursorSchema, error: z.optional(z.string()) });
@@ -108,6 +99,7 @@ const handoffEstimateSchema = z.object({ ...session, to: handoffTargetSchema, mo
 
 // A registered body schema does not expose the operation; the server must implement it separately.
 export const requestBodies = {
+  ...teamRequests,
   'daemon.status': z.object({}),
   'session.start': z.object({
     machine: idSchema('m'), project: nonEmpty, vendor: nonEmpty, transport: nonEmpty,
@@ -233,6 +225,7 @@ export const requestBodies = {
 } as const;
 
 export const responseBodies = {
+  ...teamResponses,
   'daemon.status': z.object({ version: nonEmpty, uptimeMs: cursorSchema, liveWorkers: cursorSchema, relay: z.enum(['connected', 'disconnected']), lastError: z.nullable(z.string()) }),
   'session.start': z.object({ session: sessionIdSchema }),
   'session.get': detailsSchema,

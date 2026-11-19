@@ -1441,6 +1441,8 @@ Parent-only except `team_send`, `team_reply`, `team_inbox`, `team_board_read`, `
 
 **Resuming:** a team is one carry-over item. Resuming wakes the parent, then children as needed (or all at once if you ask).
 
+**Teams implementation status:** migration `0008-teams.sql` + `session-store` persist teams and messages; `team-core` owns limits, permissions and the board. The daemon's `team.*` methods and 14 `team_*` MCP tools ship isolated-worktree spawn, roster/status/wait, send/reply/inbox (idle delivery, next-prompt delivery while busy, urgent interrupt), board append/current state, cancel/reassign/close, diff and journal report. Limits read the account settings table; child tools are permission-checked in the daemon. Per-child tool allowlists return `agent.unsupported` (no portable adapter contract yet); MCP and skills use the existing session configuration path. Still deferred: parent approval delegation, the 10-minute silence nudge, `ask_user` / `open_pr`, parentless-children UI, resume ordering, all desktop UI and the controller server.
+
 ## Automations
 
 > **Status:** later · **Needs:** [Sessions](#sessions), [GitHub](#github)
@@ -2006,7 +2008,7 @@ services:
 | `ormi_publish` | `artifact.publish` | Publish an [artifact](#artifacts) |
 | `ormi_notes` | `session.getNotes` / `session.setNotes` | Read or write this session's notes |
 | `ormi_ask_user` | approval path | Ask you a question and wait for the answer |
-| Team tools | `team.*` | The `team_*` tools, when the session is a team parent ([Teams](#teams)) |
+| Team tools | `team.*` | The `team_*` tools, with parent/child permissions enforced by the daemon ([Teams](#teams)) |
 
 **Limits:** a session can only message, wait on or hand off sessions it started (plus itself). Sessions started by an agent count toward the pool and team caps. A session started through `ormi_start` records which session asked. Nothing here can touch settings, devices, secrets or the destructive list.
 
@@ -2020,7 +2022,7 @@ A stdio MCP server added to any outside MCP client (Claude Desktop, Cursor, VS C
 
 Every call is journaled with the device as actor, goes through normal approvals, and counts toward pool and team caps. Same thin-wrapper rule: each tool maps to an existing protocol method.
 
-**Built-in server implementation status:** `apps/daemon/src/mcp.ts` + `mcp-serve.ts` implement the `ormi` stdio MCP server (newline-delimited JSON-RPC: `initialize`, `ping`, `tools/list`, `tools/call`). The daemon injects it into every worker via `StartSpec.mcpServers` (`worker-main.ts` builds `{command: node, args: [mcp-serve.ts], env: {ORMICODE_SOCKET, ORMI_SESSION}}` when `ORMICODE_MCP=1`, which `supervisor.ts` sets on every spawn). Shipping tools: `ormi_sessions`, `ormi_start`, `ormi_message`, `ormi_wait`, `ormi_handoff`, `ormi_notes` — the ownership rule is enforced by checking `session.parent` before message/wait, and `session.start` accepts `parent` for the same reason. `ormi_publish`, `ormi_ask_user` and the team tools wait on [Artifacts](#artifacts)/[Teams](#teams) (both *later*). `StartSpec.mcpServers` is honored by `agent-claude-sdk` (`mcpServers` option), `agent-claude-cli` (`--mcp-config` file), and generic/vendor ACP (`session/new|load|resume` via each package's own `acpMcpServers` in `src/options.ts`); adapters without an MCP channel ignore the field.
+**Built-in server implementation status:** `apps/daemon/src/mcp.ts` + `mcp-serve.ts` implement the `ormi` stdio MCP server (newline-delimited JSON-RPC: `initialize`, `ping`, `tools/list`, `tools/call`). The daemon injects it into every worker via `StartSpec.mcpServers` (`worker-main.ts` builds `{command: node, args: [mcp-serve.ts], env: {ORMICODE_SOCKET, ORMI_SESSION}}` when `ORMICODE_MCP=1`, which `supervisor.ts` sets on every spawn). Shipping tools: `ormi_sessions`, `ormi_start`, `ormi_message`, `ormi_wait`, `ormi_handoff`, `ormi_notes` — the ownership rule is enforced by checking `session.parent` before message/wait, and `session.start` accepts `parent` for the same reason. The `team_*` tools wrap the daemon's `team.*` methods ([Teams](#teams)); `ormi_publish` and `ormi_ask_user` still wait on Artifacts / the approval path. `StartSpec.mcpServers` is honored by `agent-claude-sdk` (`mcpServers` option), `agent-claude-cli` (`--mcp-config` file), and generic/vendor ACP (`session/new|load|resume` via each package's own `acpMcpServers` in `src/options.ts`); adapters without an MCP channel ignore the field.
 
 ## Review
 
@@ -3347,7 +3349,7 @@ Example request and response bodies (inside their corresponding envelopes):
 | Models | `models.list`, `refresh`, `addManual`, `setDefault` |
 | Devices | `devices.list`, `revoke`, `rename` |
 | Settings | `settings.get`, `set` |
-| Teams | `team.tree`, `message`, `reply`, `board`, `policy`, `spawn`, `cancel`, `reassign` |
+| Teams | Built: `team.spawn`, `tree`, `status`, `message` (send/reply), `inbox`, `board` (read/append/setState), `cancel`, `reassign`, `close`, `diff`, `report`. Calls carry the calling session as `actor`; child-targeted calls carry `session`. Planned: `policy` |
 | Bots | `bot.list`, `get`, `create`, `update`, `delete`, `message`, `memory.get`, `memory.set`, `template.export`, `template.import` |
 | Automations | `automation.list`, `get`, `save`, `run`, `toggle`, `runs` |
 | MCP | `mcp.list`, `test`, `setScope`, `auth`, `tools` |
