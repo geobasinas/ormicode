@@ -5,6 +5,7 @@ export { DESIGN_ACTIVITY_LIMIT, type DesignActivityItem } from './design-activit
 import { designPageSchema, designPageOperations } from './design-pages.ts';
 import { designFrameLayerFields, designFrameOperationSchemas } from './design-frame-ops.ts';
 import { designTokensSchema, designTokenSetSchema } from './design-inspector.ts';
+import { designCommentInputFields, designCommentReviewFields, designFrameReviewFields, designReviewOperations, designReviewRequests, designReviewResponses } from './design-review.ts';
 
 export const DESIGN_DOCUMENT_BYTES = 96 * 1024;
 export const DESIGN_STORAGE_BYTES = 224 * 1024;
@@ -19,11 +20,12 @@ const html = z.string().check(z.maxLength(24576));
 const styles = z.string().check(z.maxLength(16384));
 const encodedBytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).byteLength;
 const frameFields = { name, x: position, y: position, width: dimension, height: dimension, html, styles, pageId: z.optional(id) };
-export const designFrameSchema = z.strictObject({ id, ...frameFields, ...designFrameLayerFields });
+export const designFrameSchema = z.strictObject({ id, ...frameFields, ...designFrameLayerFields, ...designFrameReviewFields });
 export const designCommentSchema = z.strictObject({
   id, frameId: z.nullable(id), element: z.optional(z.string().check(z.maxLength(240))),
   text: z.string().check(z.minLength(1), z.maxLength(2000)), resolved: z.boolean(),
   session: sessionIdSchema, createdAt: z.number().check(z.gte(0)),
+  ...designCommentReviewFields,
 });
 export const designDocumentSchema = z.strictObject({
   version: z.literal(1), name, revision,
@@ -39,6 +41,7 @@ export const designStorageSchema = z.strictObject({
 }).check(z.refine(stored => encodedBytes(stored) <= DESIGN_STORAGE_BYTES));
 export const designOperationSchema = z.union([
   ...designPageOperations,
+  ...designReviewOperations,
   z.strictObject({ type: z.literal('frame.add'), ...frameFields }),
   z.strictObject({ type: z.literal('frame.update'), frameId: id, patch: z.partial(z.strictObject(frameFields)) }),
   z.strictObject({ type: z.literal('frame.remove'), frameId: id }),
@@ -46,7 +49,7 @@ export const designOperationSchema = z.union([
   z.strictObject({ type: z.literal('direction.select'), frameId: z.nullable(id) }),
   z.strictObject({ type: z.literal('board.rename'), name }),
   designTokenSetSchema,
-  z.strictObject({ type: z.literal('comment.add'), frameId: z.nullable(id), element: z.optional(z.string().check(z.maxLength(240))), text: z.string().check(z.minLength(1), z.maxLength(2000)) }),
+  z.strictObject({ type: z.literal('comment.add'), frameId: z.nullable(id), element: z.optional(z.string().check(z.maxLength(240))), text: z.string().check(z.minLength(1), z.maxLength(2000)), ...designCommentInputFields }),
   z.strictObject({ type: z.literal('comment.resolve'), commentId: id, resolved: z.boolean() }),
   z.strictObject({ type: z.literal('comment.remove'), commentId: id }),
   ...designFrameOperationSchemas,
@@ -55,6 +58,7 @@ const board = { session: sessionIdSchema, slug: designSlugSchema };
 const history = z.array(designHistorySummarySchema).check(z.maxLength(DESIGN_HISTORY_LIMIT));
 const result = z.object({ document: designDocumentSchema, history });
 export const designRequests = {
+  ...designReviewRequests,
   'design.list': z.object({ session: sessionIdSchema }),
   'design.get': z.object(board),
   'design.create': z.object({ ...board, name }),
@@ -64,6 +68,7 @@ export const designRequests = {
   'design.restore': z.object({ ...board, expectedRevision: revision, targetRevision: revision }),
 };
 export const designResponses = {
+  ...designReviewResponses,
   'design.list': z.object({ boards: z.array(z.object({ slug: designSlugSchema, name, revision, frames: z.number().check(z.int(), z.gte(0), z.lte(24)) })).check(z.maxLength(100)) }),
   'design.get': result, 'design.create': result, 'design.update': result, 'design.restore': result,
   'design.history': z.object({ history }),

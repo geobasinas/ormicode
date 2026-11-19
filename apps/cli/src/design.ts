@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { withDaemon } from './daemon.ts';
 
-const USAGE = 'usage: ormi design list <session> | get <session> <slug> | create <session> <slug> <name> | update <session> <slug> <expected-revision> <operations.json|-> | history <session> <slug> | restore <session> <slug> <expected-revision> <target-revision>';
+const USAGE = 'usage: ormi design list <session> | get <session> <slug> | create <session> <slug> <name> | update <session> <slug> <expected-revision> <operations.json|-> | history <session> <slug> | versions <session> <slug> <frame-id> | mentionable <session> | restore <session> <slug> <expected-revision> <target-revision>';
 
 function operationsFrom(path: string): unknown[] {
   const input = path === '-' ? readFileSync(0, 'utf8') : readFileSync(path, 'utf8');
@@ -18,6 +18,8 @@ export async function designCommand(verb: string | undefined, args: string[]): P
   let body: Record<string, unknown>;
   try {
     if (verb === 'list' && args.length === 1) { method = 'design.list'; body = { session: args[0] }; }
+    else if (verb === 'mentionable' && args.length === 1) { method = 'design.mentionable'; body = { session: args[0] }; }
+    else if (verb === 'versions' && args.length === 3) { method = 'design.frameVersions'; body = { session: args[0], slug: args[1], frameId: args[2] }; }
     else if (verb === 'get' && args.length === 2) { method = 'design.get'; body = { session: args[0], slug: args[1] }; }
     else if (verb === 'create' && args.length === 3) { method = 'design.create'; body = { session: args[0], slug: args[1], name: args[2] }; }
     else if (verb === 'history' && args.length === 2) { method = 'design.history'; body = { session: args[0], slug: args[1] }; }

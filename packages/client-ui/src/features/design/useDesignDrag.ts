@@ -10,10 +10,11 @@ type Gesture = Origin & (
 );
 type DragPreview = { id: string; rect: Rect; guides: SnapGuide[] };
 
-export function useDesignDrag({ board, view, panTool, setView, chooseFrame, canDrag, onCommit, onConflict, snapLines, pageFilter }: {
+export function useDesignDrag({ board, view, panTool, commentTool, setView, chooseFrame, canDrag, onCommit, onConflict, snapLines, pageFilter }: {
   board: RefObject<DesignDocument | null>;
   view: View;
   panTool: boolean;
+  commentTool?: boolean;
   setView: Dispatch<SetStateAction<View>>;
   chooseFrame(id: string): boolean;
   canDrag(): boolean;
@@ -31,7 +32,7 @@ export function useDesignDrag({ board, view, panTool, setView, chooseFrame, canD
     return { pointer: event.pointerId, x: event.clientX, y: event.clientY, view };
   };
   const startPan = (event: PointerEvent) => {
-    if (gesture.current || (event.button !== 0 && event.button !== 1)) return;
+    if (commentTool || gesture.current || (event.button !== 0 && event.button !== 1)) return;
     if (!panTool && event.button !== 1 && event.target !== event.currentTarget) return;
     event.preventDefault();
     gesture.current = { ...capture(event), type: 'pan' };
@@ -39,7 +40,7 @@ export function useDesignDrag({ board, view, panTool, setView, chooseFrame, canD
   };
   const startDrag = (event: PointerEvent, type: DragKind, frame: DesignFrame) => {
     const document = board.current;
-    if (gesture.current || !document || event.button !== 0 || panTool || !canDrag() || !chooseFrame(frame.id)) return;
+    if (commentTool || gesture.current || !document || event.button !== 0 || panTool || !canDrag() || !chooseFrame(frame.id)) return;
     event.preventDefault();
     event.stopPropagation();
     gesture.current = { ...capture(event), type, frame, board: document, rect: frame };

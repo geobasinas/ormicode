@@ -1,11 +1,11 @@
 import { useEffect, type CSSProperties, type DragEvent, type PointerEvent, type ReactNode, type RefObject } from 'react';
-import { ChevronDown, Crosshair, Frame, Hand, Minus, MousePointer2, Plus, Smartphone } from 'lucide-react';
+import { ChevronDown, Crosshair, Frame, Hand, MessageSquarePlus, Minus, MousePointer2, Plus, Smartphone } from 'lucide-react';
 import type { DesignFrame } from '@ormicode/protocol';
 import type { Rect, View } from './design-model.ts';
 import type { DragKind, SnapGuide } from './design-snap.ts';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '../../components/ui/dropdown-menu.tsx';
 
-export type CanvasTool = 'select' | 'pan';
+export type CanvasTool = 'select' | 'pan' | 'comment';
 type Props = {
   canvas: RefObject<HTMLDivElement | null>;
   frames: DesignFrame[];
@@ -80,6 +80,7 @@ export function DesignCanvas(props: Props) {
         })}
         {props.overlay}
       </div>
+      {props.overlay}
       {props.guides?.map(({ axis, at, from, to }) => {
         const length = (to - from) * view.scale;
         const style = axis === 'x'
@@ -95,6 +96,7 @@ export function DesignCanvas(props: Props) {
       <div className="design-float" role="group" aria-label="Canvas tools">
         <button className="design-icon-button" type="button" title="Select" aria-label="Select tool" aria-pressed={tool === 'select'} onClick={() => props.onTool('select')}><MousePointer2 size={16} /></button>
         <button className="design-icon-button" type="button" title="Pan" aria-label="Pan tool" aria-pressed={tool === 'pan'} onClick={() => props.onTool('pan')}><Hand size={16} /></button>
+        <button className="design-icon-button" type="button" title="Comment" aria-label="Comment tool" aria-pressed={tool === 'comment'} onClick={() => props.onTool('comment')}><MessageSquarePlus size={16} /></button>
         {props.insert ? <><span className="design-divider" />{props.insert}</> : null}
         {props.drawingTools}
       </div>

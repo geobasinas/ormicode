@@ -8,3 +8,4 @@ export * from './design-pages.ts';
 export * from './design-frame-ops.ts';
 export * from './design-inspector.ts';
 export * from './design-inspector-style.ts';
+export * from './design-review.ts';

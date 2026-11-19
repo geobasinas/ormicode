@@ -27,6 +27,12 @@ import { FrameOverlay } from './frames/FrameOverlay.tsx';
 import { FrameToolbar } from './frames/FrameToolbar.tsx';
 import { FrameLayerControls } from './frames/FrameLayerControls.tsx';
 import { useDesignArtwork } from './useDesignArtwork.tsx';
+import { useDesignReview } from './review/useDesignReview.ts';
+import { DesignReviewPanel } from './review/DesignReviewPanel.tsx';
+import { DesignAnnotations } from './review/DesignAnnotations.tsx';
+import { DesignFrameApproval } from './review/DesignFrameApproval.tsx';
+import { DesignFrameVersions } from './review/DesignFrameVersions.tsx';
+import type { ReviewComment } from './review/review-model.ts';
 
 type BoardSummary = { slug: string; name: string; revision: number; frames: number };
 type Result = { document: DesignDocument; history: DesignHistorySummary[] };
@@ -172,6 +178,7 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
     } catch (reason) { if (token === generation.current) setError(reason instanceof Error ? reason.message : String(reason)); return false; }
     finally { if (token === generation.current) { savingRef.current = false; setSaving(false); } }
   }, [session, transport, setCurrent, reloadCurrent, selectedFrame, frameHistory.record]);
+  const review = useDesignReview(session, slug, async operations => Boolean(await mutate(operations)));
 
   const createBoard = async () => {
     if (dirtyRef.current) { setError('Save or discard the unsaved HTML before creating another board.'); return; }
@@ -238,7 +245,14 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
     });
   };
 
-  const drag = useDesignDrag({ board, view, setView, panTool: tool === 'pan', chooseFrame,
+  const openThread = (comment: ReviewComment) => {
+    if (comment.frameId && !chooseFrame(comment.frameId)) return;
+    const frame = document?.frames.find(item => item.id === comment.frameId);
+    if (frame) setView(fitCanvas([frame], canvasSize.width, canvasSize.height));
+    if (comment.frameId && comment.path) setSelectionRequest({ frameId: comment.frameId, path: comment.path });
+    review.setThread(comment.id); setTab('feedback'); setInspectorOpen(true);
+  };
+  const drag = useDesignDrag({ board, view, setView, panTool: tool === 'pan', commentTool: tool === 'comment', chooseFrame,
     pageFilter: frame => (frame.pageId ?? 'default') === pages.active.id, snapLines: () => viewport.options.guides ? pages.active.guides ?? [] : [],
     canDrag: () => !savingRef.current,
     onCommit: operation => void mutate([operation]),
@@ -368,7 +382,8 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
         onPointerDown={event => { if (tool === 'select' && event.button === 0 && event.target === event.currentTarget && !event.altKey) frameOps.gestures.startMarquee(event); else drag.startPan(event); }}
         onPointerMove={event => { if (!frameOps.gestures.move(event)) drag.move(event); }} onPointerUp={event => { if (!frameOps.gestures.end(event)) drag.end(event); }}
         onPointerCancel={event => { if (!frameOps.gestures.cancel(event)) drag.cancel(event); }} onWheel={handleWheel}
-        overlay={<FrameOverlay frames={frameOps} />} controls={document ? <FrameToolbar frames={frameOps} history={frameHistory} disabled={saving || sourceDirty} /> : null}
+        overlay={<><FrameOverlay frames={frameOps} />{document ? <DesignAnnotations document={document} view={view} frameRect={frameRect} commenting={tool === 'comment'} onThread={openThread}
+          onCancel={() => { setTool('select'); review.setPending(null); }} onTarget={target => { review.begin(target); setTool('select'); setTab('feedback'); setInspectorOpen(true); }} /> : null}</>} controls={document ? <FrameToolbar frames={frameOps} history={frameHistory} disabled={saving || sourceDirty} /> : null}
         onDrop={frameOps.drop} onDragOver={frameOps.dragOver}
         onNudge={(frame, kind, dx, dy) => {
           if (frameOps.nudge(frame, kind, dx, dy)) return;
@@ -403,6 +418,11 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
         </div></div> : null} />
     </section>
     {inspectorOpen ? <DesignInspector tab={tab} onTab={setTab} document={document} activeFrame={activeFrame} selectedElement={selectedElement}
+      approval={activeFrame ? <DesignFrameApproval frame={activeFrame} sessions={review.sessions} disabled={saving || sourceDirty} onApprove={status => void review.approve(activeFrame.id, status)} /> : null}
+      versions={activeFrame && document ? <DesignFrameVersions session={session} slug={slug} revision={document.revision} frame={activeFrame} disabled={saving || sourceDirty} onRestore={revision => void review.restore(activeFrame.id, revision)} /> : null}
+      review={document ? <DesignReviewPanel key={session + ':' + slug} document={document} review={review} disabled={saving || sourceDirty} onThread={openThread}
+        target={review.pending ?? { frameId: activeFrame?.id ?? null, ...(selectedElement ? { path: selectedElement.path, element: selectedElement.tag } : {}) }}
+        onChat={text => { onShowSidebar(); pushToComposer(session, { text }); }} /> : null}
       onElementText={text => setSelectedElement(current => current ? { ...current, text } : null)} onSaveText={sendText} onStyle={sendStyle}
       onAlign={(axis, alignment) => { if (selectedElement && !savingRef.current && !dirtyRef.current) bridge.current('alignElement', { id: selectedElement.id, axis, alignment }); }}
       onExportLayer={() => { if (selectedElement) bridge.current('exportLayer', { id: selectedElement.id }); }}

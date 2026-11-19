@@ -3,6 +3,7 @@ import type { DesignDocument, DesignFrame, DesignHistorySummary, DesignOperation
 import type { ElementSelection } from './DesignFramePreview.tsx';
 import { DesignElementStyles } from './DesignElementStyles.tsx';
 import type { LayerAlignment, LayerAxis } from './design-inspector-model.ts';
+import type { ReactNode } from 'react';
 
 const tabs = [
   { id: 'inspect', label: 'Design', icon: SlidersHorizontal },
@@ -40,6 +41,9 @@ type Props = {
   onChat(text: string): void;
   onMutate(operations: DesignOperation[]): void;
   saving: boolean;
+  approval?: ReactNode;
+  review?: ReactNode;
+  versions?: ReactNode;
 };
 
 const geometry = [
@@ -105,6 +109,7 @@ export function DesignInspector(props: Props) {
             <button className="design-button" type="button" disabled={locked} aria-pressed={working}
               onClick={() => props.onMutate([{ type: 'direction.select', frameId: working ? null : frame.id }])}><Star size={14} />{working ? 'Working direction' : 'Set as working direction'}</button>
           </section>
+          {props.approval}
           <p className="design-inspector-hint">Select an element on the canvas or in Layers to edit its properties.</p>
         </>}
       </> : null}
@@ -115,7 +120,7 @@ export function DesignInspector(props: Props) {
         <div className="design-inline"><button className="design-button primary" type="button" disabled={!sourceDirty || props.sourceConflict || saving} onClick={props.onSaveSource}>Save source</button><button className="design-button" type="button" disabled={!sourceDirty || saving} onClick={props.onDiscardSource}>Discard</button></div>
       </section> : null}
       {tab === 'html' && !frame && !sourceDirty ? <p className="design-inspector-hint">Select a frame to edit its source.</p> : null}
-      {tab === 'feedback' && document ? <section className="design-properties">
+      {tab === 'feedback' && document ? props.review ?? <section className="design-properties">
         <h3>{frame ? 'Feedback on ' + frame.name : 'Board feedback'}</h3>
         <textarea className="design-input" aria-label="Frame feedback" rows={4} placeholder="Describe a change…" value={props.feedback} onChange={event => props.onFeedback(event.target.value)} />
         <button className="design-button" type="button" disabled={!props.feedback.trim() || locked} onClick={props.onAddComment}>Save feedback</button>
@@ -132,6 +137,7 @@ export function DesignInspector(props: Props) {
           </article>;
         })}
       </section> : null}
+      {tab === 'history' ? props.versions : null}
       {tab === 'history' && document ? <section className="design-properties">
         <h3>Version history</h3>
         {[...props.history].reverse().map(item => <article key={item.revision} className="design-note">

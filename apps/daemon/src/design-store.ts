@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { applyPageOperation, clearPageStart, materializePages, validatePages } from './design-pages.ts';
 import { DesignError } from './design-error.ts';
 import { applyFrameOperation, normalizeGroups } from './design-frame-ops.ts';
+import { applyReviewOperation, finalizeReview, normalizeReview, type ReviewContext } from './design-review.ts';
 import { DESIGN_DOCUMENT_BYTES, DESIGN_STORAGE_BYTES, DESIGN_HISTORY_LIMIT, designDocumentSchema, designStorageSchema, designSlugSchema, type DesignDocument, type DesignOperation, type DesignStorage } from '@ormicode/protocol';
 import { setDesignToken } from './design-inspector-store.ts';
 
@@ -98,7 +99,7 @@ function write(path: string, stored: DesignStorage): void {
 }
 
 export function designResult(stored: DesignStorage) {
-  return { document: stored.document, history: stored.history.map(({ revision, at, summary }) => ({ revision, at, summary })) };
+  return { document: normalizeReview(stored.document), history: stored.history.map(({ revision, at, summary }) => ({ revision, at, summary })) };
 }
 
 export function getDesign(cwd: string, slug: string): DesignStorage { return read(boardPath(cwd, slug)); }
@@ -130,12 +131,13 @@ export function createDesign(cwd: string, slug: string, name: string): DesignSto
   return stored;
 }
 
-function apply(document: DesignDocument, operations: DesignOperation[], session: string): void {
+function apply(document: DesignDocument, operations: DesignOperation[], context: ReviewContext): void {
   const frame = (id: string) => document.frames.find(item => item.id === id) ?? fail(`Frame not found: ${id}`);
   const comment = (id: string) => document.comments.find(item => item.id === id) ?? fail(`Comment not found: ${id}`);
   for (const operation of operations) {
     if (applyPageOperation(document, operation)) { validateDocument(document); continue; }
     if ((operation.type === 'frame.add' && operation.pageId) || (operation.type === 'frame.update' && operation.patch.pageId)) materializePages(document);
+    if (applyReviewOperation(document, operation, context)) continue;
     switch (operation.type) {
       case 'frame.add': { const { type: _, ...fields } = operation; document.frames.push({ ...fields, ...(document.pages ? { pageId: fields.pageId ?? document.pages[0]!.id } : {}), id: randomUUID() }); break; }
       case 'frame.update':
@@ -152,11 +154,6 @@ function apply(document: DesignDocument, operations: DesignOperation[], session:
       case 'direction.select': if (operation.frameId !== null) frame(operation.frameId); document.workingFrameId = operation.frameId; break;
       case 'board.rename': document.name = operation.name; break;
       case 'token.set': setDesignToken(document, operation.token, fail); break;
-      case 'comment.add':
-        if (operation.frameId !== null) frame(operation.frameId);
-        document.comments.push({ id: randomUUID(), frameId: operation.frameId, ...(operation.element ? { element: operation.element } : {}), text: operation.text, resolved: false, session, createdAt: Date.now() });
-        break;
-      case 'comment.resolve': comment(operation.commentId).resolved = operation.resolved; break;
       case 'comment.remove': comment(operation.commentId); document.comments = document.comments.filter(item => item.id !== operation.commentId); break;
       default: applyFrameOperation(document, operation, fail);
     }
@@ -164,7 +161,7 @@ function apply(document: DesignDocument, operations: DesignOperation[], session:
   normalizeGroups(document);
 }
 
-export function updateDesign(cwd: string, slug: string, expectedRevision: number, change: DesignOperation[] | number, session: string): DesignStorage {
+export function updateDesign(cwd: string, slug: string, expectedRevision: number, change: DesignOperation[] | number, context: ReviewContext): DesignStorage {
   const path = boardPath(cwd, slug);
   const stored = read(path);
   if (stored.document.revision !== expectedRevision) throw new DesignError('design.conflict', `Expected revision ${expectedRevision}; current revision is ${stored.document.revision}. Reload and reconcile; do not automatically retry.`);
@@ -173,7 +170,8 @@ export function updateDesign(cwd: string, slug: string, expectedRevision: number
     const entry = stored.history.find(item => item.revision === change);
     if (!entry) throw new DesignError('design.not_found', 'Restore point is no longer retained');
     document = structuredClone(entry.document);
-  } else apply(document, change, session);
+  } else apply(document, change, { ...context, history: stored.history });
+  finalizeReview(stored.document, document, { restore: typeof change === 'number' });
   document.revision = stored.document.revision + 1;
   validateDocument(document);
   const history = [...stored.history, { revision: stored.document.revision, at: Date.now(), summary: typeof change === 'number' ? `Restore revision ${change}` : change.map(item => item.type).join(', ').slice(0, 120), document: stored.document }].slice(-DESIGN_HISTORY_LIMIT);
