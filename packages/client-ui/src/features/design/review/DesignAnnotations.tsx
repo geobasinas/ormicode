@@ -4,8 +4,8 @@ import type { View } from '../design-model.ts';
 import { annotationAnchor, approvalLabel, type CommentTarget, type ReviewComment } from './review-model.ts';
 import './review.css';
 
-export function DesignAnnotations({ document, view, commenting, frameRect, onTarget, onThread, onCancel }: {
-  document: DesignDocument; view: View; commenting: boolean; frameRect(frame: DesignFrame): DesignFrame | { x: number; y: number; width: number; height: number };
+export function DesignAnnotations({ document, frames: pageFrames, pageId, view, commenting, frameRect, onTarget, onThread, onCancel }: {
+  document: DesignDocument; frames: DesignFrame[]; pageId: string; view: View; commenting: boolean; frameRect(frame: DesignFrame): DesignFrame | { x: number; y: number; width: number; height: number };
   onTarget(target: CommentTarget): void; onThread(comment: ReviewComment): void; onCancel(): void;
 }) {
   useEffect(() => {
@@ -14,8 +14,8 @@ export function DesignAnnotations({ document, view, commenting, frameRect, onTar
     window.addEventListener('keydown', escape);
     return () => window.removeEventListener('keydown', escape);
   }, [commenting, onCancel]);
-  const frames = document.frames.map(frame => ({ ...frame, ...frameRect(frame) }));
-  const open = document.comments.filter(comment => !comment.resolved);
+  const frames = pageFrames.map(frame => ({ ...frame, ...frameRect(frame) }));
+  const open = document.comments.filter(comment => !comment.resolved && (comment.frameId !== null || (comment.pageId ?? 'default') === pageId));
   return <>
     <div className="review-annotations">
       {open.map((comment, index) => {
@@ -34,7 +34,7 @@ export function DesignAnnotations({ document, view, commenting, frameRect, onTar
       const x = Math.max(-100000, Math.min(100000, Math.round((event.clientX - rect.left - view.x) / view.scale)));
       const y = Math.max(-100000, Math.min(100000, Math.round((event.clientY - rect.top - view.y) / view.scale)));
       const frame = [...frames].reverse().find(item => x >= item.x && x <= item.x + item.width && y >= item.y && y <= item.y + item.height);
-      onTarget(frame ? { frameId: frame.id, point: { x: x - frame.x, y: y - frame.y } } : { frameId: null, point: { x, y } });
+      onTarget(frame ? { frameId: frame.id, point: { x: x - frame.x, y: y - frame.y } } : { frameId: null, pageId, point: { x, y } });
     }} /> : null}
   </>;
 }

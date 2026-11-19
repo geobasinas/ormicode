@@ -16,7 +16,7 @@ type Props = {
   panning: boolean;
   guides?: SnapGuide[];
   onTool(tool: CanvasTool): void;
-  frameRect(frame: DesignFrame): Rect;
+  frameRect(frame: DesignFrame): Rect & { rotation?: number };
   preview(frame: DesignFrame): ReactNode;
   onPointerDown(event: PointerEvent<HTMLDivElement>): void;
   onPointerMove(event: PointerEvent<HTMLDivElement>): void;
@@ -30,6 +30,7 @@ type Props = {
   onFitSelection?: () => void;
   empty?: ReactNode;
   insert?: ReactNode;
+  annotation?: ReactNode;
   viewportOverlay?: ReactNode;
   background?: string;
   startFrameId?: string;
@@ -60,6 +61,7 @@ export function DesignCanvas(props: Props) {
         {frames.map(frame => {
           const rect = props.frameRect(frame);
           const active = frame.id === selectedFrame;
+          const rotation = rect.rotation ?? frame.rotation;
           const multiple = (props.selectedIds?.length ?? 0) > 1;
           const Icon = frame.width < 600 ? Smartphone : Frame;
           const keyboardDrag = (kind: DragKind) => (event: React.KeyboardEvent) => {
@@ -69,7 +71,7 @@ export function DesignCanvas(props: Props) {
             props.onNudge(frame, kind, ...delta);
           };
           return <div key={frame.id} className="design-artboard" data-selected={active} data-secondary={!active && props.selectedIds?.includes(frame.id)} data-locked={!!frame.locked}
-            style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height, transform: frame.rotation ? `rotate(${frame.rotation}deg)` : undefined }}>
+            style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height, transform: rotation ? `rotate(${rotation}deg)` : undefined }}>
             <button type="button" className="design-artboard-label" aria-label={'Move ' + frame.name + '; use arrow keys to arrange'}
               onPointerDown={event => props.onDrag(event, 'move', frame)} onKeyDown={keyboardDrag('move')}><Icon size={17} /><span>{frame.id === props.startFrameId ? '▶ ' : ''}{frame.name}</span></button>
             <div className="design-artboard-preview">{props.preview(frame)}</div>
@@ -80,7 +82,7 @@ export function DesignCanvas(props: Props) {
         })}
         {props.overlay}
       </div>
-      {props.overlay}
+      {props.annotation}
       {props.guides?.map(({ axis, at, from, to }) => {
         const length = (to - from) * view.scale;
         const style = axis === 'x'

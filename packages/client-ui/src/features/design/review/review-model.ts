@@ -2,7 +2,7 @@ import type { DesignActor, DesignDocument, DesignFrame } from '@ormicode/protoco
 
 export type ReviewComment = DesignDocument['comments'][number];
 export type MentionableSession = { id: string; title?: string; vendor: string };
-export type CommentTarget = { frameId: string | null; point?: { x: number; y: number }; path?: string; element?: string };
+export type CommentTarget = { frameId: string | null; pageId?: string; point?: { x: number; y: number }; path?: string; element?: string };
 export type FrameVersion = { revision: number; at: number; summary: string; current: boolean; html: string; styles: string; width: number; height: number; contentHash: string };
 
 export function annotationAnchor(comment: ReviewComment, frames: DesignFrame[], index = 0) {

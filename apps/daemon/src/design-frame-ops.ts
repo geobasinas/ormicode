@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { DESIGN_FRAME_LIMIT, type DesignDocument, type DesignFrame, type DesignFrameOperation, type DesignFramePatch, type DesignStackDirection } from '@ormicode/protocol';
+import { DESIGN_FRAME_LIMIT, type DesignDocument, type DesignFrame, type DesignFrameOperation, type DesignFramePatch, type DesignStackDirection, type DesignStorage } from '@ormicode/protocol';
+
+import { clearPageStart, materializePages, pageIdOf } from './design-pages.ts';
 
 type Fail = (message: string) => never;
 
@@ -22,10 +24,9 @@ export function applyFramePatch(frame: DesignFrame, patch: DesignFramePatch): vo
   normalizeFrameLayer(frame);
 }
 
-/** Frames that share a stacking context with `frame` (all frames today; a page once pages exist). */
+/** Frames that share a stacking context with `frame`. */
 export function stackPeers(document: DesignDocument, frame: DesignFrame): DesignFrame[] {
-  const page = (frame as { pageId?: unknown }).pageId;
-  return document.frames.filter(item => (item as { pageId?: unknown }).pageId === page);
+  return document.frames.filter(item => item.pageId === frame.pageId);
 }
 
 /** Fill the stack slots the listed frames occupy with them in the given back-to-front order. */
@@ -60,16 +61,22 @@ export function normalizeGroups(document: DesignDocument): void {
   for (const frame of document.frames) if (frame.groupId && (counts.get(frame.groupId) ?? 0) < 2) delete frame.groupId;
 }
 
-export function applyFrameOperation(document: DesignDocument, operation: DesignFrameOperation, fail: Fail): void {
+export function applyFrameOperation(document: DesignDocument, operation: DesignFrameOperation, fail: Fail, history: DesignStorage['history'] = []): void {
   const frame = (id: string) => document.frames.find(item => item.id === id) ?? fail(`Frame not found: ${id}`);
   const unique = (ids: readonly string[]) => { if (new Set(ids).size !== ids.length) fail('Frame IDs must be unique'); ids.forEach(frame); return ids; };
   switch (operation.type) {
     case 'frames.set':
       unique(operation.frames.map(item => item.frameId));
-      for (const item of operation.frames) applyFramePatch(frame(item.frameId), item.patch);
+      if (operation.frames.some(item => item.patch.pageId)) materializePages(document);
+      for (const { frameId, patch } of operation.frames) {
+        const target = frame(frameId);
+        if (patch.pageId && patch.pageId !== target.pageId) { clearPageStart(document, frameId); delete target.groupId; }
+        applyFramePatch(target, patch);
+      }
       break;
     case 'frames.remove': {
       const ids = new Set(unique(operation.frameIds));
+      for (const id of ids) clearPageStart(document, id);
       document.frames = document.frames.filter(item => !ids.has(item.id));
       document.comments = document.comments.filter(item => item.frameId === null || !ids.has(item.frameId));
       if (document.workingFrameId && ids.has(document.workingFrameId)) document.workingFrameId = null;
@@ -78,9 +85,9 @@ export function applyFrameOperation(document: DesignDocument, operation: DesignF
     case 'frames.order': document.frames = reorderSlots(document.frames, unique(operation.frameIds)); break;
     case 'frames.stack': {
       const moving = new Set(unique(operation.frameIds));
-      const pages = new Map<unknown, string[]>();
+      const pages = new Map<string | undefined, string[]>();
       for (const item of document.frames) {
-        const page = (item as { pageId?: unknown }).pageId;
+        const page = item.pageId;
         if (moving.has(item.id) && !pages.has(page)) pages.set(page, stackPeers(document, item).map(peer => peer.id));
       }
       for (const peers of pages.values()) document.frames = reorderSlots(document.frames, stackOrder(peers, moving, operation.to));
@@ -88,7 +95,9 @@ export function applyFrameOperation(document: DesignDocument, operation: DesignF
     }
     case 'frames.group': {
       const groupId = randomUUID();
-      for (const id of unique(operation.frameIds)) frame(id).groupId = groupId;
+      const frames = unique(operation.frameIds).map(frame);
+      if (new Set(frames.map(item => item.pageId)).size > 1) fail('Group members must belong to the same page');
+      for (const item of frames) item.groupId = groupId;
       break;
     }
     case 'frames.ungroup':
@@ -97,23 +106,30 @@ export function applyFrameOperation(document: DesignDocument, operation: DesignF
       break;
     case 'frames.paste': {
       if (document.frames.length + operation.frames.length > DESIGN_FRAME_LIMIT) fail(`A board holds at most ${DESIGN_FRAME_LIMIT} frames`);
+      if (operation.frames.some(item => item.pageId && item.pageId !== 'default')) materializePages(document);
       const groups = new Map<string, string>();
-      for (const { groupKey, ...fields } of operation.frames) {
+      for (const { groupKey: key, pageId, ...fields } of operation.frames) {
+        const page = pageIdOf(document, pageId);
+        const groupKey = key && JSON.stringify([page, key]);
         const groupId = groupKey ? groups.get(groupKey) ?? groups.set(groupKey, randomUUID()).get(groupKey)! : undefined;
-        document.frames.push(normalizeFrameLayer({ ...fields, id: randomUUID(), ...(groupId ? { groupId } : {}) }));
+        document.frames.push(normalizeFrameLayer({ ...fields, id: randomUUID(), ...(page ? { pageId: page } : {}), ...(groupId ? { groupId } : {}) }));
       }
       break;
     }
     case 'frames.restore': {
       if (document.frames.length + operation.frames.length > DESIGN_FRAME_LIMIT) fail(`A board holds at most ${DESIGN_FRAME_LIMIT} frames`);
+      if (operation.frames.some(item => item.frame.pageId)) materializePages(document);
       for (const { frame: restored, index } of [...operation.frames].sort((a, b) => a.index - b.index)) {
         if (document.frames.some(item => item.id === restored.id)) fail(`Frame already exists: ${restored.id}`);
-        document.frames.splice(Math.min(index, document.frames.length), 0, normalizeFrameLayer({ ...restored }));
+        const { pageId, ...fields } = restored;
+        const page = pageIdOf(document, pageId);
+        document.frames.splice(Math.min(index, document.frames.length), 0, normalizeFrameLayer({ ...fields, ...(page ? { pageId: page } : {}) }));
       }
       for (const restored of operation.comments ?? []) {
         if (document.comments.some(item => item.id === restored.id)) continue;
         if (restored.frameId !== null) frame(restored.frameId);
-        document.comments.push(restored);
+        const stored = history.slice().reverse().flatMap(entry => entry.document.comments).find(comment => comment.id === restored.id && comment.frameId === restored.frameId);
+        document.comments.push(stored ?? fail('Comment is no longer retained in board history'));
       }
       break;
     }

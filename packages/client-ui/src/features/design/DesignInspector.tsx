@@ -35,9 +35,6 @@ type Props = {
   onDiscardSource(): void;
   history: DesignHistorySummary[];
   onRestore(revision: number): void;
-  feedback: string;
-  onFeedback(text: string): void;
-  onAddComment(): void;
   onChat(text: string): void;
   onMutate(operations: DesignOperation[]): void;
   saving: boolean;
@@ -56,6 +53,7 @@ const geometry = [
 export function DesignInspector(props: Props) {
   const { activeFrame: frame, selectedElement: element, document, tab, saving, sourceDirty } = props;
   const locked = saving || sourceDirty;
+  const frameLocked = locked || Boolean(frame?.locked);
   const working = document?.workingFrameId === frame?.id;
   return <aside className="design-inspector design-pane" aria-label="Design inspector">
     <nav className="design-pane-toolbar design-inspector-nav" aria-label="Inspector sections">
@@ -71,17 +69,17 @@ export function DesignInspector(props: Props) {
         {element ? <>
           {element.leaf ? <section className="design-properties">
             <h3>Content</h3>
-            <textarea aria-label="Selected element text" className="design-input" rows={3} value={element.text} onChange={event => props.onElementText(event.target.value.slice(0, 500))} />
-            <button className="design-button" type="button" disabled={locked} onClick={props.onSaveText}>Apply text</button>
+            <textarea aria-label="Selected element text" className="design-input" rows={3} value={element.text} disabled={frameLocked} onChange={event => props.onElementText(event.target.value.slice(0, 500))} />
+            <button className="design-button" type="button" disabled={frameLocked} onClick={props.onSaveText}>Apply text</button>
           </section> : null}
-          <DesignElementStyles key={frame.id + element.id} element={element} disabled={locked} tokens={document?.tokens ?? []}
+          <DesignElementStyles key={frame.id + element.id} element={element} disabled={frameLocked} tokens={document?.tokens ?? []}
             onStyle={props.onStyle} onAlign={props.onAlign} onCreateToken={props.onCreateToken}
             onUpdateToken={token => props.onMutate([{ type: 'token.set', token }])} onExport={props.onExportLayer} />
         </> : <>
           <section className="design-properties">
             <h3>Frame</h3>
             <label className="design-property"><span>Name</span>
-              <input className="design-input" key={frame.id + frame.name} aria-label="Frame name" defaultValue={frame.name} maxLength={100} disabled={sourceDirty}
+              <input className="design-input" key={frame.id + frame.name} aria-label="Frame name" defaultValue={frame.name} maxLength={100} disabled={frameLocked}
                 onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur(); }}
                 onBlur={event => {
                   const name = event.target.value.trim();
@@ -92,7 +90,7 @@ export function DesignInspector(props: Props) {
             <div className="design-field-grid geometry">
               {geometry.map(({ key, label, min, max }) => <label className="design-geometry" key={frame.id + key + frame[key]}>
                 <span>{label}</span>
-                <input aria-label={'Frame ' + key} type="number" min={min} max={max} defaultValue={frame[key]} disabled={sourceDirty}
+                <input aria-label={'Frame ' + key} type="number" min={min} max={max} defaultValue={frame[key]} disabled={frameLocked}
                   onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur(); }}
                   onBlur={event => {
                     const value = event.target.valueAsNumber;
@@ -120,23 +118,7 @@ export function DesignInspector(props: Props) {
         <div className="design-inline"><button className="design-button primary" type="button" disabled={!sourceDirty || props.sourceConflict || saving} onClick={props.onSaveSource}>Save source</button><button className="design-button" type="button" disabled={!sourceDirty || saving} onClick={props.onDiscardSource}>Discard</button></div>
       </section> : null}
       {tab === 'html' && !frame && !sourceDirty ? <p className="design-inspector-hint">Select a frame to edit its source.</p> : null}
-      {tab === 'feedback' && document ? props.review ?? <section className="design-properties">
-        <h3>{frame ? 'Feedback on ' + frame.name : 'Board feedback'}</h3>
-        <textarea className="design-input" aria-label="Frame feedback" rows={4} placeholder="Describe a change…" value={props.feedback} onChange={event => props.onFeedback(event.target.value)} />
-        <button className="design-button" type="button" disabled={!props.feedback.trim() || locked} onClick={props.onAddComment}>Save feedback</button>
-        {document.comments.map(comment => {
-          const target = comment.frameId ? document.frames.find(item => item.id === comment.frameId)?.name ?? 'Deleted frame' : 'Board feedback';
-          return <article key={comment.id} className="design-note">
-            <div>{comment.text}</div>
-            <small>{target}{comment.resolved ? ' · Resolved' : ''}</small>
-            <div className="design-inline">
-              <button className="design-button" type="button" onClick={() => props.onChat('Design feedback for “' + document.name + '”, ' + target + (comment.element ? ', element ' + comment.element : '') + ': ' + comment.text)}>Add to chat</button>
-              <button className="design-button" type="button" disabled={locked} onClick={() => props.onMutate([{ type: 'comment.resolve', commentId: comment.id, resolved: !comment.resolved }])}>{comment.resolved ? 'Reopen' : 'Resolve'}</button>
-              <button className="design-icon-button" type="button" disabled={locked} aria-label="Remove feedback" onClick={() => props.onMutate([{ type: 'comment.remove', commentId: comment.id }])}><Trash2 size={13} /></button>
-            </div>
-          </article>;
-        })}
-      </section> : null}
+      {tab === 'feedback' ? props.review : null}
       {tab === 'history' ? props.versions : null}
       {tab === 'history' && document ? <section className="design-properties">
         <h3>Version history</h3>
@@ -149,8 +131,8 @@ export function DesignInspector(props: Props) {
     </div>
     {frame ? <footer className="design-pane-footer">
       {element ? <button type="button" className="design-button" onClick={() => props.onChat('Design context for “' + document?.name + '”, frame “' + frame.name + '”, element <' + element.tag + '>' + (element.text ? ' “' + element.text.slice(0, 100) + '”' : '') + '. ')}><MessageSquare size={14} /> Discuss element</button> :
-        <><button type="button" className="design-button" disabled={locked} onClick={() => props.onMutate([{ type: 'frame.duplicate', frameId: frame.id }])}><Copy size={14} /> Duplicate</button>
-          <button type="button" className="design-icon-button destructive" disabled={locked} title="Delete frame" aria-label="Delete frame" onClick={() => props.onMutate([{ type: 'frame.remove', frameId: frame.id }])}><Trash2 size={15} /></button></>}
+        <><button type="button" className="design-button" disabled={frameLocked} onClick={() => props.onMutate([{ type: 'frame.duplicate', frameId: frame.id }])}><Copy size={14} /> Duplicate</button>
+          <button type="button" className="design-icon-button destructive" disabled={frameLocked} title="Delete frame" aria-label="Delete frame" onClick={() => props.onMutate([{ type: 'frame.remove', frameId: frame.id }])}><Trash2 size={15} /></button></>}
     </footer> : null}
   </aside>;
 }

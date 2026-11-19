@@ -5,7 +5,9 @@ const descriptions = {
   'design.list': 'List design boards in the current session’s working tree.',
   'design.get': 'Read the board, its editable frame HTML and CSS, feedback, and retained revision summaries. Read before mutating.',
   'design.create': 'Create a repository-backed design board in the current session’s working tree.',
-  'design.update': 'Apply one atomic batch of design operations. Use the current board revision as expectedRevision. On design.conflict, read the board again and reconcile the changes before submitting a new batch.',
+  'design.update': 'Apply one atomic batch of design operations for pages, guides, frames, tokens, and feedback. Frame approval is reserved for users. Use the current board revision as expectedRevision. On design.conflict, read the board again and reconcile the changes before submitting a new batch.',
+  'design.frameVersions': 'Read retained content versions of one design frame.',
+  'design.mentionable': 'List sessions that can be mentioned in design feedback in the current working tree.',
   'design.history': 'List retained board revision summaries.',
   'design.activity': 'List recent board edits and their recorded originating sessions in the current working tree.',
   'design.restore': 'Restore a retained board revision as a new revision. Set expectedRevision to the current board revision.',
@@ -17,7 +19,7 @@ export function designMcpTools() {
     const { session: _session, ...fields } = designRequests[method].shape;
     const inputSchema = z.toJSONSchema(z.strictObject(fields), { io: 'input' });
     return {
-      name: 'ormi_' + method.replace('.', '_'),
+      name: 'ormi_' + method.replace('.', '_').replace(/[A-Z]/g, letter => '_' + letter.toLowerCase()),
       description: descriptions[method],
       inputSchema,
     };

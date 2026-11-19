@@ -11,7 +11,7 @@ const content = { name: 'Frame', x: 0, y: 0, width: 390, height: 844, html: '', 
 const frame = id => ({ id, ...content });
 const document = (ids = ['a', 'b', 'c', 'd']) => ({ version: 1, name: 'Board', revision: 1, frames: ids.map(frame), workingFrameId: null, comments: [] });
 const ids = doc => doc.frames.map(item => item.id);
-const apply = (doc, operation) => applyFrameOperation(doc, operation, message => { throw new Error(message); });
+const apply = (doc, operation, history) => applyFrameOperation(doc, operation, message => { throw new Error(message); }, history);
 const comment = (id, frameId) => ({ id, frameId, text: 'Note', resolved: false, session: newId('s'), createdAt: 1 });
 
 test('stackOrder preserves selection order in all directions and blocks boundary moves', () => {
@@ -119,7 +119,7 @@ test('frames.restore inserts original IDs at sorted indexes and restores comment
   const note = comment('note', 'a');
   const boardNote = comment('board', null);
   doc.comments = [boardNote];
-  apply(doc, { type: 'frames.restore', frames: [{ frame: frame('c'), index: 2 }, { frame: { ...frame('a'), rotation: 0, locked: false, hidden: false }, index: 0 }, { frame: frame('e'), index: 24 }], comments: [note, boardNote] });
+  apply(doc, { type: 'frames.restore', frames: [{ frame: frame('c'), index: 2 }, { frame: { ...frame('a'), rotation: 0, locked: false, hidden: false }, index: 0 }, { frame: frame('e'), index: 24 }], comments: [note, boardNote] }, [{ document: { comments: [note] } }]);
   assert.deepEqual(ids(doc), ['a', 'b', 'c', 'd', 'e']);
   assert.deepEqual(doc.frames[0], frame('a'));
   assert.deepEqual(doc.comments, [boardNote, note]);

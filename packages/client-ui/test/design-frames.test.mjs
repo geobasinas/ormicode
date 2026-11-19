@@ -112,12 +112,16 @@ function operationsFor(entry, current, direction) {
   return result;
 }
 
-function applyOperations(current, operations) {
+function applyOperations(current, operations, history = []) {
   const doc = structuredClone(current);
   for (const operation of operations) {
     if (operation.type === 'frame.update') Object.assign(doc.frames.find(item => item.id === operation.frameId), operation.patch);
     else if (operation.type === 'direction.select') doc.workingFrameId = operation.frameId;
-    else applyFrameOperation(doc, operation, message => { throw new Error(message); });
+    else if (operation.type === 'page.start') {
+      const page = doc.pages.find(page => page.id === operation.pageId);
+      if (operation.frameId) page.startFrameId = operation.frameId;
+      else delete page.startFrameId;
+    } else applyFrameOperation(doc, operation, message => { throw new Error(message); }, history);
   }
   return doc;
 }
@@ -127,7 +131,7 @@ function roundtrip(before, after) {
   assert.ok(entry);
   const undo = operationsFor(entry, after, 'undo');
   assert.ok('operations' in undo);
-  const undone = applyOperations(after, undo.operations);
+  const undone = applyOperations(after, undo.operations, [{ document: before }]);
   assert.deepEqual(undone.frames, before.frames);
   assert.equal(undone.workingFrameId, before.workingFrameId);
   const redo = operationsFor(entry, undone, 'redo');

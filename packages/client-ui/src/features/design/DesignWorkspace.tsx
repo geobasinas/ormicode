@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
-import { ChevronDown, FolderGit2, Frame, Monitor, PanelRight, PanelsTopLeft, Plus, RefreshCw, Smartphone, SquarePlus, X } from 'lucide-react';
+import { FolderGit2, PanelsTopLeft, Plus } from 'lucide-react';
 import { pushToComposer } from '../../lib/composer-inbox.ts';
 import { usePlatform } from '../../lib/platform.ts';
 import { designTokenBinding, styleRule, type DesignDocument, type DesignFrame, type DesignOperation, type DesignHistorySummary, type DesignStylePatch } from '@ormicode/protocol';
@@ -7,9 +7,8 @@ import { DesignFramePreview, type ElementSelection } from './DesignFramePreview.
 import { DesignCanvas, type CanvasTool } from './DesignCanvas.tsx';
 import { DesignInspector, type InspectorTab } from './DesignInspector.tsx';
 import { DesignLayers } from './DesignLayers.tsx';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '../../components/ui/dropdown-menu.tsx';
 import { sanitizeMarkup } from './sanitize.ts';
-import { clampPosition, fitCanvas, reconcileFrameSelection, resizeRect, zoomAt, type Rect, type View } from './design-model.ts';
+import { clampPosition, fitCanvas, reconcileFrameSelection, type Rect } from './design-model.ts';
 import { validateStyleEdit } from './design-style.ts';
 import { frameMarkupWithToken, renderDesignTokenStyles } from './design-inspector-model.ts';
 import { downloadDesignLayer } from './design-layer-export.ts';
@@ -33,6 +32,9 @@ import { DesignAnnotations } from './review/DesignAnnotations.tsx';
 import { DesignFrameApproval } from './review/DesignFrameApproval.tsx';
 import { DesignFrameVersions } from './review/DesignFrameVersions.tsx';
 import type { ReviewComment } from './review/review-model.ts';
+import { useCanvasViewport, useFitOnPageChange } from './useCanvasViewport.ts';
+import { DesignBoardHeader } from './DesignBoardHeader.tsx';
+import { InsertElementMenu, InsertFrameMenu } from './DesignInsertMenus.tsx';
 
 type BoardSummary = { slug: string; name: string; revision: number; frames: number };
 type Result = { document: DesignDocument; history: DesignHistorySummary[] };
@@ -55,15 +57,13 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
   const [sourceHtml, setSourceHtml] = useState('');
   const [sourceStyles, setSourceStyles] = useState('');
   const [sourceDirty, setSourceDirty] = useState(false);
-  const [feedback, setFeedback] = useState('');
   const [newSlug, setNewSlug] = useState('');
   const [newName, setNewName] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [view, setView] = useState<View>({ x: 0, y: 0, scale: 1 });
-  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
+  const { canvas, view, setView, canvasSize, handleWheel, zoom } = useCanvasViewport();
   const board = useRef<DesignDocument | null>(null);
   const selectedFrameRef = useRef('');
   selectedFrameRef.current = selectedFrame;
@@ -72,12 +72,10 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
   const draftBase = useRef<DesignFrame | undefined>(undefined);
   const savingRef = useRef(false);
   const generation = useRef(0);
-  const canvas = useRef<HTMLDivElement>(null);
   const fittedSlug = useRef('');
   const bridge: MutableRefObject<(type: string, body?: Record<string, unknown>) => void> = useRef(() => undefined);
   const frameHistory = useFrameHistory();
-  const clearHistory = frameHistory.clear;
-  useEffect(() => clearHistory(), [session, slug, clearHistory]);
+  useEffect(() => frameHistory.clear(), [session, slug, frameHistory.clear]);
 
   const setCurrent = useCallback((next: Result, token: number) => {
     if (!acceptsDesignRevision(board.current, next.document, token === generation.current)) return;
@@ -199,6 +197,7 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
 
   const pages = useDesignPages(document, session + ':' + slug, mutate);
   const frames = pages.frames;
+  const visibleFrames = frames.filter(frame => !frame.hidden);
   const viewport = useViewportOptions();
   useEffect(() => { const id = reconcileFrameSelection(frames, selectedFrameRef.current); if (id !== selectedFrameRef.current && !dirtyRef.current) chooseFrame(id); }, [document, pages.active.id]);
   const activeFrame = frames.find(frame => frame.id === selectedFrame);
@@ -210,7 +209,7 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
     if (field === 'html') setSourceHtml(value); else setSourceStyles(value);
     dirtyRef.current = true; setSourceDirty(true); setError('');
   };
-  const chooseFrame = (id: string, current = document) => {
+  const chooseFrame = (id: string, current = board.current) => {
     if (dirtyRef.current) { setError('Save or discard the unsaved HTML before switching frames.'); return false; }
     if (id === selectedFrameRef.current) bridge.current('clearSelection');
     selectedFrameRef.current = id;
@@ -241,14 +240,19 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
     void mutate([{ type: 'frame.add', ...frame, pageId: pages.active.id }]).then(result => {
       const current = board.current;
       const added = result && result.document.frames.at(-1);
-      if (current && added && current.frames.some(item => item.id === added.id)) { chooseFrame(added.id, current); setView(fitCanvas(framesOnPage(current.frames, pages.active.id), canvasSize.width, canvasSize.height)); }
+      if (current && added && current.frames.some(item => item.id === added.id)) { chooseFrame(added.id, current); setView(fitCanvas(framesOnPage(current.frames, pages.active.id).filter(frame => !frame.hidden), canvasSize.width, canvasSize.height)); }
     });
   };
 
   const openThread = (comment: ReviewComment) => {
-    if (comment.frameId && !chooseFrame(comment.frameId)) return;
+    if (dirtyRef.current) return;
     const frame = document?.frames.find(item => item.id === comment.frameId);
-    if (frame) setView(fitCanvas([frame], canvasSize.width, canvasSize.height));
+    if (frame || comment.pageId) {
+      const pageId = frame?.pageId ?? comment.pageId ?? 'default';
+      fittedSlug.current = slug + '/' + pageId;
+      pages.select(pageId);
+    }
+    if (frame) { chooseFrame(frame.id); setView(fitCanvas([frame], canvasSize.width, canvasSize.height)); }
     if (comment.frameId && comment.path) setSelectionRequest({ frameId: comment.frameId, path: comment.path });
     review.setThread(comment.id); setTab('feedback'); setInspectorOpen(true);
   };
@@ -258,28 +262,11 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
     onCommit: operation => void mutate([operation]),
     onConflict: () => setError('The board changed during the drag. Try again.'),
   });
-  const frameOps = useDesignFrames({ board, document, primary: selectedFrame, chooseFrame, canvas, view, canvasSize, mutate, history: frameHistory,
+  const frameOps = useDesignFrames({ board, frames, pageId: pages.active.id, snapLines: () => viewport.options.guides ? pages.active.guides ?? [] : [], primary: selectedFrame, chooseFrame, canvas, view, canvasSize, mutate, history: frameHistory,
     canEdit: () => !savingRef.current && !dirtyRef.current, onError: setError });
-  const frameRect = (frame: DesignFrame): Rect => frameOps.previewRect(frame) ?? (drag.preview?.id === frame.id ? drag.preview.rect : frame);
+  const frameRect = (frame: DesignFrame): Rect & { rotation?: number } => frameOps.previewRect(frame) ?? (drag.preview?.id === frame.id ? drag.preview.rect : frame);
 
-  useEffect(() => {
-    const element = canvas.current; if (!element) return;
-    const observer = new ResizeObserver(() => setCanvasSize({ width: element.clientWidth, height: element.clientHeight }));
-    observer.observe(element); return () => observer.disconnect();
-  }, []);
-  const handleWheel = useCallback((event: WheelEvent) => {
-    event.preventDefault();
-    const box = canvas.current?.getBoundingClientRect();
-    if (!box) return;
-    if (event.ctrlKey || event.metaKey) setView(current => zoomAt(current, { x: event.clientX - box.left, y: event.clientY - box.top }, Math.exp(-event.deltaY * 0.002)));
-    else setView(current => ({ ...current, x: current.x - event.deltaX, y: current.y - event.deltaY }));
-  }, []);
-  useEffect(() => {
-    if (document && slug && fittedSlug.current !== slug + '/' + pages.active.id && canvasSize.width > 0 && canvasSize.height > 0) {
-      fittedSlug.current = slug + '/' + pages.active.id;
-      setView(fitCanvas(frames, canvasSize.width, canvasSize.height));
-    }
-  }, [slug, document, pages.active.id, canvasSize.width, canvasSize.height]);
+  useFitOnPageChange(document ? slug + '/' + pages.active.id : '', fittedSlug, visibleFrames, canvasSize, setView);
 
   const selectedElementRef = useRef<ElementSelection | null>(null);
   selectedElementRef.current = selectedElement;
@@ -295,13 +282,7 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
     bridge.current('editStyles', { id: selected.id, patch });
   };
   const tokenStyles = renderDesignTokenStyles(document?.tokens);
-  const zoom = (factor: number) => setView(current => zoomAt(current, { x: canvasSize.width / 2, y: canvasSize.height / 2 }, factor));
   const addElement = (kind: string) => { if (!savingRef.current && !dirtyRef.current) bridge.current('addElement', { kind }); };
-  const createComment = () => {
-    const text = feedback.trim(); if (!text) return;
-    void mutate([{ type: 'comment.add', frameId: selectedFrame || null, ...(selectedElement ? { element: `${selectedElement.tag}${selectedElement.text ? `: ${selectedElement.text.slice(0, 100)}` : ''}` } : {}), text }]).then(ok => { if (ok) setFeedback(''); });
-  };
-
   const artwork = useDesignArtwork({
     owner: document, scope: JSON.stringify([session, slug, pages.active.id]), frame: activeFrame, enabled: Boolean(document && !saving && !sourceDirty),
     view, size: canvasSize, onError: setError,
@@ -318,16 +299,8 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
   const status = error || sessionError || (sourceConflict ? 'This frame’s source changed or was removed. Copy or discard your draft in HTML.' : sourceDirty ? 'Unsaved source' : saving ? 'Saving…' : document ? 'Saved · r' + document.revision : '');
   const failure = Boolean(error || sessionError || sourceConflict);
   const canReload = error.startsWith('design.conflict:') || (!document && slug);
-  const fit = (items = frames) => setView(fitCanvas(items, canvasSize.width, canvasSize.height));
-  const insertFrame = <DropdownMenu>
-    <DropdownMenuTrigger asChild><button type="button" className="design-button primary" disabled={!document || saving || sourceDirty}><Plus size={15} /><span>Add frame</span><ChevronDown size={12} /></button></DropdownMenuTrigger>
-    <DropdownMenuContent align="end">
-      <DropdownMenuItem onSelect={() => addFrame('phone')}><Smartphone size={15} /> Phone frame</DropdownMenuItem>
-      <DropdownMenuItem onSelect={() => addFrame('desktop')}><Monitor size={15} /> Desktop frame</DropdownMenuItem>
-      <DropdownMenuItem onSelect={() => addFrame('blank')}><Frame size={15} /> Blank frame</DropdownMenuItem>
-    </DropdownMenuContent>
-  </DropdownMenu>;
-
+  const fit = (items = visibleFrames) => setView(fitCanvas(items, canvasSize.width, canvasSize.height));
+  const insertFrame = <InsertFrameMenu disabled={!document || saving || sourceDirty} addFrame={addFrame} />;
   return <main aria-label="Design workspace" className="design-workspace" data-sidebar={sidebarOpen} data-inspector={inspectorOpen}>
     <aside hidden={!sidebarOpen} className="design-sidebar design-pane" aria-label="Design sidebar">
       <div className="design-pane-toolbar design-project" title={workspacePath}><FolderGit2 size={16} /><strong>{project}</strong></div>
@@ -349,48 +322,23 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
       {agentSlot(document ? { slug, name: document.name, revision: document.revision, frame: activeFrame } : undefined, sourceDirty)}
     </aside>
     <section className="design-main" aria-label="Board editor">
-      <header className="design-canvas-header">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild><button type="button" className="design-board-picker" aria-label="Design board"><PanelsTopLeft size={16} /><strong>{document?.name ?? boards.find(item => item.slug === slug)?.name ?? 'Boards'}</strong><ChevronDown size={13} /></button></DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            {boards.map(item => <DropdownMenuItem key={item.slug} onSelect={() => { if (item.slug !== slug) void readBoard(item.slug); }}>{item.name}</DropdownMenuItem>)}
-            {boards.length ? <DropdownMenuSeparator /> : null}
-            <DropdownMenuItem onSelect={() => setCreateOpen(true)}><Plus size={15} /> New board</DropdownMenuItem>
-            {slug ? <DropdownMenuItem disabled={loading || saving || sourceDirty} onSelect={() => void reloadCurrent()}><RefreshCw size={14} /> Reload board</DropdownMenuItem> : null}
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <span className="design-header-space" />
-        {document && !failure ? <span className="design-status" data-dirty={sourceDirty || saving} role="status"><i />{status}</span> : null}
-        {document ? insertFrame : null}
-        <button type="button" className="design-icon-button design-inspector-toggle" title="Toggle inspector" aria-label="Toggle inspector" aria-expanded={inspectorOpen} onClick={() => setInspectorOpen(shown => !shown)}><PanelRight size={17} /></button>
-      </header>
-      {failure ? <div className="design-alert" role="alert"><span>{status}</span>
-        {canReload ? <button className="design-button" type="button" onClick={() => void reloadCurrent()}>Reload changes</button> : null}
-        {error ? <button type="button" className="design-icon-button" aria-label="Dismiss message" onClick={() => setError('')}><X size={14} /></button> : null}
-      </div> : null}
-      {createOpen ? <form className="design-create" onSubmit={event => { event.preventDefault(); void createBoard(); }}>
-        <input className="design-input" aria-label="New board name" placeholder="Board name" autoFocus maxLength={120} value={newName} onChange={event => setNewName(event.target.value)} />
-        <input className="design-input" aria-label="New board slug" placeholder="Folder name" maxLength={48} value={newSlug} onChange={event => setNewSlug(event.target.value)} />
-        <button type="submit" className="design-button primary" disabled={loading || saving || !newName.trim()}>Create board</button>
-        <button type="button" className="design-icon-button" aria-label="Cancel creation" onClick={() => setCreateOpen(false)}><X size={15} /></button>
-      </form> : null}
-      <DesignCanvas canvas={canvas} frames={frames.filter(frame => !frame.hidden)} selectedFrame={selectedFrame} selectedIds={frameOps.ids} view={view} tool={tool} panning={drag.panning} onTool={next => { artwork.clear(); setTool(next); }}
+      <DesignBoardHeader boards={boards} name={document?.name} slug={slug} status={status} failure={failure} error={error} canReload={Boolean(canReload)}
+        loading={loading} saving={saving} sourceDirty={sourceDirty} inspectorOpen={inspectorOpen} createOpen={createOpen}
+        newName={newName} newSlug={newSlug} insertFrame={insertFrame} readBoard={readBoard} reloadCurrent={reloadCurrent}
+        toggleInspector={() => setInspectorOpen(shown => !shown)} createBoard={createBoard}
+        setCreateOpen={setCreateOpen} setError={setError} setNewName={setNewName} setNewSlug={setNewSlug} />
+      <DesignCanvas canvas={canvas} frames={visibleFrames} selectedFrame={selectedFrame} selectedIds={frameOps.ids} view={view} tool={tool} panning={drag.panning} onTool={next => { artwork.clear(); setTool(next); }}
         drawing={artwork.overlay} drawingTools={artwork.toolbar}
         background={pages.active.background} startFrameId={pages.start?.id} viewportOverlay={<DesignViewportOverlay page={pages.active} view={view} {...canvasSize} preferences={viewport} disabled={!document || saving || sourceDirty} act={pages.act} />}
         frameRect={frameRect} guides={frameOps.gestures.guides.length ? frameOps.gestures.guides : drag.preview?.guides}
-        onDrag={(event, kind, frame) => { if (!frameOps.frameDrag(event, kind, frame)) drag.startDrag(event, kind, frame); }}
+        onDrag={(event, kind, frame) => { if (tool !== 'select' || !frameOps.frameDrag(event, kind, frame)) drag.startDrag(event, kind, frame); }}
         onPointerDown={event => { if (tool === 'select' && event.button === 0 && event.target === event.currentTarget && !event.altKey) frameOps.gestures.startMarquee(event); else drag.startPan(event); }}
         onPointerMove={event => { if (!frameOps.gestures.move(event)) drag.move(event); }} onPointerUp={event => { if (!frameOps.gestures.end(event)) drag.end(event); }}
         onPointerCancel={event => { if (!frameOps.gestures.cancel(event)) drag.cancel(event); }} onWheel={handleWheel}
-        overlay={<><FrameOverlay frames={frameOps} />{document ? <DesignAnnotations document={document} view={view} frameRect={frameRect} commenting={tool === 'comment'} onThread={openThread}
-          onCancel={() => { setTool('select'); review.setPending(null); }} onTarget={target => { review.begin(target); setTool('select'); setTab('feedback'); setInspectorOpen(true); }} /> : null}</>} controls={document ? <FrameToolbar frames={frameOps} history={frameHistory} disabled={saving || sourceDirty} /> : null}
+        overlay={<FrameOverlay frames={frameOps} />} annotation={document ? <DesignAnnotations document={document} frames={visibleFrames} pageId={pages.active.id} view={view} frameRect={frameRect} commenting={tool === 'comment' && !artwork.drawing} onThread={openThread}
+          onCancel={() => { setTool('select'); review.setPending(null); }} onTarget={target => { review.begin(target); setTool('select'); setTab('feedback'); setInspectorOpen(true); }} /> : null} controls={document ? <FrameToolbar frames={frameOps} history={frameHistory} disabled={saving || sourceDirty} /> : null}
         onDrop={frameOps.drop} onDragOver={frameOps.dragOver}
-        onNudge={(frame, kind, dx, dy) => {
-          if (frameOps.nudge(frame, kind, dx, dy)) return;
-          const rect = resizeRect(frame, dx, dy);
-          const patch = kind === 'resize' ? { width: rect.width, height: rect.height } : { x: clampPosition(frame.x + dx), y: clampPosition(frame.y + dy) };
-          void mutate([{ type: 'frame.update', frameId: frame.id, patch }]);
-        }} onZoom={zoom} onFit={() => fit()} onFitSelection={activeFrame ? () => fit([activeFrame]) : undefined}
+        onNudge={frameOps.nudge} onZoom={zoom} onFit={() => fit()} onFitSelection={visibleFrames.some(frame => frameOps.ids.includes(frame.id)) ? () => fit(visibleFrames.filter(frame => frameOps.ids.includes(frame.id))) : undefined}
         preview={frame => <DesignFramePreview frame={previewFrame?.id === frame.id ? previewFrame : frame} active={frame.id === selectedFrame} bridge={bridge} tokenStyles={tokenStyles}
           onLayerExport={html => { if (selectedFrameRef.current === frame.id && !downloadDesignLayer(html, frame.name + ' layer')) setError('This layer could not be exported within the size limit.'); }}
           selectionRequest={selectionRequest?.frameId === frame.id ? selectionRequest : undefined}
@@ -401,15 +349,8 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
             setSelectedElement(selection);
             setTab(current => current === 'html' ? 'inspect' : current);
             setInspectorOpen(true);
-          }} onMarkup={html => directMarkup(frame.id, html)} />}
-        insert={activeFrame ? <DropdownMenu>
-          <DropdownMenuTrigger asChild><button type="button" className="design-icon-button" title="Insert element" aria-label="Insert element" disabled={saving || sourceDirty}><SquarePlus size={16} /></button></DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            <DropdownMenuItem onSelect={() => addElement('text')}>Text</DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => addElement('button')}>Button</DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => addElement('container')}>Container</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu> : null}
+          }} onMarkup={html => { if (!frame.locked) directMarkup(frame.id, html); }} />}
+        insert={activeFrame ? <InsertElementMenu disabled={saving || sourceDirty || Boolean(activeFrame.locked)} addElement={addElement} /> : null}
         empty={!frames.length && !artwork.drawing ? <div className="design-empty-stage"><div className="design-empty">
           <div className="design-empty-icon"><PanelsTopLeft size={24} /></div>
           <h1>{loading ? 'Loading board…' : document ? 'Add your first frame' : slug ? 'Board unavailable' : 'Start a design board'}</h1>
@@ -438,14 +379,14 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
       }}
       sourceHtml={sourceHtml} sourceStyles={sourceStyles} sourceDirty={sourceDirty} sourceConflict={sourceConflict} onSource={updateSource} onSaveSource={saveSource}
       onDiscardSource={() => { dirtyRef.current = false; draftBase.current = undefined; setSourceDirty(false); chooseFrame(reconcileFrameSelection(frames, selectedFrame)); setError(''); }}
-      history={history} onRestore={revision => void restore(revision)} feedback={feedback} onFeedback={setFeedback} onAddComment={createComment}
+      history={history} onRestore={revision => void restore(revision)}
       onChat={text => { onShowSidebar(); pushToComposer(session, { text }); }} onMutate={operations => void mutate(operations)} saving={saving} /> : null}
   </main>;
 
   async function restore(targetRevision: number): Promise<void> {
     const current = board.current; const currentSlug = slugRef.current; const token = generation.current;
     if (!current || !currentSlug || savingRef.current) return;
-    if (dirtyRef.current) { setError('Save or discard the unsaved HTML before restoring history.'); return; }
+    if (dirtyRef.current) return;
     savingRef.current = true; setSaving(true); setError('');
     try {
       const response = await transport.request('design.restore', { session, slug: currentSlug, expectedRevision: current.revision, targetRevision });

@@ -17,8 +17,8 @@ export function sanitizeMarkup(input: string): string {
   return template.innerHTML;
 }
 
-function parseMarkup(input: string): HTMLTemplateElement {
-  const fragment = DOMPurify.sanitize(input, { ...SANITIZE_CONFIG, RETURN_DOM_FRAGMENT: true });
+function parseMarkup(input: string, config = SANITIZE_CONFIG): HTMLTemplateElement {
+  const fragment = DOMPurify.sanitize(input, { ...config, RETURN_DOM_FRAGMENT: true });
   constrainSvg(fragment);
   const template = window.document.createElement('template');
   template.content.append(fragment);
@@ -33,5 +33,5 @@ export function standaloneSvg(input: string): SVGSVGElement | null {
 }
 
 export function sanitizeLayerMarkup(input: string): string {
-  return DOMPurify.sanitize(input, { ...SANITIZE_CONFIG, FORBID_TAGS: [...SANITIZE_CONFIG.FORBID_TAGS!, 'style', 'template'] });
+  return parseMarkup(input, { ...SANITIZE_CONFIG, FORBID_TAGS: [...SANITIZE_CONFIG.FORBID_TAGS!, 'style', 'template'] }).innerHTML;
 }

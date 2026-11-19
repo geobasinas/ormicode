@@ -62,7 +62,7 @@ export function useDesignDrag({ board, view, panTool, commentTool, setView, choo
     const rect = type === 'resize' ? resizeRect(frame, x, y)
       : { x: clampPosition(Math.round(frame.x + x)), y: clampPosition(Math.round(frame.y + y)), width: frame.width, height: frame.height };
     const next = event.altKey ? { rect, guides: [] }
-      : snapFrame(rect, active.board.frames.filter(item => item.id !== frame.id && (!pageFilter || pageFilter(item))), type, view.scale, snapLines?.());
+      : snapFrame(rect, active.board.frames.filter(item => item.id !== frame.id && !item.hidden && (!pageFilter || pageFilter(item))), type, view.scale, snapLines?.());
     active.rect = next.rect;
     setPreview({ id: frame.id, ...next });
   };

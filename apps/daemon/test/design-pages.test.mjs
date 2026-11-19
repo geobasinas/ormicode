@@ -67,3 +67,29 @@ test('frame page assignment materializes legacy pages and duplication respects f
     assert.equal(getDesign(dir, 'board').document.frames.length, 24);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('multi-frame operations preserve page ownership and prototype starts', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ormi-pages-'));
+  try {
+    let document = createDesign(dir, 'board', 'Board').document;
+    const apply = (...operations) => (document = updateDesign(dir, 'board', document.revision, operations, session).document);
+    apply({ type: 'page.add', name: 'Other' });
+    const pageId = document.pages[1].id;
+    apply({ type: 'frames.paste', frames: [{ ...fields, pageId, groupKey: 'copy' }, { ...fields, pageId, groupKey: 'copy' }] });
+    const [start, peer] = document.frames;
+    assert.equal(start.pageId, pageId);
+    assert.equal(start.groupId, peer.groupId);
+    apply({ type: 'page.start', pageId, frameId: start.id }, { type: 'page.duplicate', pageId });
+    const duplicate = document.frames.find(frame => frame.pageId === document.pages[2].id);
+    assert.notEqual(duplicate.groupId, start.groupId);
+    apply({ type: 'comment.add', frameId: null, pageId, point: { x: 10, y: 10 }, text: 'Here' });
+    apply({ type: 'frames.remove', frameIds: [start.id, peer.id] });
+    assert.equal(document.pages[1].startFrameId, undefined);
+    apply({ type: 'frames.restore', frames: [{ frame: start, index: 0 }, { frame: peer, index: 1 }] },
+      { type: 'page.start', pageId, frameId: start.id });
+    assert.equal(document.pages[1].startFrameId, start.id);
+    apply({ type: 'page.remove', pageId });
+    assert.equal(document.comments.length, 0);
+    assert.equal(document.frames.length, 2);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

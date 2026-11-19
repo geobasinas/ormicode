@@ -1,5 +1,6 @@
 import * as z from 'zod/mini';
 import { sessionIdSchema } from './schema.ts';
+import { designCommentReviewFields } from './design-review.ts';
 
 // Frame-level layer state and named batch operations for selection, grouping,
 // stacking, clipboard and undo/redo. Every field is optional so v1 boards and
@@ -18,7 +19,7 @@ const frameIds = z.array(id).check(z.minLength(1), z.maxLength(DESIGN_FRAME_LIMI
 export const designFrameLayerFields = {
   rotation: z.optional(rotation), groupId: z.optional(id), locked: z.optional(z.boolean()), hidden: z.optional(z.boolean()),
 };
-const content = { name, x: position, y: position, width: dimension, height: dimension, html, styles };
+const content = { name, x: position, y: position, width: dimension, height: dimension, html, styles, pageId: z.optional(id) };
 /** A patch may clear layer state with null (or false/0, which normalize to absent). */
 export const designFramePatchSchema = z.partial(z.strictObject({
   ...content, rotation, groupId: z.nullable(id), locked: z.boolean(), hidden: z.boolean(),
@@ -27,7 +28,7 @@ const fullFrame = z.strictObject({ id, ...content, ...designFrameLayerFields });
 const comment = z.strictObject({
   id, frameId: z.nullable(id), element: z.optional(z.string().check(z.maxLength(240))),
   text: z.string().check(z.minLength(1), z.maxLength(2000)), resolved: z.boolean(),
-  session: sessionIdSchema, createdAt: z.number().check(z.gte(0)),
+  session: sessionIdSchema, createdAt: z.number().check(z.gte(0)), ...designCommentReviewFields,
 });
 
 export const designFrameOperationSchemas = [

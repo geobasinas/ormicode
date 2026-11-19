@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { DesignActor, DesignDocument, DesignFrame, DesignOperation, DesignStorage } from '@ormicode/protocol';
 import type { Client } from './dispatch.ts';
-import { DesignError } from './design-store.ts';
+import { DesignError } from './design-error.ts';
 
 export interface ReviewContext { actor: DesignActor; mentionable: Set<string>; history: DesignStorage['history'] }
 export const contentHash = (frame: DesignFrame): string => createHash('sha256').update(JSON.stringify([frame.html, frame.styles, frame.width, frame.height])).digest('hex');
@@ -18,6 +18,7 @@ export function applyReviewOperation(document: DesignDocument, operation: Design
   switch (operation.type) {
     case 'comment.add': {
       if (operation.frameId !== null) frame(operation.frameId);
+      if (operation.pageId !== undefined && (operation.frameId !== null || !operation.point || !(document.pages?.some(page => page.id === operation.pageId) ?? operation.pageId === 'default'))) invalid('Canvas point must belong to a page');
       if (operation.path !== undefined && operation.frameId === null) invalid('Element anchors require a frame');
       checkMentions(operation.mentions);
       const { type: _, ...fields } = operation;

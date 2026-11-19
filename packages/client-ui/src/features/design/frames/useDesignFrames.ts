@@ -1,24 +1,23 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type PointerEvent, type RefObject } from 'react';
 import type { DesignDocument, DesignFrame, DesignOperation, DesignStackDirection } from '@ormicode/protocol';
 import { sanitizeMarkup } from '../sanitize.ts';
-import type { Rect, View } from '../design-model.ts';
+import { clampPosition, resizeRect, type Rect, type View } from '../design-model.ts';
 import type { DragKind } from '../design-snap.ts';
 import { clickSelection, editableFrame, expandGroups, previewFrames, selectedIds, setOperation, unionRect, moveFrames, type FrameSelection } from './frame-selection.ts';
 import { droppedFrame, duplicateOperation, FRAME_CLIP_KEY, FRAME_CLIP_MIME, parseFrameClip, pasteOperation, serializeFrames } from './frame-clipboard.ts';
 import { useFrameGestures, type FrameGestureKind } from './useFrameGestures.ts';
 import type { FrameHistory } from './useFrameHistory.ts';
 
-type Mutate = (operations: DesignOperation[], options?: { record?: boolean }) => Promise<boolean>;
+type Mutate = (operations: DesignOperation[], options?: { record?: boolean }) => Promise<false | { document: DesignDocument }>;
 const editableTarget = (target: EventTarget | null) => target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
 
 /** Multi-selection, layer commands, clipboard, drop placement and undo/redo for frames. */
-export function useDesignFrames({ board, document, primary, chooseFrame, canvas, view, canvasSize, mutate, history, canEdit, onError }: {
-  board: RefObject<DesignDocument | null>; document: DesignDocument | null; primary: string;
+export function useDesignFrames({ board, frames, pageId, snapLines, primary, chooseFrame, canvas, view, canvasSize, mutate, history, canEdit, onError }: {
+  board: RefObject<DesignDocument | null>; frames: DesignFrame[]; pageId: string; snapLines(): { axis: 'x' | 'y'; at: number }[]; primary: string;
   chooseFrame(id: string): boolean; canvas: RefObject<HTMLDivElement | null>; view: View; canvasSize: { width: number; height: number };
   mutate: Mutate; history: FrameHistory; canEdit(): boolean; onError(message: string): void;
 }) {
   const [extra, setExtra] = useState<string[]>([]);
-  const frames = useMemo(() => document?.frames ?? [], [document]);
   const visible = useMemo(() => new Set(frames.filter(frame => !frame.hidden).map(frame => frame.id)), [frames]);
   const selection: FrameSelection = useMemo(() => ({ primary, extra: extra.filter(id => id !== primary && visible.has(id)) }), [primary, extra, visible]);
   const ids = selectedIds(selection);
@@ -31,13 +30,13 @@ export function useDesignFrames({ board, document, primary, chooseFrame, canvas,
 
   const commit = useCallback(async (operations: DesignOperation[], selectAdded = 0) => {
     if (!operations.length || !canEdit()) return false;
-    const ok = await mutate(operations);
-    const added = selectAdded ? board.current?.frames.slice(-selectAdded) : undefined;
+    const ok = await mutate(operations.map(operation => operation.type === 'frames.paste' ? { ...operation, frames: operation.frames.map(frame => ({ ...frame, pageId })) } : operation));
+    const added = selectAdded && ok ? ok.document.frames.slice(-selectAdded) : null;
     if (ok && added?.length) select({ primary: added[0]!.id, extra: added.slice(1).map(frame => frame.id) });
     return ok;
-  }, [mutate, canEdit, board, select]);
+  }, [mutate, canEdit, pageId, select]);
 
-  const gestures = useFrameGestures({ board, canvas, view,
+  const gestures = useFrameGestures({ board, canvas, view, pageId, snapLines,
     onMarquee: (hits, additive) => select(additive ? { primary: primary || hits[0] || '', extra: [...selection.extra, ...hits] } : { primary: hits.includes(primary) ? primary : hits[0] ?? primary, extra: hits }),
     onCommit: patches => void commit(setOperation(patches)),
     onConflict: () => onError('The board changed during the gesture. Try again.'),
@@ -126,20 +125,27 @@ export function useDesignFrames({ board, document, primary, chooseFrame, canvas,
   const startHandle = (event: PointerEvent, kind: FrameGestureKind) => { if (canEdit() && editable.length && event.button === 0) gestures.startTransform(event, kind, editable); };
   const nudge = (frame: DesignFrame, kind: DragKind, dx: number, dy: number) => {
     if (frame.locked) return true;
-    if (kind !== 'move' || ids.length < 2 || !ids.includes(frame.id)) return false;
-    void commit(setOperation(moveFrames(editable, dx, dy))); return true;
+    if (kind === 'move' && ids.length > 1 && ids.includes(frame.id)) {
+      void commit(setOperation(moveFrames(editable, dx, dy)));
+    } else {
+      const { width, height } = resizeRect(frame, dx, dy);
+      const patch = kind === 'resize' ? { width, height } : { x: clampPosition(frame.x + dx), y: clampPosition(frame.y + dy) };
+      void commit([{ type: 'frame.update', frameId: frame.id, patch }]);
+    }
+    return true;
   };
   const drop = (event: DragEvent<HTMLDivElement>) => {
+    const initialBoard = board.current;
     const data = event.dataTransfer; const box = canvas.current?.getBoundingClientRect();
     const at = { x: (event.clientX - (box?.left ?? 0) - view.x) / view.scale, y: (event.clientY - (box?.top ?? 0) - view.y) / view.scale };
     const file = [...data.files].find(item => /\.(html?|txt|md)$/i.test(item.name) || /^text\/(html|plain|markdown)$/.test(item.type));
     if (!file && !data.types.some(type => type === 'text/html' || type === 'text/plain' || type === FRAME_CLIP_MIME)) return;
     event.preventDefault();
     if (!canEdit()) return;
-    const place = (content: { html?: string; text?: string; name?: string }) => { const operation = droppedFrame(content, at, sanitizeMarkup); if (operation) void commit([operation], 1); else onError('Dropped content is empty or larger than 24 KiB.'); };
+    const place = (content: { html?: string; text?: string; name?: string }) => { if (initialBoard !== board.current) return; const operation = droppedFrame(content, at, sanitizeMarkup); if (operation) void commit([operation], 1); else onError('Dropped content is empty or larger than 24 KiB.'); };
     const clip = parseFrameClip(data.getData(FRAME_CLIP_MIME), sanitizeMarkup);
     if (clip) { void commit([pasteOperation(clip, at)], clip.length); return; }
-    if (file) { if (file.size > 24576) { onError('Dropped files must be 24 KiB or smaller.'); return; } void file.text().then(text => place(/\.html?$/i.test(file.name) || file.type === 'text/html' ? { html: text, name: file.name } : { text, name: file.name })); return; }
+    if (file) { if (file.size > 24576) { onError('Dropped files must be 24 KiB or smaller.'); return; } void file.text().then(text => place(/\.html?$/i.test(file.name) || file.type === 'text/html' ? { html: text, name: file.name } : { text, name: file.name })).catch(() => onError('Could not read the dropped file.')); return; }
     const html = data.getData('text/html'); place(html ? { html } : { text: data.getData('text/plain') });
   };
   const dragOver = (event: DragEvent<HTMLDivElement>) => { if (event.dataTransfer.types.some(type => type === 'Files' || type.startsWith('text/') || type === FRAME_CLIP_MIME)) { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; } };
@@ -150,7 +156,6 @@ export function useDesignFrames({ board, document, primary, chooseFrame, canvas,
   const previewed = gestures.patches.length ? previewFrames(frames, gestures.patches) : frames;
   const bounds: Rect | null = editable.length > 0 ? unionRect(previewed.filter(frame => editable.some(item => item.id === frame.id))) : null;
   return { selection, ids, selected, editable, grouped, actions, gestures, frameDrag, startHandle, nudge, drop, dragOver, layerClick, bounds,
-    previewRect: (frame: DesignFrame) => gestures.patches.length ? previewed.find(item => item.id === frame.id) : undefined,
-    keyboard: (event: ReactKeyboardEvent) => event, clearExtra: () => setExtra([]) };
+    previewRect: (frame: DesignFrame) => gestures.patches.length ? previewed.find(item => item.id === frame.id) : undefined };
 }
 export type DesignFrames = ReturnType<typeof useDesignFrames>;

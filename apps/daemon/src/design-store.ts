@@ -141,7 +141,10 @@ function apply(document: DesignDocument, operations: DesignOperation[], context:
     switch (operation.type) {
       case 'frame.add': { const { type: _, ...fields } = operation; document.frames.push({ ...fields, ...(document.pages ? { pageId: fields.pageId ?? document.pages[0]!.id } : {}), id: randomUUID() }); break; }
       case 'frame.update':
-        if (operation.patch.pageId && operation.patch.pageId !== frame(operation.frameId).pageId) clearPageStart(document, operation.frameId);
+        if (operation.patch.pageId && operation.patch.pageId !== frame(operation.frameId).pageId) {
+          clearPageStart(document, operation.frameId);
+          delete frame(operation.frameId).groupId;
+        }
         Object.assign(frame(operation.frameId), operation.patch); break;
       case 'frame.remove':
         clearPageStart(document, operation.frameId);
@@ -150,18 +153,20 @@ function apply(document: DesignDocument, operations: DesignOperation[], context:
         document.comments = document.comments.filter(item => item.frameId !== operation.frameId);
         if (document.workingFrameId === operation.frameId) document.workingFrameId = null;
         break;
-      case 'frame.duplicate': { const original = frame(operation.frameId); document.frames.push({ ...original, id: randomUUID(), name: `${original.name.slice(0, 110)} copy`, x: Math.min(100000, original.x + 40), y: Math.min(100000, original.y + 40) }); break; }
+      case 'frame.duplicate': { const { groupId: _, ...original } = frame(operation.frameId); document.frames.push({ ...original, id: randomUUID(), name: `${original.name.slice(0, 110)} copy`, x: Math.min(100000, original.x + 40), y: Math.min(100000, original.y + 40) }); break; }
       case 'direction.select': if (operation.frameId !== null) frame(operation.frameId); document.workingFrameId = operation.frameId; break;
       case 'board.rename': document.name = operation.name; break;
       case 'token.set': setDesignToken(document, operation.token, fail); break;
       case 'comment.remove': comment(operation.commentId); document.comments = document.comments.filter(item => item.id !== operation.commentId); break;
-      default: applyFrameOperation(document, operation, fail);
+      case 'frames.set': case 'frames.remove': case 'frames.order': case 'frames.stack':
+      case 'frames.group': case 'frames.ungroup': case 'frames.paste': case 'frames.restore':
+        applyFrameOperation(document, operation, fail, context.history); break;
     }
   }
   normalizeGroups(document);
 }
 
-export function updateDesign(cwd: string, slug: string, expectedRevision: number, change: DesignOperation[] | number, context: ReviewContext): DesignStorage {
+export function updateDesign(cwd: string, slug: string, expectedRevision: number, change: DesignOperation[] | number, context: ReviewContext | string): DesignStorage {
   const path = boardPath(cwd, slug);
   const stored = read(path);
   if (stored.document.revision !== expectedRevision) throw new DesignError('design.conflict', `Expected revision ${expectedRevision}; current revision is ${stored.document.revision}. Reload and reconcile; do not automatically retry.`);
@@ -170,7 +175,10 @@ export function updateDesign(cwd: string, slug: string, expectedRevision: number
     const entry = stored.history.find(item => item.revision === change);
     if (!entry) throw new DesignError('design.not_found', 'Restore point is no longer retained');
     document = structuredClone(entry.document);
-  } else apply(document, change, { ...context, history: stored.history });
+  } else {
+    const actorContext = typeof context === 'string' ? { actor: { kind: 'user' as const, session: context }, mentionable: new Set([context]) } : context;
+    apply(document, change, { ...actorContext, history: stored.history });
+  }
   finalizeReview(stored.document, document, { restore: typeof change === 'number' });
   document.revision = stored.document.revision + 1;
   validateDocument(document);

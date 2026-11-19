@@ -11,7 +11,7 @@ export const designPointSchema = z.strictObject({ x: coordinate, y: coordinate }
 export const designPathSchema = z.string().check(z.regex(/^\d{1,5}(?:\.\d{1,5}){0,23}$/));
 const mentions = z.array(sessionIdSchema).check(z.maxLength(8));
 export const designReplySchema = z.strictObject({ id, text, author: designActorSchema, mentions: z.optional(mentions), createdAt: at });
-export const designCommentInputFields = { point: z.optional(designPointSchema), path: z.optional(designPathSchema), mentions: z.optional(mentions) };
+export const designCommentInputFields = { pageId: z.optional(id), point: z.optional(designPointSchema), path: z.optional(designPathSchema), mentions: z.optional(mentions) };
 export const designCommentReviewFields = {
   ...designCommentInputFields, author: z.optional(designActorSchema),
   replies: z.optional(z.array(designReplySchema).check(z.maxLength(50))),

@@ -9,6 +9,11 @@ export function materializePages(document: DesignDocument): void {
   for (const frame of document.frames) frame.pageId ??= 'default';
 }
 
+export function pageIdOf(document: DesignDocument, pageId?: string): string | undefined {
+  if (!document.pages) return undefined;
+  return pageId ?? document.pages.find(page => page.id === 'default')?.id ?? document.pages[0]?.id;
+}
+
 export function validatePages(document: DesignDocument): void {
   const pages = document.pages;
   if (!pages) {
@@ -51,10 +56,13 @@ export function applyPageOperation(document: DesignDocument, op: DesignOperation
       break;
     case 'page.duplicate': {
       const copy = { ...page, id: randomUUID(), name: `${page.name.slice(0, 115)} copy`, guides: page.guides?.map(guide => ({ ...guide, id: randomUUID() })) };
+      const groups = new Map<string, string>();
       const frames = document.frames.filter(frame => frame.pageId === page.id).map(frame => {
         const id = randomUUID();
         if (frame.id === page.startFrameId) copy.startFrameId = id;
-        return { ...frame, id, pageId: copy.id };
+        const key = frame.groupId;
+        const groupId = key ? groups.get(key) ?? groups.set(key, randomUUID()).get(key)! : undefined;
+        return { ...frame, id, pageId: copy.id, groupId };
       });
       if (document.frames.length + frames.length > 24) fail('At most 24 frames are supported');
       pages.splice(pages.indexOf(page) + 1, 0, copy); document.frames.push(...frames); break;
@@ -63,7 +71,7 @@ export function applyPageOperation(document: DesignDocument, op: DesignOperation
       if (pages.length === 1) fail('Cannot remove the last page');
       const removed = new Set(document.frames.filter(frame => frame.pageId === page.id).map(frame => frame.id));
       document.frames = document.frames.filter(frame => !removed.has(frame.id));
-      document.comments = document.comments.filter(comment => !comment.frameId || !removed.has(comment.frameId));
+      document.comments = document.comments.filter(comment => comment.pageId !== page.id && (!comment.frameId || !removed.has(comment.frameId)));
       if (document.workingFrameId && removed.has(document.workingFrameId)) document.workingFrameId = null;
       pages.splice(pages.indexOf(page), 1); break;
     }

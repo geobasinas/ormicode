@@ -44,7 +44,7 @@ export function DesignStyleField({ property, label, inline, computed, disabled, 
       {selectChoices.map(choice => <option key={choice} value={choice}>{choice}</option>)}
     </select> : <div className="design-style-input">
       {color && <ColorSwatch label={label} value={hex} disabled={disabled} onCommit={onCommit} />}
-      {bound ? <output id={id} className="design-input design-inspector-bound" title={fallback}>{bound}</output> :
+      {bound ? <output id={id} className="design-input design-inspector-bound" title={bound + ' · ' + fallback}>{bound}</output> :
         <InspectorValueInput id={id} value={displayValue} placeholder={fallback} disabled={disabled} onCommit={onCommit} />}
     </div>}
   </div>;

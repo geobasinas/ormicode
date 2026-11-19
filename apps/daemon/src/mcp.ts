@@ -88,6 +88,8 @@ export async function serveOrmiMcp(socketPath: string, self: string): Promise<vo
       case 'ormi_design_get': return text(JSON.stringify(await req('design.get', { session: self, slug: String(args.slug) })));
       case 'ormi_design_create': return text(JSON.stringify(await req('design.create', { session: self, slug: String(args.slug), name: String(args.name) })));
       case 'ormi_design_update': return text(JSON.stringify(await req('design.update', { session: self, slug: String(args.slug), expectedRevision: args.expectedRevision, operations: args.operations })));
+      case 'ormi_design_frame_versions': return text(JSON.stringify(await req('design.frameVersions', { session: self, slug: String(args.slug), frameId: String(args.frameId) })));
+      case 'ormi_design_mentionable': return text(JSON.stringify(await req('design.mentionable', { session: self })));
       case 'ormi_design_history': return text(JSON.stringify(await req('design.history', { session: self, slug: String(args.slug) })));
       case 'ormi_design_activity': return text(JSON.stringify(await req('design.activity', { session: self, slug: String(args.slug) })));
       case 'ormi_design_restore': return text(JSON.stringify(await req('design.restore', { session: self, slug: String(args.slug), expectedRevision: args.expectedRevision, targetRevision: args.targetRevision })));

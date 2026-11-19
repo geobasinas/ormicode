@@ -10,7 +10,7 @@ export function useFrameHistory() {
   const [, setVersion] = useState(0);
   const changed = () => setVersion(version => version + 1);
   const record = useCallback((before: DesignDocument, after: DesignDocument, operations: readonly DesignOperation[]) => {
-    if (after.revision !== before.revision + 1) return;
+    if (after.revision !== before.revision + 1 || !operations.some(operation => /^(frames?[.]|direction[.]select)/.test(operation.type))) return;
     const entry = diffDocuments(before, after, labels[operations[0]?.type ?? ''] ?? 'Edit');
     if (!entry) return;
     stacks.current = { undo: pushEntry(stacks.current.undo, entry), redo: [] };
@@ -18,7 +18,7 @@ export function useFrameHistory() {
   }, []);
   const clear = useCallback(() => { stacks.current = { undo: [], redo: [] }; changed(); }, []);
   /** Send the inverse of the latest entry. Unsafe entries (frames changed since) are dropped with a reason. */
-  const step = useCallback(async (direction: 'undo' | 'redo', current: DesignDocument | null, mutate: (operations: DesignOperation[]) => Promise<boolean>, onError: (message: string) => void) => {
+  const step = useCallback(async (direction: 'undo' | 'redo', current: DesignDocument | null, mutate: (operations: DesignOperation[]) => Promise<unknown>, onError: (message: string) => void) => {
     const source = stacks.current[direction];
     const entry = source.at(-1);
     if (!entry || !current) return false;

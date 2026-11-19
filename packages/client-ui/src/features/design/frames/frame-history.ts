@@ -5,7 +5,7 @@ import type { DesignComment, DesignDocument, DesignFrame, DesignFramePatch, Desi
 interface Touched { id: string; before: DesignFrame | null; after: DesignFrame | null; comments: DesignComment[] }
 export interface HistoryEntry {
   label: string; frames: Touched[]; orderBefore: string[]; orderAfter: string[];
-  workingBefore: string | null; workingAfter: string | null; bytes: number;
+  workingBefore: string | null; workingAfter: string | null; starts?: { pageId: string; before: string | null; after: string | null }[]; bytes: number;
 }
 export interface HistoryStacks { undo: HistoryEntry[]; redo: HistoryEntry[] }
 export const HISTORY_ENTRIES = 50;
@@ -15,7 +15,7 @@ const layerKeys = new Set(['rotation', 'groupId', 'locked', 'hidden']);
 function canonical(frame: DesignFrame | null | undefined): string {
   if (!frame) return 'null';
   const record = frame as Record<string, unknown>;
-  return JSON.stringify(Object.keys(record).filter(key => record[key] !== undefined && !(layerKeys.has(key) && !record[key])).sort().map(key => [key, record[key]]));
+  return JSON.stringify(Object.keys(record).filter(key => key !== 'approval' && !(key === 'pageId' && record[key] === 'default') && record[key] !== undefined && !(layerKeys.has(key) && !record[key])).sort().map(key => [key, record[key]]));
 }
 const sameOrder = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((id, index) => id === b[index]);
 
@@ -30,8 +30,13 @@ export function diffDocuments(before: DesignDocument, after: DesignDocument, lab
   const orderBefore = before.frames.map(frame => frame.id); const orderAfter = after.frames.map(frame => frame.id);
   const shared = (order: string[], other: string[]) => order.filter(id => other.includes(id));
   const reordered = !sameOrder(shared(orderBefore, orderAfter), shared(orderAfter, orderBefore));
-  if (!frames.length && !reordered && before.workingFrameId === after.workingFrameId) return null;
-  const entry = { label, frames, orderBefore, orderAfter, workingBefore: before.workingFrameId, workingAfter: after.workingFrameId, bytes: 0 };
+  const starts = (before.pages ?? []).flatMap(page => {
+    const next = after.pages?.find(item => item.id === page.id);
+    if (!next || next.startFrameId === page.startFrameId) return [];
+    return [{ pageId: page.id, before: page.startFrameId ?? null, after: next.startFrameId ?? null }];
+  });
+  if (!frames.length && !reordered && !starts.length && before.workingFrameId === after.workingFrameId) return null;
+  const entry = { label, frames, orderBefore, orderAfter, workingBefore: before.workingFrameId, workingAfter: after.workingFrameId, ...(starts.length ? { starts } : {}), bytes: 0 };
   entry.bytes = JSON.stringify(entry).length;
   return entry;
 }
@@ -53,8 +58,9 @@ export function historyOperations(entry: HistoryEntry, current: DesignDocument, 
     const now = current.frames.find(frame => frame.id === item.id) ?? null;
     if (canonical(now) !== canonical(from(item))) return { error: `“${(now ?? from(item) ?? to(item))?.name ?? 'A frame'}” changed after this edit; nothing was ${direction === 'undo' ? 'undone' : 'redone'}.` };
     if (now && !to(item)) {
-      const known = new Set(item.comments.map(comment => comment.id));
-      if (current.comments.some(comment => comment.frameId === item.id && !known.has(comment.id))) return { error: `“${now.name}” gained feedback after this edit.` };
+      if (now.approval?.status === 'approved') return { error: `“${now.name}” is approved.` };
+      const known = new Set(item.comments.map(comment => JSON.stringify(comment)));
+      if (current.comments.some(comment => comment.frameId === item.id && !known.has(JSON.stringify(comment)))) return { error: `“${now.name}” gained feedback after this edit.` };
     }
   }
   const reordered = !sameOrder(fromOrder.filter(id => toOrder.includes(id)), toOrder.filter(id => fromOrder.includes(id)));
@@ -62,11 +68,16 @@ export function historyOperations(entry: HistoryEntry, current: DesignDocument, 
   if (reordered && !sameOrder(present, fromOrder.filter(id => present.includes(id)))) return { error: 'The layer order changed after this edit.' };
   if (fromWorking !== toWorking && current.workingFrameId !== fromWorking) return { error: 'The working direction changed after this edit.' };
 
+  const startChanges = (entry.starts ?? []).map(change => ({ pageId: change.pageId, from: undo ? change.after : change.before, to: undo ? change.before : change.after }));
+  for (const change of startChanges) {
+    const page = current.pages?.find(item => item.id === change.pageId);
+    if (!page || (page.startFrameId ?? null) !== change.from) return { error: 'The prototype start frame changed after this edit.' };
+  }
   const operations: DesignOperation[] = [];
   const removed = entry.frames.filter(item => from(item) && !to(item)).map(item => item.id);
   if (removed.length) operations.push({ type: 'frames.remove', frameIds: removed });
   const restored = entry.frames.filter(item => !from(item) && to(item));
-  if (restored.length) operations.push({ type: 'frames.restore', frames: restored.map(item => ({ frame: to(item)!, index: Math.max(0, toOrder.indexOf(item.id)) })),
+  if (restored.length) operations.push({ type: 'frames.restore', frames: restored.map(item => { const { approval: _, ...frame } = to(item)!; return { frame, index: Math.max(0, toOrder.indexOf(item.id)) }; }),
     ...(restored.some(item => item.comments.length) ? { comments: restored.flatMap(item => item.comments) } : {}) });
   const patches = entry.frames.filter(item => from(item) && to(item)).map(item => ({ frameId: item.id, patch: framePatch(from(item)!, to(item)!) }));
   if (patches.length) operations.push({ type: 'frames.set', frames: patches });
@@ -74,6 +85,7 @@ export function historyOperations(entry: HistoryEntry, current: DesignDocument, 
     const kept = toOrder.filter(id => (current.frames.some(frame => frame.id === id) && !removed.includes(id)) || restored.some(item => item.id === id));
     if (kept.length) operations.push({ type: 'frames.order', frameIds: kept });
   }
+  for (const change of startChanges) operations.push({ type: 'page.start', pageId: change.pageId, frameId: change.to });
   if (fromWorking !== toWorking) operations.push({ type: 'direction.select', frameId: toWorking });
   return operations.length ? { operations } : { error: 'Nothing to change.' };
 }
@@ -82,7 +94,7 @@ function framePatch(from: DesignFrame, to: DesignFrame): DesignFramePatch {
   const patch: Record<string, unknown> = {};
   const a = from as Record<string, unknown>; const b = to as Record<string, unknown>;
   for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
-    if (key === 'id' || JSON.stringify(a[key]) === JSON.stringify(b[key])) continue;
+    if (key === 'id' || key === 'approval' || JSON.stringify(a[key]) === JSON.stringify(b[key])) continue;
     patch[key] = b[key] === undefined ? (layerKeys.has(key) ? (key === 'groupId' ? null : key === 'rotation' ? 0 : false) : undefined) : b[key];
   }
   return patch as DesignFramePatch;
