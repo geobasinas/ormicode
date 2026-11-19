@@ -8,6 +8,7 @@ const count = z.number().check(z.int(), z.gte(0));
 const quantity = z.number().check(z.gte(0));
 export const eventBodies = {
   team_approval_request: z.looseObject({ kind: z.literal('team_approval_request'), parent: nonEmpty, request: requestIdSchema, options: z.array(z.looseObject({ id: nonEmpty, label: text })) }),
+  team_parent_changed: z.looseObject({ kind: z.literal('team_parent_changed'), parent: nonEmpty, parentless: z.boolean() }),
   agent_spawned: z.looseObject({ kind: z.literal('agent_spawned'), team: nonEmpty, child: nonEmpty }),
   team_message: z.looseObject({ kind: z.literal('team_message'), team: nonEmpty, from: nonEmpty, to: nonEmpty, message: nonEmpty, quiet: z.optional(z.boolean()) }),
   board_entry: z.looseObject({ kind: z.literal('board_entry'), team: nonEmpty, actor: nonEmpty, action: z.enum(['append', 'setState']), text }),

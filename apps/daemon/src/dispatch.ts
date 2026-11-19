@@ -49,6 +49,7 @@ import { browserMethod } from './browser-methods.ts';
 import { teamMethod } from './team-methods.ts';
 import { authorizeMcp, type McpCredentials } from './mcp-auth.ts';
 import type { TeamApprovals } from './team-approvals.ts';
+import type { TeamLifecycle } from './team-lifecycle.ts';
 
 /** What a client transport must do: send frames and answer requests. */
 export interface ClientLink {
@@ -62,6 +63,7 @@ export interface Client { link: ClientLink; subscriptions: Set<string>; device: 
 export interface DispatchCtx {
   mcpCredentials: McpCredentials;
   teamApprovals: TeamApprovals;
+  teamLifecycle: TeamLifecycle;
   db: Store;
   notesDir: string;
   startedAt: number;
@@ -149,7 +151,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         const sessions = listSessions(db, Boolean(body.archived)).map(s => {
           const base = getSessionPorts(db, s.id);
           return {
-            id: s.id, title: s.title, state: s.state, project: s.project, vendor: s.vendor,
+            id: s.id, title: s.title, state: ctx.teamLifecycle.state(s), parentless: Boolean(s.parentless), project: s.project, vendor: s.vendor,
             transport: s.transport, updatedAt: s.updated_at, branch: s.branch,
             worktree: Boolean(s.worktree),
             ...(base === undefined ? {} : { ports: { base, count: SESSION_PORT_COUNT } }),
@@ -205,7 +207,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         if (!s) return client.link.replyError(id, 'session.not_found', String(body.session));
         const base = getSessionPorts(db, s.id);
         return client.link.reply(id, {
-          id: s.id, title: s.title, state: s.state, project: s.project, vendor: s.vendor,
+          id: s.id, title: s.title, state: ctx.teamLifecycle.state(s), parentless: Boolean(s.parentless), project: s.project, vendor: s.vendor,
           cwd: s.cwd,
           ...(s.project === 'scratch' ? { scratchFiles: countScratchFiles(s.cwd) } : {}),
           transport: s.transport, updatedAt: s.updated_at, branch: s.branch, worktree: Boolean(s.worktree),
@@ -259,6 +261,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
       case 'session.resume': {
         const session = String(body.session);
         ctx.paused.delete(session);
+        await ctx.ensureWorker(session); ctx.teamLifecycle.available(session);
         if (!await ctx.drainQueue(session)) return client.link.replyError(id, 'agent.failed', 'held or queued prompt rejected');
         return client.link.reply(id, { resumed: true });
       }
@@ -269,7 +272,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         else await ctx.agentBrowser.closeSession(session);
         await ctx.services.stopSession(session);
         archiveSession(db, session);
-        ctx.teamApprovals.unavailable(session);
+        ctx.teamLifecycle.unavailable(session);
         releaseForSession(db, session);
         // Scratch sessions own their folder; delete removes it (archive keeps it).
         const row = getSession(db, session);
@@ -295,6 +298,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         return client.link.reply(id, { updated: true });
       }
       case 'session.answer': {
+        if (await ctx.teamLifecycle.answer(client, id, body)) return;
         const res = await ctx.toWorker(String(body.session), 'worker.answer', { request: body.request, answers: body.answers });
         return res?.type === 'res' ? client.link.reply(id, { answered: true }) : client.link.replyError(id, 'agent.unsupported', 'answer');
       }

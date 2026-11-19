@@ -59,7 +59,7 @@ export class TeamApprovals {
     if (payload.userOnly === true) return [kind, payload];
     const child = getSession(ctx.db, session), team = child?.team ? getTeam(ctx.db, child.team) : undefined;
     const options = onceOptions(payload);
-    if (!child || child.archived || !team || team.closed_at !== null || team.parent === session || child.parent !== team.parent
+    if (!child || child.archived || child.parentless || !team || team.closed_at !== null || team.parent === session || child.parent !== team.parent
       || !this.available(team.parent) || !options.length) return [kind, payload];
     this.pending.set(id, { session, parent: team.parent, payload, options });
     const message = newId('q');

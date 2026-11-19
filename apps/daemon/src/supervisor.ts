@@ -24,6 +24,8 @@ import { allocateSessionPorts } from './session-ports.ts';
 import { workerEnvironment } from './worker-env.ts';
 import { McpCredentials } from './mcp-auth.ts';
 import { TeamApprovals } from './team-approvals.ts';
+import { TeamLifecycle } from './team-lifecycle.ts';
+import { rateRetries } from './rate-retry.ts';
 import { PreviewProxy } from './preview-proxy.ts';
 import { Services } from './services.ts';
 import { AgentBrowser } from './agent-browser.ts';
@@ -77,10 +79,11 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   };
   const record = (session: string, kind: string, payload: Record<string, unknown>, ts?: number, origin?: string) => {
     if (closing) return;
+    dispatchCtx?.teamLifecycle.event(session, kind, payload);
     [kind, payload] = dispatchCtx?.teamApprovals.event(session, kind, payload) ?? [kind, payload];
     const { frame } = append(db, session, { kind, payload: { kind, ...secrets.redact(session, mcpCredentials.redact(payload)) }, ...(ts ? { ts } : {}), ...(origin ? { origin } : {}) });
     fanout(session, frame);
-    const mapped = stateFor[kind];
+    const mapped = payload.teamMessage ? undefined : stateFor[kind];
     if (mapped) setState(db, session, mapped, typeof payload.reason === 'string' ? payload.reason : undefined, ts);
     else if (kind === 'state' && typeof payload.state === 'string') setState(db, session, payload.state as SessionState, typeof payload.reason === 'string' ? payload.reason : undefined, ts);
   };
@@ -123,10 +126,9 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     proc.on('exit', code => {
       mcpCredentials.revoke(session, mcpToken);
       if (closing) return;
-      dispatchCtx.teamApprovals.unavailable(session);
+      dispatchCtx.teamLifecycle.unavailable(session);
       const wasResuming = resuming.delete(session);
-      const retryTimer = retryTimers.get(session);
-      if (retryTimer) { clearTimeout(retryTimer); retryTimers.delete(session); }
+      retries.cancel(session);
       workers.delete(session);
       setWorkerPid(db, session, null);
       const current = getSession(db, session);
@@ -154,6 +156,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
         let recap = false;
         if (w) {
           w.ready = true; w.pid = Number(body.pid) || w.pid; setWorkerPid(db, session, w.pid ?? null); setState(db, session, 'idle'); armIdle(session, 'idle'); enforcePool();
+          dispatchCtx.teamLifecycle.available(session);
           if (resuming.delete(session)) record(session, 'resumed', {});
           const uptoSeq = recapPending.get(session);
           if (uptoSeq !== undefined) {
@@ -170,6 +173,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
       }
       case 'worker.event': {
         let kind = String(body.kind);
+        dispatchCtx.teamLifecycle.event(session, kind, body.payload as Record<string, unknown>);
         if (kind === 'text_delta' || kind === 'thinking_delta') {
           delta(session, kind, String((body.payload as Record<string, unknown>)?.text ?? ''));
           return answer({ seq: 0 });
@@ -203,7 +207,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
         if (kind === 'error' && typeof payload?.resetAt === 'number'
             && (payload.code === 'rate_limited' || payload.code === 'plan_limit')) {
           setState(db, session, 'paused_rate_limited', String(payload.code));
-          scheduleRateRetry(session, payload.resetAt);
+          retries.schedule(session, payload.resetAt);
         }
         answer({ seq });
         if (kind === 'turn_end') void drainQueue(session, true);
@@ -211,6 +215,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
       }
       case 'worker.state':
         setState(db, session, body.state as SessionState, body.reason as string | undefined);
+        dispatchCtx.teamLifecycle.event(session, 'state', body);
         answer({ seq: 0 });
         break;
       case 'worker.native':
@@ -226,7 +231,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   };
   const evictWorker = async (session: string, reason: string) => {
     if (closing) return;
-    mcpCredentials.revoke(session); dispatchCtx.teamApprovals.unavailable(session);
+    mcpCredentials.revoke(session); dispatchCtx.teamLifecycle.unavailable(session);
     const w = workers.get(session);
     const link = workerLinks.get(session);
     if (link) { try { await link.request('worker.evict', { session }, 10_000); } catch { if (w) killTree(w.proc); } }
@@ -236,7 +241,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     setState(db, session, 'idle', reason);
   };
   const stopWorker = async (session: string) => {
-    mcpCredentials.revoke(session); dispatchCtx.teamApprovals.unavailable(session);
+    mcpCredentials.revoke(session); dispatchCtx.teamLifecycle.unavailable(session);
     const w = workers.get(session);
     if (!w) return;
     const link = workerLinks.get(session);
@@ -286,24 +291,15 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     db, notesDir, paused, heldPrompts, lastPrompt, ensureWorker, toWorker, terminals, record,
     previewEntries: (session, ids) => services.previewEntries(session, ids),
   });
-  // Sessions paused by a rate limit wake at the provider's reset time and retry
-  // the held prompt; timers are in-memory and re-armed from the journal on boot.
-  const retryTimers = new Map<string, NodeJS.Timeout>();
-  const scheduleRateRetry = (session: string, resetAt: number) => {
-    const existing = retryTimers.get(session);
-    if (existing) clearTimeout(existing);
-    retryTimers.set(session, setTimeout(() => {
-      retryTimers.delete(session);
-      const last = lastPrompt.get(session);
-      if (last && getSession(db, session)?.state === 'paused_rate_limited') {
-        void sendPrompt(session, last.text, last.images, { journal: false }).then(ok => { if (!ok) setState(db, session, 'interrupted', 'resume_failed'); });
-      }
-    }, Math.max(0, resetAt - Date.now())).unref());
-  };
+  const retries = rateRetries(db, session => {
+    const last = lastPrompt.get(session);
+    return last ? sendPrompt(session, last.text, last.images, { journal: false }) : undefined;
+  });
   const pairing = new Pairing();
   const handoffsInTurn = new Map<string, number>();
   let relay: RelayClient | undefined;
   dispatchCtx = {
+    teamLifecycle: new TeamLifecycle(() => dispatchCtx, session => Boolean(workers.get(session)?.ready) && workerLinks.has(session) && mcpCredentials.activeFor(session)),
     teamApprovals: new TeamApprovals(() => dispatchCtx, session => workers.has(session) && mcpCredentials.activeFor(session)),
     db, notesDir, startedAt, paused, heldPrompts, lastPrompt, handoffsInTurn, mcpCredentials,
     lastError: () => lastError, liveWorkers: () => workers.size,
@@ -315,6 +311,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
       maxAgeMs: (Number(process.env.ORMICODE_PRICING_CACHE_MINUTES) || 1440) * 60_000,
     }),
   };
+  dispatchCtx.teamLifecycle.start();
   // idx summaries keep remote session lists fresh without streaming transcripts.
   let idxTimer: NodeJS.Timeout | undefined;
   const pushIdx = (to: string) => {
@@ -364,13 +361,13 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     link.onClose = () => {
       for (const c of clients) if (c.link === link) { clients.delete(c); dispatchCtx.terminals.drop(c); }
       const s = sessionByLink.get(link);
-      if (s) { workerLinks.delete(s); sessionByLink.delete(link); dispatchCtx.teamApprovals.unavailable(s); }
+      if (s) { workerLinks.delete(s); sessionByLink.delete(link); dispatchCtx.teamLifecycle.unavailable(s); }
     };
   });
   const addr = server.address();
   if (typeof addr === 'object' && addr) socketPath = `127.0.0.1:${addr.port}`;
   for (const c of recovery.autoResume) { resuming.add(c.s.id); if (c.recapOnly) recapPending.set(c.s.id, Number.MAX_SAFE_INTEGER); spawnWorker(c.s.id); }
-  for (const r of recovery.rateLimited) scheduleRateRetry(r.id, r.resetAt);
+  for (const r of recovery.rateLimited) retries.schedule(r.id, r.resetAt);
   return {
     socketPath, storePath, db, workers,
     async close() {
@@ -378,11 +375,11 @@ export async function startDaemon(opts: DaemonOptions = {}) {
       await services.shutdown();
       await previewProxy.close();
       closing = true;
+      dispatchCtx.teamLifecycle.close();
       if (idxTimer) clearTimeout(idxTimer);
       for (const t of idleTimers.values()) clearTimeout(t);
       idleTimers.clear();
-      for (const t of retryTimers.values()) clearTimeout(t);
-      retryTimers.clear();
+      retries.close();
       for (const w of workers.values()) {
         const link = workerLinks.get(w.session);
         try { await link?.request('worker.evict', { session: w.session }, 5_000); } catch { /* kill below */ }

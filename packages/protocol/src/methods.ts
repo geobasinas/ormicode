@@ -56,7 +56,7 @@ const summarySchema = z.object({
   id: sessionIdSchema, title: z.nullable(z.string()), state: sessionStateSchema,
   project: nonEmpty, vendor: nonEmpty, transport: nonEmpty, updatedAt: timestampSchema,
   branch: z.optional(z.nullable(z.string())),
-  worktree: z.optional(z.boolean()),
+  worktree: z.optional(z.boolean()), parentless: z.optional(z.boolean()),
   ports: z.optional(portBlock),
   diff: z.optional(z.nullable(z.object({ added: cursorSchema, removed: cursorSchema, files: cursorSchema }))),
 });

@@ -134,7 +134,8 @@ test('busy sibling messages stay unread until the next prompt; urgent interrupts
   assert.equal(urgent.type, 'res', JSON.stringify(urgent));
   await eventually(() => events(daemon.db, b.session, 'text').some(e => e.text.includes('stop, wrong branch')));
   assert.ok(events(daemon.db, b.session, 'interrupted').length);
-  const cancel = await req('team.cancel', { actor: parent, session: b.session }); assert.equal(cancel.body.interrupted, true);
+  const cancel = await req('team.cancel', { actor: parent, session: b.session });
+  assert.equal(cancel.type, 'res', JSON.stringify(cancel)); assert.equal(cancel.body.interrupted, true);
 });
 
 test('board entries survive parent state changes; diff, status, report and reassign return data', async t => {

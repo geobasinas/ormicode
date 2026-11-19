@@ -1,4 +1,3 @@
-import { setTimeout } from 'node:timers/promises';
 import { newId } from '@ormicode/protocol';
 import {
   addQueuedPrompt, addTeamMessage, archiveSession, closeTeam, getSession, getTeam, getTeamMessage, markTeamMessagesRead,
@@ -11,6 +10,7 @@ import { releaseForSession } from '@ormicode/leases';
 import type { Client, DispatchCtx } from './dispatch.ts';
 import { ormicodeDir } from './socket.ts';
 import { spawnTeamChild } from './team-spawn.ts';
+import { interrupt } from './team-interrupt.ts';
 
 const locks = new WeakMap<DispatchCtx, Promise<void>>();
 export async function teamMethod(ctx: DispatchCtx, client: Client, id: string, method: string, body: Record<string, unknown>): Promise<void> {
@@ -88,17 +88,7 @@ function status(ctx: DispatchCtx, session: SessionRow): Record<string, unknown> 
     const payload = JSON.parse(event.payload) as { input?: number; output?: number };
     return sum + (payload.input ?? 0) + (payload.output ?? 0);
   }, 0) : null;
-  return { session: session.id, state: ctx.teamApprovals.waiting(session.id) ? 'awaiting_approval' : session.state, lastActivity: session.updated_at, tokens };
-}
-async function interrupt(ctx: DispatchCtx, session: string): Promise<void> {
-  if (!['running', 'starting', 'retrying', 'awaiting_input', 'awaiting_approval'].includes(getSession(ctx.db, session)?.state ?? '')) return;
-  const result = await ctx.toWorker(session, 'worker.abort', {});
-  if (!result || result.type === 'err') throw new Error('child could not be interrupted');
-  const deadline = Date.now() + 5000;
-  while (['running', 'starting', 'retrying', 'awaiting_input', 'awaiting_approval'].includes(getSession(ctx.db, session)?.state ?? '')) {
-    if (Date.now() >= deadline) throw new Error('child did not finish interrupting');
-    await setTimeout(10);
-  }
+  return { session: session.id, state: ctx.teamApprovals.waiting(session.id) ? 'awaiting_approval' : session.state, parentless: Boolean(session.parentless), lastActivity: session.updated_at, tokens };
 }
 async function message(ctx: DispatchCtx, client: Client, id: string, body: Record<string, unknown>, actor: SessionRow, team: TeamRow): Promise<void> {
   const original = body.replyTo ? getTeamMessage(ctx.db, String(body.replyTo)) : undefined;
@@ -108,11 +98,17 @@ async function message(ctx: DispatchCtx, client: Client, id: string, body: Recor
   if (original && body.to && body.to !== original.from_session)
     return client.link.replyError(id, 'team.invalid', 'reply recipient must be the original sender');
   const recipient = getSession(ctx.db, to);
-  if (!recipient || recipient.archived || (recipient.team !== team.id && recipient.id !== team.parent))
+  const toUser = Boolean(actor.parentless) && to === team.parent;
+  if (!recipient || recipient.archived && !toUser || (recipient.team !== team.id && recipient.id !== team.parent))
     return client.link.replyError(id, 'team.not_member', 'recipient is not a live member of this team');
   const messageId = newId('q');
   addTeamMessage(ctx.db, { id: messageId, team: team.id, from_session: actor.id, to_session: to,
     reply_to: original?.id ?? null, body: String(body.text), urgent: body.urgent ? 1 : 0, created_at: Date.now() });
+  if (toUser) {
+    ctx.teamLifecycle.toUser({ id: messageId, team: team.id, from_session: actor.id, to_session: to,
+      reply_to: original?.id ?? null, body: String(body.text), urgent: body.urgent ? 1 : 0, created_at: Date.now() });
+    return client.link.reply(id, { id: messageId });
+  }
   const event = { team: team.id, from: actor.id, to, message: messageId };
   ctx.record(actor.id, 'team_message', event);
   if (to !== actor.id) ctx.record(to, 'team_message', event);

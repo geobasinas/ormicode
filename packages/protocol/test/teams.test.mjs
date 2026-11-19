@@ -21,7 +21,16 @@ test('team contracts validate actors, targets, board actions and journal events'
   assert.equal(parseResponseBody('team.report', { text: '' }).success, true);
   assert.equal(parseResponseBody('team.inbox', { messages: [] }).success, true);
   assert.equal(parseResponseBody('team.status', { session: child, state: 'idle', lastActivity: 0, tokens: null }).success, true);
+  for (const parentless of [false, true]) {
+    const status = { session: child, state: 'running', parentless, lastActivity: 0, tokens: null };
+    assert.equal(parseResponseBody('team.status', status).data.parentless, parentless);
+    assert.equal(parseResponseBody('team.tree', { team, parent: actor, children: [status] }).data.children[0].parentless, parentless);
+    const summary = { id: child, title: null, state: 'running', parentless, project: '/repo', vendor: 'fake', transport: 'cli', updatedAt: 0 };
+    assert.equal(parseResponseBody('session.list', { sessions: [summary] }).data.sessions[0].parentless, parentless);
+    assert.equal(parseResponseBody('session.get', { ...summary, cwd: '/repo', model: null, effort: null }).data.parentless, parentless);
+  }
   for (const body of [
+    { kind: 'team_parent_changed', parent: actor, parentless: true },
     { kind: 'team_approval_request', parent: actor, request: newId('req'), options: [{ id: 'allow', label: 'Allow' }] },
     { kind: 'agent_spawned', team, child },
     { kind: 'team_message', team, from: actor, to: child, message: newId('q'), quiet: true },
