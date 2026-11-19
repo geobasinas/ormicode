@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { applyPageOperation, clearPageStart, materializePages, validatePages } from './design-pages.ts';
 import { DesignError } from './design-error.ts';
+import { applyFrameOperation, normalizeGroups } from './design-frame-ops.ts';
 import { DESIGN_DOCUMENT_BYTES, DESIGN_STORAGE_BYTES, DESIGN_HISTORY_LIMIT, designDocumentSchema, designStorageSchema, designSlugSchema, type DesignDocument, type DesignOperation, type DesignStorage } from '@ormicode/protocol';
 
 export { DesignError } from './design-error.ts';
@@ -155,8 +156,10 @@ function apply(document: DesignDocument, operations: DesignOperation[], session:
         break;
       case 'comment.resolve': comment(operation.commentId).resolved = operation.resolved; break;
       case 'comment.remove': comment(operation.commentId); document.comments = document.comments.filter(item => item.id !== operation.commentId); break;
+      default: applyFrameOperation(document, operation, fail);
     }
   }
+  normalizeGroups(document);
 }
 
 export function updateDesign(cwd: string, slug: string, expectedRevision: number, change: DesignOperation[] | number, session: string): DesignStorage {

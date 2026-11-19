@@ -1,4 +1,4 @@
-import { useEffect, type CSSProperties, type PointerEvent, type ReactNode, type RefObject } from 'react';
+import { useEffect, type CSSProperties, type DragEvent, type PointerEvent, type ReactNode, type RefObject } from 'react';
 import { ChevronDown, Crosshair, Frame, Hand, Minus, MousePointer2, Plus, Smartphone } from 'lucide-react';
 import type { DesignFrame } from '@ormicode/protocol';
 import type { Rect, View } from './design-model.ts';
@@ -10,6 +10,7 @@ type Props = {
   canvas: RefObject<HTMLDivElement | null>;
   frames: DesignFrame[];
   selectedFrame: string;
+  selectedIds?: string[];
   view: View;
   tool: CanvasTool;
   panning: boolean;
@@ -29,9 +30,13 @@ type Props = {
   onFitSelection?: () => void;
   empty?: ReactNode;
   insert?: ReactNode;
-  overlay?: ReactNode;
+  viewportOverlay?: ReactNode;
   background?: string;
   startFrameId?: string;
+  overlay?: ReactNode;
+  controls?: ReactNode;
+  onDrop?(event: DragEvent<HTMLDivElement>): void;
+  onDragOver?(event: DragEvent<HTMLDivElement>): void;
 };
 
 const arrows: Record<string, [number, number]> = { ArrowLeft: [-10, 0], ArrowRight: [10, 0], ArrowUp: [0, -10], ArrowDown: [0, 10] };
@@ -48,11 +53,12 @@ export function DesignCanvas(props: Props) {
   return <div className="design-stage">
     <div ref={canvas} aria-label="Design canvas" className="design-canvas" style={{ background: props.background }} data-tool={tool} data-panning={props.panning}
       onPointerDown={props.onPointerDown} onPointerMove={props.onPointerMove}
-      onPointerUp={props.onPointerUp} onPointerCancel={props.onPointerCancel} onLostPointerCapture={props.onPointerCancel}>
+      onPointerUp={props.onPointerUp} onPointerCancel={props.onPointerCancel} onLostPointerCapture={props.onPointerCancel} onDrop={props.onDrop} onDragOver={props.onDragOver}>
       <div className="design-world" style={{ '--design-label-scale': Math.min(2.5, 1 / view.scale), transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` } as CSSProperties}>
         {frames.map(frame => {
           const rect = props.frameRect(frame);
           const active = frame.id === selectedFrame;
+          const multiple = (props.selectedIds?.length ?? 0) > 1;
           const Icon = frame.width < 600 ? Smartphone : Frame;
           const keyboardDrag = (kind: DragKind) => (event: React.KeyboardEvent) => {
             const delta = arrows[event.key];
@@ -60,15 +66,17 @@ export function DesignCanvas(props: Props) {
             event.preventDefault();
             props.onNudge(frame, kind, ...delta);
           };
-          return <div key={frame.id} className="design-artboard" data-selected={active} style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }}>
+          return <div key={frame.id} className="design-artboard" data-selected={active} data-secondary={!active && props.selectedIds?.includes(frame.id)} data-locked={!!frame.locked}
+            style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height, transform: frame.rotation ? `rotate(${frame.rotation}deg)` : undefined }}>
             <button type="button" className="design-artboard-label" aria-label={'Move ' + frame.name + '; use arrow keys to arrange'}
               onPointerDown={event => props.onDrag(event, 'move', frame)} onKeyDown={keyboardDrag('move')}><Icon size={17} /><span>{frame.id === props.startFrameId ? '▶ ' : ''}{frame.name}</span></button>
             <div className="design-artboard-preview">{props.preview(frame)}</div>
             <div className="design-artboard-size">{rect.width} × {rect.height}</div>
-            {active ? <button type="button" className="design-artboard-handle" aria-label={'Resize ' + frame.name} title="Resize frame"
+            {active && !multiple && !frame.locked ? <button type="button" className="design-artboard-handle" aria-label={'Resize ' + frame.name} title="Resize frame"
               onPointerDown={event => props.onDrag(event, 'resize', frame)} onKeyDown={keyboardDrag('resize')} /> : null}
           </div>;
         })}
+        {props.overlay}
       </div>
       {props.guides?.map(({ axis, at, from, to }) => {
         const length = (to - from) * view.scale;
@@ -77,7 +85,7 @@ export function DesignCanvas(props: Props) {
           : { left: view.x + from * view.scale, top: view.y + at * view.scale, width: length, height: 0 };
         return <div key={axis} aria-hidden className="design-snap-guide" data-axis={axis} style={style} />;
       })}
-      {props.overlay}
+      {props.viewportOverlay}
     </div>
     {props.empty}
     <div className="design-stage-bottom">
@@ -86,6 +94,7 @@ export function DesignCanvas(props: Props) {
         <button className="design-icon-button" type="button" title="Pan" aria-label="Pan tool" aria-pressed={tool === 'pan'} onClick={() => props.onTool('pan')}><Hand size={16} /></button>
         {props.insert ? <><span className="design-divider" />{props.insert}</> : null}
       </div>
+      {props.controls}
       <div className="design-float" role="group" aria-label="Zoom controls">
         <button className="design-icon-button" type="button" title="Zoom out" aria-label="Zoom out" onClick={() => props.onZoom(1 / 1.2)}><Minus size={15} /></button>
         <DropdownMenu>

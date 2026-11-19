@@ -19,6 +19,11 @@ import { useDesignPages } from './useDesignPages.ts';
 import { framesOnPage } from './design-pages.ts';
 import { DesignPagePicker } from './DesignPagePicker.tsx';
 import { DesignViewportOverlay, useViewportOptions } from './DesignViewportOverlay.tsx';
+import { useDesignFrames } from './frames/useDesignFrames.ts';
+import { useFrameHistory } from './frames/useFrameHistory.ts';
+import { FrameOverlay } from './frames/FrameOverlay.tsx';
+import { FrameToolbar } from './frames/FrameToolbar.tsx';
+import { FrameLayerControls } from './frames/FrameLayerControls.tsx';
 
 type BoardSummary = { slug: string; name: string; revision: number; frames: number };
 type Result = { document: DesignDocument; history: DesignHistorySummary[] };
@@ -61,6 +66,9 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
   const canvas = useRef<HTMLDivElement>(null);
   const fittedSlug = useRef('');
   const bridge: MutableRefObject<(type: string, body?: Record<string, unknown>) => void> = useRef(() => undefined);
+  const frameHistory = useFrameHistory();
+  const clearHistory = frameHistory.clear;
+  useEffect(() => clearHistory(), [session, slug, clearHistory]);
 
   const setCurrent = useCallback((next: Result, token: number) => {
     if (!acceptsDesignRevision(board.current, next.document, token === generation.current)) return;
@@ -135,7 +143,7 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
     await Promise.allSettled([list, (revisions.get(slugRef.current) ?? 0) > (board.current?.revision ?? 0) ? reloadCurrent() : undefined]);
   }, [session, transport, reloadCurrent]));
 
-  const mutate = useCallback(async (operations: DesignOperation[]) => {
+  const mutate = useCallback(async (operations: DesignOperation[], options?: { record?: boolean }) => {
     const current = board.current; const currentSlug = slugRef.current; const token = generation.current;
     if (!current || !currentSlug || savingRef.current) return false;
     const sourceSave = dirtyRef.current && operations.length === 1 && operations[0].type === 'frame.update' && operations[0].frameId === selectedFrame && (operations[0].patch.html !== undefined || operations[0].patch.styles !== undefined);
@@ -151,6 +159,7 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
         return false;
       }
       const result = response.body as Result;
+      if (options?.record !== false) frameHistory.record(current, result.document, operations);
       if (sourceSave) {
         dirtyRef.current = false; draftBase.current = undefined; setSourceDirty(false);
       }
@@ -159,7 +168,7 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
       return result;
     } catch (reason) { if (token === generation.current) setError(reason instanceof Error ? reason.message : String(reason)); return false; }
     finally { if (token === generation.current) { savingRef.current = false; setSaving(false); } }
-  }, [session, transport, setCurrent, reloadCurrent, selectedFrame]);
+  }, [session, transport, setCurrent, reloadCurrent, selectedFrame, frameHistory.record]);
 
   const createBoard = async () => {
     if (dirtyRef.current) { setError('Save or discard the unsaved HTML before creating another board.'); return; }
@@ -232,7 +241,9 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
     onCommit: operation => void mutate([operation]),
     onConflict: () => setError('The board changed during the drag. Try again.'),
   });
-  const frameRect = (frame: DesignFrame): Rect => drag.preview?.id === frame.id ? drag.preview.rect : frame;
+  const frameOps = useDesignFrames({ board, document, primary: selectedFrame, chooseFrame, canvas, view, canvasSize, mutate, history: frameHistory,
+    canEdit: () => !savingRef.current && !dirtyRef.current, onError: setError });
+  const frameRect = (frame: DesignFrame): Rect => frameOps.previewRect(frame) ?? (drag.preview?.id === frame.id ? drag.preview.rect : frame);
 
   useEffect(() => {
     const element = canvas.current; if (!element) return;
@@ -293,6 +304,8 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
       </section>
       {document && <DesignPagePicker pages={pages} selected={activeFrame} disabled={saving || sourceDirty} onSelect={id => { if (chooseFrame('')) pages.select(id); }} onStart={frame => { if (chooseFrame(frame.id)) { pages.select(frame.pageId ?? 'default'); fit([frame]); } }} />}
       <DesignLayers frames={frames} activeFrame={previewFrame} activePath={selectedElement?.path} workingFrame={document?.workingFrameId}
+        selectedIds={frameOps.ids} onFrameClick={frameOps.layerClick} onReorder={frameOps.actions.reorder}
+        frameControls={frame => <FrameLayerControls frame={frame} disabled={saving || sourceDirty} onToggle={frameOps.actions.toggle} />}
         onFrame={chooseFrame} onReveal={frame => { if (chooseFrame(frame.id)) fit([frame]); }} onElement={(frameId, path) => {
           if (!chooseFrame(frameId)) return;
           setSelectionRequest({ frameId, path });
@@ -326,11 +339,17 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
         <button type="submit" className="design-button primary" disabled={loading || saving || !newName.trim()}>Create board</button>
         <button type="button" className="design-icon-button" aria-label="Cancel creation" onClick={() => setCreateOpen(false)}><X size={15} /></button>
       </form> : null}
-      <DesignCanvas canvas={canvas} frames={frames} selectedFrame={selectedFrame} view={view} tool={tool} panning={drag.panning} onTool={setTool}
-        background={pages.active.background} startFrameId={pages.start?.id} overlay={<DesignViewportOverlay page={pages.active} view={view} {...canvasSize} preferences={viewport} disabled={!document || saving || sourceDirty} act={pages.act} />}
-        frameRect={frameRect} guides={drag.preview?.guides} onDrag={drag.startDrag} onPointerDown={drag.startPan} onPointerMove={drag.move} onPointerUp={drag.end}
-        onPointerCancel={drag.cancel} onWheel={handleWheel}
+      <DesignCanvas canvas={canvas} frames={frames.filter(frame => !frame.hidden)} selectedFrame={selectedFrame} selectedIds={frameOps.ids} view={view} tool={tool} panning={drag.panning} onTool={setTool}
+        background={pages.active.background} startFrameId={pages.start?.id} viewportOverlay={<DesignViewportOverlay page={pages.active} view={view} {...canvasSize} preferences={viewport} disabled={!document || saving || sourceDirty} act={pages.act} />}
+        frameRect={frameRect} guides={frameOps.gestures.guides.length ? frameOps.gestures.guides : drag.preview?.guides}
+        onDrag={(event, kind, frame) => { if (!frameOps.frameDrag(event, kind, frame)) drag.startDrag(event, kind, frame); }}
+        onPointerDown={event => { if (tool === 'select' && event.button === 0 && event.target === event.currentTarget && !event.altKey) frameOps.gestures.startMarquee(event); else drag.startPan(event); }}
+        onPointerMove={event => { if (!frameOps.gestures.move(event)) drag.move(event); }} onPointerUp={event => { if (!frameOps.gestures.end(event)) drag.end(event); }}
+        onPointerCancel={event => { if (!frameOps.gestures.cancel(event)) drag.cancel(event); }} onWheel={handleWheel}
+        overlay={<FrameOverlay frames={frameOps} />} controls={document ? <FrameToolbar frames={frameOps} history={frameHistory} disabled={saving || sourceDirty} /> : null}
+        onDrop={frameOps.drop} onDragOver={frameOps.dragOver}
         onNudge={(frame, kind, dx, dy) => {
+          if (frameOps.nudge(frame, kind, dx, dy)) return;
           const rect = resizeRect(frame, dx, dy);
           const patch = kind === 'resize' ? { width: rect.width, height: rect.height } : { x: clampPosition(frame.x + dx), y: clampPosition(frame.y + dy) };
           void mutate([{ type: 'frame.update', frameId: frame.id, patch }]);

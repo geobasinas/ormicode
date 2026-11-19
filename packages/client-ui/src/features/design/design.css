@@ -1,3 +1,4 @@
+@import "./frames/frames.css";
 .design-workspace, .design-no-session, .design-property-popup {
   --design-accent: var(--text-secondary);
   --design-selection: color-mix(in srgb, var(--text-secondary) 16%, var(--bg-main));

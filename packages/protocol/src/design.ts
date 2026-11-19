@@ -3,6 +3,7 @@ import { sessionIdSchema } from './schema.ts';
 import { designActivityResponseSchema } from './design-activity.ts';
 export { DESIGN_ACTIVITY_LIMIT, type DesignActivityItem } from './design-activity.ts';
 import { designPageSchema, designPageOperations } from './design-pages.ts';
+import { designFrameLayerFields, designFrameOperationSchemas } from './design-frame-ops.ts';
 
 export const DESIGN_DOCUMENT_BYTES = 96 * 1024;
 export const DESIGN_STORAGE_BYTES = 224 * 1024;
@@ -17,7 +18,7 @@ const html = z.string().check(z.maxLength(24576));
 const styles = z.string().check(z.maxLength(16384));
 const encodedBytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).byteLength;
 const frameFields = { name, x: position, y: position, width: dimension, height: dimension, html, styles, pageId: z.optional(id) };
-export const designFrameSchema = z.strictObject({ id, ...frameFields });
+export const designFrameSchema = z.strictObject({ id, ...frameFields, ...designFrameLayerFields });
 export const designCommentSchema = z.strictObject({
   id, frameId: z.nullable(id), element: z.optional(z.string().check(z.maxLength(240))),
   text: z.string().check(z.minLength(1), z.maxLength(2000)), resolved: z.boolean(),
@@ -45,6 +46,7 @@ export const designOperationSchema = z.union([
   z.strictObject({ type: z.literal('comment.add'), frameId: z.nullable(id), element: z.optional(z.string().check(z.maxLength(240))), text: z.string().check(z.minLength(1), z.maxLength(2000)) }),
   z.strictObject({ type: z.literal('comment.resolve'), commentId: id, resolved: z.boolean() }),
   z.strictObject({ type: z.literal('comment.remove'), commentId: id }),
+  ...designFrameOperationSchemas,
 ]);
 const board = { session: sessionIdSchema, slug: designSlugSchema };
 const history = z.array(designHistorySummarySchema).check(z.maxLength(DESIGN_HISTORY_LIMIT));
@@ -66,6 +68,7 @@ export const designResponses = {
 };
 export type DesignDocument = z.infer<typeof designDocumentSchema>;
 export type DesignFrame = z.infer<typeof designFrameSchema>;
+export type DesignComment = z.infer<typeof designCommentSchema>;
 export type DesignOperation = z.infer<typeof designOperationSchema>;
 export type DesignStorage = z.infer<typeof designStorageSchema>;
 export type DesignHistorySummary = z.infer<typeof designHistorySummarySchema>;

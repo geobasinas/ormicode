@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type MouseEvent, type ReactNode } from 'react';
 import { ChevronDown, ChevronRight, Frame, Layers3, MousePointer2, Scan, Search, Smartphone, Star, Type } from 'lucide-react';
 import type { DesignFrame } from '@ormicode/protocol';
 import { sanitizeMarkup } from './sanitize.ts';
@@ -25,7 +25,7 @@ export function readLayers(html: string): Layer[] {
   return layers;
 }
 
-export function DesignLayers({ frames, activeFrame, activePath, workingFrame, onFrame, onElement, onReveal }: {
+export function DesignLayers({ frames, activeFrame, activePath, workingFrame, onFrame, onElement, onReveal, selectedIds, onFrameClick, frameControls, onReorder }: {
   frames: DesignFrame[];
   activeFrame?: DesignFrame;
   activePath?: string;
@@ -33,7 +33,13 @@ export function DesignLayers({ frames, activeFrame, activePath, workingFrame, on
   onFrame(id: string): boolean;
   onElement(frameId: string, path: string): void;
   onReveal(frame: DesignFrame): void;
+  selectedIds?: string[];
+  onFrameClick?(event: MouseEvent, frame: DesignFrame): boolean;
+  frameControls?(frame: DesignFrame): ReactNode;
+  onReorder?(dragId: string, targetId: string): void;
 }) {
+  const [dragging, setDragging] = useState('');
+  const [dropTarget, setDropTarget] = useState('');
   const [search, setSearch] = useState('');
   const [folded, setFolded] = useState('');
   const query = search.trim().toLowerCase();
@@ -53,11 +59,14 @@ export function DesignLayers({ frames, activeFrame, activePath, workingFrame, on
         const Device = frame.width < 600 ? Smartphone : Frame;
         const Chevron = expanded ? ChevronDown : ChevronRight;
         return <div key={frame.id}>
-          <div className="design-frame-row" data-active={active}>
+          <div className="design-frame-row" data-active={active} data-secondary={!active && selectedIds?.includes(frame.id)} data-hidden={!!frame.hidden} data-drop={dropTarget === frame.id}
+            draggable={!!onReorder && !query} onDragStart={event => { setDragging(frame.id); event.dataTransfer.effectAllowed = 'move'; }} onDragEnd={() => { setDragging(''); setDropTarget(''); }}
+            onDragOver={event => { if (dragging) { event.preventDefault(); setDropTarget(frame.id); } }} onDrop={event => { if (!dragging) return; event.preventDefault(); onReorder?.(dragging, frame.id); setDragging(''); setDropTarget(''); }}>
             <button className="design-icon-button design-fold" type="button" aria-label={expanded ? 'Collapse ' + frame.name : 'Expand ' + frame.name}
               aria-expanded={expanded} onClick={() => { if (active || onFrame(frame.id)) setFolded(expanded ? frame.id : ''); }}><Chevron size={13} /></button>
-            <button className="design-layer-name" type="button" aria-pressed={active} onClick={() => { if (onFrame(frame.id)) setFolded(''); }} onDoubleClick={() => onReveal(frame)}><Device size={14} /><span>{frame.name}</span></button>
+            <button className="design-layer-name" type="button" aria-pressed={active} onClick={event => { if (onFrameClick?.(event, frame)) return; if (onFrame(frame.id)) setFolded(''); }} onDoubleClick={() => onReveal(frame)}><Device size={14} /><span>{frame.name}</span></button>
             {workingFrame === frame.id ? <Star className="design-working-star" size={11} aria-label="Working direction" /> : null}
+            {frameControls?.(frame)}
             <button className="design-icon-button design-reveal" type="button" title={'Fit ' + frame.name} aria-label={'Fit ' + frame.name} onClick={() => onReveal(frame)}><Scan size={13} /></button>
           </div>
           {expanded ? matches.map(layer => {
