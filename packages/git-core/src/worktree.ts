@@ -5,7 +5,8 @@ import { parseWorktrees, sanitize, type WorktreeEntry } from './worktree-common.
 
 export type WorkspaceChoice =
   | { kind: 'current' }
-  | { kind: 'branch'; branch: string }
+  | { kind: 'branch'; branch: string; from?: string }
+  | { kind: 'checkout'; branch: string }
   | { kind: 'worktree'; branch: string; name?: string; includeDirty?: boolean; skipInclude?: boolean; skipSetup?: boolean }
   | { kind: 'existing'; path: string };
 export type WorkspaceStepName = 'fetch' | 'create' | 'copy_dirty' | 'include' | 'setup';
@@ -19,7 +20,11 @@ export interface ResolvedWorkspace {
   cwd: string; worktree?: string; branch?: string; baseBranch?: string; baseCommit?: string;
   steps?: WorkspaceStep[];
 }
-export type WorkspaceErr = { err: 'workspace.not_repo' | 'workspace.detached' | 'workspace.failed' | 'workspace.setup_failed'; detail?: string };
+export type WorkspaceErr = {
+  err: 'workspace.not_repo' | 'workspace.detached' | 'workspace.busy' | 'workspace.dirty_conflict'
+    | 'workspace.branch_exists' | 'workspace.failed' | 'workspace.setup_failed';
+  detail?: string;
+};
 export type { WorktreeEntry } from './worktree-common.ts';
 
 const gitSync = (cwd: string, ...args: string[]): string =>

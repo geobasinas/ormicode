@@ -5,7 +5,7 @@ import { defaultBranch, resolveWorkspace, type ResolvedWorkspace, type Workspace
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Client, DispatchCtx } from './dispatch.ts';
-import { branchIsBusy } from './branch-busy.ts';
+import { branchIsBusy, mainCheckoutIsBusy } from './branch-busy.ts';
 import { hasTransport } from './registry.ts';
 import { ormicodeDir } from './socket.ts';
 
@@ -24,7 +24,11 @@ export async function startSession(
     resolved = { cwd: join(ormicodeDir(), 'scratch', sessionId) };
     mkdirSync(resolved.cwd, { recursive: true });
   } else {
+    if (workspace.kind === 'checkout' && mainCheckoutIsBusy(ctx.db, project))
+      return client.link.replyError(id, 'workspace.busy', 'the main checkout is in use by another live session');
     const busy = (branch: string) => branchIsBusy(ctx.db, project, branch, sessionId);
+    if (workspace.kind === 'checkout' && busy(workspace.branch))
+      return client.link.replyError(id, 'workspace.busy', `${workspace.branch} is in use by another live session`);
     const result = await resolveWorkspace(project, workspace, body.workspaceName as string | undefined, sessionId, busy);
     if ('err' in result) return client.link.replyError(id, result.err, result.detail ?? result.err);
     resolved = result;

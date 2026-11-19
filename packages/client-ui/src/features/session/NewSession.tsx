@@ -192,6 +192,15 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
       else setError(fetched?.type === 'res' ? (fetched.body as { error?: string }).error ?? 'Git fetch failed' : 'Git fetch failed');
     } finally { setRepoLoading(false); }
   };
+  const projectBranchAction = async (
+    method: 'project.pull' | 'project.renameBranch' | 'project.deleteBranch', body: Record<string, unknown>,
+  ): Promise<{ updated?: boolean; from?: string; to?: string }> => {
+    try {
+      const response = await transport.request(method, body);
+      if (response.type === 'err') throw new Error(`${response.code}: ${response.message}`);
+      return response.body as { updated?: boolean; from?: string; to?: string };
+    } finally { await refreshRepo(); }
+  };
 
   const grow = () => {
     const el = area.current;
@@ -259,9 +268,9 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
           value={workspace} onChange={chooseWorkspace} info={repo} mode={workspaceMode} onModeChange={chooseMode}
           branchName={branchName} onBranchNameChange={name => {
             branchNameEdited.current = true; setBranchName(name);
-            if (workspace.kind === 'branch') setWorkspace({ kind: 'branch', branch: name });
+            if (workspace.kind === 'branch') setWorkspace({ ...workspace, branch: name });
           }}
-          onOpen={refreshRepo} onFetch={fetchRepo} /> : null}
+          onOpen={refreshRepo} onFetch={fetchRepo} onProjectAction={projectBranchAction} /> : null}
         <span style={chip} title="this machine"><Laptop size={12} style={{ color: 'var(--text-hint)' }} />local<ChevronDown size={12} style={{ color: 'var(--text-hint)' }} /></span>
         <AgentChip title="agent, transport, model and effort"
           vendor={vendor} via={chosen} agents={agents}
@@ -281,6 +290,9 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
 
 function workspaceError(code: string, message: string) {
   if (code === 'workspace.detached') return 'HEAD is detached — pick a new branch or a worktree';
+  if (code === 'workspace.busy') return `Cannot switch the main checkout: ${message}`;
+  if (code === 'workspace.dirty_conflict') return `Uncommitted changes conflict with that branch: ${message}`;
+  if (code === 'workspace.branch_exists') return message;
   if (code === 'workspace.not_repo') return 'This folder is not a Git repository. Choose a Git project or use the current workspace.';
   if (code === 'workspace.failed') return message;
   if (code === 'workspace.setup_failed') {

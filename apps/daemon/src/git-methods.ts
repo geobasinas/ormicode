@@ -103,7 +103,8 @@ export function projectBranches(ctx: DispatchCtx, client: Client, id: string, bo
       defaultBranch: null, worktrees: [], hasWorktreeInclude: false, hasSetup: false, fetchedAt: null,
     });
   }
-  const info = branches(project);
+  const defaultRef = defaultBranch(project);
+  const info = branches(project, defaultRef ?? undefined);
   const remote = info.remote.filter(branch => branch.name.includes('/') && !branch.name.endsWith('/HEAD'));
   const local = info.local
     .sort((a, b) => Number(b.current) - Number(a.current) || b.ts - a.ts || a.name.localeCompare(b.name));
@@ -134,7 +135,7 @@ export function projectBranches(ctx: DispatchCtx, client: Client, id: string, bo
   return client.link.reply(id, {
     isRepo: true, ...info, local, remote, detached: info.current === null,
     dirty: status(project, null).files.length, busyBranches: busyBranches(ctx.db, project),
-    defaultBranch: defaultBranch(project), worktrees: worktreeRows,
+    defaultBranch: defaultRef, worktrees: worktreeRows,
     hasWorktreeInclude: isFile(resolve(project, '.worktreeinclude')),
     hasSetup: isFile(resolve(project, '.ormi', 'setup')),
     fetchedAt,

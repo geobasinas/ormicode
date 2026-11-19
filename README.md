@@ -459,7 +459,7 @@ States with several causes carry a `reason` (e.g. `interrupted`: `host_restart`,
 - **steer** goes into the running turn if the agent supports it; otherwise it's queued (visibly) for the next turn. Nothing is dropped.
 - **answer** replies to a pending clarifying question with `session.answer {session, request, answers}`. `answers` maps each original question text to the user's answer. The adapter preserves the question's own text and choices; the first valid response wins. A question is not an approval.
 
-**Starting a session** takes: machine, project, vendor, transport, model, effort, mode, optional workspace name, and workspace choice (current branch / new branch / worktree from a branch). ACP sessions can also carry `agentCommand` and `agentArgs`.
+**Starting a session** takes: machine, project, vendor, transport, model, effort, mode, optional workspace name, and workspace choice (current checkout, switch the main checkout to a local or remote branch, create a branch, create a worktree, or use an existing linked worktree). ACP sessions can also carry `agentCommand` and `agentArgs`.
 - `session.start` returns the id. `session.list`/`session.get` return id, title, state, project, vendor, transport, last update and branch (null for scratch/no-git); `get` also returns the current model, effort and `mode`.
 - No branch given → resolve and save the checked-out branch and exact starting commit. If HEAD is detached, require an explicit workspace choice.
 - A new worktree may start from a local or remote branch (for example, `origin/main`). Remote bases are fetched first; if fetch fails, the cached ref is used with a warning. The branch name can be supplied explicitly or generated as `ormi/<slug>`.
@@ -469,6 +469,7 @@ States with several causes carry a `reason` (e.g. `interrupted`: `host_restart`,
 - If `.ormi/setup` exists, it runs in the new worktree before the agent starts, with `ORMI_ROOT_PATH` and `ORMI_WORKTREE_PATH`; it can be disabled per worktree. It has a ten-minute timeout; failure removes the new worktree and prevents the agent from starting.
 - Each preparation stage is journaled as `workspace_step` (`fetch`, `create`, `copy_dirty`, `include`, `setup`). If creation fails, leave existing files untouched and do not start the agent.
 - If the current branch is busy with another live session, a unique worktree and branch are reserved automatically at the recorded commit; this automatic path never copies dirty changes.
+- A local branch can be selected for the main checkout; a remote branch creates a tracking branch. If its local counterpart already exists, select that local branch instead. Switching is refused if a live session holds the main checkout or if Git reports that uncommitted changes would conflict. The daemon never stashes.
 
 **Workspace rules**
 - The main checkout has at most one live session; a worktree has exactly one.
@@ -1779,6 +1780,9 @@ The hub sends a short summary through the relay Worker to Firebase (FCM); the ap
 - In `<project>/.ormi/worktrees/<slug>` (setting can override). `.ormi/` is added to the repo's local exclude file, never the tracked `.gitignore`.
 - One session per worktree; one session per main checkout at a time.
 - Starting on a branch a live session holds creates a worktree automatically.
+- `project.branches` reports local/remote refs, upstream-ahead/behind and gone state, merged state against the default branch, and linked-worktree paths. The composer can switch the main checkout, create branches or worktrees from a selected ref, fast-forward pull, rename or delete eligible local branches, and clean up merged branches.
+- `ormi project pull <path> <branch>` is fast-forward only. The current branch pulls from its upstream; another local branch fetches from its configured remote. Pull refuses a missing upstream, non-fast-forward update, or a branch held by a live session.
+- `ormi project rename-branch <path> <from> <to>` and `ormi project delete-branch <path> <name> --confirm <name> [--force]` are project-scoped. Rename/delete refuse busy or worktree-checked-out branches; deletion also refuses the current branch and requires typed confirmation. Unmerged deletion requires `--force`.
 - A worktree base may be local or remote; remote refs are fetched first. Dirty tracked and untracked files are never copied unless `includeDirty` is explicitly requested for the current branch.
 - Existing linked worktrees can be selected, except the main checkout or a worktree already leased by a live session.
 - `.worktreeinclude` uses Git-ignore patterns to opt ignored files into copying; files over 50 MB are skipped. Treat patterns that include `.env` or other credentials as an explicit local-data copy.

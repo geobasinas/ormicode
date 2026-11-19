@@ -113,6 +113,51 @@ test('includeDirty is rejected unless the worktree base is the main checkout bra
   } finally { repo.cleanup(); }
 });
 
+test('checkout switches local branches and creates a tracking branch from remote refs', async () => {
+  const repo = fixture();
+  try {
+    git(repo.cwd, 'branch', 'feature');
+    const local = await resolve(repo, { kind: 'checkout', branch: 'feature' });
+    assert.ok(!('err' in local), JSON.stringify(local));
+    assert.equal(local.branch, 'feature');
+    assert.equal(local.baseBranch, 'feature');
+
+    git(repo.cwd, 'switch', 'main');
+    const remote = `${repo.root}/remote-checkout`;
+    execFileSync('git', ['clone', '-q', repo.origin, remote]);
+    git(remote, 'config', 'user.name', 'Git Test');
+    git(remote, 'config', 'user.email', 'git-test@example.com');
+    git(remote, 'switch', '-c', 'remote-only');
+    git(remote, 'push', '-u', 'origin', 'remote-only');
+    git(repo.cwd, 'fetch', 'origin');
+    const tracked = await resolve(repo, { kind: 'checkout', branch: 'origin/remote-only' });
+    assert.ok(!('err' in tracked), JSON.stringify(tracked));
+    assert.equal(tracked.branch, 'remote-only');
+    assert.equal(git(repo.cwd, 'rev-parse', '--abbrev-ref', 'remote-only@{upstream}'), 'origin/remote-only');
+    assert.deepEqual(await resolve(repo, { kind: 'checkout', branch: 'origin/main' }), {
+      err: 'workspace.branch_exists', detail: 'Local branch main already exists; choose it instead of origin/main',
+    });
+  } finally { repo.cleanup(); }
+});
+
+test('checkout relays Git dirty-conflict text without changing the main checkout', async () => {
+  const repo = fixture();
+  try {
+    writeFileSync(join(repo.cwd, 'conflict.txt'), 'base\n');
+    git(repo.cwd, 'add', 'conflict.txt'); git(repo.cwd, 'commit', '-m', 'add conflict file');
+    git(repo.cwd, 'switch', '-c', 'feature');
+    writeFileSync(join(repo.cwd, 'conflict.txt'), 'feature\n');
+    git(repo.cwd, 'commit', '-am', 'change tracked file');
+    git(repo.cwd, 'switch', 'main');
+    writeFileSync(join(repo.cwd, 'conflict.txt'), 'dirty local\n');
+    const result = await resolve(repo, { kind: 'checkout', branch: 'feature' });
+    assert.equal(result.err, 'workspace.dirty_conflict');
+    assert.match(result.detail, /would be overwritten/i);
+    assert.equal(git(repo.cwd, 'branch', '--show-current'), 'main');
+    assert.equal(readFileSync(join(repo.cwd, 'conflict.txt'), 'utf8'), 'dirty local\n');
+  } finally { repo.cleanup(); }
+});
+
 test('skipInclude and skipSetup journal skipped steps and omit both operations', async () => {
   const repo = fixture();
   try {

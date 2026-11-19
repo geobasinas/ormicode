@@ -10,6 +10,8 @@ const start = { machine, project: '/repo', vendor: 'fake', transport: 'cli', mod
 test('session start validates the workspace choice and preserves agent values', () => {
   assert.deepEqual(parseRequestBody('session.start', start), { success: true, data: start });
   assert.equal(parseRequestBody('session.start', { ...start, workspace: { kind: 'worktree', branch: 'main' } }).success, true);
+  assert.equal(parseRequestBody('session.start', { ...start, workspace: { kind: 'checkout', branch: 'origin/feature' } }).success, true);
+  assert.equal(parseRequestBody('session.start', { ...start, workspace: { kind: 'branch', branch: 'ormi/new', from: 'feature' } }).success, true);
   assert.equal(parseRequestBody('session.start', {
     ...start, workspace: {
       kind: 'worktree', branch: 'origin/main', name: 'ormi/new-task', includeDirty: true, skipInclude: true, skipSetup: true,
@@ -22,10 +24,16 @@ test('session start validates the workspace choice and preserves agent values', 
 
 test('project branch and fetch contracts include default and worktree metadata', () => {
   assert.equal(parseRequestBody('project.fetch', { project: '/repo' }).success, true);
+  assert.equal(parseRequestBody('project.pull', { project: '/repo', branch: 'main' }).success, true);
+  assert.equal(parseRequestBody('project.renameBranch', { project: '/repo', from: 'old', to: 'new' }).success, true);
+  assert.equal(parseRequestBody('project.deleteBranch', { project: '/repo', name: 'feature', confirm: 'feature', force: true }).success, true);
   assert.equal(parseRequestBody('project.fetch', { project: '' }).success, false);
   assert.equal(parseResponseBody('project.fetch', { ok: true }).success, true);
   assert.equal(parseResponseBody('project.fetch', { ok: false, error: 'offline' }).success, true);
-  const branch = { name: 'main', sha: 'abc123', subject: 'initial', ts: 1, upstream: null, ahead: 0, behind: 0, current: true, gone: false };
+  assert.equal(parseResponseBody('project.pull', { updated: true, from: 'abc123', to: 'def456' }).success, true);
+  assert.equal(parseResponseBody('project.renameBranch', {}).success, true);
+  assert.equal(parseResponseBody('project.deleteBranch', {}).success, true);
+  const branch = { name: 'main', sha: 'abc123', subject: 'initial', ts: 1, upstream: null, ahead: 0, behind: 0, current: true, gone: false, merged: true, worktreePath: null };
   const body = {
     isRepo: true, current: 'main', local: [branch], remote: [], detached: false, dirty: 1, busyBranches: ['main'],
     defaultBranch: 'origin/main', hasWorktreeInclude: true, hasSetup: true, fetchedAt: 1000,
@@ -72,7 +80,7 @@ test('models.list contracts include transport, model availability and per-adapte
 });
 
 test('project.branches contracts include repository status and busy branches', () => {
-  const branch = { name: 'main', sha: 'abc123', subject: 'initial', ts: 1, upstream: null, ahead: 0, behind: 0, current: true, gone: false };
+  const branch = { name: 'main', sha: 'abc123', subject: 'initial', ts: 1, upstream: null, ahead: 0, behind: 0, current: true, gone: false, merged: true, worktreePath: null };
   const response = {
     isRepo: true, detached: false, dirty: 2, busyBranches: ['main'], defaultBranch: 'origin/main',
     hasWorktreeInclude: false, hasSetup: false, fetchedAt: null,

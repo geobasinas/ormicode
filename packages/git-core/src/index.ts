@@ -7,6 +7,7 @@ export { status, type GitStatus } from './status.ts';
 export { isGitRepo } from './commands.ts';
 export { log, show } from './history.ts';
 export { branches, checkout, createBranch, deleteBranch } from './branches.ts';
+export { pullBranch, renameBranch, removeBranch, BranchOperationError } from './branch-operations.ts';
 export { stage, unstage, commit, push, merge, cherryPick, revert, NothingToCommit } from './ops.ts';
 export { stash } from './stash.ts';
 export { prStatus, createPr, mergePr } from './pull-request.ts';

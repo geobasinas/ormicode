@@ -10,17 +10,19 @@ export async function sessionCommand(verb: string, args: string[]): Promise<numb
     switch (verb) {
       case 'start': {
         const vendor = args[0];
-        const usage = 'usage: ormi session start <vendor> [--transport t] [--project p] [--scratch] [--worktree <base> [--branch-name <name>] [--include-dirty] | --existing <path>] [--model m] [--effort e] [--mode m] [--agentCommand c]';
+        const usage = 'usage: ormi session start <vendor> [--transport t] [--project p] [--scratch] [--checkout <branch> | --worktree <base> [--branch-name <name>] [--include-dirty] | --existing <path>] [--model m] [--effort e] [--mode m] [--agentCommand c]';
         if (!vendor) { console.error(usage); return 2; }
         const scratch = args.includes('--scratch');
         const worktree = flag(args, '--worktree');
         const branchName = flag(args, '--branch-name');
         const existing = flag(args, '--existing');
+        const checkout = flag(args, '--checkout');
         const includeDirty = args.includes('--include-dirty');
         if ((args.includes('--worktree') && !worktree) || (args.includes('--branch-name') && !branchName)
-          || (args.includes('--existing') && !existing) || (worktree && existing)
-          || worktree?.startsWith('--') || branchName?.startsWith('--') || existing?.startsWith('--')
-          || ((branchName || includeDirty) && !worktree) || (scratch && (worktree || existing))) {
+          || (args.includes('--existing') && !existing) || (args.includes('--checkout') && !checkout)
+          || [worktree, existing, checkout].filter(Boolean).length > 1
+          || worktree?.startsWith('--') || branchName?.startsWith('--') || existing?.startsWith('--') || checkout?.startsWith('--')
+          || ((branchName || includeDirty) && !worktree) || (scratch && (worktree || existing || checkout))) {
           console.error(usage);
           return 2;
         }
@@ -31,7 +33,8 @@ export async function sessionCommand(verb: string, args: string[]): Promise<numb
               ...(branchName ? { name: branchName } : {}),
               ...(includeDirty ? { includeDirty: true } : {}),
             }
-              : { kind: 'current' as const };
+              : checkout ? { kind: 'checkout' as const, branch: checkout }
+                : { kind: 'current' as const };
         const res = await link.request('session.start', {
           machine: newId('m'), project: scratch ? 'scratch' : flag(args, '--project') ?? process.cwd(),
           vendor, transport: flag(args, '--transport') ?? 'cli',

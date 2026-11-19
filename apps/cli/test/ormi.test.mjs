@@ -14,6 +14,8 @@ test('ormi with no args prints usage and exits 0', () => {
   assert.match(stdout, /ormi models \[--agent x\] \[--transport y\] \[--refresh\]/);
   assert.match(stdout, /ormi project branches <path>/);
   assert.match(stdout, /ormi project fetch <path>/);
+  assert.match(stdout, /ormi project pull <path> <branch>/);
+  assert.match(stdout, /--checkout <branch>/);
 });
 
 test('ormi models rejects unknown options before connecting to the daemon', () => {
@@ -34,10 +36,28 @@ test('ormi project fetch requires a path before connecting to the daemon', () =>
   assert.match(stderr, /usage: ormi project branches <path> \| ormi project fetch <path>/);
 });
 
+test('ormi project branch mutations reject incomplete confirmations before connecting', () => {
+  const missingPull = run(['project', 'pull', '/repo']);
+  assert.equal(missingPull.status, 2);
+  assert.match(missingPull.stderr, /project.*pull <path> <branch>/);
+  const missingConfirm = run(['project', 'delete-branch', '/repo', 'feature']);
+  assert.equal(missingConfirm.status, 2);
+  assert.match(missingConfirm.stderr, /--confirm <name>/);
+});
+
 test('ormi session start rejects include-dirty without a worktree before connecting', () => {
   const { status, stderr } = run(['session', 'start', 'fake', '--include-dirty']);
   assert.equal(status, 2);
   assert.match(stderr, /--worktree <base>/);
+});
+
+test('ormi session start validates checkout choices before connecting', () => {
+  const missing = run(['session', 'start', 'fake', '--checkout']);
+  assert.equal(missing.status, 2);
+  assert.match(missing.stderr, /--checkout <branch>/);
+  const conflict = run(['session', 'start', 'fake', '--checkout', 'main', '--existing', '/repo/.git/worktrees/main']);
+  assert.equal(conflict.status, 2);
+  assert.match(conflict.stderr, /--checkout <branch>/);
 });
 
 test('ormi agent smoke without a vendor exits 2', () => {

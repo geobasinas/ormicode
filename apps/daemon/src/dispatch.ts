@@ -27,6 +27,7 @@ import { summarize as digestOf, rank as rankDigest } from '@ormicode/digest';
 import { checkpointMethod } from './checkpoint-methods.ts';
 import { costMethod } from './cost-methods.ts';
 import { gitMethod, projectBranches, projectFetch } from './git-methods.ts';
+import { projectBranchMethod } from './project-branch-methods.ts';
 import { fileMethod } from './file-methods.ts';
 import { listModels } from './models.ts';
 import { startSession } from './session-start.ts';
@@ -85,6 +86,10 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         return client.link.reply(id, await listModels(body as { agent?: string; transport?: string; refresh?: boolean }));
       case 'project.branches': return projectBranches(ctx, client, id, body);
       case 'project.fetch': return await projectFetch(ctx, client, id, body);
+      case 'project.pull':
+      case 'project.renameBranch':
+      case 'project.deleteBranch':
+        return await projectBranchMethod(ctx, client, id, method, body);
       case 'daemon.status':
         return client.link.reply(id, { version: '0.0.0', uptimeMs: Date.now() - ctx.startedAt, liveWorkers: ctx.liveWorkers(), relay: ctx.relay()?.connected() ? 'connected' : 'disconnected', lastError: ctx.lastError() });
       case 'session.start': return await startSession(ctx, client, id, body);

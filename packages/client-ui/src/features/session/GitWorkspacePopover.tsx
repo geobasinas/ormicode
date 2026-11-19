@@ -1,17 +1,22 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
-import { Check, ChevronDown, GitBranch, Loader2, RefreshCw, Search } from 'lucide-react';
+import { ChevronDown, GitBranch, Loader2, RefreshCw } from 'lucide-react';
 import { Popover } from 'radix-ui';
 import { chip } from './composer-parts.tsx';
+import type { BranchMenuAction } from './BranchActionMenu.tsx';
+import { GitBaseBranchPicker, type BaseOption } from './GitBaseBranchPicker.tsx';
+import { GitExistingWorktrees } from './GitExistingWorktrees.tsx';
+import { GitBranchManagement } from './GitBranchManagement.tsx';
 
 export type WorkspaceChoice =
   | { kind: 'current' }
-  | { kind: 'branch'; branch: string }
+  | { kind: 'branch'; branch: string; from?: string }
+  | { kind: 'checkout'; branch: string }
   | { kind: 'worktree'; branch: string; name?: string; includeDirty?: boolean; skipInclude?: boolean; skipSetup?: boolean }
   | { kind: 'existing'; path: string };
 export type WorkspaceMode = 'local' | 'branch' | 'worktree';
 export interface BranchInfo {
   name: string; subject: string; ts: number; sha?: string; upstream?: string | null;
-  ahead?: number; behind?: number; current?: boolean; gone?: boolean;
+  ahead?: number; behind?: number; current?: boolean; gone?: boolean; merged?: boolean; worktreePath?: string | null;
 }
 export interface RepoInfo {
   current: string | null; detached: boolean; dirty: number; busyBranches: string[];
@@ -30,8 +35,6 @@ const mutedButton: CSSProperties = {
   border: 0, background: 'transparent', color: 'var(--text-hint)', cursor: 'pointer',
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 3,
 };
-const terminalStates = new Set(['done', 'failed', 'archived']);
-
 function shortAge(ts: number) {
   const minutes = Math.max(0, Math.floor((Date.now() - ts) / 60_000));
   if (minutes < 1) return 'now';
@@ -41,31 +44,21 @@ function shortAge(ts: number) {
   return `${Math.floor(hours / 24)}d`;
 }
 function folderName(path: string) { return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path; }
-function shortPath(path: string, root: string) {
-  const normalized = path.replace(/\\/g, '/');
-  const prefix = `${root.replace(/\\/g, '/').replace(/\/$/, '')}/`;
-  return normalized.startsWith(prefix) ? `…/${normalized.slice(prefix.length)}` : normalized;
-}
-
-export function branchNameIssue(name: string, info: RepoInfo): string | undefined {
+export function branchNameIssue(name: string, info: RepoInfo, exclude?: string): string | undefined {
   const value = name;
   if (!value || value.trim() !== value || /[\s~^:?*\[\]\\]/.test(value) || value.includes('..') || value.includes('@{')
     || value.includes('//') || value.startsWith('/') || value.startsWith('.') || value.endsWith('/') || value.endsWith('.')
     || value.split('/').some(part => part.endsWith('.lock'))) return 'Invalid name';
-  if (info.local.some(branch => branch.name === value)) return 'Already exists';
+  if (info.local.some(branch => branch.name === value && branch.name !== exclude)) return 'Already exists';
   return undefined;
 }
 
-type BaseOption = {
-  group: string; name: string; subject: string; ts: number;
-  ahead?: number; behind?: number; upstream?: string | null; hint?: string;
-};
-
-export function GitChip({ value, onChange, info, project, mode, onModeChange, branchName, onBranchNameChange, title, onOpen, onFetch }: {
+export function GitChip({ value, onChange, info, project, mode, onModeChange, branchName, onBranchNameChange, title, onOpen, onFetch, onProjectAction }: {
   value: WorkspaceChoice; onChange: (workspace: WorkspaceChoice) => void; info: RepoInfo; project: string;
   mode: WorkspaceMode; onModeChange: (mode: WorkspaceMode) => void;
   branchName: string; onBranchNameChange: (name: string) => void;
   title?: string; onOpen?: () => void; onFetch: () => Promise<unknown>;
+  onProjectAction: (method: 'project.pull' | 'project.renameBranch' | 'project.deleteBranch', body: Record<string, unknown>) => Promise<{ updated?: boolean; from?: string; to?: string }>;
 }) {
   const [open, setOpen] = useState(false);
   const [side, setSide] = useState<'top' | 'bottom'>('top');
@@ -73,6 +66,9 @@ export function GitChip({ value, onChange, info, project, mode, onModeChange, br
   const [baseSearch, setBaseSearch] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const [fetching, setFetching] = useState(false);
+  const [managing, setManaging] = useState(false);
+  const [basePulling, setBasePulling] = useState<string>();
+  const [basePullResult, setBasePullResult] = useState<Record<string, string>>({});
   const [worktreesExpanded, setWorktreesExpanded] = useState(info.worktrees.length <= 3);
   useEffect(() => {
     setBaseSearch('');
@@ -99,7 +95,7 @@ export function GitChip({ value, onChange, info, project, mode, onModeChange, br
         <span className="truncate" style={{ maxWidth: 112 }}>{branchName}</span>
         <span style={{ flexShrink: 0 }}>←</span>
         <span className="truncate" style={{ maxWidth: 82 }}>{value.branch}</span>
-      </> : info.detached ? 'detached' : info.current ?? 'current';
+      </> : value.kind === 'checkout' ? `to ${value.branch}` : info.detached ? 'detached' : info.current ?? 'current';
   const amber = info.detached || currentBusy;
 
   const worktreeChoice = (nextBase = base, includeDirty = dirtyIncluded, options?: { copy?: boolean; setup?: boolean }) => onChange({
@@ -112,6 +108,29 @@ export function GitChip({ value, onChange, info, project, mode, onModeChange, br
     if (next === 'local' && (info.detached || currentBusy)) return;
     if (next === 'branch' && currentBusy) return;
     onModeChange(next);
+  };
+  const selectBranch = (kind: 'checkout' | 'branch' | 'worktree', branch: BranchInfo) => {
+    setManaging(false);
+    if (kind === 'checkout') {
+      onModeChange('local');
+      onChange({ kind: 'checkout', branch: branch.name });
+    } else if (kind === 'branch') {
+      onModeChange('branch');
+      onChange({ kind: 'branch', branch: branchName, from: branch.name });
+    } else {
+      onModeChange('worktree');
+      onChange({ kind: 'worktree', branch: branch.name, name: branchName.trim() });
+    }
+  };
+  const baseAction = (action: BranchMenuAction, branch: BranchInfo) => {
+    if (action !== 'pull') return selectBranch(action === 'start' ? 'checkout' : action === 'branch' ? 'branch' : 'worktree', branch);
+    setBasePulling(branch.name);
+    setBasePullResult(current => ({ ...current, [branch.name]: '' }));
+    void onProjectAction('project.pull', { project, branch: branch.name }).then(result => {
+      const count = branch.behind || (result.updated ? 1 : 0);
+      setBasePullResult(current => ({ ...current, [branch.name]: result.updated ? `Updated ${count} commit${count === 1 ? '' : 's'}` : 'Already up to date' }));
+    }).catch(error => setBasePullResult(current => ({ ...current, [branch.name]: String(error) })))
+      .finally(() => setBasePulling(undefined));
   };
   const fetch = async () => {
     setFetching(true);
@@ -178,7 +197,7 @@ export function GitChip({ value, onChange, info, project, mode, onModeChange, br
         style={{ ...fieldStyle, borderColor: nameIssue ? 'var(--accent-red)' : 'var(--line-card)' }} />
       <div style={{ ...quiet, color: nameIssue ? 'var(--accent-red)' : 'var(--text-hint)', minHeight: 16, marginTop: 4 }}>
         {nameIssue ?? (mode === 'branch'
-          ? `Branches from ${info.current ?? 'the current commit'}, uncommitted changes come along`
+          ? `Branches from ${value.kind === 'branch' ? value.from ?? info.current ?? 'the current commit' : info.current ?? 'the current commit'}, uncommitted changes come along`
           : `Worktree from ${base || 'the selected base'}${base === info.current && info.dirty ? ' · uncommitted changes stay in the main checkout unless included' : ''}`)}
       </div>
     </div>
@@ -189,19 +208,20 @@ export function GitChip({ value, onChange, info, project, mode, onModeChange, br
     info.hasSetup && setupIncluded ? 'runs setup' : '',
     dirtyIncluded ? 'includes uncommitted changes' : info.dirty ? 'changes stay in the main checkout' : '',
   ].filter(Boolean);
-  const summary = value.kind === 'existing'
+  const summary = managing ? `Manage branches in ${repoLabel}`
+    : value.kind === 'existing'
     ? `Use existing worktree ${selectedExisting?.branch ?? 'worktree'}`
+    : value.kind === 'checkout' ? `Switch main checkout to ${value.branch}${info.dirty ? ' · uncommitted changes must not conflict' : ''}`
     : mode === 'local' ? `Work directly in the main checkout on ${info.current ?? 'detached HEAD'}`
-      : mode === 'branch' ? `New branch ${branchName} from ${info.current ?? 'the current commit'}${info.dirty ? ' · uncommitted changes come along' : ''}`
+      : mode === 'branch' ? `New branch ${branchName} from ${value.kind === 'branch' ? value.from ?? info.current ?? 'the current commit' : info.current ?? 'the current commit'}${info.dirty ? ' · uncommitted changes come along' : ''}`
         : `New worktree ${branchName} from ${base || 'the selected base'}${optionsSummary.length ? ` · ${optionsSummary.join(' · ')}` : ''}`;
   const fetchedTitle = info.fetchedAt ? `Fetched ${shortAge(info.fetchedAt)} ago` : 'Never fetched';
-  const worktreeBusy = (worktree: RepoInfo['worktrees'][number]) =>
-    Boolean(worktree.session && !terminalStates.has(worktree.state ?? ''));
 
   return (
     <Popover.Root open={open} onOpenChange={next => {
       setOpen(next);
       if (next) {
+        setManaging(false);
         const rect = triggerRef.current?.getBoundingClientRect();
         if (rect) {
           const below = window.innerHeight - rect.bottom - 8;
@@ -217,7 +237,7 @@ export function GitChip({ value, onChange, info, project, mode, onModeChange, br
       <Popover.Trigger asChild>
         <button ref={triggerRef} className="hv-sub" style={{ ...chip, maxWidth: 245, minWidth: 0 }} title={title}>
           <GitBranch size={12} style={{ color: amber ? 'var(--accent-amber)' : 'var(--text-hint)', flexShrink: 0 }} />
-          {amber || (value.kind === 'current' && info.dirty > 0) ? <span style={{
+          {amber || (mode === 'local' && info.dirty > 0) ? <span style={{
             width: 5, height: 5, borderRadius: '50%', flexShrink: 0,
             background: amber ? 'var(--accent-amber)' : 'var(--text-hint)',
           }} /> : null}
@@ -258,71 +278,54 @@ export function GitChip({ value, onChange, info, project, mode, onModeChange, br
               ['local', 'Local', info.detached || currentBusy, info.detached ? 'HEAD is detached — choose a new branch or worktree' : currentBusy ? `${info.current} is in use by another session` : undefined],
               ['branch', 'New branch', currentBusy, currentBusy ? `${info.current} is in use by another session` : undefined],
               ['worktree', 'Worktree', false, undefined],
-            ] as [WorkspaceMode, string, boolean, string | undefined][]).map(([key, text, disabled, reason]) => (
+              ['branches', 'Branches', false, undefined],
+            ] as [WorkspaceMode | 'branches', string, boolean, string | undefined][]).map(([key, text, disabled, reason]) => (
               <span key={key} title={reason} style={{ flex: 1, minWidth: 0 }}>
-                <button type="button" aria-pressed={mode === key} disabled={disabled} onClick={() => chooseMode(key)} style={{
+                <button type="button" aria-pressed={key === 'branches' ? managing : !managing && mode === key}
+                  disabled={disabled} onClick={() => {
+                    if (key === 'branches') setManaging(true);
+                    else { setManaging(false); chooseMode(key); }
+                  }} style={{
                   width: '100%', height: '100%', minWidth: 0, border: 0, borderRadius: 5, padding: '0 5px',
-                  background: mode === key ? 'var(--bg-raised)' : 'transparent',
-                  color: mode === key ? 'var(--text-title)' : 'var(--text-hint)',
+                  background: (key === 'branches' ? managing : !managing && mode === key) ? 'var(--bg-raised)' : 'transparent',
+                  color: (key === 'branches' ? managing : !managing && mode === key) ? 'var(--text-title)' : 'var(--text-hint)',
                   font: 'inherit', fontSize: 11, cursor: disabled ? 'not-allowed' : 'pointer',
                   opacity: disabled ? 0.5 : 1,
                 }}>{text}</button>
               </span>
             ))}
           </div>
-          {currentBusy ? <div style={{ ...quiet, marginTop: 6, flexShrink: 0 }}>{info.current} is in use by another session — Worktree is selected</div> : null}
+          {currentBusy && !managing ? <div style={{ ...quiet, marginTop: 6, flexShrink: 0 }}>{info.current} is in use by another session — Worktree is selected</div> : null}
           <div style={{ paddingTop: 4, display: 'grid', gap: 4, flex: '1 1 auto', minHeight: 0, overflowY: 'auto' }}>
-            {mode === 'local' ? <div style={{ ...quiet, lineHeight: 1.5 }}>
-              Work directly in the main checkout on <span style={{ color: 'var(--text-title)', fontFamily: 'var(--font-mono)' }}>{info.current}</span>
-              {info.dirty ? <div style={{ marginTop: 5 }}>{info.dirty} uncommitted {info.dirty === 1 ? 'change' : 'changes'}</div> : null}
+            {managing ? <GitBranchManagement info={info} project={project} onProjectAction={onProjectAction}
+              onSelect={selectBranch} /> : null}
+            {!managing && mode === 'local' ? <div style={{ display: 'grid', gap: 7 }}>
+              <div style={{ ...quiet, lineHeight: 1.5 }}>
+                Work directly in the main checkout on <span style={{ color: 'var(--text-title)', fontFamily: 'var(--font-mono)' }}>{info.current}</span>
+                {info.dirty ? <div style={{ marginTop: 2 }}>{info.dirty} uncommitted {info.dirty === 1 ? 'change' : 'changes'}</div> : null}
+              </div>
+              <div>
+                <label htmlFor="ormi-git-switch-branch" style={{ display: 'block', ...quiet, marginBottom: 5 }}>Switch to branch</label>
+                <select id="ormi-git-switch-branch" aria-label="Switch to branch"
+                  value={value.kind === 'checkout' ? value.branch : info.current ?? ''}
+                  onChange={event => onChange(event.target.value === info.current
+                    ? { kind: 'current' } : { kind: 'checkout', branch: event.target.value })}
+                  style={{ ...fieldStyle, paddingRight: 22 }}>
+                  {info.local.map(branch => <option key={branch.name} value={branch.name} disabled={info.busyBranches.includes(branch.name)}>
+                    {branch.name}{info.busyBranches.includes(branch.name) ? ' · in use' : ''}
+                  </option>)}
+                </select>
+                {value.kind === 'checkout' && info.dirty ? <div style={{ ...quiet, marginTop: 4 }}>uncommitted changes must not conflict</div> : null}
+              </div>
             </div> : null}
-            {mode === 'branch' ? branchInput : null}
-            {mode === 'worktree' ? <>
+            {!managing && mode === 'branch' ? branchInput : null}
+            {!managing && mode === 'worktree' ? <>
               {value.kind !== 'existing' ? <>
-                <div>
-                  <label htmlFor="ormi-git-base" style={{ display: 'block', ...quiet, marginBottom: 5 }}>Base</label>
-                  <div style={{ position: 'relative' }}>
-                    <Search size={12} style={{ position: 'absolute', left: 8, top: 7, color: 'var(--text-hint)' }} />
-                    <input id="ormi-git-base" role="combobox" aria-label="Base branch" aria-expanded="true" aria-controls="ormi-git-base-options"
-                      aria-activedescendant={options[activeIndex] ? `ormi-git-base-${activeIndex}` : undefined}
-                      value={baseSearch} onChange={event => { setBaseSearch(event.target.value); setActiveIndex(0); }}
-                      onKeyDown={onBaseKeyDown} placeholder={base ? `Filter branches · ${base}` : 'Filter branches…'} style={{ ...fieldStyle, paddingLeft: 25 }} />
-                  </div>
-                  <div id="ormi-git-base-options" role="listbox" aria-label="Base branches" style={{
-                    maxHeight: 'min(180px, max(72px, calc(var(--radix-popover-content-available-height) - 400px)))',
-                    overflowY: 'auto', marginTop: 5, border: '1px solid var(--line-card)', borderRadius: 6, padding: 3,
-                  }}>
-                    {options.map((option, index) => {
-                      const inUse = info.busyBranches.includes(option.name);
-                      return <div key={`${option.group}:${option.name}`}>
-                        {index === 0 || option.group !== options[index - 1]?.group ? <div style={{ ...quiet, fontSize: 10, padding: '5px 6px 3px' }}>{option.group}</div> : null}
-                        <button id={`ormi-git-base-${index}`} type="button" role="option" aria-selected={base === option.name}
-                          onMouseDown={event => event.preventDefault()}
-                          onMouseEnter={() => setActiveIndex(index)} onClick={() => chooseBase(option.name)}
-                          style={{
-                            width: '100%', minHeight: 36, display: 'flex', alignItems: 'center', gap: 7,
-                            border: 0, borderRadius: 4, padding: '4px 6px', textAlign: 'left',
-                            color: 'var(--text-active)', background: activeIndex === index ? 'var(--bg-card)' : 'transparent',
-                            font: 'inherit', cursor: 'pointer',
-                          }}>
-                          <span style={{ width: 14, flexShrink: 0, color: 'var(--text-title)' }}>{base === option.name ? <Check size={12} /> : null}</span>
-                          <span style={{ minWidth: 0, flex: 1 }}>
-                            <span style={{ display: 'block', fontFamily: 'var(--font-mono)', fontSize: 11.5 }} className="truncate">{option.name}</span>
-                            <span style={{ display: 'block', ...quiet, fontSize: 10 }} className="truncate">
-                              {[option.hint, option.subject, option.ts ? shortAge(option.ts) : ''].filter(Boolean).join(' · ')}
-                            </span>
-                          </span>
-                          {option.ahead || option.behind ? <span style={{ ...quiet, fontSize: 9, whiteSpace: 'nowrap' }}>
-                            {option.ahead ? `↑${option.ahead} ` : ''}{option.behind ? `↓${option.behind} ` : ''}vs {option.upstream ?? ''}
-                          </span> : null}
-                          {inUse ? <span style={{ ...quiet, fontSize: 9, whiteSpace: 'nowrap' }}>in use</span> : null}
-                        </button>
-                      </div>;
-                    })}
-                    {!options.length ? <div style={{ ...quiet, padding: 8 }}>No matching branches</div> : null}
-                    {truncated ? <div style={{ ...quiet, fontSize: 10, padding: 5 }}>100 shown — refine search</div> : null}
-                  </div>
-                </div>
+                <GitBaseBranchPicker info={info} base={base} options={options} search={baseSearch}
+                  onSearch={search => { setBaseSearch(search); setActiveIndex(0); }}
+                  activeIndex={activeIndex} onActiveIndex={setActiveIndex} onKeyDown={onBaseKeyDown}
+                  onChoose={chooseBase} truncated={truncated} onAction={baseAction}
+                  pulling={basePulling} pullResult={basePullResult} />
                 {branchInput}
                 {info.dirty > 0 ? <label style={{ display: 'flex', alignItems: 'center', gap: 8, ...quiet, cursor: base === info.current ? 'pointer' : 'not-allowed', opacity: base === info.current ? 1 : 0.5 }}>
                   <input className="ormi-check" type="checkbox" checked={dirtyIncluded} disabled={base !== info.current}
@@ -340,37 +343,9 @@ export function GitChip({ value, onChange, info, project, mode, onModeChange, br
                   Run setup script (.ormi/setup)
                 </label> : null}
               </> : null}
-              <div style={{ borderTop: '1px solid var(--line-card)', paddingTop: 3 }}>
-                <button type="button" onClick={() => setWorktreesExpanded(expanded => !expanded)} style={{
-                  width: '100%', display: 'flex', alignItems: 'center', gap: 7, border: 0,
-                  background: 'transparent', color: 'var(--text-label)', font: 'inherit', fontSize: 11,
-                  padding: '2px 0', cursor: 'pointer', textAlign: 'left',
-                }}>
-                  <ChevronDown size={12} style={{ transform: worktreesExpanded ? 'rotate(0)' : 'rotate(-90deg)', color: 'var(--text-hint)' }} />
-                  Existing worktrees <span style={{ ...quiet, marginLeft: 'auto' }}>{info.worktrees.length}</span>
-                </button>
-                {worktreesExpanded ? <div style={{ display: 'grid', gap: 3, marginTop: 5 }}>
-                  {info.worktrees.length ? info.worktrees.map(worktree => {
-                    const busy = worktreeBusy(worktree);
-                    return <div key={worktree.path} style={{
-                      minHeight: 38, display: 'flex', alignItems: 'center', gap: 7,
-                      borderRadius: 5, padding: '4px 5px', background: 'var(--bg-card)',
-                    }}>
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ color: 'var(--text-title)', fontFamily: 'var(--font-mono)', fontSize: 10.5 }} className="truncate">{worktree.branch ?? 'detached'}</div>
-                        <div style={{ ...quiet, fontSize: 9.5 }} className="truncate">
-                          {shortPath(worktree.path, project)} · {worktree.session ? worktree.state ?? 'session' : 'free'}{busy ? ' · in use' : ''} · {worktree.dirty} changed
-                        </div>
-                      </div>
-                      <button type="button" disabled={busy} title={busy ? 'This worktree is in use by another session' : 'Use this worktree'}
-                        onClick={() => onChange({ kind: 'existing', path: worktree.path })} style={{
-                          ...mutedButton, fontSize: 10, borderRadius: 4, padding: '4px 7px',
-                          background: 'var(--bg-raised)', opacity: busy ? 0.45 : 1, cursor: busy ? 'not-allowed' : 'pointer',
-                        }}>Use</button>
-                    </div>;
-                  }) : <div style={{ ...quiet, padding: '5px 0' }}>No linked worktrees</div>}
-                </div> : null}
-              </div>
+              <GitExistingWorktrees info={info} project={project} expanded={worktreesExpanded}
+                onToggle={() => setWorktreesExpanded(expanded => !expanded)}
+                onUse={path => onChange({ kind: 'existing', path })} />
             </> : null}
           </div>
           <div style={{

@@ -1,4 +1,6 @@
 import { currentBranch, git, resolveCommit } from './commands.ts';
+import { parseWorktrees } from './worktree-common.ts';
+import { resolve } from 'node:path';
 
 function refs(cwd: string, pattern: string): string[][] {
   const format = '%(refname:short)%00%(objectname)%00%(subject)%00%(committerdate:unix)%00%(upstream:short)%00%(upstream:track,nobracket)%00';
@@ -6,15 +8,27 @@ function refs(cwd: string, pattern: string): string[][] {
     .map(line => line.split('\0'));
 }
 
-export function branches(cwd: string) {
+export function branches(cwd: string, mergedInto?: string | null) {
   const current = currentBranch(cwd);
+  const mergeBase = mergedInto ?? current;
+  const merged = new Set(mergeBase
+    ? git(cwd, 'branch', '--merged', mergeBase).split('\n').map(line => line.replace(/^\*\s+|^\s+/, '')).filter(Boolean)
+    : []);
+  const worktrees = parseWorktrees(git(cwd, 'worktree', 'list', '--porcelain'));
+  const canonical = (path: string) => {
+    const normalized = resolve(path);
+    return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+  };
+  const mainCheckout = canonical(cwd);
+  const worktreePath = new Map(worktrees.filter(worktree => worktree.branch && canonical(worktree.path) !== mainCheckout)
+    .map(worktree => [worktree.branch!, worktree.path]));
   const local = refs(cwd, 'refs/heads').map(([name = '', sha = '', subject = '', ts = '0', upstreamValue = '', track = '']) => {
     const gone = track.trim() === 'gone';
     const ahead = Number(/ahead (\d+)/.exec(track)?.[1] ?? 0);
     const behind = Number(/behind (\d+)/.exec(track)?.[1] ?? 0);
     return {
       name, sha, subject, ts: Number(ts) * 1000, upstream: upstreamValue || null,
-      ahead, behind, current: name === current, gone,
+      ahead, behind, current: name === current, gone, merged: merged.has(name), worktreePath: worktreePath.get(name) ?? null,
     };
   });
   const remote = refs(cwd, 'refs/remotes').filter(([name]) => !name?.endsWith('/HEAD'))

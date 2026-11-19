@@ -48,6 +48,31 @@ export async function resolveWorkspace(
   if (ws.kind === 'current' && !branch)
     return { err: 'workspace.detached', detail: 'HEAD is detached; choose a branch or worktree' };
 
+  if (ws.kind === 'checkout') {
+    const local = await maybeGit(project, 'rev-parse', '--verify', '--quiet', `refs/heads/${ws.branch}`);
+    let target = ws.branch;
+    let args = ['switch', '--', ws.branch];
+    if (!local && ws.branch.includes('/')) {
+      const remote = await maybeGit(project, 'rev-parse', '--verify', '--quiet', `refs/remotes/${ws.branch}`);
+      if (remote) {
+        const localName = ws.branch.slice(ws.branch.indexOf('/') + 1);
+        if (await maybeGit(project, 'rev-parse', '--verify', '--quiet', `refs/heads/${localName}`))
+          return { err: 'workspace.branch_exists', detail: `Local branch ${localName} already exists; choose it instead of ${ws.branch}` };
+        target = localName;
+        args = ['switch', '--track', ws.branch];
+      }
+    }
+    const switched = await gitResult(project, args);
+    if (switched.code !== 0) {
+      const detail = commandMessage(switched);
+      if (/local changes to .* would be overwritten|untracked working tree files would be overwritten|would be overwritten by checkout/i.test(detail))
+        return { err: 'workspace.dirty_conflict', detail };
+      return { err: 'workspace.failed', detail: `checkout: ${detail}` };
+    }
+    const checkedOut = await headAsync(project);
+    return { cwd: project, branch: checkedOut.branch ?? target, baseBranch: checkedOut.branch ?? target, baseCommit: checkedOut.commit };
+  }
+
   if (ws.kind === 'worktree') {
     if (!branch && ws.includeDirty)
       return { err: 'workspace.failed', detail: 'copy_dirty: uncommitted changes can only be included from the current branch' };
@@ -66,9 +91,11 @@ export async function resolveWorkspace(
     if (exists !== undefined) return { err: 'workspace.failed', detail: `create: branch ${name} already exists` };
     const valid = await run('git', ['check-ref-format', '--branch', name], { cwd: project });
     if (valid.code !== 0) return { err: 'workspace.failed', detail: `create: invalid branch name ${name}` };
-    const switched = await gitResult(project, ['switch', '-c', name, commit]);
+    const branchBase = ws.from ? await maybeGit(project, 'rev-parse', '--verify', `${ws.from}^{commit}`) : commit;
+    if (!branchBase) return { err: 'workspace.failed', detail: `create: base branch ${ws.from} was not found` };
+    const switched = await gitResult(project, ['switch', '-c', name, branchBase]);
     if (switched.code !== 0) return { err: 'workspace.failed', detail: `create: ${commandMessage(switched)}` };
-    return { cwd: project, branch: name, baseBranch: branch ?? undefined, baseCommit: commit };
+    return { cwd: project, branch: name, baseBranch: ws.from ?? branch ?? undefined, baseCommit: branchBase };
   }
   return { cwd: project, branch: branch ?? undefined, baseBranch: branch ?? undefined, baseCommit: commit };
 }

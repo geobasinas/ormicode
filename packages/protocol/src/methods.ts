@@ -12,7 +12,10 @@ const gitFileStat = z.object({ path: nonEmpty, oldPath: z.optional(nonEmpty), st
 const stashItem = z.object({ index: count, ref: nonEmpty, message: z.string(), branch: z.nullable(z.string()), ts: timestampSchema, files: count, added: count, removed: count });
 const branchInfo = z.object({
   current: z.nullable(z.string()),
-  local: z.array(z.object({ name: nonEmpty, sha: nonEmpty, subject: z.string(), ts: timestampSchema, upstream: z.nullable(z.string()), ahead: count, behind: count, current: z.boolean(), gone: z.boolean() })),
+  local: z.array(z.object({
+    name: nonEmpty, sha: nonEmpty, subject: z.string(), ts: timestampSchema, upstream: z.nullable(z.string()),
+    ahead: count, behind: count, current: z.boolean(), gone: z.boolean(), merged: z.boolean(), worktreePath: z.nullable(nonEmpty),
+  })),
   remote: z.array(z.object({ name: nonEmpty, sha: nonEmpty, subject: z.string(), ts: timestampSchema })),
 });
 const gitLogResponse = z.object({
@@ -42,7 +45,8 @@ export const sessionStateSchema = z.enum([
 ]);
 const workspaceSchema = z.union([
   z.object({ kind: z.literal('current') }),
-  z.object({ kind: z.literal('branch'), branch: nonEmpty }),
+  z.object({ kind: z.literal('branch'), branch: nonEmpty, from: z.optional(nonEmpty) }),
+  z.object({ kind: z.literal('checkout'), branch: nonEmpty }),
   z.object({
     kind: z.literal('worktree'), branch: nonEmpty, name: z.optional(nonEmpty), includeDirty: z.optional(z.boolean()),
     skipInclude: z.optional(z.boolean()), skipSetup: z.optional(z.boolean()),
@@ -186,6 +190,9 @@ export const requestBodies = {
   // Branch catalog for a project dir before a session exists (composer workspace picker).
   'project.branches': z.object({ project: nonEmpty }),
   'project.fetch': z.object({ project: nonEmpty }),
+  'project.pull': z.object({ project: nonEmpty, branch: nonEmpty }),
+  'project.renameBranch': z.object({ project: nonEmpty, from: nonEmpty, to: nonEmpty }),
+  'project.deleteBranch': z.object({ project: nonEmpty, name: nonEmpty, confirm: nonEmpty, force: z.optional(z.boolean()) }),
   // Hub-side pairing: returns a one-shot 12-digit code the new device enters.
   'pair.create': z.object({}),
   // A device exchanges a live code for a device token (raw token returned once).
@@ -279,6 +286,9 @@ export const responseBodies = {
     ...branchInfo.shape,
   }),
   'project.fetch': z.object({ ok: z.boolean(), error: z.optional(z.string()) }),
+  'project.pull': z.object({ updated: z.boolean(), from: nonEmpty, to: nonEmpty }),
+  'project.renameBranch': z.object({}),
+  'project.deleteBranch': z.object({}),
   'git.checkout': z.object({ branch: nonEmpty }),
   'git.createBranch': z.object({ branch: nonEmpty }),
   'git.deleteBranch': z.object({}),
