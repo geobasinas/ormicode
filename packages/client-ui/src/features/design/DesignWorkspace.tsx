@@ -15,6 +15,10 @@ import { useDesignDrag } from './useDesignDrag.ts';
 import { acceptsDesignRevision, sourceMatches } from './design-live.ts';
 import { useDesignLive } from './useDesignLive.ts';
 import type { DesignAgentContext } from './design-agent-context.ts';
+import { useDesignPages } from './useDesignPages.ts';
+import { framesOnPage } from './design-pages.ts';
+import { DesignPagePicker } from './DesignPagePicker.tsx';
+import { DesignViewportOverlay, useViewportOptions } from './DesignViewportOverlay.tsx';
 
 type BoardSummary = { slug: string; name: string; revision: number; frames: number };
 type Result = { document: DesignDocument; history: DesignHistorySummary[] };
@@ -174,7 +178,11 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
     finally { if (token === generation.current) setLoading(false); }
   };
 
-  const activeFrame = document?.frames.find(frame => frame.id === selectedFrame);
+  const pages = useDesignPages(document, session + ':' + slug, mutate);
+  const frames = pages.frames;
+  const viewport = useViewportOptions();
+  useEffect(() => { const id = reconcileFrameSelection(frames, selectedFrameRef.current); if (id !== selectedFrameRef.current && !dirtyRef.current) chooseFrame(id); }, [document, pages.active.id]);
+  const activeFrame = frames.find(frame => frame.id === selectedFrame);
   const sourceConflict = sourceDirty && !sourceMatches(activeFrame, draftBase.current);
   const previewFrame = activeFrame && sourceDirty ? { ...activeFrame, html: sourceHtml, styles: sourceStyles } : activeFrame;
   const updateSource = (field: 'html' | 'styles', value: string) => {
@@ -205,20 +213,21 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
   };
   const addFrame = (kind: 'desktop' | 'phone' | 'blank') => {
     if (!document) return;
-    const index = document.frames.length;
+    const index = frames.length;
     const width = kind === 'phone' ? 390 : kind === 'desktop' ? 1440 : 900;
     const height = kind === 'phone' ? 844 : kind === 'desktop' ? 900 : 650;
-    const x = index ? clampPosition(Math.max(...document.frames.map(frame => frame.x + frame.width)) + 64) : 0;
-    const y = index ? Math.min(...document.frames.map(frame => frame.y)) : 0;
+    const x = index ? clampPosition(Math.max(...frames.map(frame => frame.x + frame.width)) + 64) : 0;
+    const y = index ? Math.min(...frames.map(frame => frame.y)) : 0;
     const frame = { name: `${kind === 'phone' ? 'Phone' : kind === 'desktop' ? 'Desktop' : 'Blank'} ${index + 1}`, x, y, width, height, html: kind === 'blank' ? '<main style="min-height:100%;padding:24px"></main>' : startHtml, styles: '' };
-    void mutate([{ type: 'frame.add', ...frame }]).then(result => {
+    void mutate([{ type: 'frame.add', ...frame, pageId: pages.active.id }]).then(result => {
       const current = board.current;
       const added = result && result.document.frames.at(-1);
-      if (current && added && current.frames.some(item => item.id === added.id)) { chooseFrame(added.id, current); setView(fitCanvas(current.frames, canvasSize.width, canvasSize.height)); }
+      if (current && added && current.frames.some(item => item.id === added.id)) { chooseFrame(added.id, current); setView(fitCanvas(framesOnPage(current.frames, pages.active.id), canvasSize.width, canvasSize.height)); }
     });
   };
 
   const drag = useDesignDrag({ board, view, setView, panTool: tool === 'pan', chooseFrame,
+    pageFilter: frame => (frame.pageId ?? 'default') === pages.active.id, snapLines: () => viewport.options.guides ? pages.active.guides ?? [] : [],
     canDrag: () => !savingRef.current,
     onCommit: operation => void mutate([operation]),
     onConflict: () => setError('The board changed during the drag. Try again.'),
@@ -238,11 +247,11 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
     else setView(current => ({ ...current, x: current.x - event.deltaX, y: current.y - event.deltaY }));
   }, []);
   useEffect(() => {
-    if (document && slug && fittedSlug.current !== slug && canvasSize.width > 0 && canvasSize.height > 0) {
-      fittedSlug.current = slug;
-      if (document.frames.length) setView(fitCanvas(document.frames, canvasSize.width, canvasSize.height));
+    if (document && slug && fittedSlug.current !== slug + '/' + pages.active.id && canvasSize.width > 0 && canvasSize.height > 0) {
+      fittedSlug.current = slug + '/' + pages.active.id;
+      setView(fitCanvas(frames, canvasSize.width, canvasSize.height));
     }
-  }, [slug, document, canvasSize.width, canvasSize.height]);
+  }, [slug, document, pages.active.id, canvasSize.width, canvasSize.height]);
 
   const selectedElementRef = useRef<ElementSelection | null>(null);
   selectedElementRef.current = selectedElement;
@@ -260,7 +269,6 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
     void mutate([{ type: 'comment.add', frameId: selectedFrame || null, ...(selectedElement ? { element: `${selectedElement.tag}${selectedElement.text ? `: ${selectedElement.text.slice(0, 100)}` : ''}` } : {}), text }]).then(ok => { if (ok) setFeedback(''); });
   };
 
-  const frames = document?.frames ?? [];
   const status = error || sessionError || (sourceConflict ? 'This frame’s source changed or was removed. Copy or discard your draft in HTML.' : sourceDirty ? 'Unsaved source' : saving ? 'Saving…' : document ? 'Saved · r' + document.revision : '');
   const failure = Boolean(error || sessionError || sourceConflict);
   const canReload = error.startsWith('design.conflict:') || (!document && slug);
@@ -283,6 +291,7 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
           <PanelsTopLeft size={14} /><span>{item.name}</span>
         </button>)}</div>
       </section>
+      {document && <DesignPagePicker pages={pages} selected={activeFrame} disabled={saving || sourceDirty} onSelect={id => { if (chooseFrame('')) pages.select(id); }} onStart={frame => { if (chooseFrame(frame.id)) { pages.select(frame.pageId ?? 'default'); fit([frame]); } }} />}
       <DesignLayers frames={frames} activeFrame={previewFrame} activePath={selectedElement?.path} workingFrame={document?.workingFrameId}
         onFrame={chooseFrame} onReveal={frame => { if (chooseFrame(frame.id)) fit([frame]); }} onElement={(frameId, path) => {
           if (!chooseFrame(frameId)) return;
@@ -318,6 +327,7 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
         <button type="button" className="design-icon-button" aria-label="Cancel creation" onClick={() => setCreateOpen(false)}><X size={15} /></button>
       </form> : null}
       <DesignCanvas canvas={canvas} frames={frames} selectedFrame={selectedFrame} view={view} tool={tool} panning={drag.panning} onTool={setTool}
+        background={pages.active.background} startFrameId={pages.start?.id} overlay={<DesignViewportOverlay page={pages.active} view={view} {...canvasSize} preferences={viewport} disabled={!document || saving || sourceDirty} act={pages.act} />}
         frameRect={frameRect} guides={drag.preview?.guides} onDrag={drag.startDrag} onPointerDown={drag.startPan} onPointerMove={drag.move} onPointerUp={drag.end}
         onPointerCancel={drag.cancel} onWheel={handleWheel}
         onNudge={(frame, kind, dx, dy) => {

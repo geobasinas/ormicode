@@ -29,6 +29,9 @@ type Props = {
   onFitSelection?: () => void;
   empty?: ReactNode;
   insert?: ReactNode;
+  overlay?: ReactNode;
+  background?: string;
+  startFrameId?: string;
 };
 
 const arrows: Record<string, [number, number]> = { ArrowLeft: [-10, 0], ArrowRight: [10, 0], ArrowUp: [0, -10], ArrowDown: [0, 10] };
@@ -43,7 +46,7 @@ export function DesignCanvas(props: Props) {
     return () => area.removeEventListener('wheel', onWheel);
   }, [canvas, onWheel]);
   return <div className="design-stage">
-    <div ref={canvas} aria-label="Design canvas" className="design-canvas" data-tool={tool} data-panning={props.panning}
+    <div ref={canvas} aria-label="Design canvas" className="design-canvas" style={{ background: props.background }} data-tool={tool} data-panning={props.panning}
       onPointerDown={props.onPointerDown} onPointerMove={props.onPointerMove}
       onPointerUp={props.onPointerUp} onPointerCancel={props.onPointerCancel} onLostPointerCapture={props.onPointerCancel}>
       <div className="design-world" style={{ '--design-label-scale': Math.min(2.5, 1 / view.scale), transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` } as CSSProperties}>
@@ -59,7 +62,7 @@ export function DesignCanvas(props: Props) {
           };
           return <div key={frame.id} className="design-artboard" data-selected={active} style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }}>
             <button type="button" className="design-artboard-label" aria-label={'Move ' + frame.name + '; use arrow keys to arrange'}
-              onPointerDown={event => props.onDrag(event, 'move', frame)} onKeyDown={keyboardDrag('move')}><Icon size={17} /><span>{frame.name}</span></button>
+              onPointerDown={event => props.onDrag(event, 'move', frame)} onKeyDown={keyboardDrag('move')}><Icon size={17} /><span>{frame.id === props.startFrameId ? '▶ ' : ''}{frame.name}</span></button>
             <div className="design-artboard-preview">{props.preview(frame)}</div>
             <div className="design-artboard-size">{rect.width} × {rect.height}</div>
             {active ? <button type="button" className="design-artboard-handle" aria-label={'Resize ' + frame.name} title="Resize frame"
@@ -74,6 +77,7 @@ export function DesignCanvas(props: Props) {
           : { left: view.x + from * view.scale, top: view.y + at * view.scale, width: length, height: 0 };
         return <div key={axis} aria-hidden className="design-snap-guide" data-axis={axis} style={style} />;
       })}
+      {props.overlay}
     </div>
     {props.empty}
     <div className="design-stage-bottom">

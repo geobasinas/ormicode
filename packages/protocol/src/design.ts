@@ -2,6 +2,7 @@ import * as z from 'zod/mini';
 import { sessionIdSchema } from './schema.ts';
 import { designActivityResponseSchema } from './design-activity.ts';
 export { DESIGN_ACTIVITY_LIMIT, type DesignActivityItem } from './design-activity.ts';
+import { designPageSchema, designPageOperations } from './design-pages.ts';
 
 export const DESIGN_DOCUMENT_BYTES = 96 * 1024;
 export const DESIGN_STORAGE_BYTES = 224 * 1024;
@@ -15,7 +16,7 @@ const dimension = z.number().check(z.gte(80), z.lte(4096));
 const html = z.string().check(z.maxLength(24576));
 const styles = z.string().check(z.maxLength(16384));
 const encodedBytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).byteLength;
-const frameFields = { name, x: position, y: position, width: dimension, height: dimension, html, styles };
+const frameFields = { name, x: position, y: position, width: dimension, height: dimension, html, styles, pageId: z.optional(id) };
 export const designFrameSchema = z.strictObject({ id, ...frameFields });
 export const designCommentSchema = z.strictObject({
   id, frameId: z.nullable(id), element: z.optional(z.string().check(z.maxLength(240))),
@@ -24,6 +25,7 @@ export const designCommentSchema = z.strictObject({
 });
 export const designDocumentSchema = z.strictObject({
   version: z.literal(1), name, revision,
+  pages: z.optional(z.array(designPageSchema).check(z.maxLength(24))),
   frames: z.array(designFrameSchema).check(z.maxLength(24)),
   workingFrameId: z.nullable(id), comments: z.array(designCommentSchema).check(z.maxLength(100)),
 }).check(z.refine(document => encodedBytes(document) <= DESIGN_DOCUMENT_BYTES));
@@ -33,6 +35,7 @@ export const designStorageSchema = z.strictObject({
   history: z.array(z.strictObject({ ...designHistorySummarySchema.shape, document: designDocumentSchema })).check(z.maxLength(DESIGN_HISTORY_LIMIT)),
 }).check(z.refine(stored => encodedBytes(stored) <= DESIGN_STORAGE_BYTES));
 export const designOperationSchema = z.union([
+  ...designPageOperations,
   z.strictObject({ type: z.literal('frame.add'), ...frameFields }),
   z.strictObject({ type: z.literal('frame.update'), frameId: id, patch: z.partial(z.strictObject(frameFields)) }),
   z.strictObject({ type: z.literal('frame.remove'), frameId: id }),

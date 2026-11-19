@@ -4,3 +4,4 @@ export * from './frame.ts';
 export * from './errors.ts';
 export * from './events.ts';
 export * from './design.ts';
+export * from './design-pages.ts';

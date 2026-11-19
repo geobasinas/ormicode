@@ -7,7 +7,7 @@ const anchors = (start: number, length: number) => [start, start + length / 2, s
 const sizeKey = { x: 'width', y: 'height' } as const;
 const otherAxis = { x: 'y', y: 'x' } as const;
 
-export function snapFrame(rect: Rect, others: readonly Rect[], kind: DragKind, scale: number) {
+export function snapFrame(rect: Rect, others: readonly Rect[], kind: DragKind, scale: number, lines: readonly { axis: 'x' | 'y'; at: number }[] = []) {
   const guides: SnapGuide[] = [];
   const result = { ...rect };
   for (const axis of ['x', 'y'] as const) {
@@ -17,8 +17,9 @@ export function snapFrame(rect: Rect, others: readonly Rect[], kind: DragKind, s
     const crossSize = sizeKey[cross];
     let nearest: { delta: number; at: number; target: Rect } | undefined;
     const tolerance = 8 / scale;
-    for (const target of others) {
-      for (const at of anchors(target[axis], target[size])) {
+    const targets = [...others.map(target => ({ target, values: anchors(target[axis], target[size]) })), ...lines.filter(line => line.axis === axis).map(line => ({ target: rect, values: [line.at] }))];
+    for (const { target, values } of targets) {
+      for (const at of values) {
         for (const from of movingAnchors) {
           const delta = at - from;
           // Persisted frame geometry uses integer pixels. Only show achievable alignments.

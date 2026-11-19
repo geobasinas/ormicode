@@ -1,0 +1,19 @@
+.design-viewport { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.design-viewport[data-dragging=true] { pointer-events: auto; }
+.design-canvas:has(.design-viewport[data-dragging=true]) iframe { pointer-events: none; }
+.design-canvas:has(.design-viewport) { isolation: isolate; }
+.design-canvas:has(.design-viewport) .design-artboard-label { background: var(--bg-main); border-radius: 4px; padding: 2px 4px; }
+.design-ruler { position: absolute; background: var(--bg-main); color: var(--text-secondary); pointer-events: auto; font-size: 9px; user-select: none; z-index: 2; }
+.design-ruler[data-axis=x] { top: 0; left: 0; right: 0; height: 22px; cursor: row-resize; }
+.design-ruler[data-axis=y] { top: 0; left: 0; bottom: 0; width: 22px; cursor: col-resize; }
+.design-ruler span { position: absolute; border-color: var(--text-secondary); }
+.design-ruler[data-axis=x] span { bottom: 0; height: 4px; border-left: 1px solid; padding-left: 2px; }
+.design-ruler[data-axis=y] span { left: 0; width: 4px; border-top: 1px solid; padding-top: 2px; }
+.design-ruler span[data-major=true] { height: 16px; width: 16px; }
+.design-page-guide { position: absolute; pointer-events: auto; color: var(--text-secondary); filter: drop-shadow(0 0 1px var(--bg-main)); }
+.design-page-guide[data-axis=x] { top: 22px; bottom: 0; width: 5px; border-left: 1px dashed; cursor: col-resize; }
+.design-page-guide[data-axis=y] { left: 22px; right: 0; height: 5px; border-top: 1px dashed; cursor: row-resize; }
+.design-document-grid { position: absolute; inset: 0; z-index: -1; background-image: linear-gradient(var(--design-border) 1px, transparent 1px), linear-gradient(90deg, var(--design-border) 1px, transparent 1px); opacity: .35; }
+.design-viewport-options { position: absolute; right: 8px; top: 28px; display: flex; gap: 4px; pointer-events: auto; }
+.design-viewport-options button { background: var(--bg-main); color: var(--text-secondary); border: 1px solid var(--design-border); border-radius: 4px; padding: 3px 6px; }
+.design-viewport-options button[aria-pressed=true] { color: var(--text-title); font-weight: 600; }

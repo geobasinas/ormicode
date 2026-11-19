@@ -1,12 +1,11 @@
 import { constants, closeSync, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readSync, readdirSync, realpathSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { applyPageOperation, clearPageStart, materializePages, validatePages } from './design-pages.ts';
+import { DesignError } from './design-error.ts';
 import { DESIGN_DOCUMENT_BYTES, DESIGN_STORAGE_BYTES, DESIGN_HISTORY_LIMIT, designDocumentSchema, designStorageSchema, designSlugSchema, type DesignDocument, type DesignOperation, type DesignStorage } from '@ormicode/protocol';
 
-export class DesignError extends Error {
-  code: string;
-  constructor(code: string, message: string) { super(message); this.code = code; }
-}
+export { DesignError } from './design-error.ts';
 const bytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value), 'utf8');
 const missing = (error: unknown) => (error as NodeJS.ErrnoException).code === 'ENOENT';
 const fail = (message: string): never => { throw new DesignError('design.invalid', message); };
@@ -35,6 +34,7 @@ function boardPath(cwd: string, slug: string, create = false): string {
 function validateDocument(document: DesignDocument): void {
   if (bytes(document) > DESIGN_DOCUMENT_BYTES) throw new DesignError('design.too_large', 'Current document exceeds 96 KiB');
   if (!designDocumentSchema.safeParse(document).success) fail('Invalid design document');
+  validatePages(document);
   const ids = new Set(document.frames.map(frame => frame.id));
   if (ids.size !== document.frames.length || new Set(document.comments.map(comment => comment.id)).size !== document.comments.length) fail('Duplicate frame or comment IDs');
   if (document.workingFrameId !== null && !ids.has(document.workingFrameId)) fail('Working direction does not exist');
@@ -132,10 +132,15 @@ function apply(document: DesignDocument, operations: DesignOperation[], session:
   const frame = (id: string) => document.frames.find(item => item.id === id) ?? fail(`Frame not found: ${id}`);
   const comment = (id: string) => document.comments.find(item => item.id === id) ?? fail(`Comment not found: ${id}`);
   for (const operation of operations) {
+    if (applyPageOperation(document, operation)) { validateDocument(document); continue; }
+    if ((operation.type === 'frame.add' && operation.pageId) || (operation.type === 'frame.update' && operation.patch.pageId)) materializePages(document);
     switch (operation.type) {
-      case 'frame.add': { const { type: _, ...fields } = operation; document.frames.push({ ...fields, id: randomUUID() }); break; }
-      case 'frame.update': Object.assign(frame(operation.frameId), operation.patch); break;
+      case 'frame.add': { const { type: _, ...fields } = operation; document.frames.push({ ...fields, ...(document.pages ? { pageId: fields.pageId ?? document.pages[0]!.id } : {}), id: randomUUID() }); break; }
+      case 'frame.update':
+        if (operation.patch.pageId && operation.patch.pageId !== frame(operation.frameId).pageId) clearPageStart(document, operation.frameId);
+        Object.assign(frame(operation.frameId), operation.patch); break;
       case 'frame.remove':
+        clearPageStart(document, operation.frameId);
         frame(operation.frameId);
         document.frames = document.frames.filter(item => item.id !== operation.frameId);
         document.comments = document.comments.filter(item => item.frameId !== operation.frameId);
