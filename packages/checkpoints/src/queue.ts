@@ -43,6 +43,14 @@ export class Checkpoints {
     });
   }
 
+  changedFiles(session: string, id: string): Promise<string[]> {
+    return this.run(session, async () => {
+      const repo = this.repo(session);
+      const checkpoint = await repo.find(id);
+      return checkpoint ? repo.changedFiles(checkpoint) : [];
+    });
+  }
+
   restoreWithUndo(session: string, worktree: string, seq: number, checkpoint: Checkpoint): Promise<Checkpoint | null> {
     return this.run(session, async () => {
       const repo = this.repo(session);

@@ -4,20 +4,30 @@ import { Button } from '../components/ui/button.tsx';
 import { SettingsSwitch } from './SettingsSwitch.tsx';
 
 type BrowserStatus = { available: boolean; source: 'env' | 'installed' | 'system' | null; path?: string };
+type BrowserSettingsState = { checkpointScreenshots: boolean; uiCheck: boolean };
 
-export function BrowserSettings({ enabled, onChange }: { enabled: boolean; onChange(value: boolean): void }) {
+export function BrowserSettings() {
   const { transport } = usePlatform();
   const [status, setStatus] = useState<BrowserStatus>();
+  const [settings, setSettings] = useState<BrowserSettingsState>({ checkpointScreenshots: true, uiCheck: true });
   const [installing, setInstalling] = useState(false);
   const refresh = useCallback(async () => {
-    const response = await transport.request('browser.status', {}).catch(() => undefined);
-    if (response?.type === 'res') setStatus(response.body as BrowserStatus);
+    const [statusResponse, settingsResponse] = await Promise.all([
+      transport.request('browser.status', {}).catch(() => undefined),
+      transport.request('browser.settings', {}).catch(() => undefined),
+    ]);
+    if (statusResponse?.type === 'res') setStatus(statusResponse.body as BrowserStatus);
+    if (settingsResponse?.type === 'res') setSettings(settingsResponse.body as BrowserSettingsState);
   }, [transport]);
 
   useEffect(() => { void refresh(); }, [refresh]);
-  useEffect(() => {
-    void transport.request('browser.setSettings', { checkpointScreenshots: enabled }).catch(() => undefined);
-  }, [enabled, transport]);
+  const change = (key: keyof BrowserSettingsState, value: boolean) => {
+    const next = { ...settings, [key]: value };
+    setSettings(next);
+    void transport.request('browser.setSettings', next).then(response => {
+      if (response.type === 'res') setSettings(response.body as BrowserSettingsState);
+    }).catch(() => undefined);
+  };
 
   const install = async () => {
     setInstalling(true);
@@ -48,7 +58,16 @@ export function BrowserSettings({ enabled, onChange }: { enabled: boolean; onCha
           <div style={{ fontSize: 13, color: 'var(--text-title)' }}>Screenshot the preview at each turn&apos;s checkpoint</div>
           <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>Applies to all sessions</div>
         </div>
-        <SettingsSwitch ariaLabel="Screenshot preview at checkpoints" on={enabled} onChange={onChange} disabled={!status?.available} />
+        <SettingsSwitch ariaLabel="Screenshot preview at checkpoints" on={settings.checkpointScreenshots}
+          onChange={value => change('checkpointScreenshots', value)} disabled={!status?.available} />
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 48, padding: '8px 14px', borderTop: '1px solid var(--line-card)' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, color: 'var(--text-title)' }}>Check the preview after UI changes</div>
+          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>The agent sees errors and a screenshot before finishing</div>
+        </div>
+        <SettingsSwitch ariaLabel="Check the preview after UI changes" on={settings.uiCheck}
+          onChange={value => change('uiCheck', value)} disabled={!status?.available} />
       </div>
     </div>
   </div>;

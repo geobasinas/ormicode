@@ -10,7 +10,7 @@ export const eventBodies = {
   prompt: z.looseObject({ kind: z.literal('prompt'), text }),
   queue_changed: z.looseObject({
     kind: z.literal('queue_changed'),
-    items: z.array(z.object({ id: nonEmpty, text: nonEmpty, createdAt: timestampSchema, images: z.optional(count), error: z.optional(text) })),
+    items: z.array(z.object({ id: nonEmpty, text: nonEmpty, createdAt: timestampSchema, images: z.optional(count), error: z.optional(text), actor: z.optional(z.literal('auto')) })),
   }),
   turn_start: z.looseObject({ kind: z.literal('turn_start') }),
   turn_end: z.looseObject({ kind: z.literal('turn_end') }),
@@ -54,6 +54,16 @@ export const eventBodies = {
   }),
   checkpoint_screenshot: z.looseObject({
     kind: z.literal('checkpoint_screenshot'), checkpoint: nonEmpty, artifact: nonEmpty, url: text, actor: z.literal('auto'),
+  }),
+  ui_check: z.looseObject({
+    kind: z.literal('ui_check'), checkpoint: z.optional(nonEmpty), artifact: z.optional(nonEmpty), url: text,
+    errors: count, warnings: count,
+    entries: z.array(z.object({
+      level: z.enum(['error', 'warn']), kind: z.enum(['console', 'error', 'rejection', 'network']),
+      message: text, request: z.optional(text), status: z.optional(count), frames: z.array(text),
+    })).check(z.maxLength(10)),
+    followup: z.optional(z.boolean()),
+    actor: z.literal('auto'),
   }),
   checkpoint_restored: z.looseObject({ kind: z.literal('checkpoint_restored'), id: nonEmpty, mode: nonEmpty }),
   conversation_rewound: z.looseObject({ kind: z.literal('conversation_rewound'), to: count, checkpoint: nonEmpty }),

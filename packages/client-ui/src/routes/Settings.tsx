@@ -335,7 +335,7 @@ export function SettingsView({ prefs, onPrefs, connection }: { prefs: Prefs; onP
               <Row title="Language" hint="Used for menus and messages"><Soon what="English" /></Row>
             </Group>
           </> : null}
-          {section === 'browser' ? <BrowserSettings enabled={prefs.screenshotAtCheckpoint !== false} onChange={value => set({ screenshotAtCheckpoint: value })} /> : null}
+          {section === 'browser' ? <BrowserSettings /> : null}
           {section === 'appearance' ? (
             <Group title="THEME">
               {['dark', 'light'].map(t => (

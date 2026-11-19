@@ -1,13 +1,13 @@
 /** Tool calls as compact expandable rows (Desktop mockups: icon, bold verb +
  *  target, stat/status on the right). The matching tool_result folds in;
  *  the checkpoint taken after it is a hover-only icon on the row. */
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Pencil, Wrench, SquareTerminal, FileText, Search, Globe, ListChecks, Sparkles, Loader2, ChevronRight, ChevronDown, History, Brain } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/popover.tsx';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '../../components/ui/dropdown-menu.tsx';
 import { usePlatform } from '../../lib/platform.ts';
 import type { TranscriptEvent } from './useTranscript.ts';
-import { screenshotsPixelIdentical, type CheckpointScreenshotChoice } from './checkpoint-preview.ts';
+import type { CheckpointScreenshotChoice } from './checkpoint-preview.ts';
+import { CheckpointCompareDialog } from './CheckpointCompareDialog.tsx';
 import { requestOpenFile } from '../../lib/openFile.ts';
 import { Markdown } from './Markdown.tsx';
 import { feedback } from '../../lib/feedback.ts';
@@ -67,30 +67,6 @@ function diffFiles(patch: string): DiffFile[] {
   return [...files.values()];
 }
 
-function CheckpointPicker({ side, value, options, onChange }: {
-  side: 'Left' | 'Right'; value: string; options: CheckpointScreenshotChoice[]; onChange(value: string): void;
-}) {
-  const selected = options.find(option => option.id === value);
-  return <DropdownMenu>
-    <DropdownMenuTrigger asChild>
-      <button type="button" aria-label={`${side} checkpoint`} title={selected?.label} style={{
-        ...textInput, width: '100%', height: 30, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, textAlign: 'left',
-      }}>
-        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selected?.label ?? 'Choose screenshot'}</span>
-        <ChevronDown size={12} style={{ flexShrink: 0 }} />
-      </button>
-    </DropdownMenuTrigger>
-    <DropdownMenuContent align="start" style={{ width: 360, maxWidth: '90vw', maxHeight: 260 }}>
-      <DropdownMenuLabel>Screenshot checkpoints</DropdownMenuLabel>
-      <DropdownMenuRadioGroup value={value} onValueChange={onChange}>
-        {options.map(option => <DropdownMenuRadioItem key={option.id} value={option.id} title={option.label} className="text-xs">
-          <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{option.label}</span>
-        </DropdownMenuRadioItem>)}
-      </DropdownMenuRadioGroup>
-    </DropdownMenuContent>
-  </DropdownMenu>;
-}
-
 export function CheckpointMark({ session, cp, screenshot = '', previous, screenshots, inline, busy, onOpenSession }: {
   session: string; cp: TranscriptEvent; screenshot?: string; previous?: { id: string; artifact: string }; screenshots?: CheckpointScreenshotChoice[]; inline?: boolean; busy?: boolean; onOpenSession?(session: string): void;
 }) {
@@ -106,15 +82,8 @@ export function CheckpointMark({ session, cp, screenshot = '', previous, screens
   const [compare, setCompare] = useState(false);
   const [preview, setPreview] = useState('');
   const [previousPreview, setPreviousPreview] = useState('');
-  const [comparisonImages, setComparisonImages] = useState<Record<string, string>>({});
-  const [noVisualChange, setNoVisualChange] = useState(false);
   const id = String(cp.body.id ?? '');
   const screenshotChoices = screenshots ?? [];
-  const [leftChoice, setLeftChoice] = useState(id);
-  const [rightChoice, setRightChoice] = useState(previous?.id ?? '');
-  const compareRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { if (compare) compareRef.current?.focus(); }, [compare]);
-  useEffect(() => { setLeftChoice(id); setRightChoice(previous?.id ?? ''); }, [id, previous?.id]);
   useEffect(() => {
     if (!open || !screenshot) return;
     let alive = true;
@@ -122,50 +91,16 @@ export function CheckpointMark({ session, cp, screenshot = '', previous, screens
       if (alive && r.type === 'res') {
         const source = `data:${String((r.body as { mime: string }).mime)};base64,${String((r.body as { data: string }).data)}`;
         setPreview(source);
-        setComparisonImages(images => ({ ...images, [id]: source }));
       }
     });
     if (previous?.artifact) void transport.request('browser.artifact', { session, id: previous.artifact }).then(r => {
       if (alive && r.type === 'res') {
         const source = `data:${String((r.body as { mime: string }).mime)};base64,${String((r.body as { data: string }).data)}`;
         setPreviousPreview(source);
-        setComparisonImages(images => ({ ...images, [previous.id]: source }));
       }
     });
     return () => { alive = false; };
   }, [open, previous?.artifact, previous?.id, screenshot, id, session, transport]);
-  const imageFor = (choice: string) => comparisonImages[choice]
-    ?? (choice === id ? preview : choice === previous?.id ? previousPreview : '');
-  const leftImage = imageFor(leftChoice);
-  const rightImage = imageFor(rightChoice);
-  useEffect(() => {
-    if (!compare) return;
-    let alive = true;
-    for (const choice of new Set([leftChoice, rightChoice])) {
-      if (!choice || imageFor(choice) || Object.hasOwn(comparisonImages, choice)) continue;
-      const option = screenshotChoices.find(item => item.id === choice);
-      if (!option) continue;
-      void transport.request('browser.artifact', { session, id: option.artifact }).then(result => {
-        if (!alive) return;
-        const source = result.type === 'res'
-          ? `data:${String((result.body as { mime: string }).mime)};base64,${String((result.body as { data: string }).data)}`
-          : '';
-        setComparisonImages(images => ({ ...images, [choice]: source }));
-      }).catch(() => {
-        if (alive) setComparisonImages(images => ({ ...images, [choice]: '' }));
-      });
-    }
-    return () => { alive = false; };
-  }, [compare, leftChoice, rightChoice, screenshotChoices, comparisonImages, session, transport, preview, previousPreview, id, previous?.id]);
-  useEffect(() => {
-    if (!compare || !leftImage || !rightImage) { setNoVisualChange(false); return; }
-    let alive = true;
-    setNoVisualChange(false);
-    void screenshotsPixelIdentical(leftImage, rightImage)
-      .then(equal => { if (alive) setNoVisualChange(equal); })
-      .catch(() => { if (alive) setNoVisualChange(false); });
-    return () => { alive = false; };
-  }, [compare, leftImage, rightImage]);
   useEffect(() => {
     if (!open) return;
     void transport.request('session.get', { session }).then(result => {
@@ -220,6 +155,7 @@ export function CheckpointMark({ session, cp, screenshot = '', previous, screens
       const child = (r.body as { session?: unknown }).session;
       if (typeof child === 'string') onOpenSession?.(child);
       setOpen(false);
+      setCompare(false);
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setLoading(false); }
   };
@@ -269,32 +205,10 @@ export function CheckpointMark({ session, cp, screenshot = '', previous, screens
           {error ? <div style={{ fontSize: 11, color: 'var(--accent-red)', marginTop: 4 }}>{error}</div> : null}
         </PopoverContent>
       </Popover>
-      {compare ? <div ref={compareRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Compare checkpoints" onKeyDown={event => { if (event.key === 'Escape') setCompare(false); }}
-        style={{ position: 'fixed', inset: 0, zIndex: 1000, background: '#000a', display: 'grid', placeItems: 'center', padding: 24 }}>
-        <div style={{ width: 'min(1100px, 94vw)', maxHeight: '90vh', overflow: 'auto', background: 'var(--bg-raised)', color: 'var(--text-active)', border: '1px solid var(--line-card)', borderRadius: 10, padding: 14 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}><strong>Compare checkpoints</strong><button type="button" onClick={() => setCompare(false)} style={textButton}>Close</button></div>
-          {noVisualChange ? <div style={{ color: 'var(--text-hint)', fontSize: 11, marginBottom: 8 }}>No visual change</div> : null}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            {([
-              { side: 'Left' as const, choice: leftChoice, select: setLeftChoice, image: leftImage },
-              { side: 'Right' as const, choice: rightChoice, select: setRightChoice, image: rightImage },
-            ]).map(({ side, choice, select, image }) => {
-              const item = screenshotChoices.find(value => value.id === choice);
-              return <div key={side} style={{ display: 'grid', gap: 6 }}>
-                <CheckpointPicker side={side} value={choice} options={screenshotChoices} onChange={select} />
-                <div style={{ width: '100%', height: 260, display: 'grid', placeItems: 'center', background: 'var(--bg-inset)', borderRadius: 5 }}>
-                  {image ? <img alt="Checkpoint comparison" src={image} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                    : <span style={{ color: 'var(--text-hint)', fontSize: 11 }}>Loading screenshot…</span>}
-                </div>
-                <div style={{ display: 'flex', gap: 5 }}>
-                  <button type="button" disabled={busy || loading || !item} onClick={() => item && void restore('files', item.id)} style={actionButton}>Restore</button>
-                  <button type="button" disabled={loading || !item} onClick={() => item && void fork(item.id)} style={actionButton}>Fork</button>
-                </div>
-              </div>;
-            })}
-          </div>
-        </div>
-      </div> : null}
+      <CheckpointCompareDialog open={compare} onClose={() => setCompare(false)} session={session}
+      choices={screenshotChoices} initialA={id} initialB={previous?.id ?? ''} busy={Boolean(busy)}
+        onRestore={checkpointId => void restore('files', checkpointId)}
+        onFork={checkpointId => void fork(checkpointId)} />
     </span>
   );
 }

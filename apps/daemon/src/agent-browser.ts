@@ -7,6 +7,8 @@ import { idSchema, newId } from '@ormicode/protocol';
 import type { Browser, BrowserContext, Page } from 'playwright-core';
 import type { Services } from './services.ts';
 import { previewLabel } from './preview-proxy.ts';
+import { shouldRunUiCheck, type UiCheckEntry, type UiCheckResult } from './ui-check.ts';
+import { BrowserDiff, type BrowserDiffResult } from './browser-diff.ts';
 
 const UNAVAILABLE = 'No browser found. Run `ormi browser install` or set ORMICODE_BROWSER.';
 const ARTIFACT_CAP = 4 * 1024 * 1024;
@@ -20,7 +22,7 @@ const devices = {
 export type BrowserSource = 'env' | 'installed' | 'system';
 export interface BrowserFound { available: boolean; source: BrowserSource | null; path?: string }
 interface BrowserPage { browser: Browser; context: BrowserContext; page: Page; allowed: Set<string>; timer: NodeJS.Timeout }
-interface Settings { checkpointScreenshots: boolean }
+interface Settings { checkpointScreenshots: boolean; uiCheck: boolean }
 
 function executable(path: string): boolean {
   try { accessSync(path, process.platform === 'win32' ? constants.F_OK : constants.X_OK); return true; }
@@ -78,19 +80,22 @@ export class AgentBrowser {
   private readonly browsersPath: string;
   private readonly settingsPath: string;
   private readonly services: Services;
+  private readonly diffEngine: BrowserDiff;
   private browser?: Browser;
   private launch?: Promise<Browser>;
   private readonly pages = new Map<string, BrowserPage>();
-  private settings: Settings = { checkpointScreenshots: true };
+  private settings: Settings = { checkpointScreenshots: true, uiCheck: true };
 
   constructor(dataRoot: string, services: Services) {
     this.dataRoot = dataRoot;
     this.browsersPath = join(dataRoot, 'browsers');
     this.settingsPath = join(dataRoot, 'browser-settings.json');
     this.services = services;
+    this.diffEngine = new BrowserDiff(dataRoot, ARTIFACT_CAP, (session, id) => this.artifact(session, id));
     try {
       const parsed = JSON.parse(readFileSync(this.settingsPath, 'utf8')) as Partial<Settings>;
       if (typeof parsed.checkpointScreenshots === 'boolean') this.settings.checkpointScreenshots = parsed.checkpointScreenshots;
+      if (typeof parsed.uiCheck === 'boolean') this.settings.uiCheck = parsed.uiCheck;
     } catch { /* Use the default until a setting has been saved. */ }
   }
 
@@ -265,6 +270,10 @@ export class AgentBrowser {
     return { mime: 'image/png', data: readFileSync(target).toString('base64') };
   }
 
+  diff(session: string, a: string, b: string): BrowserDiffResult {
+    return this.diffEngine.compare(session, a, b);
+  }
+
   async closeSession(session: string): Promise<void> {
     const state = this.pages.get(session);
     if (!state) return;
@@ -283,11 +292,15 @@ export class AgentBrowser {
 
   async deleteSession(session: string): Promise<void> {
     await this.closeSession(session);
+    this.diffEngine.clearSession(session);
     rmSync(join(this.dataRoot, 'sessions', session), { recursive: true, force: true });
   }
 
-  async captureCheckpoint(session: string, checkpoint: string, record: (session: string, kind: string, payload: Record<string, unknown>) => void): Promise<void> {
-    if (!this.settings.checkpointScreenshots) return;
+  async captureCheckpoint(
+    session: string, checkpoint: string, files: string[], startedAt: number, consoleAfter: number,
+    record: (session: string, kind: string, payload: Record<string, unknown>) => void,
+    checkRequested?: boolean,
+  ): Promise<UiCheckResult | undefined> {
     let created = false;
     try {
       const listed = await this.services.list(session) as {
@@ -295,7 +308,12 @@ export class AgentBrowser {
         services: { state: string; port: number; portals: { path: string }[] }[];
       };
       const service = listed.services.find(item => item.state === 'running');
-      if (!service) return;
+      const available = this.status().available;
+      const eligible = shouldRunUiCheck({
+        enabled: this.settings.uiCheck, serviceRunning: Boolean(service), browserAvailable: available, files,
+      });
+      const check = checkRequested === undefined ? eligible : checkRequested && eligible;
+      if (!service || !available || (!this.settings.checkpointScreenshots && !check)) return undefined;
       let state = this.pages.get(session);
       if (!state || !state.page.url() || state.page.url() === 'about:blank') {
         const path = service.portals[0]?.path ?? '/';
@@ -308,10 +326,44 @@ export class AgentBrowser {
       }
       if (!state) return;
       await state.page.waitForLoadState('load', { timeout: 10_000 }).catch(() => undefined);
-      await new Promise(resolvePromise => setTimeout(resolvePromise, 500));
+      await new Promise(resolvePromise => setTimeout(resolvePromise, 1000));
       const result = await this.screenshot(session, {});
-      record(session, 'checkpoint_screenshot', { checkpoint, artifact: result.artifact, url: result.url, actor: 'auto' });
+      if (this.settings.checkpointScreenshots || check)
+        record(session, 'checkpoint_screenshot', { checkpoint, artifact: result.artifact, url: result.url, actor: 'auto' });
+      if (!check) return undefined;
+      let entries: Record<string, unknown>[] = [];
+      try {
+        entries = (this.services.previewConsole(session, consoleAfter).entries as unknown as Record<string, unknown>[])
+          .filter(entry => typeof entry.ts !== 'number' || entry.ts >= startedAt);
+      } catch { /* Keep a screenshot even when console collection fails. */ }
+      const errors = entries.filter(entry => entry.level === 'error' || (entry.kind === 'network' && Number(entry.status) >= 400));
+      const warnings = entries.filter(entry => entry.level === 'warn' && !(entry.kind === 'network' && Number(entry.status) >= 400));
+      const displayed = [...errors, ...warnings].slice(0, 10).map(entry => ({
+        level: entry.level === 'warn' ? 'warn' : 'error',
+        kind: ['console', 'error', 'rejection', 'network'].includes(String(entry.kind)) ? entry.kind : 'console',
+        message: String(entry.message ?? ''),
+        ...(entry.method || entry.url ? { request: `${String(entry.method ?? 'GET')} ${String(entry.url ?? '')}`.trim() } : {}),
+        ...(typeof entry.status === 'number' ? { status: entry.status } : {}),
+        frames: typeof entry.stack === 'string' ? entry.stack.split(/\r?\n/).slice(0, 3) : [],
+      })) as UiCheckEntry[];
+      let path = '/';
+      try { path = new URL(result.url).pathname || '/'; } catch { /* Keep the neutral path. */ }
+      return {
+        errors: errors.length, warnings: warnings.length, path, checkpoint, artifact: result.artifact, url: result.url,
+        entries: displayed, consoleIds: errors.slice(0, 10).map(entry => String(entry.id ?? '')).filter(Boolean),
+      };
     } catch { /* A checkpoint screenshot never changes the result of a turn. */ }
     finally { if (created) await this.closeSession(session); }
+  }
+
+  async shouldRunUiCheck(session: string, files: string[]): Promise<boolean> {
+    if (!this.settings.uiCheck || !this.status().available) return false;
+    try {
+      const listed = await this.services.list(session) as { services: { state: string }[] };
+      return shouldRunUiCheck({
+        enabled: this.settings.uiCheck, serviceRunning: listed.services.some(service => service.state === 'running'),
+        browserAvailable: this.status().available, files,
+      });
+    } catch { return false; }
   }
 }

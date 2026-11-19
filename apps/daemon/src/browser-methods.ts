@@ -94,7 +94,13 @@ export async function browserMethod(ctx: DispatchCtx, client: Client, id: string
   const browser = ctx.agentBrowser;
   if (method === 'browser.status') return client.link.reply(id, { ...browser.status() });
   if (method === 'browser.settings') return client.link.reply(id, { ...browser.getSettings() });
-  if (method === 'browser.setSettings') return client.link.reply(id, { ...browser.setSettings({ checkpointScreenshots: Boolean(body.checkpointScreenshots) }) });
+  if (method === 'browser.setSettings') return client.link.reply(id, { ...browser.setSettings({
+    checkpointScreenshots: Boolean(body.checkpointScreenshots), uiCheck: Boolean(body.uiCheck),
+  }) });
+  if (method === 'browser.diff') {
+    try { return client.link.reply(id, { ...browser.diff(String(body.session), String(body.a), String(body.b)) }); }
+    catch (error) { return client.link.replyError(id, error instanceof BrowserError ? error.code : 'browser.action_failed', message(error)); }
+  }
   if (method === 'browser.install') {
     try { return client.link.reply(id, await browser.install()); }
     catch (error) {

@@ -14,9 +14,6 @@ importers:
       playwright-core:
         specifier: 1.65.0
         version: 1.65.0
-      pngjs:
-        specifier: ^7.0.0
-        version: 7.0.0
       typescript:
         specifier: 7.0.2
         version: 7.0.2
@@ -107,6 +104,9 @@ importers:
       '@ormicode/leases':
         specifier: workspace:*
         version: link:../../packages/leases
+      '@ormicode/pixel-diff':
+        specifier: workspace:*
+        version: link:../../packages/pixel-diff
       '@ormicode/pricing':
         specifier: workspace:*
         version: link:../../packages/pricing
@@ -125,12 +125,19 @@ importers:
       playwright-core:
         specifier: 1.62.0
         version: 1.62.0
+      pngjs:
+        specifier: 7.0.0
+        version: 7.0.0
       yaml:
         specifier: 2.9.1
         version: 2.9.1
       zod:
         specifier: ^4.6.7
         version: 4.6.7
+    devDependencies:
+      '@types/pngjs':
+        specifier: 6.0.5
+        version: 6.0.5
 
   apps/desktop:
     dependencies:
@@ -611,6 +618,12 @@ importers:
       '@ormicode/session-store':
         specifier: workspace:*
         version: link:../session-store
+
+  packages/pixel-diff:
+    dependencies:
+      pngjs:
+        specifier: 7.0.0
+        version: 7.0.0
 
   packages/pricing: {}
 
@@ -2904,6 +2917,9 @@ packages:
 
   '@types/node@26.6.6':
     resolution: {integrity: sha512-MzQj+8Kx3XI40OmUAE6Qoh58ZMNstNNMwn2nfd3qWsfe7nDNSqJNzes4njhz6AHwrSHOffSLwXU6yb474Q4aog==}
+
+  '@types/pngjs@6.0.5':
+    resolution: {integrity: sha512-0k5eKfrA83JOZPppLtS2C7OUtyNAl2wKNxfyYl9Q5g9lPkgBl/9hNyAu6HuEH2J4XmIv2znEpkDd0SaZVxW6iQ==}
 
   '@types/react-dom@19.3.0':
     resolution: {integrity: sha512-ZI7bU42mZXXKHn/qNLEw2IrbiINU7X5+vfgdixBHkCNpYWXjKgfQ/P+uyGb5CjOLB9UcnTeg3rylQtV2hym44Q==}
@@ -8300,6 +8316,10 @@ snapshots:
   '@types/node@26.6.6':
     dependencies:
       undici-types: 8.9.0
+
+  '@types/pngjs@6.0.5':
+    dependencies:
+      '@types/node': 26.6.6
 
   '@types/react-dom@19.3.0(@types/react@19.3.0)':
     dependencies:

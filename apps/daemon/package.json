@@ -33,10 +33,15 @@
     "@ormicode/pricing": "workspace:*",
     "@ormicode/protocol": "workspace:*",
     "@ormicode/pty-broker": "workspace:*",
+    "@ormicode/pixel-diff": "workspace:*",
     "@ormicode/secrets": "workspace:*",
     "@ormicode/session-store": "workspace:*",
     "playwright-core": "1.62.0",
+    "pngjs": "7.0.0",
     "yaml": "2.9.1",
     "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/pngjs": "6.0.5"
   }
 }

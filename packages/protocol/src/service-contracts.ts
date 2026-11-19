@@ -36,7 +36,7 @@ export type PreviewConsoleEntry = z.infer<typeof previewConsoleEntry>;
 export const browserRequests = {
   'browser.status': z.object({}),
   'browser.settings': z.object({}),
-  'browser.setSettings': z.object({ checkpointScreenshots: z.boolean() }),
+  'browser.setSettings': z.object({ checkpointScreenshots: z.boolean(), uiCheck: z.boolean() }),
   'browser.install': z.object({}),
   'browser.open': z.object({
     ...{ session: sessionIdSchema }, port: z.optional(count), path: z.optional(z.string()), url: z.optional(nonEmpty),
@@ -48,6 +48,11 @@ export const browserRequests = {
   'browser.screenshot': z.object({ session: sessionIdSchema, fullPage: z.optional(z.boolean()), selector: z.optional(nonEmpty) }),
   'browser.close': z.object({ session: sessionIdSchema }),
   'browser.artifact': z.object({ session: sessionIdSchema, id: z.string().check(z.regex(/^bl_[0-7][0-9A-HJKMNP-TV-Z]{25}$/)) }),
+  'browser.diff': z.object({
+    session: sessionIdSchema,
+    a: z.string().check(z.regex(/^bl_[0-7][0-9A-HJKMNP-TV-Z]{25}$/)),
+    b: z.string().check(z.regex(/^bl_[0-7][0-9A-HJKMNP-TV-Z]{25}$/)),
+  }),
 } as const;
 
 const browserActionResponse = z.object({
@@ -56,8 +61,8 @@ const browserActionResponse = z.object({
 });
 export const browserResponses = {
   'browser.status': z.object({ available: z.boolean(), source: z.nullable(z.enum(['env', 'installed', 'system'])), path: z.optional(nonEmpty) }),
-  'browser.settings': z.object({ checkpointScreenshots: z.boolean() }),
-  'browser.setSettings': z.object({ checkpointScreenshots: z.boolean() }),
+  'browser.settings': z.object({ checkpointScreenshots: z.boolean(), uiCheck: z.boolean() }),
+  'browser.setSettings': z.object({ checkpointScreenshots: z.boolean(), uiCheck: z.boolean() }),
   'browser.install': z.object({ installed: z.literal(true), path: nonEmpty }),
   'browser.open': browserActionResponse,
   'browser.click': browserActionResponse,
@@ -66,6 +71,7 @@ export const browserResponses = {
   'browser.screenshot': browserActionResponse,
   'browser.close': browserActionResponse,
   'browser.artifact': z.object({ mime: nonEmpty, data: nonEmpty }),
+  'browser.diff': z.object({ artifact: nonEmpty, changed: count, total: count, percent: z.number(), width: count, height: count }),
 } as const;
 
 export const serviceResponses = {
