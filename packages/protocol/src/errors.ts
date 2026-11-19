@@ -1,4 +1,5 @@
 export const errorCodes = [
+  'mcp.unauthorized', 'mcp.forbidden',
   'session.busy', 'session.already_decided', 'session.not_found', 'session.not_running',
   'session.resync_required', 'agent.unauthorized', 'agent.binary_missing', 'agent.rate_limited',
   'agent.plan_limit', 'agent.failed', 'agent.unsupported', 'machine.unreachable',

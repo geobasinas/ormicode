@@ -3,11 +3,12 @@
  * to every session (adapters that accept mcpServers). Each tool is a thin
  * wrapper over an existing protocol method — no new capability, and every
  * call is journaled through the normal session methods. Session scope comes
- * from env: ORMICODE_SOCKET (daemon socket) + ORMI_SESSION (this session).
+ * from env: ORMICODE_SOCKET + ORMI_SESSION + ORMI_MCP_TOKEN.
  */
 import { connect } from './socket.ts';
 import { newId } from '@ormicode/protocol';
 import { TEAM_TOOLS, callTeamTool } from './team-mcp.ts';
+import type { McpProof } from './mcp-auth.ts';
 
 interface JsonRpc { jsonrpc?: string; id?: string | number; method: string; params?: Record<string, unknown> }
 
@@ -75,10 +76,11 @@ export async function callBrowserTool(name: string, args: Record<string, unknown
 }
 
 /** Run the stdio server until stdin closes. `self` is the owning session id. */
-export async function serveOrmiMcp(socketPath: string, self: string): Promise<void> {
+export async function serveOrmiMcp(socketPath: string, self: string, token: string): Promise<void> {
+  const proof = { session: self, token };
   const link = await connect(socketPath, { v: 1, type: 'hello', role: 'client', proto: 1, device: 'mcp' });
   const req = async (method: string, body: Record<string, unknown>, timeoutMs = 120_000) => {
-    const res = await link.request(method, body, timeoutMs);
+    const res = await link.request(method, body, timeoutMs, proof);
     if (res.type === 'err') throw new Error(`${res.code}: ${res.message}`);
     return res.body as Record<string, unknown>;
   };
@@ -91,7 +93,7 @@ export async function serveOrmiMcp(socketPath: string, self: string): Promise<vo
 
   const call = async (name: string, args: Record<string, unknown>): Promise<unknown> => {
     if (name.startsWith('team_')) return text(await callTeamTool(name, args, self, req,
-      (session, until, timeout) => waitFor(link, session, until, timeout)));
+      (session, until, timeout) => waitFor(link, session, until, timeout, proof)));
     switch (name) {
       case 'ormi_sessions': {
         if (args.session) return text(JSON.stringify(await req('session.get', { session: args.session })));
@@ -118,7 +120,7 @@ export async function serveOrmiMcp(socketPath: string, self: string): Promise<vo
         if (!await owns(String(args.session))) return errText('ormicode only lets a session wait on sessions it started');
         const until = String(args.until ?? 'idle');
         const timeout = Number(args.timeoutMs ?? 120_000);
-        return text(await waitFor(link, String(args.session), until, timeout));
+        return text(await waitFor(link, String(args.session), until, timeout, proof));
       }
       case 'ormi_handoff': {
         const r = await req('session.handoff', {
@@ -185,18 +187,18 @@ export async function serveOrmiMcp(socketPath: string, self: string): Promise<vo
 }
 
 /** Subscribe and watch live events until the session settles or times out. */
-async function waitFor(link: Awaited<ReturnType<typeof connect>>, session: string, until: string, timeoutMs: number): Promise<string> {
-  const res = await link.request('session.subscribe', { session });
+async function waitFor(link: Awaited<ReturnType<typeof connect>>, session: string, until: string, timeoutMs: number, proof: McpProof): Promise<string> {
+  const res = await link.request('session.subscribe', { session }, 30_000, proof);
   if (res.type === 'err') return JSON.stringify({ error: res.code });
   return new Promise(resolve => {
     const timer = setTimeout(async () => {
       link.onFrame = undefined;
-      const s = await link.request('session.get', { session }).catch(() => undefined);
+      const s = await link.request('session.get', { session }, 30_000, proof).catch(() => undefined);
       resolve(JSON.stringify({ timedOut: true, state: s && (s.body as Record<string, unknown>).state }));
     }, timeoutMs);
     const done = async (state: string) => {
       clearTimeout(timer); link.onFrame = undefined;
-      await link.request('session.unsubscribe', { session }).catch(() => undefined);
+      await link.request('session.unsubscribe', { session }, 30_000, proof).catch(() => undefined);
       resolve(JSON.stringify({ state }));
     };
     link.onFrame = frame => {

@@ -3,12 +3,14 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn as spawnProcess } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { setTimeout } from 'node:timers/promises';
 import { startDaemon, connect } from '../src/index.ts';
 import { newId } from '@ormicode/protocol';
 import { createSession, getSession, getTeam, unreadTeamMessages } from '@ormicode/session-store';
 import { replay } from '@ormicode/journal';
+import { TestMcpCredentials } from './mcp-fixture.mjs';
 
 async function eventually(check) {
   const deadline = Date.now() + 15000;
@@ -28,14 +30,15 @@ async function fixture(t, slow = false) {
   writeFileSync(join(project, 'hello.txt'), 'initial\n');
   execFileSync('git', ['add', 'hello.txt'], { cwd: project });
   execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'initial'], { cwd: project });
-  const daemon = await startDaemon({ socketPath: '127.0.0.1:0', storePath: join(dir, 'store.db') });
+  const credentials = new TestMcpCredentials();
+  const daemon = await startDaemon({ socketPath: '127.0.0.1:0', storePath: join(dir, 'store.db'), mcpCredentials: credentials });
   const client = await connect(daemon.socketPath);
   t.after(async () => {
     client.close(); await daemon.close();
     for (const [key, value] of Object.entries(saved)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
     rmSync(dir, { recursive: true, force: true });
   });
-  const req = (method, body) => client.request(method, body);
+  const req = (method, body) => client.request(method, body, 30_000, method.startsWith('team.') ? credentials.proof(body.actor) : undefined);
   const res = await req('session.start', { machine: newId('m'), project, vendor: 'fake', transport: 'cli', model: 'test', effort: 'test', mode: 'acceptEdits', workspace: { kind: 'current' } });
   assert.equal(res.type, 'res', JSON.stringify(res));
   const parent = res.body.session;
@@ -46,12 +49,12 @@ async function fixture(t, slow = false) {
   };
   const idle = session => eventually(() => ['idle', 'done'].includes(getSession(daemon.db, session)?.state)
     && replay(daemon.db, session).some(e => e.kind === 'turn_end'));
-  return { daemon, req, parent, spawn, idle, project };
+  return { daemon, req, parent, spawn, idle, project, credentials, client };
 }
 const events = (db, s, kind) => replay(db, s).filter(e => e.kind === kind).map(e => JSON.parse(e.payload));
 
 test('team spawn creates isolated children, inherits mode, limits children and checks depth', async t => {
-  const { daemon, req, parent, spawn, idle, project } = await fixture(t);
+  const { daemon, req, parent, spawn, idle, project, credentials } = await fixture(t);
   await req('session.prompt', { session: parent, text: 'PRIVATE PARENT TRANSCRIPT' }); await idle(parent);
   daemon.db.prepare('INSERT INTO settings(key, value) VALUES (?, ?)').run('team.children', '1');
   const { team, session } = await spawn('implement a thing'); await idle(session);
@@ -67,6 +70,7 @@ test('team spawn creates isolated children, inherits mode, limits children and c
   assert.equal(events(daemon.db, parent, 'agent_spawned')[0].child, session);
   const ancestor = newId('s'), nested = newId('s');
   for (const [id, p] of [[ancestor, parent], [nested, ancestor]]) createSession(daemon.db, { id, parent: p, machine: 'm', project, vendor: 'fake', transport: 'cli', cwd: project });
+  credentials.issue(nested);
   const deep = await req('team.spawn', { actor: nested, task: 'too deep' });
   assert.equal(deep.code, 'team.limit'); assert.match(deep.message, /depth/);
   const allowlist = await req('team.spawn', { actor: parent, task: 'restricted', toolAllowlist: ['Read'] });
@@ -92,7 +96,7 @@ test('daemon enforces parent-only operations, child self-close and team membersh
   assert.equal((await req('team.close', { actor: parent, session: parent })).body.closed, true);
   assert.ok(getTeam(daemon.db, a.team).closed_at);
   assert.equal(getSession(daemon.db, b.session).archived, 1);
-  assert.equal((await req('team.report', { actor: b.session, session: b.session })).code, 'team.closed');
+  assert.equal((await req('team.report', { actor: b.session, session: b.session })).code, 'mcp.unauthorized');
 });
 
 test('idle sibling messages use prompts, replies work and parent gets a quiet event', async t => {
@@ -155,7 +159,7 @@ test('board entries survive parent state changes; diff, status, report and reass
 });
 
 test('concurrent child cap and active team cap use stored settings', async t => {
-  const { daemon, req, parent, spawn, idle } = await fixture(t, true);
+  const { daemon, req, parent, spawn, idle, credentials } = await fixture(t, true);
   daemon.db.prepare('INSERT INTO settings(key, value) VALUES (?, ?)').run('team.concurrent', '1');
   const a = await spawn('busy');
   await eventually(() => getSession(daemon.db, a.session).state === 'running');
@@ -174,6 +178,80 @@ test('concurrent child cap and active team cap use stored settings', async t => 
   daemon.db.prepare('INSERT INTO settings(key, value) VALUES (?, ?)').run('team.maxTeams', '1');
   const independent = newId('s');
   createSession(daemon.db, { id: independent, machine: 'm', project: getSession(daemon.db, parent).project, vendor: 'fake', transport: 'cli', cwd: '.' });
+  credentials.issue(independent);
   const max = await req('team.spawn', { actor: independent, task: 'other team' });
   assert.equal(max.code, 'team.limit'); assert.match(max.message, /active team/);
+});
+
+test('daemon rejects missing, spoofed and expired MCP proofs and authenticates ownership claims', async t => {
+  const { daemon, client, parent, spawn, idle, credentials, project } = await fixture(t);
+  const proof = credentials.proof(parent);
+  const raw = (method, body, auth) => client.request(method, body, 30_000, auth);
+  const start = { machine: newId('m'), project, vendor: 'fake', transport: 'cli', model: 'test', effort: 'test', mode: 'default', workspace: { kind: 'current' }, parent };
+  const started = await raw('session.start', start, proof);
+  assert.equal(started.type, 'res', JSON.stringify(started)); assert.equal(getSession(daemon.db, started.body.session).parent, parent);
+  const a = await spawn('child'); await idle(a.session);
+  for (const auth of [undefined, { session: parent, token: '' }, { session: parent, token: 'f'.repeat(64) }, { session: parent, token: 4 }]) {
+    const rejected = await raw('team.tree', { actor: parent }, auth);
+    assert.equal(rejected.code, 'mcp.unauthorized'); assert.match(rejected.message, /MCP session proof/);
+  }
+  assert.equal((await raw('team.tree', { actor: parent }, credentials.proof(a.session))).code, 'mcp.forbidden');
+  assert.equal((await raw('team.tree', { actor: a.session }, proof)).code, 'mcp.forbidden');
+  assert.equal((await raw('team.tree', { actor: newId('s') })).code, 'mcp.unauthorized');
+  assert.equal((await raw('team.tree', { actor: parent }, proof)).body.children.length, 1);
+  assert.equal((await raw('session.start', start)).code, 'mcp.unauthorized');
+  assert.equal((await raw('session.start', start, credentials.proof(a.session))).code, 'mcp.forbidden');
+  assert.equal((await raw('session.handoff', { session: parent, to: { vendor: 'fake' }, mode: 'rehydrate', agentApproval: true })).code, 'mcp.unauthorized');
+  assert.equal((await raw('session.handoff', { session: parent, to: { vendor: 'fake' }, mode: 'rehydrate', agentApproval: true }, credentials.proof(a.session))).code, 'mcp.forbidden');
+  assert.equal((await raw('session.prompt', { session: parent, text: 'spoof' }, credentials.proof(a.session))).code, 'mcp.forbidden');
+  assert.equal((await raw('session.subscribe', { session: parent }, credentials.proof(a.session))).code, 'mcp.forbidden');
+  assert.equal((await raw('session.setNotes', { session: parent, title: 'spoof', body: '' }, credentials.proof(a.session))).code, 'mcp.forbidden');
+  assert.equal((await raw('secret.list', {}, proof)).code, 'mcp.forbidden');
+  const frames = []; client.onFrame = frame => frames.push(frame);
+  assert.equal((await raw('session.subscribe', { session: parent }, proof)).type, 'res');
+  assert.equal((await raw('session.prompt', { session: parent, text: `credential ${proof.token}` }, proof)).type, 'res');
+  await idle(parent);
+  assert.ok(!JSON.stringify(replay(daemon.db, parent)).includes(proof.token));
+  assert.ok(!JSON.stringify(frames).includes(proof.token));
+  daemon.workers.get(parent).proc.kill();
+  await eventually(() => !credentials.verify(proof));
+  assert.equal((await raw('team.tree', { actor: parent }, proof)).code, 'mcp.unauthorized');
+  assert.equal((await raw('session.prompt', { session: parent, text: 'wake worker' })).type, 'res');
+  assert.notEqual(credentials.proof(parent).token, proof.token);
+  assert.equal((await raw('team.tree', { actor: parent }, credentials.proof(parent))).type, 'res');
+  credentials.revoke(parent);
+  assert.equal((await raw('team.tree', { actor: parent }, credentials.proof(parent))).code, 'mcp.unauthorized');
+});
+
+test('real stdio MCP server sends worker proof for team tools and existing ownership paths', async t => {
+  const { daemon, parent, spawn, idle, credentials } = await fixture(t);
+  const child = await spawn('child'); await idle(child.session);
+  const proc = spawnProcess(process.execPath, [fileURLToPath(new URL('../src/mcp-serve.ts', import.meta.url))], {
+    env: { ...process.env, ORMICODE_SOCKET: daemon.socketPath, ORMI_SESSION: parent, ORMI_MCP_TOKEN: credentials.proof(parent).token },
+    stdio: ['pipe', 'pipe', 'inherit'],
+  });
+  t.after(() => proc.kill());
+  const replies = new Map(); let buffer = '', id = 0;
+  proc.stdout.on('data', chunk => {
+    buffer += String(chunk);
+    let end;
+    while ((end = buffer.indexOf('\n')) >= 0) {
+      const reply = JSON.parse(buffer.slice(0, end)); buffer = buffer.slice(end + 1);
+      replies.set(reply.id, reply);
+    }
+  });
+  const call = async (name, args = {}) => {
+    const request = ++id;
+    proc.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: request, method: 'tools/call', params: { name, arguments: args } }) + '\n');
+    await eventually(() => replies.has(request));
+    const reply = replies.get(request);
+    assert.equal(reply.result.isError, undefined, JSON.stringify(reply));
+    return reply.result.content[0].text;
+  };
+  const roster = JSON.parse(await call('team_roster', { actor: child.session }));
+  assert.equal(roster.children[0].session, child.session);
+  await call('ormi_message', { session: child.session, text: 'authenticated message' });
+  await call('ormi_wait', { session: child.session, until: 'idle', timeoutMs: 10000 });
+  assert.ok(events(daemon.db, child.session, 'prompt').some(event => event.text === 'authenticated message'));
+  await call('team_wait', { session: child.session, timeoutMs: 10000 });
 });

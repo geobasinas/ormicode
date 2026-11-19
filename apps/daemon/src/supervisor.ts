@@ -19,9 +19,10 @@ import { Checkpoints, DEFAULT_LIMITS } from '@ormicode/checkpoints';
 import { SecretBroker } from './secrets.ts';
 import { TerminalHub } from './terminal-methods.ts';
 import { PriceBook } from '@ormicode/pricing';
-import { serve, defaultSocketPath, ormicodeDir, sessionLogDir, type Link } from './socket.ts';
+import { serve, defaultSocketPath, ormicodeDir, type Link } from './socket.ts';
 import { allocateSessionPorts } from './session-ports.ts';
-import { environmentForSession } from './session-env.ts';
+import { workerEnvironment } from './worker-env.ts';
+import { McpCredentials } from './mcp-auth.ts';
 import { PreviewProxy } from './preview-proxy.ts';
 import { Services } from './services.ts';
 import { AgentBrowser } from './agent-browser.ts';
@@ -32,11 +33,12 @@ const WORKER_MAIN = join(dirname(fileURLToPath(import.meta.url)), 'worker-main.t
 const startedAt = Date.now();
 interface Worker { proc: ChildProcess; session: string; pid: number | undefined; ready: boolean }
 type HeldPrompt = { text: string; images?: unknown[]; context?: PromptContext[]; attachments?: PromptAttachment[] };
-export interface DaemonOptions { socketPath?: string; storePath?: string }
+export interface DaemonOptions { socketPath?: string; storePath?: string; mcpCredentials?: McpCredentials }
 export async function startDaemon(opts: DaemonOptions = {}) {
   let socketPath = opts.socketPath ?? process.env.ORMICODE_SOCKET ?? defaultSocketPath();
   const storePath = opts.storePath ?? process.env.ORMICODE_STORE ?? join(ormicodeDir(), 'store.db');
   const db = openStore(storePath);
+  const mcpCredentials = opts.mcpCredentials ?? new McpCredentials();
   const previewProxy = new PreviewProxy();
   await previewProxy.listen();
   if (socketPath !== defaultSocketPath() && existsSync(socketPath)) rmSync(socketPath);
@@ -66,13 +68,14 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     for (const c of clients) if (c.subscriptions.has(session) && !c.link.closed) c.link.send(JSON.parse(frame));
   };
   const delta = (session: string, kind: string, text: string) => {
+    text = mcpCredentials.redact(text);
     for (const c of clients) if (c.subscriptions.has(session) && !c.link.closed)
       c.link.send({ v: 1, type: 'evt', session, ts: Date.now(), body: { kind, text } });
     relay?.sendDelta(session, kind, text);
   };
   const record = (session: string, kind: string, payload: Record<string, unknown>, ts?: number, origin?: string) => {
     if (closing) return;
-    const { frame } = append(db, session, { kind, payload: { kind, ...secrets.redact(session, payload) }, ...(ts ? { ts } : {}), ...(origin ? { origin } : {}) });
+    const { frame } = append(db, session, { kind, payload: { kind, ...secrets.redact(session, mcpCredentials.redact(payload)) }, ...(ts ? { ts } : {}), ...(origin ? { origin } : {}) });
     fanout(session, frame);
     const mapped = stateFor[kind];
     if (mapped) setState(db, session, mapped, typeof payload.reason === 'string' ? payload.reason : undefined, ts);
@@ -106,28 +109,16 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     }
     if (!checkpoints.repo(session).exists()) void snapshotCheckpoint(session, 0, 'baseline');
     const waking = Boolean(db.prepare("SELECT 1 FROM events WHERE session = ? AND kind = 'turn_start' LIMIT 1").get(session));
+    const mcpToken = mcpCredentials.issue(session);
     const proc = spawn(process.execPath, [WORKER_MAIN], {
-      env: {
-        ...process.env,
-        ...secrets.envFor(session, row.project),
-        ...environmentForSession(row, base),
-        ORMICODE_SOCKET: socketPath, ORMICODE_SESSION: session,
-        ORMICODE_VENDOR: row.vendor, ORMICODE_TRANSPORT: row.transport,
-        ORMICODE_CWD: row.cwd, ...(row.native_id ? { ORMICODE_RESUME: row.native_id } : {}),
-        ORMICODE_LOG_DIR: sessionLogDir(session),
-        ...(row.model && row.model !== 'default' ? { ORMICODE_MODEL: row.model } : {}),
-        ...(row.effort && row.effort !== 'default' ? { ORMICODE_EFFORT: row.effort } : {}),
-        ...(row.mode && row.mode !== 'default' ? { ORMICODE_MODE: row.mode } : {}),
-        ...(row.agent_command ? { ORMICODE_AGENT_COMMAND: row.agent_command } : {}),
-        ...(row.agent_args ? { ORMICODE_AGENT_ARGS_JSON: row.agent_args } : {}),
-        ORMICODE_MCP: '1',
-      },
+      env: workerEnvironment(row, base, socketPath, secrets, mcpToken),
       stdio: 'ignore', windowsHide: true, detached: process.platform !== 'win32',
     });
     const worker: Worker = { proc, session, pid: proc.pid, ready: false };
     workers.set(session, worker);
     setState(db, session, 'starting');
     proc.on('exit', code => {
+      mcpCredentials.revoke(session, mcpToken);
       if (closing) return;
       const wasResuming = resuming.delete(session);
       const retryTimer = retryTimers.get(session);
@@ -185,7 +176,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
           return answer({ seq: 0 });
         }
         if (kind === 'turn_start') { handoffsInTurn.delete(session); turnCheckpoints.start(session); }
-        const payload = secrets.redact(session, body.payload as Record<string, unknown>);
+        const payload = secrets.redact(session, mcpCredentials.redact(body.payload as Record<string, unknown>));
         const { seq } = append(db, session, { kind, payload: { kind, ...payload }, ts: Number(body.ts) || Date.now() });
         const frameOut = JSON.stringify({ v: 1, type: 'evt', session, seq, ts: Number(body.ts) || Date.now(), body: { kind, ...payload } });
         fanout(session, frameOut);
@@ -230,6 +221,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   };
   const evictWorker = async (session: string, reason: string) => {
     if (closing) return;
+    mcpCredentials.revoke(session);
     const w = workers.get(session);
     const link = workerLinks.get(session);
     if (link) { try { await link.request('worker.evict', { session }, 10_000); } catch { if (w) killTree(w.proc); } }
@@ -239,6 +231,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     setState(db, session, 'idle', reason);
   };
   const stopWorker = async (session: string) => {
+    mcpCredentials.revoke(session);
     const w = workers.get(session);
     if (!w) return;
     const link = workerLinks.get(session);
@@ -306,7 +299,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   const handoffsInTurn = new Map<string, number>();
   let relay: RelayClient | undefined;
   const dispatchCtx: DispatchCtx = {
-    db, notesDir, startedAt, paused, heldPrompts, lastPrompt, handoffsInTurn,
+    db, notesDir, startedAt, paused, heldPrompts, lastPrompt, handoffsInTurn, mcpCredentials,
     lastError: () => lastError, liveWorkers: () => workers.size,
     spawnWorker, ensureWorker, stopWorker, setRecapPending: (session, uptoSeq) => recapPending.set(session, uptoSeq), toWorker, sendPrompt, drainQueue,
     pairing, relay: () => relay, checkpoints, record, secrets, terminals, services, agentBrowser,
@@ -391,6 +384,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
       }
       for (const c of clients) c.link.close();
       for (const link of workerLinks.values()) link.close();
+      mcpCredentials.clear();
       relay?.close();
       server.close();
       db.close();

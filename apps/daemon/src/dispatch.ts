@@ -47,6 +47,7 @@ import type { Services } from './services.ts';
 import type { AgentBrowser } from './agent-browser.ts';
 import { browserMethod } from './browser-methods.ts';
 import { teamMethod } from './team-methods.ts';
+import { authorizeMcp, type McpCredentials } from './mcp-auth.ts';
 
 /** What a client transport must do: send frames and answer requests. */
 export interface ClientLink {
@@ -58,6 +59,7 @@ export interface ClientLink {
 }
 export interface Client { link: ClientLink; subscriptions: Set<string>; device: string }
 export interface DispatchCtx {
+  mcpCredentials: McpCredentials;
   db: Store;
   notesDir: string;
   startedAt: number;
@@ -100,6 +102,8 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
   const parsed = parseRequestBody(method, frame.body);
   if (!parsed.success) return client.link.replyError(id, parsed.error, method);
   const body = parsed.data as Record<string, unknown>;
+  const authError = authorizeMcp(ctx, method, body, frame.mcp);
+  if (authError) return client.link.replyError(id, authError, 'MCP session proof is missing, invalid, expired or does not authorize this actor');
   try {
     if (method.startsWith('team.')) return await teamMethod(ctx, client, id, method, body);
     switch (method) {

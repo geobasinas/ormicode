@@ -46,12 +46,12 @@ export class Link {
   }
 
   /** req -> res/err round trip with an id we mint here. */
-  request(method: string, body: Record<string, unknown>, timeoutMs = 30_000): Promise<Frame> {
+  request(method: string, body: Record<string, unknown>, timeoutMs = 30_000, mcp?: { session: string; token: string }): Promise<Frame> {
     const id = newId('req');
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`${method}: timed out`)); }, timeoutMs);
       this.pending.set(id, { resolve, timer });
-      this.send({ v: 1, type: 'req', id, method, body, ts: Date.now() });
+      this.send({ v: 1, type: 'req', id, method, body, ts: Date.now(), ...(mcp ? { mcp } : {}) });
     });
   }
 
