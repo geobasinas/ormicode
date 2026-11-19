@@ -3,9 +3,11 @@
 import { ensureBroker, brokerSocketPath, type BrokerClient } from '@ormicode/pty-broker';
 import { ormicodeDir } from './socket.ts';
 import type { Client } from './dispatch.ts';
-import { getSession, type Store } from '@ormicode/session-store';
+import { getSession, getSessionPorts, type Store } from '@ormicode/session-store';
 import { appendFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { allocateSessionPorts } from './session-ports.ts';
+import { environmentForSession } from './session-env.ts';
 
 interface TerminalMeta { terminal: string; device: string; cwd: string; shell: string; session?: string; closed: boolean }
 
@@ -84,12 +86,15 @@ export class TerminalHub {
   }
 
   async open(db: Store, client: Client, id: string, body: Record<string, unknown>): Promise<void> {
-    if (!body.cwd) {
-      if (!body.session) return client.link.replyError(id, 'terminal.bad_request', 'provide cwd or session');
+    if (body.session) {
       const session = getSession(db, String(body.session));
       if (!session) return client.link.replyError(id, 'session.not_found', String(body.session));
-      body = { ...body, cwd: session.cwd };
+      let base = getSessionPorts(db, session.id);
+      try { base ??= (await allocateSessionPorts(db, session.id)).base; }
+      catch (error) { return client.link.replyError(id, 'session.ports_unavailable', String(error)); }
+      body = { ...body, ...(!body.cwd ? { cwd: session.cwd } : {}), env: environmentForSession(session, base) };
     }
+    if (!body.cwd) return client.link.replyError(id, 'terminal.bad_request', 'provide cwd or session');
     return this.method(client, id, 'terminal.open', body);
   }
 

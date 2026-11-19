@@ -10,6 +10,7 @@ import { Composer } from '../features/session/Composer.tsx';
 import { NotesPanel } from '../features/notes/NotesPanel.tsx';
 import { TerminalPane } from '../features/terminal/TerminalPane.tsx';
 import { GitPane } from '../features/git/GitPane.tsx';
+import { BrowserPane } from '../features/browser/BrowserPane.tsx';
 import type { RailPane } from './App.tsx';
 import { History } from 'lucide-react';
 import { compactTokens, formatUsd, projectName } from '../lib/format.ts';
@@ -32,8 +33,10 @@ export function SessionView({ session, rail = 'none', onRail, onOpen, handoffOpe
   const [cost, setCost] = useState<SessionCost>();
   const [editedPrompt, setEditedPrompt] = useState<string>();
   const notesLayout = useDefaultLayout({ id: 'ormi.session.notes', storage: globalThis.localStorage });
+  const browserLayout = useDefaultLayout({ id: 'ormi.session.browser', storage: globalThis.localStorage });
+  const railLayout = rail === 'browser' ? browserLayout : notesLayout;
   const onNotesLayoutChanged: typeof notesLayout.onLayoutChanged = (panelLayout, meta) => {
-    notesLayout.onLayoutChanged(panelLayout, meta);
+    railLayout.onLayoutChanged(panelLayout, meta);
     if (!meta.isUserInteraction || typeof panelLayout.notes !== 'number') return;
     const available = Math.max(0, window.innerWidth - (layout?.regions.sidebar?.size ?? 268) - 46);
     const size = Math.round(panelLayout.notes * available / 100);
@@ -78,12 +81,13 @@ export function SessionView({ session, rail = 'none', onRail, onOpen, handoffOpe
   );
   if (rail === 'none' || (scratch && rail === 'git')) return <div style={{ height: '100%', background: 'var(--bg-main)' }}>{chat}</div>;
   return (
-    <Group id="ormi.session.notes" orientation="horizontal" defaultLayout={notesLayout.defaultLayout} onLayoutChanged={onNotesLayoutChanged} style={{ height: '100%', background: 'var(--bg-main)' }}>
+    <Group id={rail === 'browser' ? 'ormi.session.browser' : 'ormi.session.notes'} orientation="horizontal" defaultLayout={railLayout.defaultLayout} onLayoutChanged={onNotesLayoutChanged} style={{ height: '100%', background: 'var(--bg-main)' }}>
       <Panel id="chat" minSize={440}>{chat}</Panel>
       <Separator className="ormi-handle ormi-handle-line" />
-      <Panel id="notes" defaultSize={layout?.regions.rightRail?.size ?? '42'} minSize={340} maxSize="65">
+      <Panel id="notes" defaultSize={layout?.source === 'user' && layout.regions.rightRail?.size
+        ? layout.regions.rightRail.size : rail === 'browser' ? '50' : '42'} minSize={rail === 'browser' ? 400 : 340} maxSize="65">
         <div className="ormi-pane" style={{ height: '100%', background: 'var(--bg-main)', minWidth: 0, overflow: 'hidden' }}>
-          {rail === 'notes' ? <NotesPanel session={session} /> : rail === 'git' ? <GitPane session={session} /> : rail === 'files' ? <FilesPane session={session} onOpenSession={onOpen} /> : <TerminalPane session={session} />}
+          {rail === 'notes' ? <NotesPanel session={session} /> : rail === 'git' ? <GitPane session={session} /> : rail === 'files' ? <FilesPane session={session} onOpenSession={onOpen} /> : rail === 'browser' ? <BrowserPane session={session} /> : <TerminalPane session={session} />}
         </div>
       </Panel>
     </Group>

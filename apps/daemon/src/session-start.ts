@@ -1,6 +1,6 @@
 import { newId } from '@ormicode/protocol';
 import { acquireWorkspace } from '@ormicode/leases';
-import { createSession, listSessions, setPendingPromptData } from '@ormicode/session-store';
+import { createSession, listSessions, releaseSessionPorts, setPendingPromptData } from '@ormicode/session-store';
 import { defaultBranch, resolveWorkspace, type ResolvedWorkspace, type WorkspaceChoice } from '@ormicode/git-core';
 import { mkdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -10,6 +10,8 @@ import { hasTransport } from './registry.ts';
 import { ormicodeDir } from './socket.ts';
 import { validatePrompt } from './prompt-context.ts';
 import type { PromptAttachment, PromptContext } from '@ormicode/protocol';
+import { allocateSessionPorts } from './session-ports.ts';
+import { sessionEnvironment } from './session-env.ts';
 
 export async function startSession(
   ctx: DispatchCtx, client: Client, id: string, body: Record<string, unknown>,
@@ -26,18 +28,32 @@ export async function startSession(
   }
   const missing = ctx.secrets.missing(project);
   if (missing.length) return client.link.replyError(id, 'secrets.missing', `missing secrets: ${missing.join(', ')} (ormi secret set NAME --project ${project})`);
+  let ports: { base: number; count: 10 };
+  try { ports = await allocateSessionPorts(ctx.db, sessionId); }
+  catch (error) { return client.link.replyError(id, 'session.ports_unavailable', String(error)); }
   let resolved: ResolvedWorkspace;
   if (workspace.kind === 'scratch') {
     resolved = { cwd: join(ormicodeDir(), 'scratch', sessionId) };
-    mkdirSync(resolved.cwd, { recursive: true });
+    try { mkdirSync(resolved.cwd, { recursive: true }); }
+    catch (error) { releaseSessionPorts(ctx.db, sessionId); throw error; }
   } else {
-    if (workspace.kind === 'checkout' && mainCheckoutIsBusy(ctx.db, project))
+    if (workspace.kind === 'checkout' && mainCheckoutIsBusy(ctx.db, project)) {
+      releaseSessionPorts(ctx.db, sessionId);
       return client.link.replyError(id, 'workspace.busy', 'the main checkout is in use by another live session');
+    }
     const busy = (branch: string) => branchIsBusy(ctx.db, project, branch, sessionId);
-    if (workspace.kind === 'checkout' && busy(workspace.branch))
+    if (workspace.kind === 'checkout' && busy(workspace.branch)) {
+      releaseSessionPorts(ctx.db, sessionId);
       return client.link.replyError(id, 'workspace.busy', `${workspace.branch} is in use by another live session`);
-    const result = await resolveWorkspace(project, workspace, body.workspaceName as string | undefined, sessionId, busy);
-    if ('err' in result) return client.link.replyError(id, result.err, result.detail ?? result.err);
+    }
+    const setupEnv = sessionEnvironment({ session: sessionId, project, cwd: project, base: ports.base });
+    let result;
+    try { result = await resolveWorkspace(project, workspace, body.workspaceName as string | undefined, sessionId, busy, setupEnv); }
+    catch (error) { releaseSessionPorts(ctx.db, sessionId); throw error; }
+    if ('err' in result) {
+      releaseSessionPorts(ctx.db, sessionId);
+      return client.link.replyError(id, result.err, result.detail ?? result.err);
+    }
     resolved = result;
     if (workspace.kind === 'existing') {
       const existingPath = resolved.worktree ?? resolved.cwd;
@@ -55,11 +71,15 @@ export async function startSession(
       attachments: body.attachments as PromptAttachment[] | undefined,
     });
   } catch (error) {
+    releaseSessionPorts(ctx.db, sessionId);
     return client.link.replyError(id, 'prompt.invalid', error instanceof Error ? error.message : String(error));
   }
   const machine = String(body.machine ?? 'm_local');
   const lease = acquireWorkspace(ctx.db, cwd, sessionId, machine);
-  if (lease.conflict) return client.link.replyError(id, 'lease.conflict', `workspace held by ${lease.conflict}`);
+  if (lease.conflict) {
+    releaseSessionPorts(ctx.db, sessionId);
+    return client.link.replyError(id, 'lease.conflict', `workspace held by ${lease.conflict}`);
+  }
   createSession(ctx.db, {
     id: sessionId, machine, project, vendor, transport, cwd,
     worktree: resolved.worktree, branch: resolved.branch,

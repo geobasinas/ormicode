@@ -7,7 +7,7 @@
  * (~/.ormicode/desktop/remote.json + safeStorage token), fall back to
  * the relay WebSocket. Pairing goes through `ormi:pair` IPC.
  */
-import { app, BrowserWindow, dialog, ipcMain, safeStorage, screen, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, safeStorage, screen, session as electronSession, shell } from 'electron';
 import { isAbsolute, join } from 'node:path';
 import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, statSync } from 'node:fs';
 import * as daemonSocket from '@ormicode/daemon/socket';
@@ -22,6 +22,9 @@ const tokenFile = join(desktopDir, 'device.token');
 const remoteFile = join(desktopDir, 'remote.json');
 const layoutFile = join(desktopDir, 'layout.json');
 const layoutRegions = new Set(['sidebar', 'main', 'composer', 'rightRail', 'now.widgets', 'session.panel', 'approval']);
+const previewPartition = /^(persist:)?ormi-preview-[a-z0-9]{1,32}$/;
+
+app.commandLine.appendSwitch('host-resolver-rules', 'MAP *.localhost 127.0.0.1');
 
 function layoutErrors(value: unknown): string[] {
   if (!value || typeof value !== 'object') return ['layout is not an object'];
@@ -161,7 +164,20 @@ function createWindow(): void {
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
+      webviewTag: true,
     },
+  });
+  win.webContents.on('will-attach-webview', (event, preferences, params) => {
+    let allowedSource = false;
+    try {
+      const source = new URL(params.src);
+      allowedSource = source.protocol === 'http:' && (source.hostname.endsWith('.localhost') || source.hostname === '127.0.0.1');
+    } catch { /* rejected below */ }
+    if (!allowedSource || !previewPartition.test(params.partition ?? '')) { event.preventDefault(); return; }
+    delete preferences.preload;
+    preferences.nodeIntegration = false;
+    preferences.contextIsolation = true;
+    preferences.sandbox = true;
   });
   win.on('restore', () => { const w = win; if (w) void tween(200, e => w.setOpacity(e)); });
   const devUrl = process.env.ELECTRON_RENDERER_URL;
@@ -170,6 +186,25 @@ function createWindow(): void {
 }
 
 app.whenReady().then(async () => {
+  app.on('web-contents-created', (_event, contents) => {
+    if (contents.getType() !== 'webview') return;
+    contents.setWindowOpenHandler(({ url }) => {
+      try {
+        const parsed = new URL(url);
+        if (parsed.protocol === 'http:' || parsed.protocol === 'https:') void shell.openExternal(url);
+      } catch { /* deny invalid URLs */ }
+      return { action: 'deny' };
+    });
+    contents.on('will-navigate', (event, url) => {
+      let allowed = false;
+      try {
+        const parsed = new URL(url);
+        allowed = parsed.protocol === 'http:' && (parsed.hostname.endsWith('.localhost') || parsed.hostname === '127.0.0.1');
+        if (!allowed && (parsed.protocol === 'http:' || parsed.protocol === 'https:')) void shell.openExternal(url);
+      } catch { /* deny invalid URLs */ }
+      if (!allowed) event.preventDefault();
+    });
+  });
   const ss = safeStorage as unknown as { isAsyncEncryptionAvailable?: () => Promise<boolean>; isEncryptionAvailable?: () => boolean };
   encryption = typeof ss.isAsyncEncryptionAvailable === 'function'
     ? await ss.isAsyncEncryptionAvailable().catch(() => false)
@@ -204,6 +239,18 @@ app.whenReady().then(async () => {
     if (errors.length) throw new Error(`Invalid layout: ${errors.join('; ')}`);
     mkdirSync(desktopDir, { recursive: true });
     writeFileSync(layoutFile, JSON.stringify(descriptor, null, 2), { mode: 0o600 });
+  });
+  ipcMain.handle('ormi:openExternal', async (_e, value: unknown) => {
+    if (typeof value !== 'string') throw new Error('An HTTP or HTTPS URL is required');
+    const url = new URL(value);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('Only HTTP and HTTPS URLs can be opened');
+    await shell.openExternal(url.toString());
+  });
+  ipcMain.handle('ormi:preview:clearData', async (_e, value: unknown) => {
+    if (typeof value !== 'string' || !previewPartition.test(value)) throw new Error('Invalid preview partition');
+    const partition = electronSession.fromPartition(value);
+    await partition.clearStorageData();
+    await partition.clearCache();
   });
   ipcMain.on('ormi:subscribe', (_e, session: string, after?: number) => {
     void link?.request('session.subscribe', { session, ...(after !== undefined ? { after } : {}) });

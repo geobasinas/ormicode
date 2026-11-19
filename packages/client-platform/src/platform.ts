@@ -40,6 +40,8 @@ export interface DesktopExtras {
   pickFolder(): Promise<string | null>;
   layoutRead(): Promise<{ descriptor: unknown | null; errors: string[] }>;
   layoutWrite(descriptor: unknown): Promise<void>;
+  openExternal(url: string): Promise<void>;
+  previewClearData(partition: string): Promise<void>;
 }
 
 export interface ClientPlatform {

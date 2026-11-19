@@ -4,6 +4,7 @@ import { worktreeSlug } from './worktree-common.ts';
 import { copyDirty, includeIgnored } from './worktree-copy.ts';
 import { commandMessage, git, gitResult, maybeGit, run } from './worktree-process.ts';
 import type { ResolvedWorkspace, WorkspaceErr, WorkspaceStep } from './worktree.ts';
+import { findWorkspaceHook, runWorkspaceHook } from './hooks.ts';
 
 export async function uniqueBranch(dir: string, base: string): Promise<string> {
   for (let i = 1; ; i++) {
@@ -38,6 +39,7 @@ function remoteName(ref: string, remotes: string[]): string | undefined {
 export async function createWorkspaceWorktree(
   project: string, baseRef: string, slugInput: string, explicitName: string | undefined,
   includeDirty: boolean, mainBranch: string | null, skipInclude = false, skipSetup = false,
+  env?: NodeJS.ProcessEnv,
 ): Promise<ResolvedWorkspace | WorkspaceErr> {
   project = resolve(project);
   const steps: WorkspaceStep[] = [];
@@ -101,9 +103,13 @@ export async function createWorkspaceWorktree(
     }
   }
 
-  const setup = join(project, '.ormi', 'setup');
+  const setup = findWorkspaceHook([project], 'setup');
   if (skipSetup) {
     steps.push({ step: 'setup', status: 'skipped', detail: 'setup script was disabled' });
+    return { cwd: dir, worktree: dir, branch, baseBranch: baseRef, baseCommit: commit, steps };
+  }
+  if (!setup) {
+    steps.push({ step: 'setup', status: 'skipped', detail: '.ormi/setup not found' });
     return { cwd: dir, worktree: dir, branch, baseBranch: baseRef, baseCommit: commit, steps };
   }
   try {
@@ -117,10 +123,10 @@ export async function createWorkspaceWorktree(
     return { err: 'workspace.failed', detail: `setup: ${error instanceof Error ? error.message : String(error)}` };
   }
 
-  const batch = process.platform === 'win32' && /\.(cmd|bat)$/i.test(setup);
-  const setupResult = await run(batch ? 'cmd' : 'bash', batch ? ['/c', setup] : [setup], {
-    cwd: dir, env: { ORMI_ROOT_PATH: project, ORMI_WORKTREE_PATH: dir }, timeoutMs: 10 * 60_000, tailBytes: 8192,
-  });
+  const setupResult = await runWorkspaceHook(setup, dir, {
+      ...env, ORMI_ROOT_PATH: project, ORMI_WORKTREE_PATH: dir,
+      ORMI_WORKTREE: dir, ORMI_PROJECT_ROOT: project, ORMI_BRANCH: branch,
+    }, 10 * 60_000, 8192);
   const output = setupResult.output.toString('utf8');
   if (setupResult.code !== 0) {
     await cleanupWorktree(project, dir, branch, true);

@@ -159,8 +159,23 @@ test('agent events require matching tool, usage and retry data', () => {
   assert.equal(parseEventBody({ kind: 'usage', input: -1 }).success, false);
   assert.equal(parseEventBody({ kind: 'retry_scheduled', delayMs: -1 }).success, false);
   assert.equal(parseEventBody({ kind: 'workspace_step', step: 'setup', status: 'warn', output: 'warning' }).success, true);
+  assert.equal(parseEventBody({ kind: 'workspace_step', step: 'resume', status: 'ok' }).success, true);
+  assert.equal(parseEventBody({ kind: 'workspace_step', step: 'teardown', status: 'skipped' }).success, true);
+  assert.equal(parseEventBody({ kind: 'service_state', service: 'web', state: 'running', port: 41000 }).success, true);
   assert.equal(parseEventBody({ kind: 'workspace_step', step: 'unknown', status: 'ok' }).success, false);
   assert.equal(parseEventBody({ kind: 'text', text: 'ok', raw: undefined }).success, false);
+});
+
+test('service and preview methods validate their request and response contracts', () => {
+  const session = 's_01J8Z3K4M5N6P7Q8R9S0T1V2W3';
+  const entry = { name: 'web', state: 'running', port: 41000, portals: [{ title: 'Home', path: '/', url: 'http://web.localhost:123/__ormi/auth?t=x' }] };
+  assert.equal(parseRequestBody('service.list', { session }).success, true);
+  assert.equal(parseRequestBody('service.start', { session, service: 'web' }).success, true);
+  assert.equal(parseRequestBody('service.logs', { session, service: 'web', after: 4 }).success, true);
+  assert.equal(parseRequestBody('preview.url', { session, port: 41000, path: '/admin' }).success, true);
+  assert.equal(parseResponseBody('service.list', { ports: { base: 41000, count: 10 }, proxy: { port: 123 }, config: { found: true }, services: [entry], detected: [] }).success, true);
+  assert.equal(parseResponseBody('service.logs', { lines: ['line'], next: 1, truncated: false }).success, true);
+  assert.equal(parseResponseBody('preview.url', { url: 'http://web.localhost:123/__ormi/auth?t=x' }).success, true);
 });
 
 test('session controls and notes use matching request and response contracts', () => {

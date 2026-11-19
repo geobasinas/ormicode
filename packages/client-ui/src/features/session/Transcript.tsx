@@ -182,8 +182,11 @@ function WorkspaceStepsRow({ steps }: { steps: TranscriptEvent[] }) {
   const create = steps.find(step => step.body.step === 'create');
   const detail = String(create?.body.detail ?? '');
   const match = detail.match(/^created (.+) from (.+)$/);
-  const summary = match ? <>Prepared worktree <span style={mono}>{match[1]}</span> from <span style={mono}>{match[2]}</span></> : 'Prepared worktree';
-  const labels: Record<string, string> = { fetch: 'Fetch', create: 'Create', copy_dirty: 'Copy uncommitted changes', include: 'Include ignored files', setup: 'Setup' };
+  const hook = steps.find(step => step.body.step === 'resume' || step.body.step === 'teardown');
+  const summary = hook?.body.step === 'resume' ? 'Resumed workspace'
+    : hook?.body.step === 'teardown' ? 'Workspace teardown'
+      : match ? <>Prepared worktree <span style={mono}>{match[1]}</span> from <span style={mono}>{match[2]}</span></> : 'Prepared worktree';
+  const labels: Record<string, string> = { fetch: 'Fetch', create: 'Create', copy_dirty: 'Copy uncommitted changes', include: 'Include ignored files', setup: 'Setup', resume: 'Resume', teardown: 'Teardown' };
   return (
     <div style={{ margin: '4px 0', color: 'var(--text-hint)', fontSize: 12 }}>
       <button type="button" aria-expanded={expanded} onClick={() => setExpanded(value => !value)} className="hv-sub" style={{

@@ -1,11 +1,14 @@
 import { newId } from '@ormicode/protocol';
-import { createSession, getSession, setState } from '@ormicode/session-store';
+import { createSession, getSession, releaseSessionPorts, setState } from '@ormicode/session-store';
 import { acquireWorkspace, releaseForSession } from '@ormicode/leases';
 import { hasTransport } from './registry.ts';
 import { handoffBrief } from './handoff.ts';
 import { estimateHandoff } from './handoff-methods.ts';
 import { removeWorktree, resolveWorkspace } from '@ormicode/git-core';
 import type { Client, DispatchCtx } from './dispatch.ts';
+import { allocateSessionPorts } from './session-ports.ts';
+import { sessionEnvironment } from './session-env.ts';
+import { runSessionHook } from './workspace-hooks.ts';
 
 const pendingApprovals = new Map<string, { session: string; resolve(approved: boolean): void }>();
 
@@ -72,15 +75,30 @@ export async function handoffRequest(ctx: DispatchCtx, client: Client, id: strin
     ctx.handoffsInTurn.set(session, (ctx.handoffsInTurn.get(session) ?? 0) + 1);
     return client.link.reply(id, { session: s.id, brief: '', parent: s.id });
   }
+  const child = newId('s');
+  let ports: { base: number; count: 10 };
+  try { ports = await allocateSessionPorts(db, child); }
+  catch (error) { return client.link.replyError(id, 'session.ports_unavailable', String(error)); }
   let resolved = { cwd: s.cwd, worktree: s.worktree ?? undefined, branch: s.branch ?? undefined, baseCommit: s.base_commit ?? undefined };
   if (mode === 'fork') {
-    const name = to.branch ?? `handoff-${newId('s')}`;
-    const r = await resolveWorkspace(s.project, { kind: 'worktree', branch: s.branch ?? 'HEAD', name }, name, session, () => false);
-    if ('err' in r) return client.link.replyError(id, r.err, r.detail ?? r.err);
+    const name = to.branch ?? `handoff-${child.slice(-8)}`;
+    let r;
+    try {
+      r = await resolveWorkspace(
+        s.project, { kind: 'worktree', branch: s.branch ?? 'HEAD', name }, name, child, () => false,
+        sessionEnvironment({ session: child, project: s.project, cwd: s.cwd, base: ports.base }),
+      );
+    } catch (error) {
+      releaseSessionPorts(db, child);
+      return client.link.replyError(id, 'workspace.failed', String(error));
+    }
+    if ('err' in r) {
+      releaseSessionPorts(db, child);
+      return client.link.replyError(id, r.err, r.detail ?? r.err);
+    }
     resolved = { cwd: r.cwd, worktree: r.worktree, branch: r.branch, baseCommit: r.baseCommit };
   }
   const brief = typeof body.brief === 'string' && body.brief ? body.brief : handoffBrief(db, session);
-  const child = newId('s');
   createSession(db, {
     id: child, machine: s.machine, project: s.project, vendor: targetVendor,
     transport: to.transport ?? s.transport, cwd: resolved.cwd,
@@ -110,10 +128,16 @@ export async function handoffRequest(ctx: DispatchCtx, client: Client, id: strin
   } catch (error) {
     const reasonText = error instanceof Error ? error.message : String(error);
     await ctx.stopWorker(child).catch(() => undefined);
+    await ctx.services.stopSession(child);
+    if (mode === 'fork' && resolved.worktree && resolved.branch) {
+      const childRow = getSession(db, child);
+      if (childRow) await runSessionHook(childRow, 'teardown', ports.base, ctx.record);
+    }
     releaseForSession(db, child);
     for (const table of ['session_queue', 'pending_prompt_data', 'session_drafts', 'session_prices', 'device_cursors', 'outbox', 'events', 'tool_calls'])
       db.prepare(`DELETE FROM ${table} WHERE session = ?`).run(child);
     db.prepare('DELETE FROM sessions WHERE id = ?').run(child);
+    releaseSessionPorts(db, child);
     if (mode === 'fork' && resolved.worktree && resolved.branch) removeWorktree(s.project, resolved.worktree, resolved.branch);
     db.prepare('UPDATE sessions SET handed_off = 0, state = ?, worker_pid = NULL WHERE id = ?').run(originalState, session);
     let leaseMessage = reasonText;

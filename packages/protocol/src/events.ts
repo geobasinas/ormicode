@@ -37,8 +37,13 @@ export const eventBodies = {
   interrupted: z.looseObject({ kind: z.literal('interrupted'), reason: nonEmpty }),
   resumed: z.looseObject({ kind: z.literal('resumed') }),
   workspace_step: z.looseObject({
-    kind: z.literal('workspace_step'), step: z.enum(['fetch', 'create', 'copy_dirty', 'include', 'setup']),
+    kind: z.literal('workspace_step'), step: z.enum(['fetch', 'create', 'copy_dirty', 'include', 'setup', 'resume', 'teardown']),
     status: z.enum(['ok', 'warn', 'skipped']), detail: z.optional(text), output: z.optional(text),
+  }),
+  service_state: z.looseObject({
+    kind: z.literal('service_state'), service: nonEmpty,
+    state: z.enum(['stopped', 'starting', 'running', 'unhealthy', 'exited']),
+    port: count, code: z.optional(z.nullable(z.number())), detail: z.optional(text),
   }),
   // A restore point after a tool call (seq = the tool_result); overCap = bytes when one checkpoint alone exceeds the cap.
   checkpoint: z.looseObject({ kind: z.literal('checkpoint'), id: nonEmpty, seq: count, tool: text, overCap: z.optional(count) }),

@@ -1888,6 +1888,8 @@ The daemon methods for this pane are built. The UI can use the status, history, 
 
 ## Browser preview
 
+**Implementation status:** The daemon allocates stable 10-port blocks (`ORMICODE_PORT_RANGE`, default `41000-48999`) and builds session-scoped `PORT`, `ORMI_*` variables for workers, terminals, hooks and services. `.ormi/setup`, `.ormi/resume` and `.ormi/teardown` run through the shared hook runner; resume is non-blocking and teardown precedes daemon worktree removal. `apps/daemon/src/services.ts` reads `.ormi/services.yaml` from the session folder then project root, validates at most 10 services with unique offsets, manages `service.list/start/stop/restart/logs`, health checks and bounded logs, and stops children with the daemon; services do not auto-start after daemon boot. `preview.url` and `ormi preview url` return host-routed authenticated URLs from the `node:http` proxy (`ORMICODE_PREVIEW_PORT` or an ephemeral loopback port); `ormi service` exposes service operations. The Browser rail pane supports local portals, detected ports, device presets and a logs drawer. Limits: each service uses one port in its block, logs are in-memory capped at 2,000 lines/1 MiB plus a persistent file, and remote/relay preview, annotations, console/network capture and headless screenshots are not built.
+
 > **Status:** later · **Needs:** [Sessions](#sessions)
 
 **Your running app is part of the context.**

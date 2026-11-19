@@ -1,24 +1,46 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openStore, createSession, getSession, listSessions, sessionsInStates, setState, setTitle, archiveSession, setNativeId,
   addDevice, getDeviceByHash, listDevices, renameDevice, revokeDevice, listNotes, setNote, deleteNote, getPinnedPrice, pinPrice,
   addQueuedPrompt, listQueuedPrompts, moveQueuedPrompt, removeQueuedPrompt, updateQueuedPrompt,
-  setQueuedPromptError,
+  setQueuedPromptError, getSessionPorts, assignSessionPorts, releaseSessionPorts,
   setPendingPromptData, getPendingPromptData, getDraft, setDraft } from '../src/index.ts';
 
 test('openStore applies migrations and is idempotent on reopen', () => {
   const path = join(mkdtempSync(join(tmpdir(), 'ormi-store-')), 'nested', 'store.db');
   const db = openStore(path);
   const version = db.pragma('user_version', { simple: true });
-  assert.ok(version >= 6);
+  assert.ok(version >= 7);
   assert.equal(db.pragma('journal_mode', { simple: true }), 'wal');
   db.close();
   const again = openStore(path);
   assert.equal(again.pragma('user_version', { simple: true }), version);
   again.close();
+});
+
+test('session port blocks persist, reject duplicate bases, and release independently', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ormi-session-ports-'));
+  let db;
+  try {
+    db = openStore(join(dir, 'store.db'));
+    assert.equal(assignSessionPorts(db, 's_one', 41000), true);
+    assert.equal(assignSessionPorts(db, 's_one', 41000), true);
+    assert.equal(assignSessionPorts(db, 's_two', 41000), false);
+    assert.equal(assignSessionPorts(db, 's_two', 41010), true);
+    assert.deepEqual([getSessionPorts(db, 's_one'), getSessionPorts(db, 's_two')], [41000, 41010]);
+    db.close();
+    db = openStore(join(dir, 'store.db'));
+    assert.deepEqual([getSessionPorts(db, 's_one'), getSessionPorts(db, 's_two')], [41000, 41010]);
+    assert.equal(releaseSessionPorts(db, 's_one'), true);
+    assert.equal(getSessionPorts(db, 's_one'), undefined);
+    assert.equal(releaseSessionPorts(db, 's_one'), false);
+  } finally {
+    db?.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('sessions: create, read, list order, state, title, archive', () => {

@@ -1,5 +1,6 @@
 import * as z from 'zod/mini';
 import { cursorSchema, jsonObjectSchema, requestIdSchema, sessionIdSchema, idSchema, timestampSchema } from './schema.ts';
+import { portBlock, serviceRequests, serviceResponses } from './service-contracts.ts';
 
 const session = { session: sessionIdSchema };
 const draftSession = z.union([sessionIdSchema, z.literal('home')]);
@@ -53,7 +54,6 @@ const workspaceSchema = z.union([
     skipInclude: z.optional(z.boolean()), skipSetup: z.optional(z.boolean()),
   }),
   z.object({ kind: z.literal('existing'), path: nonEmpty }),
-  // No project folder: the session gets ~/.ormicode/scratch/<id> as its cwd.
   z.object({ kind: z.literal('scratch') }),
 ]);
 const terminalInfo = z.looseObject({ terminal: nonEmpty, cwd: nonEmpty, shell: nonEmpty, device: z.string(), openedAt: timestampSchema, pid: cursorSchema, exited: z.boolean(), code: z.nullable(z.number()), offset: cursorSchema });
@@ -61,10 +61,9 @@ const priceStatus = z.object({ version: z.nullable(z.string()), source: z.enum([
 const summarySchema = z.object({
   id: sessionIdSchema, title: z.nullable(z.string()), state: sessionStateSchema,
   project: nonEmpty, vendor: nonEmpty, transport: nonEmpty, updatedAt: timestampSchema,
-  // Git branch the session works on; absent/null for scratch or no-git projects.
   branch: z.optional(z.nullable(z.string())),
-  // Own worktree under .ormi/worktrees; diff = worktree vs base commit incl. untracked (null when git failed).
   worktree: z.optional(z.boolean()),
+  ports: z.optional(portBlock),
   diff: z.optional(z.nullable(z.object({ added: cursorSchema, removed: cursorSchema, files: cursorSchema }))),
 });
 const configOptionSchema = z.object({
@@ -202,6 +201,7 @@ export const requestBodies = {
   'terminal.resize': z.object({ terminal: nonEmpty, cols: cursorSchema, rows: cursorSchema }),
   'terminal.close': z.object({ terminal: nonEmpty }),
   'terminal.list': z.object({}),
+  ...serviceRequests,
   'checkpoint.list': z.object(session),
   // Without `to`: what `from` changed since the checkpoint before it.
   'checkpoint.diff': z.object({ ...session, from: nonEmpty, to: z.optional(nonEmpty) }),
@@ -228,7 +228,6 @@ export const requestBodies = {
   'project.pull': z.object({ project: nonEmpty, branch: nonEmpty }),
   'project.renameBranch': z.object({ project: nonEmpty, from: nonEmpty, to: nonEmpty }),
   'project.deleteBranch': z.object({ project: nonEmpty, name: nonEmpty, confirm: nonEmpty, force: z.optional(z.boolean()) }),
-  // Hub-side pairing: returns a one-shot 12-digit code the new device enters.
   'pair.create': z.object({}),
   // A device exchanges a live code for a device token (raw token returned once).
   'pair.join': z.object({ code: nonEmpty, name: nonEmpty }),
@@ -242,6 +241,7 @@ export const responseBodies = {
   'session.rename': z.object({ renamed: z.literal(true), title: nonEmpty }),
   'session.export': z.object({ text: z.string() }),
   'session.list': z.object({ sessions: z.array(summarySchema) }),
+  ...serviceResponses,
   'session.prompt': z.object({ accepted: z.literal(true) }),
   'session.draft.get': z.object({ text: z.string() }),
   'session.draft.set': z.object({ saved: z.literal(true) }),

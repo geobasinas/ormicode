@@ -45,7 +45,11 @@ export function startBroker(opts: BrokerOptions): Promise<{ server: Server; clos
     const cwd = String(b.cwd ?? process.cwd());
     const proc = pty.spawn(shell, Array.isArray(b.args) ? b.args.map(String) : [], {
       name: 'xterm-256color', cwd, cols: Number(b.cols) || 80, rows: Number(b.rows) || 24,
-      env: { ...process.env, TERM: 'xterm-256color' } as Record<string, string>,
+      env: {
+        ...process.env,
+        ...(b.env && typeof b.env === 'object' ? b.env as Record<string, string> : {}),
+        TERM: 'xterm-256color',
+      } as Record<string, string>,
     });
     const info: TerminalInfo = { terminal: newTerminalId(), cwd, shell, device, openedAt: Date.now(), pid: proc.pid, exited: false, code: null, offset: 0 };
     const t: Term = { info, proc, buf: new Scrollback(opts.scrollbackLines ?? 5000), readers: new Set(), tokens: rate, lastRefill: Date.now(), dropped: false };

@@ -81,11 +81,11 @@ const RAIL_ICONS: { id: string; icon: LucideIcon; label: string; soon?: boolean 
   { id: 'files', icon: FolderOpen, label: 'files' },
   { id: 'terminal', icon: SquareTerminal, label: 'terminal' },
   { id: 'notes', icon: NotebookPen, label: 'notes' },
-  { id: 'web', icon: Globe, label: 'web — soon', soon: true },
+  { id: 'browser', icon: Globe, label: 'browser' },
 ];
 
-export type RailPane = 'none' | 'notes' | 'git' | 'terminal' | 'files';
-const PANES: string[] = ['notes', 'git', 'terminal', 'files'];
+export type RailPane = 'none' | 'notes' | 'git' | 'terminal' | 'files' | 'browser';
+const PANES: string[] = ['notes', 'git', 'terminal', 'files', 'browser'];
 
 function Rail({ route, rail, onRail }: { route: string; rail: RailPane; onRail: (r: RailPane) => void }) {
   const isSession = route !== 'now';

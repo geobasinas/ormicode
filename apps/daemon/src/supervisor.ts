@@ -4,7 +4,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Frame, PromptAttachment, PromptContext } from '@ormicode/protocol';
 import {
-  openStore, getSession, setState, setWorkerPid, setNativeId, listSessions,
+  openStore, getSession, getSessionPorts, setState, setWorkerPid, setNativeId, listSessions,
   type SessionState,
 } from '@ormicode/session-store';
 import { killTree } from './proctree.ts';
@@ -20,27 +20,28 @@ import { SecretBroker } from './secrets.ts';
 import { TerminalHub } from './terminal-methods.ts';
 import { PriceBook } from '@ormicode/pricing';
 import { serve, defaultSocketPath, ormicodeDir, sessionLogDir, type Link } from './socket.ts';
-
+import { allocateSessionPorts } from './session-ports.ts';
+import { environmentForSession } from './session-env.ts';
+import { PreviewProxy } from './preview-proxy.ts';
+import { Services } from './services.ts';
+import { runSessionHook } from './workspace-hooks.ts';
 const WORKER_MAIN = join(dirname(fileURLToPath(import.meta.url)), 'worker-main.ts');
 const startedAt = Date.now();
-
 interface Worker { proc: ChildProcess; session: string; pid: number | undefined; ready: boolean }
 type HeldPrompt = { text: string; images?: unknown[]; context?: PromptContext[]; attachments?: PromptAttachment[] };
-
 const stateFor: Record<string, SessionState> = {
   turn_start: 'running', turn_end: 'idle', approval_request: 'awaiting_approval',
   approval_decision: 'running', question_request: 'awaiting_input',
   rate_limited: 'retrying', retry_scheduled: 'retrying', interrupted: 'interrupted',
 };
-
 export interface DaemonOptions { socketPath?: string; storePath?: string }
-
 export async function startDaemon(opts: DaemonOptions = {}) {
   let socketPath = opts.socketPath ?? process.env.ORMICODE_SOCKET ?? defaultSocketPath();
   const storePath = opts.storePath ?? process.env.ORMICODE_STORE ?? join(ormicodeDir(), 'store.db');
   const db = openStore(storePath);
+  const previewProxy = new PreviewProxy();
+  await previewProxy.listen();
   if (socketPath !== defaultSocketPath() && existsSync(socketPath)) rmSync(socketPath);
-
   const workers = new Map<string, Worker>();
   const clients = new Set<Client>();
   let lastError: string | null = null;
@@ -59,13 +60,10 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   const checkpointsOn = process.env.ORMICODE_CHECKPOINTS !== '0';
   const secrets = new SecretBroker(join(ormicodeDir(), 'logs', 'secrets-audit.jsonl'), join(ormicodeDir(), 'secrets-index.json'));
   const toolNames = new Map<string, string>();
-  // Boot: interrupt in-flight sessions, expire pending interactions, reap stale
-  // pids; auto-resume candidates are spawned once spawnWorker exists below.
   const resuming = new Set<string>();
   const recapPending = new Map<string, number>();
   sweepLogs();
   const recovery = recoverSessions(db, resumePolicy());
-
   const fanout = (session: string, frame: string) => {
     for (const c of clients) if (c.subscriptions.has(session) && !c.link.closed) c.link.send(JSON.parse(frame));
   };
@@ -74,7 +72,6 @@ export async function startDaemon(opts: DaemonOptions = {}) {
       c.link.send({ v: 1, type: 'evt', session, ts: Date.now(), body: { kind, text } });
     relay?.sendDelta(session, kind, text);
   };
-
   const record = (session: string, kind: string, payload: Record<string, unknown>, ts?: number, origin?: string) => {
     if (closing) return;
     const { frame } = append(db, session, { kind, payload: { kind, ...secrets.redact(session, payload) }, ...(ts ? { ts } : {}), ...(origin ? { origin } : {}) });
@@ -84,26 +81,39 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     else if (kind === 'state' && typeof payload.state === 'string') setState(db, session, payload.state as SessionState, typeof payload.reason === 'string' ? payload.reason : undefined, ts);
   };
   const terminals = new TerminalHub(record, ormicodeDir());
-
-  // After each tool call (and once before the first), commit the worktree to the shadow repo.
+  const services = new Services(db, previewProxy, record, ormicodeDir());
+  const pendingWorkers = new Set<string>();
+  const spawnFailures = new Map<string, Error>();
   const checkpointSoon = (session: string, seq: number, tool: string) => {
     const cwd = getSession(db, session)?.cwd;
-    // Scratch sessions have no checkpoints (README: Scratch sessions).
     if (!checkpointsOn || !cwd || !existsSync(cwd) || cwd.startsWith(join(ormicodeDir(), 'scratch'))) return;
     checkpoints.snapshot(session, cwd, seq, tool).then(r => {
       if (r.checkpoint) record(session, 'checkpoint', { id: r.checkpoint.id, seq, tool, ...(r.overCap ? { overCap: r.overCap } : {}) });
     }).catch((e: unknown) => { lastError = `checkpoint ${session}: ${e instanceof Error ? e.message : String(e)}`; });
   };
-
   const spawnWorker = (session: string) => {
     const row = getSession(db, session);
     if (!row) throw new Error(`unknown session ${session}`);
-    // Baseline before the agent can touch anything (a baseline at the first tool_call races the tool).
+    const base = getSessionPorts(db, session);
+    if (base === undefined) {
+      if (pendingWorkers.has(session) || workers.has(session)) return;
+      pendingWorkers.add(session);
+      void allocateSessionPorts(db, session).then(() => {
+        pendingWorkers.delete(session);
+        spawnWorker(session);
+      }).catch(error => {
+        pendingWorkers.delete(session);
+        spawnFailures.set(session, error instanceof Error ? error : new Error(String(error)));
+      });
+      return;
+    }
     if (!checkpoints.repo(session).exists()) checkpointSoon(session, 0, 'baseline');
+    const waking = Boolean(db.prepare("SELECT 1 FROM events WHERE session = ? AND kind = 'turn_start' LIMIT 1").get(session));
     const proc = spawn(process.execPath, [WORKER_MAIN], {
       env: {
         ...process.env,
         ...secrets.envFor(session, row.project),
+        ...environmentForSession(row, base),
         ORMICODE_SOCKET: socketPath, ORMICODE_SESSION: session,
         ORMICODE_VENDOR: row.vendor, ORMICODE_TRANSPORT: row.transport,
         ORMICODE_CWD: row.cwd, ...(row.native_id ? { ORMICODE_RESUME: row.native_id } : {}),
@@ -138,9 +148,9 @@ export async function startDaemon(opts: DaemonOptions = {}) {
       }
     });
     proc.on('error', e => { lastError = String(e); });
+    if (waking) void runSessionHook(row, 'resume', base, record);
     return worker;
   };
-
   const onWorkerFrame = (link: Link, frame: Frame) => {
     if (frame.type !== 'req') return;
     const { id, method } = frame;
@@ -220,7 +230,6 @@ export async function startDaemon(opts: DaemonOptions = {}) {
         link.replyError(id, 'protocol.unknown_method', method);
     }
   };
-
   const evictWorker = async (session: string, reason: string) => {
     if (closing) return;
     const w = workers.get(session);
@@ -242,7 +251,6 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     workers.delete(session);
     setWorkerPid(db, session, null);
   };
-
   const armIdle = (session: string, state: SessionState) => {
     const existing = idleTimers.get(session);
     if (existing) { clearTimeout(existing); idleTimers.delete(session); }
@@ -250,14 +258,12 @@ export async function startDaemon(opts: DaemonOptions = {}) {
       idleTimers.set(session, setTimeout(() => { void evictWorker(session, 'idle_timeout'); }, idleTimeoutMs).unref());
     }
   };
-
   const enforcePool = () => {
     const live = [...workers.entries()].filter(([, w]) => w.ready);
     if (live.length <= poolMax) return;
     const idle = live.filter(([s]) => getSession(db, s)?.state === 'idle' && !(getSession(db, s)?.pinned));
     if (idle.length) void evictWorker(idle[0]![0], 'pool_full');
   };
-
   const toWorker = async (session: string, method: string, body: Record<string, unknown>) => {
     const w = workers.get(session);
     const link = workerLinks.get(session);
@@ -266,24 +272,23 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   };
   const workerLinks = new Map<string, Link>();
   const sessionByLink = new Map<Link, string>();
-
   const ensureWorker = (session: string, timeoutMs = 30_000): Promise<void> => new Promise((resolve, reject) => {
     if (workers.get(session)?.ready) return resolve();
     if (!workers.has(session)) spawnWorker(session);
     const deadline = Date.now() + timeoutMs;
     const poll = () => {
       if (workers.get(session)?.ready) return resolve();
-      if (!workers.has(session)) return reject(new Error('worker exited before ready'));
+      const failure = spawnFailures.get(session);
+      if (failure) { spawnFailures.delete(session); return reject(failure); }
+      if (!workers.has(session) && !pendingWorkers.has(session)) return reject(new Error('worker exited before ready'));
       if (Date.now() > deadline) return reject(new Error('worker.ready timeout'));
       setTimeout(poll, 25).unref();
     };
     poll();
   });
-
   const { sendPrompt, drainQueue } = createPromptDelivery({
     db, notesDir, paused, heldPrompts, lastPrompt, ensureWorker, toWorker, terminals, record,
   });
-
   // Sessions paused by a rate limit wake at the provider's reset time and retry
   // the held prompt; timers are in-memory and re-armed from the journal on boot.
   const retryTimers = new Map<string, NodeJS.Timeout>();
@@ -298,7 +303,6 @@ export async function startDaemon(opts: DaemonOptions = {}) {
       }
     }, Math.max(0, resetAt - Date.now())).unref());
   };
-
   const pairing = new Pairing();
   const handoffsInTurn = new Map<string, number>();
   let relay: RelayClient | undefined;
@@ -306,14 +310,13 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     db, notesDir, startedAt, paused, heldPrompts, lastPrompt, handoffsInTurn,
     lastError: () => lastError, liveWorkers: () => workers.size,
     spawnWorker, ensureWorker, stopWorker, setRecapPending: (session, uptoSeq) => recapPending.set(session, uptoSeq), toWorker, sendPrompt, drainQueue,
-    pairing, relay: () => relay, checkpoints, record, secrets, terminals,
+    pairing, relay: () => relay, checkpoints, record, secrets, terminals, services,
     prices: new PriceBook({
       cachePath: join(ormicodeDir(), 'cache', 'prices.json'), overridesPath: join(ormicodeDir(), 'prices.json'),
       url: process.env.ORMICODE_PRICES_URL === 'off' ? null : process.env.ORMICODE_PRICES_URL,
       maxAgeMs: (Number(process.env.ORMICODE_PRICING_CACHE_MINUTES) || 1440) * 60_000,
     }),
   };
-
   // idx summaries keep remote session lists fresh without streaming transcripts.
   let idxTimer: NodeJS.Timeout | undefined;
   const pushIdx = (to: string) => {
@@ -325,7 +328,6 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     idxTimer = setTimeout(() => { idxTimer = undefined; pushIdx('*'); }, 1_000);
     idxTimer.unref();
   };
-
   const hubConfig = loadHubConfig();
   if (hubConfig) {
     relay = new RelayClient(hubConfig, {
@@ -343,7 +345,6 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     });
     relay.start();
   }
-
   const server = await serve(socketPath, link => {
     link.onFrame = frame => {
       if (closing) return;
@@ -368,15 +369,15 @@ export async function startDaemon(opts: DaemonOptions = {}) {
       if (s) { workerLinks.delete(s); sessionByLink.delete(link); }
     };
   });
-
   const addr = server.address();
   if (typeof addr === 'object' && addr) socketPath = `127.0.0.1:${addr.port}`;
-  // Resume spawns only after the socket is bound — workers connect on start.
   for (const c of recovery.autoResume) { resuming.add(c.s.id); if (c.recapOnly) recapPending.set(c.s.id, Number.MAX_SAFE_INTEGER); spawnWorker(c.s.id); }
   for (const r of recovery.rateLimited) scheduleRateRetry(r.id, r.resetAt);
   return {
     socketPath, storePath, db, workers,
     async close() {
+      await services.shutdown();
+      await previewProxy.close();
       closing = true;
       if (idxTimer) clearTimeout(idxTimer);
       for (const t of idleTimers.values()) clearTimeout(t);

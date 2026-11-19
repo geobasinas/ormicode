@@ -2,6 +2,7 @@ export {
   resolveWorkspace, forkWorktree, removeWorktree, fetchProject, defaultBranch, listWorktrees,
   type WorkspaceChoice, type ResolvedWorkspace, type WorkspaceErr, type WorkspaceStep, type WorkspaceStepName, type WorktreeEntry,
 } from './worktree.ts';
+export { findWorkspaceHook, runWorkspaceHook } from './hooks.ts';
 export { diffStat, diffPatch, DiffStatCache, type DiffStat } from './diff.ts';
 export { status, type GitStatus } from './status.ts';
 export { isGitRepo } from './commands.ts';

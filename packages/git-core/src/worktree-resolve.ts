@@ -24,7 +24,7 @@ export async function fetchProject(project: string): Promise<{ ok: boolean; erro
 
 export async function resolveWorkspace(
   project: string, ws: WorkspaceChoice, workspaceName: string | undefined,
-  sessionId: string, branchBusy: (branch: string) => boolean,
+  sessionId: string, branchBusy: (branch: string) => boolean, env?: NodeJS.ProcessEnv,
 ): Promise<ResolvedWorkspace | WorkspaceErr> {
   if (!await isRepoAsync(project)) {
     if (ws.kind === 'current') return { cwd: project };
@@ -78,12 +78,12 @@ export async function resolveWorkspace(
       return { err: 'workspace.failed', detail: 'copy_dirty: uncommitted changes can only be included from the current branch' };
     return createWorkspaceWorktree(
       project, ws.branch, workspaceName ?? ws.name ?? ws.branch ?? sessionId.slice(-8),
-      ws.name, Boolean(ws.includeDirty), branch, Boolean(ws.skipInclude), Boolean(ws.skipSetup),
+      ws.name, Boolean(ws.includeDirty), branch, Boolean(ws.skipInclude), Boolean(ws.skipSetup), env,
     );
   }
 
   if (ws.kind === 'current' && branch && branchBusy(branch))
-    return createWorkspaceWorktree(project, branch, workspaceName ?? sessionId.slice(-8), undefined, false, branch);
+    return createWorkspaceWorktree(project, branch, workspaceName ?? sessionId.slice(-8), undefined, false, branch, false, false, env);
 
   if (ws.kind === 'branch') {
     const name = ws.branch || await uniqueBranch(project, slug);

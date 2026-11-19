@@ -34,6 +34,8 @@ const bridge = {
   pickFolder: (): Promise<string | null> => ipcRenderer.invoke('ormi:pickFolder', 'Choose a project folder'),
   layoutRead: (): Promise<{ descriptor: unknown | null; errors: string[] }> => ipcRenderer.invoke('ormi:layout:read'),
   layoutWrite: (descriptor: unknown): Promise<void> => ipcRenderer.invoke('ormi:layout:write', descriptor),
+  openExternal: (url: string): Promise<void> => ipcRenderer.invoke('ormi:openExternal', url),
+  previewClearData: (partition: string): Promise<void> => ipcRenderer.invoke('ormi:preview:clearData', partition),
 };
 
 contextBridge.exposeInMainWorld('ormi', bridge);

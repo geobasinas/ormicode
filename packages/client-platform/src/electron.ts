@@ -28,6 +28,8 @@ interface OrmiBridge {
   pickFolder(): Promise<string | null>;
   layoutRead(): Promise<{ descriptor: unknown | null; errors: string[] }>;
   layoutWrite(descriptor: unknown): Promise<void>;
+  openExternal(url: string): Promise<void>;
+  previewClearData(partition: string): Promise<void>;
 }
 
 declare global {
@@ -70,6 +72,8 @@ export function electronPlatform(): ClientPlatform {
       pickFolder: () => b.pickFolder(),
       layoutRead: () => b.layoutRead(),
       layoutWrite: descriptor => b.layoutWrite(descriptor),
+      openExternal: url => b.openExternal(url),
+      previewClearData: partition => b.previewClearData(partition),
     },
   };
 }

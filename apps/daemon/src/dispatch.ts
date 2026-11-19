@@ -1,8 +1,8 @@
 import type { Frame, PromptAttachment, PromptContext } from '@ormicode/protocol';
 import { parseRequestBody, newId } from '@ormicode/protocol';
 import {
-  getSession, listSessions, setState, setTitle, listNotes, setNote, deleteNote, archiveSession,
-  getPendingPromptData, deletePendingPromptData, type Store,
+  getSession, listSessions, setState, setTitle, listNotes, setNote, deleteNote, archiveSession, releaseSessionPorts,
+  getPendingPromptData, deletePendingPromptData, getSessionPorts, type Store,
 } from '@ormicode/session-store';
 import { replay, setCursor } from '@ormicode/journal';
 import { listDevices, renameDevice, revokeDevice } from '@ormicode/session-store';
@@ -41,6 +41,9 @@ import { retryPrompt } from './prompt-methods.ts';
 import { listModels } from './models.ts';
 import { startSession } from './session-start.ts';
 import { copyOutMethod, countScratchFiles } from './scratch-methods.ts';
+import { SESSION_PORT_COUNT } from './session-ports.ts';
+import { serviceMethod } from './service-methods.ts';
+import type { Services } from './services.ts';
 
 /** What a client transport must do: send frames and answer requests. */
 export interface ClientLink {
@@ -74,6 +77,7 @@ export interface DispatchCtx {
   checkpoints: Checkpoints;
   secrets: SecretBroker;
   terminals: TerminalHub;
+  services: Services;
   prices: PriceBook;
   record(session: string, kind: string, payload: Record<string, unknown>): void;
 }
@@ -131,12 +135,16 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         return client.link.reply(id, { text: lines.join('\n') });
       }
       case 'session.list': {
-        const sessions = listSessions(db, Boolean(body.archived)).map(s => ({
-          id: s.id, title: s.title, state: s.state, project: s.project, vendor: s.vendor,
-          transport: s.transport, updatedAt: s.updated_at, branch: s.branch,
-          worktree: Boolean(s.worktree),
-          ...(s.base_commit && !s.archived ? { diff: diffStats.get(s.cwd, s.base_commit) } : {}),
-        }));
+        const sessions = listSessions(db, Boolean(body.archived)).map(s => {
+          const base = getSessionPorts(db, s.id);
+          return {
+            id: s.id, title: s.title, state: s.state, project: s.project, vendor: s.vendor,
+            transport: s.transport, updatedAt: s.updated_at, branch: s.branch,
+            worktree: Boolean(s.worktree),
+            ...(base === undefined ? {} : { ports: { base, count: SESSION_PORT_COUNT } }),
+            ...(s.base_commit && !s.archived ? { diff: diffStats.get(s.cwd, s.base_commit) } : {}),
+          };
+        });
         return client.link.reply(id, { sessions });
       }
       case 'session.digest': {
@@ -149,6 +157,13 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
       case 'session.cost':
       case 'cost.totals':
         return costMethod(ctx, client, id, method, body);
+      case 'service.list':
+      case 'service.start':
+      case 'service.stop':
+      case 'service.restart':
+      case 'service.logs':
+      case 'preview.url':
+        return await serviceMethod(ctx, client, id, method, body);
       case 'pricing.status':
       case 'pricing.refresh':
         await ctx.prices.ensure(method === 'pricing.refresh');
@@ -171,11 +186,13 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
       case 'session.get': {
         const s = getSession(db, String(body.session));
         if (!s) return client.link.replyError(id, 'session.not_found', String(body.session));
+        const base = getSessionPorts(db, s.id);
         return client.link.reply(id, {
           id: s.id, title: s.title, state: s.state, project: s.project, vendor: s.vendor,
           cwd: s.cwd,
           ...(s.project === 'scratch' ? { scratchFiles: countScratchFiles(s.cwd) } : {}),
           transport: s.transport, updatedAt: s.updated_at, branch: s.branch, worktree: Boolean(s.worktree),
+          ...(base === undefined ? {} : { ports: { base, count: SESSION_PORT_COUNT } }),
           model: s.model, effort: s.effort, mode: s.mode,
           nativeId: s.native_id, acpVersion: s.acp_version, parent: s.parent,
         });
@@ -231,6 +248,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
       case 'session.retry': return await retryPrompt(ctx, client, id, body);
       case 'session.delete': case 'session.archive': {
         const session = String(body.session);
+        await ctx.services.stopSession(session);
         archiveSession(db, session);
         releaseForSession(db, session);
         // Scratch sessions own their folder; delete removes it (archive keeps it).
@@ -240,6 +258,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
           try { rmSync(row.cwd, { recursive: true, force: true }); } catch { /* best effort */ }
         }
         if (method === 'session.delete') {
+          releaseSessionPorts(db, session);
           try { rmSync(sessionLogDir(session), { recursive: true, force: true }); } catch { /* best effort */ }
           void ctx.checkpoints.remove(session).catch(() => undefined);
         }

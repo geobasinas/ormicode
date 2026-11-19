@@ -144,6 +144,21 @@ button:disabled, input:disabled, textarea:disabled, select:disabled, [aria-disab
 .ormi-chip-text { overflow: hidden; text-overflow: ellipsis; min-width: 0; font-weight: 500; }
 .ormi-tabs { scrollbar-width: none; }
 .ormi-tabs::-webkit-scrollbar { display: none; }
+.ormi-browser-tab-close { transition: opacity 120ms, background-color 120ms, color 120ms; }
+.ormi-browser-tab:hover .ormi-browser-tab-close, .ormi-browser-tab:focus-within .ormi-browser-tab-close,
+.ormi-browser-tab[data-active="true"] .ormi-browser-tab-close { opacity: 1 !important; }
+.ormi-browser-progress { width: 34%; height: 2px; background: var(--accent-mint); animation: ormi-browser-progress 1.1s ease-in-out infinite; }
+.ormi-browser-spinner { width: 12px; height: 12px; border: 1px solid var(--line-card); border-top-color: var(--accent-mint); border-radius: 50%; animation: ormi-browser-spin 700ms linear infinite; }
+.ormi-browser-wide-label { white-space: nowrap; }
+.ormi-browser-service-icon { display: none; }
+.ormi-handle-horizontal { width: auto !important; height: 6px; }
+.ormi-handle-horizontal::after { inset: 2.5px 0; }
+@keyframes ormi-browser-progress { from { transform: translateX(-110%); } to { transform: translateX(320%); } }
+@keyframes ormi-browser-spin { to { transform: rotate(360deg); } }
+@container (max-width: 430px) {
+  .ormi-browser-wide-label { display: none !important; }
+  .ormi-browser-service-icon { display: block; }
+}
 /* Hover-only affordances (checkpoint icons, expand chevrons). */
 .ormi-hover-reveal { opacity: 0; transition: opacity 0.12s ease; }
 .ormi-hover-zone:hover .ormi-hover-reveal, .ormi-hover-reveal:focus-visible, .ormi-hover-reveal[data-state="open"], .ormi-hover-reveal[aria-expanded="true"] { opacity: 1; }

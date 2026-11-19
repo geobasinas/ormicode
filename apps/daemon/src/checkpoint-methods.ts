@@ -2,11 +2,13 @@
 // per-session shadow repos owned by the supervisor's Checkpoints queue.
 import { randomBytes } from 'node:crypto';
 import { newId } from '@ormicode/protocol';
-import { getSession, createSession } from '@ormicode/session-store';
+import { getSession, createSession, releaseSessionPorts } from '@ormicode/session-store';
 import { replay } from '@ormicode/journal';
 import type { Client, DispatchCtx } from './dispatch.ts';
 import { acquireWorkspace, releaseForSession } from '@ormicode/leases';
 import { forkWorktree, removeWorktree } from '@ormicode/git-core';
+import { allocateSessionPorts } from './session-ports.ts';
+import { runSessionHook } from './workspace-hooks.ts';
 
 const IN_TURN = new Set(['starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying']);
 
@@ -51,10 +53,13 @@ export async function checkpointMethod(ctx: DispatchCtx, client: Client, id: str
       const wt = forkWorktree(row.project, row.cwd, branch);
       if ('err' in wt) return client.link.replyError(id, wt.err, wt.detail ?? wt.err);
       const child = newId('s');
+      let childBase = 0;
       try {
+        childBase = (await allocateSessionPorts(ctx.db, child)).base;
         await ctx.checkpoints.run(session, () => repo.writeTo(wt.dir, cp));
         const lease = acquireWorkspace(ctx.db, wt.dir, child, row.machine);
         if (lease.conflict) throw new Error(`workspace held by ${lease.conflict}`);
+        await allocateSessionPorts(ctx.db, child);
         createSession(ctx.db, {
           id: child, machine: row.machine, project: row.project, vendor: row.vendor, transport: row.transport,
           cwd: wt.dir, worktree: wt.dir, branch, baseBranch: row.branch ?? undefined, baseCommit: wt.commit, parent: session,
@@ -64,7 +69,13 @@ export async function checkpointMethod(ctx: DispatchCtx, client: Client, id: str
           ...(row.agent_args ? { agentArgs: JSON.parse(row.agent_args) as string[] } : {}),
         });
       } catch (e) {
+        await ctx.services.stopSession(child);
+        const childRow = getSession(ctx.db, child) ?? {
+          id: child, project: row.project, cwd: wt.dir, worktree: wt.dir, branch,
+        };
+        await runSessionHook(childRow, 'teardown', childBase, ctx.record, getSession(ctx.db, child) ? child : session);
         releaseForSession(ctx.db, child);
+        releaseSessionPorts(ctx.db, child);
         removeWorktree(row.project, wt.dir, branch);
         return client.link.replyError(id, 'checkpoint.fork_failed', e instanceof Error ? e.message : String(e));
       }
