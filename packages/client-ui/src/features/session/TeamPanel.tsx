@@ -1,10 +1,10 @@
-import { Users, ArrowLeft, ShieldCheck } from 'lucide-react';
+import { Users, ChevronRight, ShieldCheck, TriangleAlert } from 'lucide-react';
 import type { SessionDetails } from './useSession.ts';
 import { useSessions } from './useSessions.ts';
 import { sessionForest, type SessionNode } from './team-tree.ts';
 import { compactTokens } from '../../lib/format.ts';
-
-const link = { border: 0, background: 'transparent', color: 'var(--text-label)', font: 'inherit', cursor: 'pointer', padding: 0, textAlign: 'left' as const };
+import { TeamStateIcon, TeamStatus } from './TeamStatus.tsx';
+import { approvalInput, parentlessHelp } from './team-presentation.ts';
 
 export function TeamPanel({ details, onOpen }: { details?: SessionDetails; onOpen?: (session: string) => void }) {
   const { sessions } = useSessions();
@@ -16,27 +16,39 @@ export function TeamPanel({ details, onOpen }: { details?: SessionDetails; onOpe
   const node = find(sessionForest(sessions)), parent = details.team && details.parent ? sessions.find(s => s.id === details.parent) : undefined;
   const approvals = details.teamApprovals ?? [];
   if (!details.team && !node?.children.length && !approvals.length) return null;
-  return <section aria-label="Team" style={{ flexShrink: 0, maxHeight: '38%', overflow: 'auto', borderBottom: '1px solid var(--line-card)', color: 'var(--text-secondary)', fontSize: 11 }}>
-    <div style={{ maxWidth: 720, margin: '0 auto', padding: '8px var(--space-5)', display: 'grid', gap: 8 }}>
-      {details.team && details.parent ? <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-        <button style={link} disabled={!onOpen} onClick={() => onOpen?.(details.parent!)}><ArrowLeft size={11} style={{ verticalAlign: 'middle' }} /> Back to {parent?.title || 'parent'}</button>
-        {details.parentless ? <span style={{ color: 'var(--accent-amber)' }}>Parentless · still running independently</span> : null}
-      </div> : null}
-      {node?.children.length ? <>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Users size={13} /><strong style={{ color: 'var(--text-label)' }}>Team</strong><span>{compactTokens(node.tokens)} tokens total</span><span>· parent {compactTokens(details.tokens ?? 0)}</span></div>
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>{node.children.map(child => <button key={child.session.id} style={link} disabled={!onOpen} onClick={() => onOpen?.(child.session.id)}>
-          {child.session.title || child.session.id.slice(0, 12)} · {compactTokens(child.session.tokens ?? 0)} tokens{child.session.parentless ? ' · Parentless' : ''}
-        </button>)}</div>
-      </> : null}
-      {approvals.length ? <div aria-label="Parent approval inbox" style={{ display: 'grid', gap: 8, padding: 10, borderRadius: 8, background: 'var(--bg-card)', border: '1px solid var(--line-card)' }}>
-        <strong style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-label)' }}><ShieldCheck size={13} />Parent approval inbox · {approvals.length}</strong>
-        {approvals.map(approval => <div key={`${approval.session}/${approval.request}`}>
-          <button style={link} disabled={!onOpen} onClick={() => onOpen?.(approval.session)}>{sessions.find(s => s.id === approval.session)?.title || approval.session.slice(0, 12)}</button> · {approval.tool}
-          {approval.input !== undefined ? <pre style={{ margin: '4px 0', maxHeight: 70, overflow: 'auto', whiteSpace: 'pre-wrap', fontSize: 10.5 }}>{JSON.stringify(approval.input, null, 2)}</pre> : null}
-          <span>Waiting for parent · {approval.options.map(o => o.label).join(' / ')} · once only</span>
-        </div>)}
-        <span>The parent answers with team_approve. These requests do not need your approval.</span>
-      </div> : null}
-    </div>
+  const request = (approval: NonNullable<SessionDetails['teamApprovals']>[number]) => <>
+    {approval.input !== undefined ? <pre className="team-command"><code>{approvalInput(approval.input)}</code></pre> : null}
+    <div className="team-options">{approval.options.map(option => <span className="team-option" key={option.id}>{option.label}</span>)}<span>Once only</span></div>
+  </>;
+  return <section aria-label="Team">
+    {details.team && details.parent ? <nav className="team-breadcrumb" aria-label="Team breadcrumb">
+      <div className="team-breadcrumb-path"><Users size={12} /><span>Team</span><ChevronRight size={11} />
+        <button className="team-link team-ellipsis" disabled={!onOpen} aria-label={`Back to ${parent?.title || 'parent'}`} onClick={() => onOpen?.(details.parent!)}>{parent?.title || 'Parent'}</button>
+        <ChevronRight size={11} /><span className="team-ellipsis" title={details.title || undefined}>{details.title || 'Child'}</span>
+      </div>
+      {details.parentless ? <span className="team-status team-tone-amber" title={parentlessHelp}><TriangleAlert size={10} />Parentless</span> : null}
+    </nav> : null}
+    {node?.children.length || approvals.length ? <details className="team-card" open>
+      <summary aria-label="Toggle team details"><span className="team-card-title"><Users size={14} />Team</span>
+        {approvals.length ? <span className="team-status">{approvals.length} awaiting parent</span> : null}
+        <span className="team-card-tokens"><strong>{compactTokens(node?.tokens ?? details.tokens ?? 0)} tokens total</strong><span>Parent {compactTokens(details.tokens ?? 0)}</span></span><ChevronRight size={13} className="team-card-chevron" />
+      </summary>
+      <div className="team-card-body">
+        {node?.children.map(child => <button className="team-roster-row hv-sub" key={child.session.id} disabled={!onOpen} onClick={() => onOpen?.(child.session.id)}>
+          <TeamStateIcon session={child.session} /><span className="team-roster-name"><span className="team-ellipsis" title={child.session.title || child.session.id}>{child.session.title || 'Child session'}</span><TeamStatus session={child.session} /></span><span className="team-child-tokens">{compactTokens(child.session.tokens ?? 0)} tok</span>
+        </button>)}
+        {approvals.length ? <section className="team-inbox" aria-label="Parent approval inbox">
+          <div className="team-inbox-heading"><ShieldCheck size={13} />Parent inbox<span className="team-inbox-count">{approvals.length}</span></div>
+          {approvals.map((approval, index) => {
+            const title = sessions.find(s => s.id === approval.session)?.title || 'Child session';
+            const heading = <><span className="team-tool">{approval.tool}</span><span className="team-ellipsis">{title}</span><span className="team-status" style={{ marginLeft: 'auto' }}>Needs parent</span></>;
+            return approvals.length > 1 ? <details className="team-approval" key={`${approval.session}/${approval.request}`} open={index === 0}>
+              <summary className="team-approval-heading"><ChevronRight size={11} />{heading}</summary>{request(approval)}
+            </details> : <article className="team-approval" key={`${approval.session}/${approval.request}`}><div className="team-approval-heading">{heading}</div>{request(approval)}</article>;
+          })}
+          <p className="team-helper">The parent answers via <code>team_approve</code>. No action needed from you.</p>
+        </section> : null}
+      </div>
+    </details> : null}
   </section>;
 }

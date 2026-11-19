@@ -16,6 +16,7 @@ import { OPEN_FILE } from '../lib/openFile.ts';
 import { SettingsView, loadPrefs, type Prefs } from './Settings.tsx';
 import { SessionHeader } from '../features/session/SessionHeader.tsx';
 import { NEEDS_YOU } from '../features/session/state.tsx';
+import { branchLabel } from '../features/session/team-presentation.ts';
 import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels';
 import { Toaster } from '../components/ui/sonner.tsx';
 
@@ -65,7 +66,7 @@ function Tab({ id, n, active, onSelect, onClose }: { id: string; n?: number; act
       <span className={active ? undefined : 'hv-tab'} style={{ position: 'relative', zIndex: 2, display: 'inline-flex', alignItems: 'center', gap: 8, padding: '4px 11px', borderRadius: 8 }}>
         {n !== undefined ? <span style={{ width: 18, height: 18, borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: needsYou ? 'var(--tint-amber)' : 'var(--bg-chip)', color: needsYou ? 'var(--accent-amber)' : 'var(--text-label)', fontSize: 10, fontWeight: 700 }}>{n}</span> : null}
         <span style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
-        {active && details?.project !== 'scratch' && details?.branch ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'var(--font-mono)', fontSize: 10.5, fontWeight: 400, color: 'var(--text-secondary)' }}><GitBranch size={10} />{details.branch}</span> : null}
+        {active && details?.project !== 'scratch' && details?.branch ? <span title={details.branch} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'var(--font-mono)', fontSize: 10.5, fontWeight: 400, color: 'var(--text-secondary)' }}><GitBranch size={10} />{branchLabel(details)}</span> : null}
         {onClose ? <X size={12} className="hv-x" style={{ color: 'var(--text-hint)', borderRadius: 4 }} onClick={e => { e.stopPropagation(); onClose(); }} /> : null}
       </span>
       {active ? fillet('right') : null}

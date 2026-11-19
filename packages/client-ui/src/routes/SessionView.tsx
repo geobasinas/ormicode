@@ -68,9 +68,8 @@ export function SessionView({ session, rail = 'none', onRail, onOpen, handoffOpe
           {cost && tokens > 0 ? <span title={costTitle}> · {compactTokens(tokens)} tokens{cost.usd !== null ? ` · ${cost.source === 'estimate' ? '~' : ''}${formatUsd(cost.usd)}` : ''}</span> : null}
         </div>
       </div> : null}
-      <TeamPanel details={details} onOpen={onOpen} />
       {approvalsAtTop ? <Approvals session={session} pending={approvals} events={events} /> : null}
-      <Transcript events={events} session={session} scratch={scratch} busy={Boolean(details && ['starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying', 'paused_rate_limited'].includes(details.state))} onHandoff={() => onHandoffChange?.(true)} onOpenSession={onOpen} onEditPrompt={setEditedPrompt} />
+      {details ? <Transcript header={details.team ? <TeamPanel details={details} onOpen={onOpen} /> : undefined} events={events} session={session} scratch={scratch} busy={['starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying', 'paused_rate_limited'].includes(details.state)} onHandoff={() => onHandoffChange?.(true)} onOpenSession={onOpen} onEditPrompt={setEditedPrompt} /> : null}
       {!approvalsAtTop ? <Approvals session={session} pending={approvals} events={events} /> : null}
       <div data-session-composer style={{ minHeight: layout?.regions.composer?.size ?? 0 }}>
       <Composer session={session} details={details} onGit={scratch ? undefined : onRail ? () => onRail('git') : undefined}

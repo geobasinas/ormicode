@@ -1,11 +1,13 @@
 /** Sidebar session list, grouped by project — state icon, title, age and a
  * mono branch line per row; waiting first, done collapsed (sessions-list spec). */
 import { useEffect, useMemo, useState } from 'react';
-import { Check, Folder, GitBranch, ChevronDown, ChevronRight } from 'lucide-react';
+import { Check, Folder, GitBranch, ChevronDown, ChevronRight, Users } from 'lucide-react';
 import { useSessions, type SessionSummary } from './useSessions.ts';
 import { StateIcon, stateLabel } from './state.tsx';
 import { ago, compactTokens, projectName } from '../../lib/format.ts';
 import { containsSession, needsUser, sessionForest, type SessionNode } from './team-tree.ts';
+import { branchLabel, isTeamRunning, teamState } from './team-presentation.ts';
+import { TeamStateIcon, TeamStatus } from './TeamStatus.tsx';
 
 const DAY = 24 * 3600 * 1000;
 const isDone = (s: SessionSummary) => s.state === 'done';
@@ -15,6 +17,13 @@ function Row({ s, active, onSelect }: { s: SessionSummary; active?: string; onSe
   const selected = s.id === active;
   const needs = needsUser(s);
   const scratch = s.project === 'scratch';
+  if (s.team && s.parent) return <button className={`team-child-row hv-sub${selected ? ' is-active' : ''}`} onClick={() => onSelect(s.id)}>
+    <TeamStateIcon session={s} />
+    <span className="team-child-content">
+      <span className="team-child-title"><span className="team-ellipsis" title={s.title || s.id}>{s.title || 'Child session'}</span><TeamStatus session={s} /></span>
+      <span className="team-child-meta"><span className="team-ellipsis" title={s.branch ?? undefined}>{branchLabel(s) || s.vendor} · {ago(s.updatedAt ?? 0)}</span><span className="team-child-tokens" title="Tokens including cache usage">{compactTokens(s.tokens ?? 0)} tok</span></span>
+    </span>
+  </button>;
   return (
     <button className={selected ? 'hv-sub ormi-selected-row' : 'hv-sub'} onClick={() => onSelect(s.id)} title={stateLabel(s.state)} style={{
       textAlign: 'left', width: '100%', height: 38, padding: '0 8px 0 10px', flexShrink: 0,
@@ -32,7 +41,7 @@ function Row({ s, active, onSelect }: { s: SessionSummary; active?: string; onSe
         </span>
         <span style={{ ...mono, display: 'flex', alignItems: 'center', gap: 4, marginTop: 2, color: 'var(--text-secondary)', overflow: 'hidden', whiteSpace: 'nowrap' }}>
           {scratch || !s.branch ? <span>{scratch ? 'No project' : s.vendor ?? ''}</span>
-            : <><GitBranch size={9} style={{ flexShrink: 0 }} /><span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.branch}</span></>}
+            : <><GitBranch size={9} style={{ flexShrink: 0 }} /><span title={s.branch} style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{branchLabel(s)}</span></>}
           {s.worktree ? <span title="own worktree" style={{ border: '1px solid var(--line-card)', borderRadius: 4, padding: '0 3px', fontSize: 9, flexShrink: 0 }}>wt</span> : null}
           {s.parentless ? <span style={{ color: 'var(--accent-amber)', flexShrink: 0 }} title="Parent unavailable; this child keeps running">Parentless</span> : null}
           {s.delegatedApproval ? <span style={{ color: 'var(--text-secondary)' }}>Parent approval</span> : null}
@@ -51,17 +60,20 @@ function TeamRow({ node, active, onSelect, query }: { node: SessionNode; active?
   const [expanded, setExpanded] = useState(true);
   useEffect(() => { if (query || containsSession(node, active)) setExpanded(true); }, [active, query]);
   const Chevron = expanded ? ChevronDown : ChevronRight;
-  return <div data-team-session={node.session.id}>
-    <Row s={node.session} active={active} onSelect={onSelect} />
+  const running = node.children.filter(child => isTeamRunning(child.session)).length;
+  return <div data-team-session={node.session.id} className={node.children.length ? 'team-group' : undefined}>
     {node.children.length ? <>
-      <button className="hv-sub" aria-expanded={expanded} aria-label={`${expanded ? 'Collapse' : 'Expand'} team ${node.session.title || node.session.id}`} onClick={() => setExpanded(!expanded)}
-        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px 4px 30px', border: 0, background: 'transparent', color: 'var(--text-secondary)', font: 'inherit', fontSize: 10.5, cursor: 'pointer', textAlign: 'left' }}>
-        <Chevron size={11} /><span>Team · {node.children.length} children</span><span style={{ marginLeft: 'auto' }}>{compactTokens(node.tokens)} tokens</span>
-      </button>
-      {expanded ? <div style={{ marginLeft: 17, paddingLeft: 4, borderLeft: '1px solid var(--line-card)' }}>
-        {node.children.map(child => <TeamRow key={child.session.id} node={child} active={active} onSelect={onSelect} query={query} />)}
-      </div> : null}
-    </> : null}
+      <div className={`team-group-header${active === node.session.id ? ' is-active' : ''}`}>
+        <button className="team-toggle" aria-expanded={expanded} aria-label={`${expanded ? 'Collapse' : 'Expand'} team ${node.session.title || node.session.id}`} onClick={() => setExpanded(!expanded)}><Users size={14} /><Chevron size={10} /></button>
+        <button className="team-parent" onClick={() => onSelect(node.session.id)} title={node.session.title || node.session.id}>
+          <span className="team-parent-name"><TeamStateIcon session={node.session} /><span className="team-ellipsis">{node.session.title || 'Team'}</span></span>
+          <span className="team-group-meta">{node.children.length} children · {running} running</span>
+          {!expanded ? <span className="team-state-dots" aria-label="Child states">{node.children.map(child => <span key={child.session.id} className={`team-state-dot team-tone-${teamState(child.session).tone}`} title={`${child.session.title || 'Child'} · ${teamState(child.session).label}`} />)}</span> : null}
+        </button>
+        <span className="team-token-total" title="Team tokens, including parent and archived children">{compactTokens(node.tokens)}<small>tokens</small></span>
+      </div>
+      {expanded ? <div className="team-rail">{node.children.map(child => <TeamRow key={child.session.id} node={child} active={active} onSelect={onSelect} query={query} />)}</div> : null}
+    </> : <Row s={node.session} active={active} onSelect={onSelect} />}
   </div>;
 }
 

@@ -370,7 +370,7 @@ function renderEvents(events: TranscriptEvent[], ctx: Ctx, includeChildren = fal
   return rows;
 }
 
-export function Transcript({ events, session, onHandoff, onOpenSession, onEditPrompt, busy, scratch = false }: { events: TranscriptEvent[]; session: string; onHandoff?: () => void; onOpenSession?: (session: string) => void; onEditPrompt?: (text: string) => void; busy?: boolean; scratch?: boolean }) {
+export function Transcript({ events, session, onHandoff, onOpenSession, onEditPrompt, busy, scratch = false, header }: { events: TranscriptEvent[]; session: string; onHandoff?: () => void; onOpenSession?: (session: string) => void; onEditPrompt?: (text: string) => void; busy?: boolean; scratch?: boolean; header?: ReactNode }) {
   const [showHidden, setShowHidden] = useState(false);
   const rewind = [...events].reverse().find(event => event.kind === 'conversation_rewound');
   const rewindTo = typeof rewind?.body.to === 'number' ? rewind.body.to : -1;
@@ -392,5 +392,5 @@ export function Transcript({ events, session, onHandoff, onOpenSession, onEditPr
     for (const e of visibleEvents) if (e.kind === 'checkpoint' && resultSeqs.has(Number(e.body.seq))) { cpAfter.set(Number(e.body.seq), e); attached.add(e.seq); }
     return { session, results, calls, cpAfter, attached, children, hiddenCount, showHidden, toggleHidden: () => setShowHidden(value => !value), events, screenshots, onHandoff, onOpenSession, onEditPrompt, busy, scratch };
   }, [visibleEvents, events, session, hiddenCount, showHidden, onHandoff, onOpenSession, onEditPrompt, busy, scratch]);
-  return <TranscriptScroller session={session} count={events.length}>{renderEvents(visibleEvents, ctx)}</TranscriptScroller>;
+  return <TranscriptScroller session={session} count={events.length} header={header}>{renderEvents(visibleEvents, ctx)}</TranscriptScroller>;
 }

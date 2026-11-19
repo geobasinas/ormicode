@@ -1,13 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { saveTranscriptPosition, transcriptPosition } from './transcript-position.ts';
 
-export function TranscriptScroller({ count, children, session }: { count: number; children: ReactNode; session: string }) {
+export function TranscriptScroller({ count, children, session, header }: { count: number; children: ReactNode; session: string; header?: ReactNode }) {
   const scroll = useRef<HTMLDivElement>(null);
   const end = useRef<HTMLDivElement>(null);
   const previous = useRef(count);
   const saved = useRef(transcriptPosition(session));
   const restored = useRef(!saved.current);
-  const followingRef = useRef(saved.current?.following ?? true);
+  const followingRef = useRef(saved.current?.following ?? !header);
   const [following, setFollowing] = useState(followingRef.current);
   const [newEvents, setNewEvents] = useState(0);
   useLayoutEffect(() => {
@@ -29,7 +29,7 @@ export function TranscriptScroller({ count, children, session }: { count: number
     previous.current = count;
     const el = scroll.current;
     const atBottom = !el || el.scrollHeight - el.scrollTop - el.clientHeight <= 80;
-    if (followingRef.current || atBottom) {
+    if (followingRef.current || !header && atBottom) {
       followingRef.current = true;
       setFollowing(true);
       setNewEvents(0);
@@ -55,6 +55,7 @@ export function TranscriptScroller({ count, children, session }: { count: number
   };
   return <div ref={scroll} className="ormi-transcript-scroller" onScroll={onScroll} style={{ flex: 1, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', display: 'flex', justifyContent: 'center', position: 'relative' }}>
     <div style={{ width: '100%', maxWidth: 720, padding: 'var(--space-4) var(--space-5)' }}>
+      {header}
       {children}
       <div ref={end} />
     </div>

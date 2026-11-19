@@ -1,11 +1,12 @@
 /** Now route: greeting, start composer, then two mockup-style columns —
- * recent sessions on the left, sessions that need you or are working on the right. */
+ * recent sessions on the left, sessions that need you on the right. */
 import { useSessions, type SessionSummary } from '../features/session/useSessions.ts';
 import { NewSession } from '../features/session/NewSession.tsx';
 import { PairCard } from '../features/pair/PairCard.tsx';
-import { StateIcon, NEEDS_YOU, LIVE, stateLabel, whereLine } from '../features/session/state.tsx';
+import { StateIcon, NEEDS_YOU, whereLine } from '../features/session/state.tsx';
 import { useDigest, type DigestEntry } from '../features/session/useDigest.ts';
-import { ago, compactTokens, greeting, projectName } from '../lib/format.ts';
+import { ago, greeting, projectName } from '../lib/format.ts';
+import { needsAttention, attentionReason } from '../features/session/attention.ts';
 import type { LayoutDescriptor } from '../lib/layout.ts';
 
 const cardBox = {
@@ -28,7 +29,7 @@ function SessionRow({ s, first, onOpen }: { s: SessionSummary; first: boolean; o
       <span style={{ width: 20, display: 'inline-flex', justifyContent: 'center' }}><StateIcon state={s.state} size={12} /></span>
       <span style={{ flex: 1, minWidth: 0 }}>
         {title(s, first)}
-        <span style={{ display: 'block', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-secondary)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span title={s.branch ?? undefined} style={{ display: 'block', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--text-secondary)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {s.project === 'scratch' ? whereLine(s) : whereLine(s, projectName(s.project))}
         </span>
       </span>
@@ -40,21 +41,7 @@ function SessionRow({ s, first, onOpen }: { s: SessionSummary; first: boolean; o
 type DigestHighlight = Exclude<DigestEntry, { rank: 'silent' }>;
 
 function attentionLine(s: SessionSummary, entry?: DigestHighlight): string {
-  if (!entry) return `${stateLabel(s.state)} · ${projectName(s.project)}`;
-  if (entry.rank === 'waiting') {
-    const wants = entry.wants;
-    const label = wants?.kind === 'approval' ? 'Wants approval'
-      : wants?.kind === 'question' ? 'Has a question' : 'Rate limited';
-    return wants ? `${label} · ${ago(wants.since)}` : label;
-  }
-  if (entry.rank === 'failed') return `Failed · ${entry.dropped[0] ?? entry.where.state}`;
-  const files = entry.changed.paths.length;
-  if (entry.rank === 'done') return `Done${files ? ` · ${files} files changed` : ''}`;
-  const details = [
-    ...(files ? [`${files} files changed`] : []),
-    ...(entry.cost.tokens ? [`${compactTokens(entry.cost.tokens)} tokens`] : []),
-  ];
-  return details.join(' · ') || 'Progressed';
+  return `${attentionReason(s, entry)} · ${entry?.wants ? ago(entry.wants.since) : projectName(s.project)}`;
 }
 
 function AttentionRow({ s, n, entry, onOpen }: { s: SessionSummary; n: number; entry?: DigestHighlight; onOpen: (id: string) => void }) {
@@ -87,12 +74,12 @@ export function Now({ onOpen, state, layout }: { onOpen: (session: string) => vo
   for (const entry of digest) {
     if (entry.rank === 'silent') continue;
     const s = sessionsById.get(entry.session);
-    if (!s || s.delegatedApproval || listed.has(s.id)) continue;
+    if (!s || !needsAttention(s, entry) || listed.has(s.id)) continue;
     rows.push({ s, entry }); listed.add(s.id);
   }
   for (const s of sessions) {
     if (rows.length >= 5) break;
-    if (LIVE.has(s.state) && !s.delegatedApproval && !listed.has(s.id)) { rows.push({ s }); listed.add(s.id); }
+    if (needsAttention(s) && !listed.has(s.id)) { rows.push({ s }); listed.add(s.id); }
   }
   const recent = [...sessions].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)).slice(0, 4);
   const right = rows.slice(0, 5);
@@ -110,7 +97,7 @@ export function Now({ onOpen, state, layout }: { onOpen: (session: string) => vo
             <div style={head}>NEEDS YOU</div>
             <div style={cardBox}>
               {right.map(({ s, entry }, i) => <AttentionRow key={s.id} s={s} n={i + 1} entry={entry} onOpen={onOpen} />)}
-              {!right.length ? empty('Nothing new since you left') : null}
+              {!right.length ? empty('All clear. Nothing needs you.') : null}
             </div>
           </div> : <div key="recent">
             <div style={head}>RECENT SESSIONS</div>
