@@ -16,17 +16,19 @@ import { compactTokens, formatUsd, projectName } from '../lib/format.ts';
 import { stateLabel } from '../features/session/state.tsx';
 import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels';
 import { usePlatform } from '../lib/platform.ts';
+import { HandoffDialog } from '../features/session/HandoffDialog.tsx';
 
 interface SessionCost {
   input: number; output: number; cacheRead: number; cacheWrite: number; turns: number;
   usd: number | null; source: 'reported' | 'estimate' | 'none'; priceVersion: string | null; model: string | null;
 }
 
-export function SessionView({ session, rail = 'none', onRail, onOpen }: { session: string; rail?: RailPane; onRail?: (r: RailPane) => void; onOpen?: (session: string) => void }) {
+export function SessionView({ session, rail = 'none', onRail, onOpen, handoffOpen = false, onHandoffChange }: { session: string; rail?: RailPane; onRail?: (r: RailPane) => void; onOpen?: (session: string) => void; handoffOpen?: boolean; onHandoffChange?(open: boolean): void }) {
   const { events, approvals } = useTranscript(session);
   const details = useSession(session);
   const { transport } = usePlatform();
   const [cost, setCost] = useState<SessionCost>();
+  const [editedPrompt, setEditedPrompt] = useState<string>();
   const notesLayout = useDefaultLayout({ id: 'ormi.session.notes', storage: globalThis.localStorage });
   useEffect(() => {
     if (!details) return;
@@ -48,10 +50,13 @@ export function SessionView({ session, rail = 'none', onRail, onOpen }: { sessio
           {cost && tokens > 0 ? <span title={costTitle}> · {compactTokens(tokens)} tokens{cost.usd !== null ? ` · ${cost.source === 'estimate' ? '~' : ''}${formatUsd(cost.usd)}` : ''}</span> : null}
         </div>
       </div> : null}
-      <Transcript events={events} session={session} />
+      <Transcript events={events} session={session} busy={Boolean(details && ['starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying', 'paused_rate_limited'].includes(details.state))} onHandoff={() => onHandoffChange?.(true)} onOpenSession={onOpen} onEditPrompt={setEditedPrompt} />
       <Approvals session={session} pending={approvals} events={events} />
       <Composer session={session} details={details} onGit={onRail ? () => onRail('git') : undefined}
-        onOpenRail={onRail ? pane => onRail(pane) : undefined} />
+        onOpenRail={onRail ? pane => onRail(pane) : undefined} onHandoff={() => onHandoffChange?.(true)}
+        prefill={editedPrompt} onPrefillApplied={() => setEditedPrompt(undefined)} />
+      <HandoffDialog session={session} details={details} open={handoffOpen}
+        onClose={() => onHandoffChange?.(false)} onOpenSession={onOpen} />
     </div>
   );
   if (rail === 'none') return <div style={{ height: '100%', background: 'var(--bg-main)' }}>{chat}</div>;

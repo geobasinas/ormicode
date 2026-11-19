@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startDaemon, connect } from '../src/index.ts';
 import { newId } from '@ormicode/protocol';
+import { getSession } from '@ormicode/session-store';
+import { replay } from '@ormicode/journal';
 
 const env = { ORMICODE_FAKE_SCRIPT: 'tool', ORMICODE_FAKE_DELAY_MS: '400', ORMICODE_PRICES_URL: 'off' };
 const until = async (fn, ms = 10_000) => {
@@ -47,7 +49,12 @@ test('tool calls leave checkpoints; restore and fork use them', async () => {
     assert.deepEqual(row.diff, { files: 2, added: 2, removed: 1 });
     await until(async () => (await client.request('session.get', { session })).body.state === 'idle');
     const conv = await client.request('checkpoint.restore', { session, id: list[1].id, mode: 'conversation' });
-    assert.equal(conv.code, 'checkpoint.unimplemented');
+    assert.equal(conv.type, 'res');
+    assert.equal(conv.body.mode, 'conversation');
+    assert.equal(getSession(daemon.db, session)?.native_id, null);
+    const rewind = replay(daemon.db, session).reverse().find(event => event.kind === 'conversation_rewound');
+    assert.ok(rewind);
+    assert.equal(JSON.parse(rewind.payload).checkpoint, list[1].id);
     const res = await client.request('checkpoint.restore', { session, id: list[1].id, mode: 'files' });
     assert.equal(res.body.restored, true);
     assert.equal(readFileSync(join(project, 'a.txt'), 'utf8'), 'one\n');

@@ -751,7 +751,7 @@ An uncertain in-flight tool call is marked interrupted, never automatically repl
 
 ## Checkpoints
 
-> **Status:** built — conversation restore still to come · **Needs:** [Sessions](#sessions), [Git rules](#git-rules)
+> **Status:** built — file and conversation restore plus checkpoint controls · **Needs:** [Sessions](#sessions), [Git rules](#git-rules)
 
 **Every tool call leaves a restore point. Go back without losing the conversation, and forward again without redoing work.**
 
@@ -772,7 +772,7 @@ Checking afterwards and rolling back is faster than reviewing every change upfro
 
 **Restore — three modes, from the session timeline**
 1. **Files only.** Put the files back, keep the conversation. The common one: "the last ten minutes were wrong, redo it".
-2. **Files and conversation.** Rewind the session to that turn too, so the agent forgets the failed attempt. *(Not built yet — returns a typed not-implemented error.)*
+2. **Files and conversation.** Rewind the session to that turn too, so the agent forgets the failed attempt. A fresh worker receives a bounded recap of journal events through the checkpoint.
 3. **Fork.** Leave the current session alone and start a new one from that checkpoint on a new branch.
 
 **Diff and inspect**
@@ -799,7 +799,7 @@ Checking afterwards and rolling back is faster than reviewing every change upfro
 
 **Automations:** a bad overnight run can be rolled back to its first checkpoint.
 
-**Implementation status:** `packages/checkpoints` (`ShadowRepo` + per-session `Checkpoints` queue) and `apps/daemon/src/checkpoint-methods.ts`. The supervisor takes a `baseline` checkpoint at a session's first `tool_call`, then one after every `tool_result`, and journals a `checkpoint` event (`checkpoint_restored` after a restore). Checkpoints are parentless commits under `refs/ormi/cp/<seq>`, so pruning a ref frees its objects; the shadow repo also excludes `.ormi/` so sibling worktrees are never captured. Until `settings.*` exists, the settings are env vars: `ORMICODE_CHECKPOINTS=0` (off), `ORMICODE_CHECKPOINTS_MAX`, `ORMICODE_CHECKPOINTS_MAX_BYTES`. Until blob storage exists, `checkpoint.diff` returns the patch inline as `{patch, truncated}`, capped at 1 MiB. `checkpoint.restore` with `mode: 'conversation'` returns `checkpoint.unimplemented`. The desktop timeline shows checkpoint rows; restore/fork buttons are still to come.
+**Implementation status:** `packages/checkpoints` (`ShadowRepo` + per-session `Checkpoints` queue) and `apps/daemon/src/checkpoint-methods.ts`. The supervisor takes a `baseline` checkpoint at a session's first `tool_call`, then one after every `tool_result`, and journals a `checkpoint` event (`checkpoint_restored` after a file restore). Checkpoints are parentless commits under `refs/ormi/cp/<seq>`, so pruning a ref frees its objects; the shadow repo also excludes `.ormi/` so sibling worktrees are never captured. Until `settings.*` exists, the settings are env vars: `ORMICODE_CHECKPOINTS=0` (off), `ORMICODE_CHECKPOINTS_MAX`, `ORMICODE_CHECKPOINTS_MAX_BYTES`. Until blob storage exists, `checkpoint.diff` returns the patch inline as `{patch, truncated}`, capped at 1 MiB. `checkpoint.restore` supports files and conversation modes: conversation rewind restores files, clears the native resume id, journals the rewind point, and supplies a recap bounded to events at or before the checkpoint. The recap path is used for all adapters; although the Claude SDK declares `resumeSessionAt`, this journal currently has no SDK prompt UUID per checkpoint to pass to that option. The tool-row popover previews per-file changes, opens files in the Files pane, confirms restores with a changed-file count, and can fork from the checkpoint. Rewound transcript events can be shown or hidden.
 
 ## Replay
 
@@ -1155,7 +1155,9 @@ Next step: <what the previous agent was about to do>
 
 **API:** `session.handoff {to: {vendor, transport, model, effort}, mode: "in_place"|"rehydrate"|"fork", branch?}` → new session id + brief. Old session stays readable and linked as parent.
 
-**Handoff implementation status:** `session.handoff` is live in dispatch. `in_place` forwards `worker.configure` for model/effort on the same session; `rehydrate` releases the workspace lease, marks the old row `handed_off`/`done`, creates a child session with `parent` set, spawns its worker and sends the brief as the first prompt; `fork` resolves a new `handoff/<id>` branch via the normal workspace rules. Guards: a chain dies at three ancestors (`handoff.limit`) and can't bounce back to the vendor it just left (`handoff.bounce`). The brief defaults to `handoffBrief` (the same recap builder restarts use); the caller — or the `ormi_handoff` MCP tool — can supply its own. Not yet done vs. the spec: the cost estimate + `handoff.confirmUsd` approval gate, the one-handoff-per-turn guard (only the chain guards exist), the failure rollback (old worker stays alive until the new one is ready), and the "try with another agent" UI flow.
+**Handoff implementation status:** `session.handoffBrief` and `session.handoffEstimate` expose a journal brief and token/file/cost estimate; the estimate uses the target model's cached input price and reports unknown prices as `null`. `ORMICODE_HANDOFF_CONFIRM_USD` defaults to $1. Unknown non-in-place prices and estimates above that limit require confirmation; the MCP tool journals an approval request and waits for Approve/Deny. Rehydrate and fork wait for `worker.ready` (`ORMICODE_HANDOFF_READY_MS`, default 60 s) before stopping the old worker; timeout/failure removes the child and restores the old session and lease, with `handoff_failed` journaled. The fake worker supports `ORMICODE_FAKE_READY=fail|never` for rollback tests. Fork uses a new worktree. The one-handoff-per-turn guard is covered by a running-turn test. `in_place` forwards `worker.configure` for model/effort on the same session; guards cap task chains at three ancestors (`handoff.limit`) and prevent A→B→A (`handoff.bounce`). The header, slash command, and error rows open an editable handoff dialog with target agent/model/effort, mode, brief, and estimate; costly handoffs require a second confirmation. Agent approvals render in the Approvals list, and parent/child transcript rows link to their counterpart.
+
+**Session view implementation status:** The session header supports rename, handoff, checkpoint fork, worktree path actions, Markdown export, and archive. The transcript has checkpoint preview/restore controls, rewind folding, per-turn changed-file rows, prompt copy/edit-resend, agent copy/retry actions, handoff links, and a jump-to-latest counter. Changed-file summaries derive from edit tool inputs; they are an estimate of tool-reported edits rather than a filesystem diff.
 
 **UI:** always show the mode before committing. In place = dropdown; rehydrate asks once; fork asks for a name.
 

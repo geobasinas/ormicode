@@ -53,6 +53,9 @@ function ApprovalLine({ session, req, events }: { session: string; req: Transcri
   const [busy, setBusy] = useState<string>();
   const [error, setError] = useState<string>();
   const b = req.body; const destructive = Boolean(b.destructive);
+  const handoff = b.approvalKind === 'handoff';
+  const target = obj(b.target);
+  const estimate = obj(b.estimate);
   const options = (b.options as Option[] | undefined) ?? [];
   const sub = subject(req, events);
   const s = sub ? shape(sub.name, sub.input) : undefined;
@@ -71,7 +74,10 @@ function ApprovalLine({ session, req, events }: { session: string; req: Transcri
           {busy ? <Loader2 size={12} className="animate-spin" style={{ marginRight: 4 }} /> : null}
           {options.map((o, i) => <Choice key={o.id} label={o.label} primary={i === firstAllow && !destructive} danger={isReject(o)} busy={Boolean(busy)} onClick={() => void decide(o)} />)}
         </>}>
-        <span style={{ whiteSpace: 'nowrap', color: 'var(--text-secondary)', fontWeight: 500 }}>{sub ? `Allow ${sub.name}` : 'Approval needed'}</span>
+        <span style={{ whiteSpace: 'nowrap', color: 'var(--text-secondary)', fontWeight: 500 }}>
+          {handoff ? `Agent wants to hand off to ${String(target.vendor ?? 'another agent')}` : sub ? `Allow ${sub.name}` : 'Approval needed'}
+        </span>
+        {handoff ? <span style={{ fontSize: 11, color: 'var(--text-hint)' }}>{typeof estimate.usd === 'number' ? `· ~$${estimate.usd.toFixed(2)}` : '· cost unknown'}</span> : null}
         {s ? <span style={{ ...mono, fontSize: 11, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: 0.85 }}>{s.target ?? s.detail ?? sub!.title ?? ''}</span> : null}
         {destructive ? <span style={{ color: 'var(--accent-red)', fontSize: 11, flexShrink: 0 }}>destructive{b.rule ? ` · ${String(b.rule)}` : ''}</span> : null}
       </Line>

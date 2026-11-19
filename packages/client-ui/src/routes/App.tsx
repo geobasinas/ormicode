@@ -110,9 +110,9 @@ function Rail({ route, rail, onRail }: { route: string; rail: RailPane; onRail: 
   );
 }
 
-function ActiveHeader({ session }: { session: string }) {
+function ActiveHeader({ session, onOpen, onHandoff }: { session: string; onOpen: (session: string) => void; onHandoff(): void }) {
   const details = useSession(session);
-  return <SessionHeader session={session} details={details} />;
+  return <SessionHeader session={session} details={details} onOpen={onOpen} onHandoff={onHandoff} />;
 }
 
 export function App({ platform, theme: initialTheme, layout }: { platform: ClientPlatform; theme?: string; layout?: LayoutDescriptor }) {
@@ -123,6 +123,7 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
   const [state, setState] = useState<string>('connecting');
   const [query, setQuery] = useState('');
   const [rail, setRail] = useState<RailPane>('none');
+  const [handoffOpen, setHandoffOpen] = useState(false);
   useEffect(() => {
     const on = () => setRail('files');
     window.addEventListener(OPEN_FILE, on);
@@ -231,7 +232,7 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
               <Tab id="now" active={route === 'now'} onSelect={() => setRoute('now')} />
               {tabs.map((t, i) => <Tab key={t} id={t} n={PAGES[t] ? undefined : tabs.filter(x => !PAGES[x]).indexOf(t) + 1} active={route === t} onSelect={() => setRoute(t)} onClose={() => close(t)} />)}
               <span style={{ flex: 1 }} />
-              {!PAGES[route] ? <div style={{ ...noDrag, minWidth: 0, display: 'flex' }}><ActiveHeader key={route} session={route} /></div> : null}
+              {!PAGES[route] ? <div style={{ ...noDrag, minWidth: 0, display: 'flex' }}><ActiveHeader key={route} session={route} onOpen={open} onHandoff={() => setHandoffOpen(true)} /></div> : null}
             </div>
             <div style={{
               flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg-main)',
@@ -239,7 +240,7 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
             }}>
               {route === 'now' ? <Now onOpen={open} state={state} />
                 : route === 'settings' ? <SettingsView prefs={prefs} onPrefs={setPrefs} connection={state} />
-                : <SessionView key={route} session={route} rail={rail} onRail={setRail} onOpen={open} />}
+                : <SessionView key={route} session={route} rail={rail} onRail={setRail} onOpen={open} handoffOpen={handoffOpen} onHandoffChange={setHandoffOpen} />}
             </div>
           </main>
           </Panel>

@@ -1,22 +1,23 @@
 import type { Frame, PromptAttachment, PromptContext } from '@ormicode/protocol';
 import { parseRequestBody, newId } from '@ormicode/protocol';
 import {
-  getSession, listSessions, setState, setTitle, listNotes, setNote, deleteNote, archiveSession, createSession,
+  getSession, listSessions, setState, setTitle, listNotes, setNote, deleteNote, archiveSession,
   getPendingPromptData, deletePendingPromptData, type Store,
 } from '@ormicode/session-store';
 import { replay, setCursor } from '@ormicode/journal';
 import { listDevices, renameDevice, revokeDevice } from '@ormicode/session-store';
 import { handleJoin, type Pairing } from './pair.ts';
-import { handoffBrief } from './handoff.ts';
+import { handoffMethod } from './handoff-methods.ts';
+import { handoffRequest, resolveHandoffApproval } from './handoff-dispatch.ts';
 import type { RelayClient } from './relay.ts';
 import { join } from 'node:path';
 import { rmSync } from 'node:fs';
 
 import { ormicodeDir, sessionLogDir } from './socket.ts';
-import { acquireWorkspace, releaseForSession } from '@ormicode/leases';
-import { hasTransport, agentList } from './registry.ts';
+import { releaseForSession } from '@ormicode/leases';
+import { agentList } from './registry.ts';
 import {
-  resolveWorkspace, diffPatch, DiffStatCache,
+  diffPatch, DiffStatCache,
 } from '@ormicode/git-core';
 
 const diffStats = new DiffStatCache();
@@ -61,7 +62,9 @@ export interface DispatchCtx {
   /** Handoffs since the session's last turn_start — cleared by the supervisor. */
   handoffsInTurn: Map<string, number>;
   spawnWorker(session: string): void;
-  ensureWorker(session: string): Promise<void>;
+  ensureWorker(session: string, timeoutMs?: number): Promise<void>;
+  stopWorker(session: string): Promise<void>;
+  setRecapPending(session: string, uptoSeq: number): void;
   toWorker(session: string, method: string, body: Record<string, unknown>): Promise<Frame | undefined>;
   sendPrompt(session: string, text: string, images?: unknown[], opts?: { journal?: boolean; context?: PromptContext[]; attachments?: PromptAttachment[] }): Promise<boolean>;
   drainQueue(session: string, afterTurnEnd?: boolean): Promise<boolean>;
@@ -104,6 +107,28 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
       case 'daemon.status':
         return client.link.reply(id, { version: '0.0.0', uptimeMs: Date.now() - ctx.startedAt, liveWorkers: ctx.liveWorkers(), relay: ctx.relay()?.connected() ? 'connected' : 'disconnected', lastError: ctx.lastError() });
       case 'session.start': return await startSession(ctx, client, id, body);
+      case 'session.rename': {
+        const session = String(body.session);
+        const title = String(body.title).trim();
+        if (!getSession(db, session)) return client.link.replyError(id, 'session.not_found', session);
+        if (!title) return client.link.replyError(id, 'session.invalid_title', 'title must not be empty');
+        setTitle(db, session, title);
+        ctx.record(session, 'renamed', { title });
+        return client.link.reply(id, { renamed: true, title });
+      }
+      case 'session.export': {
+        const session = String(body.session);
+        const row = getSession(db, session);
+        if (!row) return client.link.replyError(id, 'session.not_found', session);
+        const lines = [`# ${row.title ?? `${row.vendor} session`}`, '', `Project: ${row.project}`, ''];
+        for (const event of replay(db, session)) {
+          const payload = JSON.parse(event.payload) as Record<string, unknown>;
+          if (event.kind === 'prompt') lines.push(`## User\n\n${String(payload.text ?? '')}\n`);
+          else if (event.kind === 'text') lines.push(`## Assistant\n\n${String(payload.text ?? '')}\n`);
+          else if (event.kind === 'error') lines.push(`> Error: ${String(payload.message ?? payload.code ?? '')}\n`);
+        }
+        return client.link.reply(id, { text: lines.join('\n') });
+      }
       case 'session.list': {
         const sessions = listSessions(db, Boolean(body.archived)).map(s => ({
           id: s.id, title: s.title, state: s.state, project: s.project, vendor: s.vendor,
@@ -147,6 +172,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         if (!s) return client.link.replyError(id, 'session.not_found', String(body.session));
         return client.link.reply(id, {
           id: s.id, title: s.title, state: s.state, project: s.project, vendor: s.vendor,
+          cwd: s.cwd,
           transport: s.transport, updatedAt: s.updated_at, branch: s.branch, worktree: Boolean(s.worktree),
           model: s.model, effort: s.effort, mode: s.mode,
           nativeId: s.native_id, acpVersion: s.acp_version, parent: s.parent,
@@ -216,78 +242,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         }
         return client.link.reply(id, method === 'session.delete' ? { deleted: true } : { archived: true });
       }
-      case 'session.handoff': {
-        const session = String(body.session);
-        const s = getSession(db, session);
-        if (!s) return client.link.replyError(id, 'session.not_found', session);
-        const to = body.to as { vendor?: string; transport?: string; model?: string; effort?: string; branch?: string };
-        const mode = String(body.mode);
-        const reason = typeof body.reason === 'string' ? body.reason : undefined;
-        // At most one handoff per turn — the count only gates a session that
-        // is actually mid-turn; starting/idle/done sessions aren't in one.
-        const inTurn = ['running', 'awaiting_approval', 'awaiting_input', 'retrying', 'paused_rate_limited'].includes(s.state);
-        if (inTurn && (ctx.handoffsInTurn.get(session) ?? 0) >= 1)
-          return client.link.replyError(id, 'handoff.limit', 'one handoff per turn');
-        if (mode === 'in_place') {
-          // Same session, new model/effort — the worker stays put.
-          for (const [kind, value] of [['model', to.model], ['effort', to.effort]] as const) {
-            if (!value) continue;
-            const res = await ctx.toWorker(session, 'worker.configure', { kind, value });
-            if (res?.type === 'res') db.prepare(`UPDATE sessions SET ${kind} = ? WHERE id = ?`).run(value, session);
-          }
-          ctx.handoffsInTurn.set(session, (ctx.handoffsInTurn.get(session) ?? 0) + 1);
-          return client.link.reply(id, { session: s.id, brief: '', parent: s.id });
-        }
-        // Guards: at most 3 handoffs per task chain, and no A→B→A bounce.
-        let depth = 0; let cur = s.parent as string | null;
-        while (cur) { depth++; cur = getSession(db, cur)?.parent ?? null; }
-        if (depth >= 3) return client.link.replyError(id, 'handoff.limit', 'max handoffs per task');
-        const targetVendor = to.vendor ?? s.vendor;
-        const parentRow = s.parent ? getSession(db, s.parent) : undefined;
-        if (parentRow && parentRow.vendor === targetVendor && parentRow.vendor !== s.vendor)
-          return client.link.replyError(id, 'handoff.bounce', `cannot hand back to ${targetVendor}`);
-        if (!hasTransport(targetVendor, to.transport ?? s.transport))
-          return client.link.replyError(id, 'agent.unsupported', `${targetVendor}/${to.transport ?? s.transport}`);
-        // fork gets a new branch; rehydrate takes over the same workspace.
-        let resolved = { cwd: s.cwd, worktree: s.worktree ?? undefined, branch: s.branch ?? undefined };
-        if (mode === 'fork') {
-          const r = await resolveWorkspace(s.project, { kind: 'branch', branch: to.branch ?? `handoff/${newId('s')}` }, undefined, session, () => false);
-          if ('err' in r) return client.link.replyError(id, r.err, r.detail ?? r.err);
-          resolved = { cwd: r.cwd, worktree: r.worktree, branch: r.branch };
-        } else {
-          // Old session is handed off — release its lease so the new one can take it.
-          releaseForSession(db, session);
-          const lease = acquireWorkspace(db, resolved.cwd, session, s.machine);
-          if (lease.conflict) return client.link.replyError(id, 'lease.conflict', `workspace held by ${lease.conflict}`);
-        }
-        const brief = typeof body.brief === 'string' && body.brief ? body.brief : handoffBrief(db, session);
-        const child = newId('s');
-        createSession(db, {
-          id: child, machine: s.machine, project: s.project, vendor: targetVendor,
-          transport: to.transport ?? s.transport, cwd: resolved.cwd,
-          worktree: resolved.worktree, branch: resolved.branch,
-          ...(to.model ?? s.model ? { model: String(to.model ?? s.model) } : {}),
-          ...(to.effort ?? s.effort ? { effort: String(to.effort ?? s.effort) } : {}),
-          ...(s.mode ? { mode: s.mode } : {}),
-          title: s.title ?? undefined, parent: s.id,
-        });
-        db.prepare('UPDATE sessions SET handed_off = 1, state = ? WHERE id = ?').run('done', session);
-        ctx.handoffsInTurn.set(session, (ctx.handoffsInTurn.get(session) ?? 0) + 1);
-        ctx.spawnWorker(child);
-        // The brief is the new agent's first prompt — same path as restart recaps.
-        // If the child never starts, roll back: mark it failed and hand the
-        // workspace lease + live flag back to the parent session.
-        const rollback = () => {
-          try {
-            setState(db, child, 'failed', 'handoff_failed');
-            db.prepare(`UPDATE sessions SET handed_off = 0, state = 'idle' WHERE id = ?`).run(session);
-          } catch { /* daemon closing */ }
-        };
-        void ctx.sendPrompt(child, `You are taking over this task${reason ? ` — ${reason}` : ''}. Handoff brief:\n${brief}\nContinue where the previous session left off.`, undefined, { journal: false })
-          .then(ok => { if (!ok) rollback(); })
-          .catch(rollback);
-        return client.link.reply(id, { session: child, brief, parent: s.id });
-      }
+      case 'session.handoff': return await handoffRequest(ctx, client, id, body);
       case 'session.setModel': case 'session.setEffort': case 'session.setMode': case 'session.setOption': {
         const session = String(body.session);
         const column = method === 'session.setModel' ? 'model' : method === 'session.setEffort' ? 'effort' : method === 'session.setMode' ? 'mode' : undefined;
@@ -336,7 +291,11 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         return res?.type === 'res' ? client.link.reply(id, { interrupted: true }) : client.link.replyError(id, 'agent.unsupported', 'abort');
       }
       case 'session.decide': {
-        const res = await ctx.toWorker(String(body.session), 'worker.decide', { request: body.request, option: body.option });
+        const session = String(body.session);
+        const request = String(body.request);
+        if (resolveHandoffApproval(ctx, session, request, String(body.option)))
+          return client.link.reply(id, { decided: true });
+        const res = await ctx.toWorker(session, 'worker.decide', { request, option: body.option });
         return res?.type === 'res' ? client.link.reply(id, { decided: true }) : client.link.replyError(id, 'agent.unsupported', 'decide');
       }
       case 'session.subscribe': {
@@ -381,6 +340,8 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         return client.link.reply(id, { revoked: true, relaySynced: relay?.connected() ?? false });
       }
       default:
+        if (method === 'session.handoffEstimate' || method === 'session.handoffBrief')
+          return await handoffMethod(ctx, client, id, method, body);
         if (method === 'session.draft.get' || method === 'session.draft.set' || method === 'session.commands' || method === 'prompts.history')
           return await composerMethod(ctx, client, id, method, body);
         if (method.startsWith('git.')) return await gitMethod(ctx, client, id, method, body);

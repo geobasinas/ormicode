@@ -95,6 +95,7 @@ const queuedPrompt = z.object({
   id: nonEmpty, text: nonEmpty, createdAt: timestampSchema, images: z.optional(count), error: z.optional(z.string()),
 });
 const detailsSchema = z.extend(summarySchema, {
+  cwd: nonEmpty,
   model: z.nullable(z.string()), effort: z.nullable(z.string()), mode: z.optional(z.nullable(z.string())),
   // What actually ran: the agent's own session id for resume, its reported version,
   // and the negotiated ACP protocol version when the transport is acp.
@@ -103,6 +104,9 @@ const detailsSchema = z.extend(summarySchema, {
   options: z.optional(z.array(configOptionSchema)), modes: z.optional(z.array(sessionModeSchema)),
   parent: z.optional(z.nullable(sessionIdSchema)),
 });
+const handoffTargetSchema = z.object({ vendor: z.optional(nonEmpty), transport: z.optional(nonEmpty), model: z.optional(nonEmpty), effort: z.optional(nonEmpty), branch: z.optional(nonEmpty) });
+const handoffSchema = z.object({ ...session, to: handoffTargetSchema, mode: z.enum(['in_place', 'rehydrate', 'fork']), brief: z.optional(z.string()), reason: z.optional(z.string()), confirmed: z.optional(z.boolean()), agentApproval: z.optional(z.boolean()) });
+const handoffEstimateSchema = z.object({ ...session, to: handoffTargetSchema, mode: z.enum(['in_place', 'rehydrate', 'fork']), brief: z.optional(z.string()) });
 
 // A registered body schema does not expose the operation; the server must implement it separately.
 export const requestBodies = {
@@ -117,6 +121,8 @@ export const requestBodies = {
     parent: z.optional(sessionIdSchema),
   }),
   'session.get': z.object(session),
+  'session.rename': z.object({ ...session, title: nonEmpty }),
+  'session.export': z.object({ ...session, format: z.literal('markdown') }),
   'session.list': z.object({ archived: z.optional(z.boolean()) }),
   'session.prompt': z.object({ ...session, text: nonEmpty, images: z.optional(z.array(imageSchema)), context: contextSchema, attachments: attachmentsSchema }),
   'session.draft.get': z.object({ session: draftSession }),
@@ -138,18 +144,10 @@ export const requestBodies = {
   'session.retry': z.object(session),
   'session.archive': z.object(session),
   'session.delete': z.object(session),
-  // Hand this task to another agent/config. in_place changes model/effort on
-  // the same session; rehydrate spawns a linked session with a brief; fork
-  // is rehydrate on a new branch.
-  'session.handoff': z.object({
-    ...session,
-    to: z.object({
-      vendor: z.optional(nonEmpty), transport: z.optional(nonEmpty),
-      model: z.optional(nonEmpty), effort: z.optional(nonEmpty), branch: z.optional(nonEmpty),
-    }),
-    mode: z.enum(['in_place', 'rehydrate', 'fork']),
-    brief: z.optional(z.string()), reason: z.optional(z.string()),
-  }),
+  // Hand this task to another agent/config; in_place adjusts the same session.
+  'session.handoff': handoffSchema,
+  'session.handoffEstimate': handoffEstimateSchema,
+  'session.handoffBrief': z.object(session),
   'session.setModel': z.object({ ...session, model: nonEmpty }),
   'session.setEffort': z.object({ ...session, effort: nonEmpty }),
   'session.setMode': z.object({ ...session, mode: nonEmpty }),
@@ -238,6 +236,8 @@ export const responseBodies = {
   'daemon.status': z.object({ version: nonEmpty, uptimeMs: cursorSchema, liveWorkers: cursorSchema, relay: z.enum(['connected', 'disconnected']), lastError: z.nullable(z.string()) }),
   'session.start': z.object({ session: sessionIdSchema }),
   'session.get': detailsSchema,
+  'session.rename': z.object({ renamed: z.literal(true), title: nonEmpty }),
+  'session.export': z.object({ text: z.string() }),
   'session.list': z.object({ sessions: z.array(summarySchema) }),
   'session.prompt': z.object({ accepted: z.literal(true) }),
   'session.draft.get': z.object({ text: z.string() }),
@@ -259,6 +259,11 @@ export const responseBodies = {
   'session.archive': z.object({ archived: z.literal(true) }),
   'session.delete': z.object({ deleted: z.literal(true) }),
   'session.handoff': z.object({ session: sessionIdSchema, brief: z.string(), parent: sessionIdSchema }),
+  'session.handoffEstimate': z.object({
+    briefTokens: count, contextTokens: count, filesChanged: count, usd: z.nullable(z.number()),
+    confirmUsd: z.number().check(z.gte(0)), confirmRequired: z.boolean(),
+  }),
+  'session.handoffBrief': z.object({ brief: z.string() }),
   'session.setModel': z.object({ updated: z.literal(true) }),
   'session.setEffort': z.object({ updated: z.literal(true) }),
   'session.setMode': z.object({ updated: z.literal(true) }),
@@ -353,7 +358,7 @@ export const responseBodies = {
   'git.pr': z.object({ number: count, url: nonEmpty }),
   'git.prMerge': z.object({}),
   'checkpoint.diff': z.object({ patch: z.string(), truncated: z.boolean() }),
-  'checkpoint.restore': z.object({ restored: z.literal(true), id: nonEmpty }),
+  'checkpoint.restore': z.object({ restored: z.literal(true), id: nonEmpty, mode: z.enum(['files', 'conversation']) }),
   'checkpoint.fork': z.object({ session: sessionIdSchema, branch: nonEmpty, cwd: nonEmpty, from: nonEmpty }),
   'file.list': z.object({ root: nonEmpty, path: z.string(), entries: z.array(fileEntry), free: z.nullable(z.number()) }),
   'file.read': z.object({

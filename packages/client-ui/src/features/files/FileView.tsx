@@ -25,8 +25,8 @@ const ERRORS: Record<string, string> = {
   'file.binary': 'Binary files can’t be edited here.',
 };
 
-export function FileView({ session, path, line, git, isGit, onBack: leave, onOpenExternal, onOpenSession, onGoFolder }: {
-  session: string; path: string; line?: number; git?: GitMark; isGit: boolean; onGoFolder?: (path: string) => void;
+export function FileView({ session, path, line, initialDiff, git, isGit, onBack: leave, onOpenExternal, onOpenSession, onGoFolder }: {
+  session: string; path: string; line?: number; initialDiff?: boolean; git?: GitMark; isGit: boolean; onGoFolder?: (path: string) => void;
   onBack: () => void; onOpenExternal?: () => void; onOpenSession?: (id: string) => void;
 }) {
   const request = useFileRequest(session);
@@ -59,6 +59,14 @@ export function FileView({ session, path, line, git, isGit, onBack: leave, onOpe
     const r = await request<FileData>('file.read', { path, ref: 'HEAD' });
     setDiff(r.body?.content ?? '');
   };
+  useEffect(() => {
+    if (!initialDiff) return;
+    let active = true;
+    void request<FileData>('file.read', { path, ref: 'HEAD' }).then(result => {
+      if (active) setDiff(result.body?.content ?? '');
+    });
+    return () => { active = false; };
+  }, [initialDiff, path, request]);
   const toggleBlame = async () => {
     if (blame) { setBlame(undefined); return; }
     const r = await request<Blame>('file.blame', { path });

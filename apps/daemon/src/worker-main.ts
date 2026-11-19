@@ -135,6 +135,9 @@ try {
   const probe = (adapter as { nativeId?: (h: Handle) => string }).nativeId;
   if (probe) { const id = probe.call(adapter, handle); if (id) void send('worker.native', { session, nativeId: id }); }
   pump();
+  if (vendor === 'fake' && process.env.ORMICODE_FAKE_READY === 'fail') throw new Error('fake worker failed before ready');
+  if (vendor === 'fake' && process.env.ORMICODE_FAKE_READY === 'never')
+    await new Promise(resolve => setTimeout(resolve, 10 * 60_000));
   await send('worker.ready', { session, pid: process.pid });
   setInterval(() => { void send('worker.health', { pid: process.pid, rssBytes: process.memoryUsage().rss }).catch(() => undefined); }, 10_000).unref();
 } catch (error) {

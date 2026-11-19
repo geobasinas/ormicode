@@ -53,7 +53,7 @@ test('method validation rejects unknown operations and bad bodies', () => {
 });
 
 test('session details carry what actually ran and the advertised pickers', () => {
-  const base = { id: s, title: null, state: 'idle', project: 'p', vendor: 'grok', transport: 'acp', updatedAt: 1, model: null, effort: null };
+  const base = { id: s, title: null, state: 'idle', project: 'p', cwd: '/workspace/p', vendor: 'grok', transport: 'acp', updatedAt: 1, model: null, effort: null };
   assert.equal(parseResponseBody('session.get', { ...base, acpVersion: 1, nativeId: 'native-1', agentVersion: '1.0.77' }).success, true);
   assert.equal(parseResponseBody('session.get', { ...base, acpVersion: 2 }).success, true);
   assert.equal(parseResponseBody('session.get', { ...base, acpVersion: 3 }).success, false);

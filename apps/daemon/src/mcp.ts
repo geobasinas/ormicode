@@ -71,6 +71,7 @@ export async function serveOrmiMcp(socketPath: string, self: string): Promise<vo
           session: self,
           to: { vendor: args.vendor, transport: args.transport, model: args.model, effort: args.effort },
           mode: String(args.mode ?? 'rehydrate'), brief: args.brief, reason: args.reason,
+          agentApproval: true,
         });
         return text(JSON.stringify(r));
       }

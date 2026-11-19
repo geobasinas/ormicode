@@ -1,9 +1,9 @@
 /** Tool calls as compact expandable rows (Desktop mockups: icon, bold verb +
  *  target, stat/status on the right). The matching tool_result folds in;
  *  the checkpoint taken after it is a hover-only icon on the row. */
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Pencil, Wrench, SquareTerminal, FileText, Search, Globe, ListChecks, Sparkles, Loader2, ChevronRight, ChevronDown, History, Brain } from 'lucide-react';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '../../components/ui/dropdown-menu.tsx';
+import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/popover.tsx';
 import { usePlatform } from '../../lib/platform.ts';
 import type { TranscriptEvent } from './useTranscript.ts';
 import { requestOpenFile } from '../../lib/openFile.ts';
@@ -41,34 +41,123 @@ export function shape(name: string, input: Record<string, unknown>): Shape {
   return { icon: ic(Wrench), verb, detail: typeof detail === 'string' ? detail.trim() : undefined };
 }
 
-export function CheckpointMark({ session, cp, inline }: { session: string; cp: TranscriptEvent; inline?: boolean }) {
+type DiffFile = { path: string; added: number; removed: number };
+function diffFiles(patch: string): DiffFile[] {
+  const files = new Map<string, DiffFile>();
+  let current: DiffFile | undefined;
+  for (const line of patch.split('\n')) {
+    if (line.startsWith('diff --git ')) {
+      const match = line.match(/^diff --git a\/(.+?) b\/(.+)$/);
+      const path = match?.[2] ?? match?.[1];
+      current = path ? { path, added: 0, removed: 0 } : undefined;
+      if (current) files.set(current.path, current);
+    } else if (line.startsWith('+++ b/')) {
+      const path = line.slice(6);
+      if (current && path !== current.path) {
+        files.delete(current.path);
+        current.path = path;
+        files.set(path, current);
+      }
+    } else if (current && line.startsWith('+') && !line.startsWith('+++')) current.added++;
+    else if (current && line.startsWith('-') && !line.startsWith('---')) current.removed++;
+  }
+  return [...files.values()];
+}
+
+export function CheckpointMark({ session, cp, inline, busy, onOpenSession }: {
+  session: string; cp: TranscriptEvent; inline?: boolean; busy?: boolean; onOpenSession?(session: string): void;
+}) {
   const { transport } = usePlatform();
-  const [note, setNote] = useState<string>();
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [diff, setDiff] = useState<DiffFile[]>();
+  const [confirm, setConfirm] = useState<'files' | 'conversation'>();
+  const [branch, setBranch] = useState('');
+  const [error, setError] = useState('');
+  const [note, setNote] = useState('');
   const id = String(cp.body.id ?? '');
-  const act = async (method: string, body: Record<string, unknown>, ok: string) => {
-    const r = await transport.request(method, { session, id, ...body });
-    setNote(r.type === 'err' ? String((r as { message?: string }).message ?? r.code) : ok);
-    setTimeout(() => setNote(undefined), 3000);
+  useEffect(() => {
+    if (!open) return;
+    void transport.request('session.get', { session }).then(result => {
+      if (result.type !== 'res') return;
+      const baseBranch = String(result.body.branch ?? 'ormi');
+      const suffix = globalThis.crypto?.randomUUID?.().replace(/-/g, '').slice(0, 6) ?? Math.random().toString(16).slice(2, 8);
+      setBranch(`${baseBranch}-fork-${suffix}`);
+    });
+  }, [open, transport, session]);
+  const loadDiff = async () => {
+    setLoading(true); setError('');
+    const r = await transport.request('checkpoint.diff', { session, from: id });
+    setLoading(false);
+    if (r.type === 'err') { setError(String(r.message ?? r.code)); return; }
+    const patch = String((r.body as { patch?: unknown }).patch ?? '');
+    setDiff(diffFiles(patch));
   };
+  const restore = async (mode: 'files' | 'conversation') => {
+    setLoading(true); setError('');
+    const r = await transport.request('checkpoint.restore', { session, id, mode });
+    setLoading(false);
+    if (r.type === 'err') { setError(String(r.message ?? r.code)); return; }
+    setConfirm(undefined); setNote(mode === 'files' ? 'Files restored' : 'Conversation rewound');
+  };
+  const fork = async () => {
+    setLoading(true); setError('');
+    const r = await transport.request('checkpoint.fork', { session, id, branch });
+    setLoading(false);
+    if (r.type === 'err') { setError(String(r.message ?? r.code)); return; }
+    const child = (r.body as { session?: unknown }).session;
+    if (typeof child === 'string') onOpenSession?.(child);
+    setOpen(false);
+  };
+  const tool = String(cp.body.tool ?? 'checkpoint');
+  const when = new Date(cp.ts ?? Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0, position: 'relative' }}>
-      {note ? <span style={{ ...hint, fontSize: 11, position: 'absolute', right: 26, whiteSpace: 'nowrap', background: 'var(--bg-main)', padding: '0 4px' }}>{note}</span> : null}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
           <button className="ormi-hover-reveal hv-sub" title={`checkpoint ${id.slice(0, 7)}${inline ? '' : ' · before the first tool call'}`} aria-label="checkpoint" style={{
             border: 'none', background: 'transparent', color: 'var(--text-hint)', cursor: 'pointer', padding: 3, borderRadius: 5, display: 'inline-flex',
           }}><History size={11} /></button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuLabel>Checkpoint {id.slice(0, 7)}{typeof cp.body.overCap === 'number' ? ' · over the size cap' : ''}</DropdownMenuLabel>
-          <DropdownMenuItem onClick={() => void act('checkpoint.restore', { mode: 'files' }, 'files restored')}>Restore files to here</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => void act('checkpoint.fork', {}, 'forked into a new session')}>Fork a new session from here</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => void navigator.clipboard.writeText(id).then(() => setNote('id copied'))}>Copy checkpoint id</DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+        </PopoverTrigger>
+        <PopoverContent align="end" side="top" style={{ width: 330, maxWidth: 'calc(100vw - 24px)', padding: 10, background: 'var(--bg-card)', borderColor: 'var(--line-card)', color: 'var(--text-active)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 11, color: 'var(--text-hint)', marginBottom: 7 }}>
+            <span>{tool} · {when}</span><span style={mono}>{id.slice(0, 7)}</span>
+          </div>
+          <button type="button" disabled={loading} onClick={() => diff ? setDiff(undefined) : void loadDiff()} style={textButton}>
+            {loading ? 'Loading…' : diff ? 'Hide changes' : 'Preview changes'}
+          </button>
+          {diff ? <div style={{ maxHeight: 120, overflow: 'auto', margin: '5px 0', borderTop: '1px solid var(--line-subtle)' }}>
+            {diff.length ? diff.map(file => <button key={file.path} type="button" onClick={() => requestOpenFile(session, file.path, true)} style={{ ...textButton, width: '100%', justifyContent: 'flex-start', gap: 7 }}>
+              <span style={{ minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>{file.path}</span>
+              <span style={{ color: 'var(--accent-mint)' }}>+{file.added}</span><span style={{ color: 'var(--accent-red)' }}>−{file.removed}</span>
+            </button>) : <div style={{ ...hint, fontSize: 11, padding: 5 }}>No file changes</div>}
+          </div> : null}
+          {confirm ? <div style={{ display: 'grid', gap: 6, padding: '7px 0' }}>
+            <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Restore {diff?.length ?? 0} changed files{confirm === 'conversation' ? ' and rewind the conversation' : ''}?</span>
+            <div style={{ display: 'flex', gap: 5 }}>
+              <button type="button" disabled={loading || busy} onClick={() => void restore(confirm)} style={actionButton}>{loading ? 'Restoring…' : 'Confirm restore'}</button>
+              <button type="button" onClick={() => setConfirm(undefined)} style={textButton}>Cancel</button>
+            </div>
+          </div> : <div style={{ display: 'flex', gap: 5, marginTop: 7 }}>
+            <button type="button" disabled={busy || loading} title={busy ? 'Stop the running turn before restoring' : 'Restore files'} onClick={() => { if (!diff) void loadDiff(); setConfirm('files'); }} style={actionButton}>Restore files</button>
+            <button type="button" disabled={busy || loading} title={busy ? 'Stop the running turn before restoring' : 'Restore files and conversation'} onClick={() => { if (!diff) void loadDiff(); setConfirm('conversation'); }} style={actionButton}>Files & conversation</button>
+          </div>}
+          <div style={{ display: 'flex', gap: 5, marginTop: 7 }}>
+            <input aria-label="Fork branch name" value={branch} onChange={event => setBranch(event.target.value)} style={{ ...textInput, flex: 1 }} />
+            <button type="button" disabled={loading || !branch.trim()} onClick={() => void fork()} style={actionButton}>Fork</button>
+          </div>
+          {busy ? <div style={{ fontSize: 10.5, color: 'var(--text-hint)', marginTop: 4 }}>Disabled while a turn is running.</div> : null}
+          {note ? <div style={{ fontSize: 11, color: 'var(--accent-mint)', marginTop: 4 }}>{note}</div> : null}
+          {error ? <div style={{ fontSize: 11, color: 'var(--accent-red)', marginTop: 4 }}>{error}</div> : null}
+        </PopoverContent>
+      </Popover>
     </span>
   );
 }
+
+const textButton = { display: 'inline-flex', alignItems: 'center', border: 0, borderRadius: 5, padding: '4px 6px', background: 'transparent', color: 'var(--text-secondary)', font: 'inherit', fontSize: 11, cursor: 'pointer' };
+const actionButton = { border: '1px solid var(--line-card)', borderRadius: 5, padding: '4px 7px', background: 'var(--bg-inset)', color: 'var(--text-secondary)', font: 'inherit', fontSize: 10.5, cursor: 'pointer' };
+const textInput = { height: 26, minWidth: 0, padding: '0 6px', border: '1px solid var(--line-card)', borderRadius: 5, background: 'var(--bg-inset)', color: 'var(--text-active)', font: 'inherit', fontSize: 10.5, outline: 'none' };
 
 const pretty = (v: unknown) => typeof v === 'string' ? v : JSON.stringify(v, null, 2);
 
@@ -95,7 +184,7 @@ export function Detail({ name, input, raw }: { name: string; input: Record<strin
 
 export function ToolRow({ call, result, checkpoint, session, childCount = 0, childRunning, nested }: {
   call: TranscriptEvent; result?: TranscriptEvent; checkpoint?: TranscriptEvent; session: string;
-  childCount?: number; childRunning?: boolean; nested?: ReactNode;
+  childCount?: number; childRunning?: boolean; nested?: ReactNode; busy?: boolean; onOpenSession?(session: string): void;
 }) {
   const [open, setOpen] = useState(false);
   const input = (call.body.input && typeof call.body.input === 'object' ? call.body.input : {}) as Record<string, unknown>;

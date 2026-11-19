@@ -9,10 +9,12 @@ import {
 import type { SessionDetails } from './useSession.ts';
 
 
-export function SessionHeader({ session, details }: { session: string; details: SessionDetails | undefined }) {
+export function SessionHeader({ session, details, onOpen, onHandoff }: { session: string; details: SessionDetails | undefined; onOpen?: (session: string) => void; onHandoff?(): void }) {
   const { transport, desktop } = usePlatform();
   const [copied, setCopied] = useState(false);
   const [machine, setMachine] = useState('local');
+  const [renaming, setRenaming] = useState(false);
+  const [title, setTitle] = useState(details?.title ?? '');
   useEffect(() => {
     try {
       const r = desktop?.remote?.();
@@ -20,10 +22,33 @@ export function SessionHeader({ session, details }: { session: string; details: 
     } catch { /* keep local */ }
   }, [desktop]);
   const state = details?.state ?? '…';
+  useEffect(() => setTitle(details?.title ?? ''), [details?.title]);
   const canPause = state === 'running' || state === 'retrying';
   const canResume = state === 'interrupted' || state === 'paused_rate_limited';
   const canStop = ['running', 'starting', 'retrying', 'awaiting_approval', 'awaiting_input', 'paused_rate_limited'].includes(state);
   const act = (m: string) => void transport.request(m, { session });
+  const rename = async () => {
+    const result = await transport.request('session.rename', { session, title: title.trim() });
+    if (result.type === 'res') setRenaming(false);
+  };
+  const exportTranscript = async () => {
+    const result = await transport.request('session.export', { session, format: 'markdown' });
+    if (result.type !== 'res') return;
+    const text = String(result.body.text ?? '');
+    const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `${(details?.title || 'session').replace(/[^\w.-]+/g, '-')}.md`; a.click();
+    URL.revokeObjectURL(url);
+  };
+  const forkLatest = async () => {
+    const listed = await transport.request('checkpoint.list', { session });
+    if (listed.type !== 'res') return;
+    const checkpoint = (listed.body.checkpoints as { id: string }[] | undefined)?.[0];
+    if (!checkpoint) return;
+    const fork = await transport.request('checkpoint.fork', { session, id: checkpoint.id });
+    if (fork.type === 'res' && typeof fork.body.session === 'string') onOpen?.(fork.body.session);
+  };
 
   return (
     <div style={{
@@ -38,6 +63,19 @@ export function SessionHeader({ session, details }: { session: string; details: 
       <DropdownMenu>
         <DropdownMenuTrigger asChild><button className="hv" aria-label="session menu" style={{ width: 24, height: 24, border: 'none', borderRadius: 6, background: 'transparent', color: 'var(--text-label)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0, flexShrink: 0 }}><Ellipsis size={15} /></button></DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          <DropdownMenuItem onSelect={event => { event.preventDefault(); setRenaming(true); }}>Rename…</DropdownMenuItem>
+          {renaming ? <div style={{ padding: '5px 8px', display: 'flex', gap: 5 }}>
+            <input autoFocus value={title} onChange={event => setTitle(event.target.value)} onKeyDown={event => {
+              if (event.key === 'Enter') { event.preventDefault(); void rename(); }
+              if (event.key === 'Escape') setRenaming(false);
+            }} style={{ width: 180, minWidth: 0, height: 26, padding: '0 7px', border: '1px solid var(--line-card)', borderRadius: 5, background: 'var(--bg-inset)', color: 'var(--text-active)', font: 'inherit', fontSize: 12 }} />
+            <button onClick={() => void rename()} style={{ border: 0, background: 'var(--bg-raised)', color: 'var(--text-active)', borderRadius: 5, padding: '0 7px', cursor: 'pointer' }}>Save</button>
+          </div> : null}
+          {details?.cwd ? <DropdownMenuItem onClick={() => void navigator.clipboard.writeText(details.cwd!)}>Copy path</DropdownMenuItem> : null}
+          {details?.cwd && desktop ? <DropdownMenuItem onClick={() => void desktop.openPath(details.cwd!)}>Open worktree folder</DropdownMenuItem> : null}
+          <DropdownMenuItem onClick={() => void exportTranscript()}>Export transcript as Markdown</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => void forkLatest()}>Fork from latest checkpoint</DropdownMenuItem>
+          <DropdownMenuItem onClick={onHandoff}>Hand off…</DropdownMenuItem>
           {canPause ? <DropdownMenuItem onClick={() => act('session.pause')}>Pause session</DropdownMenuItem> : null}
           {canResume ? <DropdownMenuItem onClick={() => act('session.resume')}>Resume session</DropdownMenuItem> : null}
           <DropdownMenuItem onClick={() => {

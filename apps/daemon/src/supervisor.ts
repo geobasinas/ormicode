@@ -62,7 +62,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   // Boot: interrupt in-flight sessions, expire pending interactions, reap stale
   // pids; auto-resume candidates are spawned once spawnWorker exists below.
   const resuming = new Set<string>();
-  const recapPending = new Set<string>();
+  const recapPending = new Map<string, number>();
   sweepLogs();
   const recovery = recoverSessions(db, resumePolicy());
 
@@ -153,16 +153,14 @@ export async function startDaemon(opts: DaemonOptions = {}) {
         let recap = false;
         if (w) {
           w.ready = true; w.pid = Number(body.pid) || w.pid; setWorkerPid(db, session, w.pid ?? null); setState(db, session, 'idle'); armIdle(session, 'idle'); enforcePool();
-          if (resuming.delete(session)) {
-            record(session, 'resumed', {});
-            if (recapPending.delete(session)) {
-              recap = true;
-              const brief = handoffBrief(db, session);
-              record(session, 'handoff_brief', { text: brief });
-              // No native transcript exists, so the brief is the context: send
-              // it as the first prompt so the fresh agent picks up the thread.
-              void sendPrompt(session, `You are resuming work after a hub restart. Context recap:\n${brief}\nContinue where the session left off.`, undefined, { journal: false });
-            }
+          if (resuming.delete(session)) record(session, 'resumed', {});
+          const uptoSeq = recapPending.get(session);
+          if (uptoSeq !== undefined) {
+            recapPending.delete(session);
+            recap = true;
+            const brief = handoffBrief(db, session, 12, uptoSeq);
+            record(session, 'handoff_brief', { text: brief });
+            void sendPrompt(session, `You are resuming work after a conversation rewind. Context recap:\n${brief}\nContinue where the session left off.`, undefined, { journal: false });
           }
         }
         answer({ ok: true });
@@ -233,6 +231,17 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     record(session, 'evicted', { reason, idleMs: 0 });
     setState(db, session, 'idle', reason);
   };
+  const stopWorker = async (session: string) => {
+    const w = workers.get(session);
+    if (!w) return;
+    const link = workerLinks.get(session);
+    if (link) {
+      try { await link.request('worker.evict', { session }, 10_000); }
+      catch { killTree(w.proc); }
+    } else killTree(w.proc);
+    workers.delete(session);
+    setWorkerPid(db, session, null);
+  };
 
   const armIdle = (session: string, state: SessionState) => {
     const existing = idleTimers.get(session);
@@ -258,10 +267,10 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   const workerLinks = new Map<string, Link>();
   const sessionByLink = new Map<Link, string>();
 
-  const ensureWorker = (session: string): Promise<void> => new Promise((resolve, reject) => {
+  const ensureWorker = (session: string, timeoutMs = 30_000): Promise<void> => new Promise((resolve, reject) => {
     if (workers.get(session)?.ready) return resolve();
     if (!workers.has(session)) spawnWorker(session);
-    const deadline = Date.now() + 30_000;
+    const deadline = Date.now() + timeoutMs;
     const poll = () => {
       if (workers.get(session)?.ready) return resolve();
       if (!workers.has(session)) return reject(new Error('worker exited before ready'));
@@ -296,7 +305,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   const dispatchCtx: DispatchCtx = {
     db, notesDir, startedAt, paused, heldPrompts, lastPrompt, handoffsInTurn,
     lastError: () => lastError, liveWorkers: () => workers.size,
-    spawnWorker, ensureWorker, toWorker, sendPrompt, drainQueue,
+    spawnWorker, ensureWorker, stopWorker, setRecapPending: (session, uptoSeq) => recapPending.set(session, uptoSeq), toWorker, sendPrompt, drainQueue,
     pairing, relay: () => relay, checkpoints, record, secrets, terminals,
     prices: new PriceBook({
       cachePath: join(ormicodeDir(), 'cache', 'prices.json'), overridesPath: join(ormicodeDir(), 'prices.json'),
@@ -363,7 +372,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   const addr = server.address();
   if (typeof addr === 'object' && addr) socketPath = `127.0.0.1:${addr.port}`;
   // Resume spawns only after the socket is bound — workers connect on start.
-  for (const c of recovery.autoResume) { resuming.add(c.s.id); if (c.recapOnly) recapPending.add(c.s.id); spawnWorker(c.s.id); }
+  for (const c of recovery.autoResume) { resuming.add(c.s.id); if (c.recapOnly) recapPending.set(c.s.id, Number.MAX_SAFE_INTEGER); spawnWorker(c.s.id); }
   for (const r of recovery.rateLimited) scheduleRateRetry(r.id, r.resetAt);
   return {
     socketPath, storePath, db, workers,

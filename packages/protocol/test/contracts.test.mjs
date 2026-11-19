@@ -53,6 +53,21 @@ test('response contracts reject missing fields and unknown methods', () => {
   assert.deepEqual(parseResponseBody('session.teleport', {}), { success: false, error: 'protocol.unknown_method' });
 });
 
+test('conversation rewind events and checkpoint restore responses have explicit shapes', () => {
+  assert.equal(parseEventBody({ kind: 'conversation_rewound', to: 12, checkpoint: 'abc123' }).success, true);
+  assert.equal(parseResponseBody('checkpoint.restore', { restored: true, id: 'abc123', mode: 'conversation' }).success, true);
+});
+
+test('handoff estimate and brief contracts validate inputs and results', () => {
+  assert.equal(parseRequestBody('session.handoffBrief', { session }).success, true);
+  assert.equal(parseRequestBody('session.handoffEstimate', { session, to: { model: 'sonnet' }, mode: 'rehydrate' }).success, true);
+  assert.equal(parseRequestBody('session.handoffEstimate', { session, to: {}, mode: 'invalid' }).success, false);
+  assert.equal(parseResponseBody('session.handoffBrief', { brief: 'context' }).success, true);
+  assert.equal(parseResponseBody('session.handoffEstimate', {
+    briefTokens: 12, contextTokens: 20, filesChanged: 2, usd: null, confirmUsd: 1, confirmRequired: true,
+  }).success, true);
+});
+
 test('cost totals contracts validate time filters and all aggregation buckets', () => {
   assert.equal(parseRequestBody('cost.totals', {}).success, true);
   assert.equal(parseRequestBody('cost.totals', { since: 0 }).success, true);

@@ -19,7 +19,7 @@ const APP_COMMANDS = [
   ['diff', 'Open Git changes'], ['files', 'Open files'], ['notes', 'Open notes'], ['stop', 'Stop the turn'], ['clear-queue', 'Clear queued prompts'],
 ] as const;
 
-export function Composer({ session, details, onGit, onOpenRail }: { session: string; details?: SessionDetails; onGit?: () => void; onOpenRail?: (rail: 'files' | 'notes') => void }) {
+export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefill, onPrefillApplied }: { session: string; details?: SessionDetails; onGit?: () => void; onOpenRail?: (rail: 'files' | 'notes') => void; onHandoff?: () => void; prefill?: string; onPrefillApplied?(): void }) {
   const { transport } = usePlatform();
   const area = useRef<HTMLTextAreaElement>(null);
   const { text, setText } = useComposerDraft(session);
@@ -54,6 +54,18 @@ export function Composer({ session, details, onGit, onOpenRail }: { session: str
   const img = useImages();
   const files = useFiles();
   const modelList = useModels(details?.vendor, details?.transport);
+  useEffect(() => {
+    if (prefill === undefined) return;
+    setText(prefill);
+    const frame = requestAnimationFrame(() => {
+      if (!area.current) return;
+      area.current.focus();
+      area.current.style.height = 'auto';
+      area.current.style.height = `${Math.min(area.current.scrollHeight, 168)}px`;
+    });
+    onPrefillApplied?.();
+    return () => cancelAnimationFrame(frame);
+  }, [prefill, setText, onPrefillApplied]);
   useEffect(() => { setModelOverride(undefined); }, [session, details?.model]);
   useEffect(() => { setEffortOverride(undefined); }, [session, details?.effort]);
   useEffect(() => { setContext([]); }, [session]);
@@ -226,7 +238,8 @@ export function Composer({ session, details, onGit, onOpenRail }: { session: str
       return;
     }
     setText('');
-    if (['model', 'effort', 'mode', 'handoff'].includes(name)) { setSlashAction(name); return; }
+    if (name === 'handoff') { onHandoff?.(); return; }
+    if (['model', 'effort', 'mode'].includes(name)) { setSlashAction(name); return; }
     if (name === 'diff') onGit?.();
     if (name === 'files' || name === 'notes') onOpenRail?.(name);
     if (name === 'stop') void call('session.abort', {});

@@ -61,7 +61,7 @@ export function setWorkerPid(db: Store, id: string, pid: number | null): void {
   db.prepare('UPDATE sessions SET worker_pid = ? WHERE id = ?').run(pid, id);
 }
 
-export function setNativeId(db: Store, id: string, nativeId: string): void {
+export function setNativeId(db: Store, id: string, nativeId: string | null): void {
   db.prepare('UPDATE sessions SET native_id = ? WHERE id = ?').run(nativeId, id);
 }
 

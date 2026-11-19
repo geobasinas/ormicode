@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process';
 import { startDaemon, connect } from '../src/index.ts';
 import { newId } from '@ormicode/protocol';
 import { getSession, createSession } from '@ormicode/session-store';
+import { replay } from '@ormicode/journal';
 import { fileURLToPath } from 'node:url';
 
 const boot = async () => {
@@ -27,7 +28,7 @@ const startFake = (client, project = projectDir) =>
 test('rehydrate handoff links parent, marks old session handed off, brief reaches the child', async () => {
   const { daemon, client } = await boot();
   const s1 = (await startFake(client)).body.session;
-  const r = await client.request('session.handoff', { session: s1, to: { vendor: 'fake' }, mode: 'rehydrate', reason: 'testing' });
+  const r = await client.request('session.handoff', { session: s1, to: { vendor: 'fake' }, mode: 'rehydrate', reason: 'testing', confirmed: true });
   assert.equal(r.type, 'res');
   const child = r.body.session;
   assert.notEqual(child, s1);
@@ -43,13 +44,33 @@ test('in_place handoff keeps the same session; guards cap the chain and block Aâ
   const same = await client.request('session.handoff', { session: s1, to: { model: 'bigger' }, mode: 'in_place' });
   assert.equal(same.body.session, s1);
   // A(fake) -> B(other-vendor would fail transport check; use fake chain then bounce)
-  const s2 = (await client.request('session.handoff', { session: s1, to: { vendor: 'fake' }, mode: 'rehydrate' })).body.session;
-  const s3 = (await client.request('session.handoff', { session: s2, to: { vendor: 'fake' }, mode: 'rehydrate' })).body.session;
-  const s4 = (await client.request('session.handoff', { session: s3, to: { vendor: 'fake' }, mode: 'rehydrate' })).body.session;
+  const s2 = (await client.request('session.handoff', { session: s1, to: { vendor: 'fake' }, mode: 'rehydrate', confirmed: true })).body.session;
+  const s3 = (await client.request('session.handoff', { session: s2, to: { vendor: 'fake' }, mode: 'rehydrate', confirmed: true })).body.session;
+  const s4 = (await client.request('session.handoff', { session: s3, to: { vendor: 'fake' }, mode: 'rehydrate', confirmed: true })).body.session;
   assert.ok(s4.startsWith('s_'));
   const s5r = await client.request('session.handoff', { session: s4, to: { vendor: 'fake' }, mode: 'rehydrate' });
   assert.equal(s5r.type, 'err'); // depth 3 reached
   assert.equal(s5r.code, 'handoff.limit');
+  await daemon.close();
+});
+
+test('handoff brief and estimate report context, changed files and unknown-price confirmation', async () => {
+  const { daemon, client } = await boot();
+  const session = (await startFake(client)).body.session;
+  const brief = await client.request('session.handoffBrief', { session });
+  assert.equal(brief.type, 'res');
+  assert.ok(brief.body.brief.includes(session));
+  const estimate = await client.request('session.handoffEstimate', {
+    session, to: { model: 'unknown-model' }, mode: 'rehydrate',
+  });
+  assert.equal(estimate.type, 'res');
+  assert.equal(estimate.body.usd, null);
+  assert.equal(estimate.body.confirmRequired, true);
+  const inPlace = await client.request('session.handoffEstimate', {
+    session, to: {}, mode: 'in_place',
+  });
+  assert.equal(inPlace.body.usd, 0);
+  assert.equal(inPlace.body.confirmRequired, false);
   await daemon.close();
 });
 
@@ -59,7 +80,7 @@ test('a task cannot bounce back to the vendor it just left', async () => {
   // transports, so hand it to fake, then try to hand the child back.
   const other = newId('s');
   createSession(daemon.db, { id: other, machine: newId('m'), project: otherProjectDir, vendor: 'other', transport: 'acp', cwd: otherProjectDir });
-  const s2 = (await client.request('session.handoff', { session: other, to: { vendor: 'fake', transport: 'cli' }, mode: 'rehydrate' })).body.session;
+  const s2 = (await client.request('session.handoff', { session: other, to: { vendor: 'fake', transport: 'cli' }, mode: 'rehydrate', confirmed: true })).body.session;
   const bounce = await client.request('session.handoff', { session: s2, to: { vendor: 'other' }, mode: 'rehydrate' });
   assert.equal(bounce.type, 'err');
   assert.equal(bounce.code, 'handoff.bounce');
@@ -85,9 +106,67 @@ test('at most one handoff per turn â€” a running session gets exactly one', asyn
   const t1 = Date.now();
   while (getSession(daemon.db, s1)?.state === 'running' && Date.now() - t1 < 10_000)
     await new Promise(r => setTimeout(r, 25));
-  const third = await client.request('session.handoff', { session: s1, to: { vendor: 'fake' }, mode: 'rehydrate' });
+  const third = await client.request('session.handoff', { session: s1, to: { vendor: 'fake' }, mode: 'rehydrate', confirmed: true });
   assert.equal(third.type, 'res');
   await daemon.close();
+});
+
+test('unknown-price handoffs require user confirmation and agent approval', async () => {
+  const { daemon, client } = await boot();
+  const session = (await startFake(client)).body.session;
+  const gated = await client.request('session.handoff', { session, to: { vendor: 'fake' }, mode: 'rehydrate' });
+  assert.equal(gated.type, 'err');
+  assert.equal(gated.code, 'handoff.confirm_required');
+  assert.match(gated.message, /confirmRequired/);
+  const pending = client.request('session.handoff', {
+    session, to: { vendor: 'fake' }, mode: 'rehydrate', reason: 'needs another agent', agentApproval: true,
+  });
+  const deadline = Date.now() + 5000;
+  let request;
+  while (!request && Date.now() < deadline) {
+    request = replay(daemon.db, session).find(event => event.kind === 'approval_request');
+    if (!request) await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  assert.ok(request);
+  assert.equal(JSON.parse(request.payload).approvalKind, 'handoff');
+  const decision = await client.request('session.decide', { session, request: JSON.parse(request.payload).request, option: 'deny' });
+  assert.equal(decision.type, 'res');
+  const declined = await pending;
+  assert.equal(declined.type, 'err');
+  assert.equal(declined.code, 'handoff.declined');
+  await daemon.close();
+});
+
+test('rehydrate rolls back when a fake child never becomes ready', async () => {
+  const previousReady = process.env.ORMICODE_FAKE_READY;
+  const previousTimeout = process.env.ORMICODE_HANDOFF_READY_MS;
+  process.env.ORMICODE_FAKE_READY = 'ready';
+  const { daemon, client } = await boot();
+  try {
+    const session = (await startFake(client)).body.session;
+    const deadline = Date.now() + 5000;
+    while (getSession(daemon.db, session)?.state !== 'idle' && Date.now() < deadline)
+      await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(getSession(daemon.db, session)?.state, 'idle');
+    process.env.ORMICODE_FAKE_READY = 'never';
+    process.env.ORMICODE_HANDOFF_READY_MS = '100';
+    const result = await client.request('session.handoff', {
+      session, to: { vendor: 'fake' }, mode: 'rehydrate', confirmed: true,
+    });
+    assert.equal(result.type, 'err');
+    assert.equal(result.code, 'handoff.failed', result.message ?? JSON.stringify(result));
+    assert.ok(getSession(daemon.db, session));
+    assert.equal(getSession(daemon.db, session).state, 'idle');
+    assert.equal(daemon.db.prepare('SELECT session FROM leases WHERE session = ?').get(session)?.session, session);
+    assert.ok(replay(daemon.db, session).some(event => event.kind === 'handoff_failed'));
+    assert.equal(daemon.db.prepare('SELECT COUNT(*) AS n FROM sessions WHERE parent = ?').get(session).n, 0);
+  } finally {
+    await daemon.close();
+    if (previousReady === undefined) delete process.env.ORMICODE_FAKE_READY;
+    else process.env.ORMICODE_FAKE_READY = previousReady;
+    if (previousTimeout === undefined) delete process.env.ORMICODE_HANDOFF_READY_MS;
+    else process.env.ORMICODE_HANDOFF_READY_MS = previousTimeout;
+  }
 });
 
 test('the ormi MCP server answers initialize, tools/list and ormi_notes over stdio', async () => {

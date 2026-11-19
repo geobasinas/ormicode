@@ -26,13 +26,19 @@ export async function checkpointMethod(ctx: DispatchCtx, client: Client, id: str
       return client.link.reply(id, { ...await repo.diff(from, to) });
     }
     case 'checkpoint.restore': {
-      if (body.mode === 'conversation') return client.link.replyError(id, 'checkpoint.unimplemented', 'restoring the conversation is not built yet');
       if (IN_TURN.has(row.state)) return client.link.replyError(id, 'checkpoint.busy', 'a turn is running; stop it first');
       const cp = await repo.find(String(body.id));
       if (!cp) return missing(body.id);
       await ctx.checkpoints.run(session, () => repo.restore(row.cwd, cp));
+      if (body.mode === 'conversation') {
+        await ctx.stopWorker(session);
+        ctx.db.prepare('UPDATE sessions SET native_id = NULL, worker_pid = NULL WHERE id = ?').run(session);
+        ctx.setRecapPending(session, cp.seq);
+        ctx.record(session, 'conversation_rewound', { to: cp.seq, checkpoint: cp.id });
+        return client.link.reply(id, { restored: true, id: cp.id, mode: 'conversation' });
+      }
       ctx.record(session, 'checkpoint_restored', { id: cp.id, mode: 'files' });
-      return client.link.reply(id, { restored: true, id: cp.id });
+      return client.link.reply(id, { restored: true, id: cp.id, mode: 'files' });
     }
     case 'checkpoint.fork': {
       const cp = await repo.find(String(body.id));

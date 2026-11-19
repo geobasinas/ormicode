@@ -5,6 +5,7 @@ export const errorCodes = [
   'git.dirty_worktree', 'git.failed', 'git.worktree_in_use', 'git.nothing_to_commit', 'git.confirm_required',
   'checkpoint.busy', 'terminal.bad_request', 'relay.rate_limited',
   'prompt.invalid',
+  'handoff.confirm_required', 'handoff.declined', 'handoff.failed',
   'workspace.not_found',
   'pairing.expired', 'acp.unsupported_version', 'lease.held', 'protocol.unknown_method',
   'protocol.unsupported_version', 'protocol.invalid_frame', 'protocol.unknown_event',

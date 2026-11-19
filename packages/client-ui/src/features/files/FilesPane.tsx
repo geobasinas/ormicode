@@ -34,7 +34,7 @@ export function FilesPane({ session, onOpenSession }: { session: string; onOpenS
   const [fwd, setFwd] = useState<string[]>([]);
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<string>();
-  const [view, setView] = useState<'tree' | 'search' | { path: string; line?: number }>('tree');
+  const [view, setView] = useState<'tree' | 'search' | { path: string; line?: number; diff?: boolean }>('tree');
   const [hideIgnored, setHideIgnored] = useState(false);
   const [isGit, setIsGit] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
@@ -66,14 +66,14 @@ export function FilesPane({ session, onOpenSession }: { session: string; onOpenS
 
   const virt = useVirtualizer({ count: rows.length, getScrollElement: () => scroller.current, estimateSize: () => ROW, overscan: 12, useFlushSync: false });
   const abs = (p: string) => (root ? (p ? `${root}/${p}` : root) : undefined);
-  const openFile = (path: string, line?: number) => { setSelected(path); setView({ path, line }); };
+  const openFile = (path: string, line?: number, diff = false) => { setSelected(path); setView({ path, line, ...(diff ? { diff: true } : {}) }); };
   const relative = (p: string) => {
     const wire = p.replace(/\\/g, '/');
     if (!/^([a-z]:)?\//i.test(wire)) return wire.replace(/^\.\//, '');
     return root && wire.startsWith(`${root.replace(/\\/g, '/')}/`) ? wire.slice(root.length + 1) : undefined;
   };
   useEffect(() => {
-    const take = () => { const p = root !== undefined ? takeOpenFile(session) : undefined; const rel = p ? relative(p) : undefined; if (rel) openFile(rel); };
+    const take = () => { const target = root !== undefined ? takeOpenFile(session) : undefined; const rel = target ? relative(target.path) : undefined; if (rel) openFile(rel, undefined, target?.diff); };
     take();
     window.addEventListener(OPEN_FILE, take);
     return () => window.removeEventListener(OPEN_FILE, take);
@@ -94,7 +94,7 @@ export function FilesPane({ session, onOpenSession }: { session: string; onOpenS
   const gitOf = (path: string) => dirs[dirName(path)]?.entries.find(e => e.path === path)?.git;
 
   if (view === 'search') return <SearchView session={session} onClose={() => setView('tree')} onOpen={openFile} />;
-  if (typeof view === 'object') return <FileView session={session} path={view.path} line={view.line} git={gitOf(view.path)} isGit={isGit}
+  if (typeof view === 'object') return <FileView session={session} path={view.path} line={view.line} initialDiff={view.diff} git={gitOf(view.path)} isGit={isGit}
     onBack={() => setView('tree')} onOpenSession={onOpenSession} onGoFolder={p => { setView('tree'); go(p); }}
     onOpenExternal={desk?.openPath && abs(view.path) ? () => void desk.openPath!(abs(view.path)!) : undefined} />;
 
