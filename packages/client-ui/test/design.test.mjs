@@ -63,8 +63,54 @@ test('fixed iframe bridge hash and DOMPurify strip executable/navigation content
   const clean = sanitizeMarkup('<script>alert(1)</script><img src="https://example.invalid/x" onerror="alert(1)"><a href="https://example.invalid">go</a><p onclick="x()">safe</p>');
   assert.doesNotMatch(clean, /script|onerror|onclick|example\.invalid|<a/i);
   assert.match(clean, /<p>safe<\/p>/);
+  assert.equal(sanitizeMarkup('<button data-ormi-prototype="overlay:detail" data-other="x">Open</button><p data-ormi-prototype="url:https://example.invalid">Bad</p>'),
+    '<button data-ormi-prototype="overlay:detail">Open</button><p>Bad</p>');
   dom.window.close();
   delete globalThis.window;
+});
+
+test('prototype actions are edited in canvas and only trigger during playback', () => {
+  const dom = new JSDOM('<!doctype html><div id="root"></div>', { runScripts: 'outside-only' });
+  const window = dom.window;
+  const sent = [];
+  window.postMessage = message => sent.push(message);
+  new Script(BRIDGE_SCRIPT).runInContext(dom.getInternalVMContext());
+  const channel = 'a-test-channel-with-enough-characters';
+  const command = body => window.dispatchEvent(new window.MessageEvent('message', { source: window, origin: 'https://host.invalid', data: { channel, ...body } }));
+  const target = () => window.document.querySelector('p');
+  const click = () => target().click();
+  const serialized = () => sent.findLast(message => message.type === 'serialized')?.html;
+  try {
+    command({ type: 'init', editable: true, html: '<p>Next</p>', styles: '' });
+    click();
+    const { id } = sent.at(-1);
+    command({ type: 'editPrototype', id, action: 'frame:details' });
+    const html = serialized();
+    assert.equal(html, '<p data-ormi-prototype="frame:details">Next</p>');
+    command({ type: 'configurePlayback', enabled: true, hints: true });
+    click();
+    assert.equal(sent.at(-1).type, 'selected');
+    assert.equal(sent.at(-1).prototypeAction, 'frame:details');
+    command({ type: 'editPrototype', id, action: 'url:https://example.invalid' });
+    assert.equal(serialized(), html);
+    command({ type: 'editPrototype', id, action: '' });
+    assert.equal(serialized(), '<p>Next</p>');
+
+    command({ type: 'init', playback: true, enabled: true, stamp: 8, html, styles: '' });
+    click();
+    assert.equal(sent.at(-1).type, 'prototypeAction');
+    assert.equal(sent.at(-1).action, 'frame:details');
+    assert.equal(sent.at(-1).stamp, 8);
+    assert.equal(target().tabIndex, 0);
+    target().dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    assert.equal(sent.at(-1).type, 'prototypeAction');
+    target().dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    assert.equal(sent.at(-1).type, 'prototypeEscape');
+    const count = sent.length;
+    command({ type: 'configurePlayback', enabled: false, hints: true });
+    click();
+    assert.equal(sent.length, count);
+  } finally { window.close(); }
 });
 
 test('trusted bridge edits only leaf text, validates commands and omits runtime artifacts', () => {

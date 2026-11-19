@@ -122,6 +122,9 @@ importers:
       '@ormicode/session-store':
         specifier: workspace:*
         version: link:../../packages/session-store
+      parse5:
+        specifier: 8.1.1
+        version: 8.1.1
       yaml:
         specifier: 2.9.1
         version: 2.9.1

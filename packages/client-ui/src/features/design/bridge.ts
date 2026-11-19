@@ -1,12 +1,14 @@
 import { INSPECTOR_BRIDGE_SCRIPT } from './inspector-bridge-script.ts';
 import { ELEMENT_BRIDGE_SCRIPT } from './element-bridge-script.ts';
 import { IMAGE_SOURCE_LIMIT, IMAGE_SOURCE_PATTERN } from './design-image.ts';
+import { PROTOTYPE_BRIDGE_CSS, PROTOTYPE_BRIDGE_SCRIPT } from './prototype-bridge-script.ts';
 
 export const BRIDGE_SCRIPT = `(()=>{
 const root=document.getElementById('root');let channel='';let hostOrigin='';let selected=null;let serial=0;let stamp=0;
 ${INSPECTOR_BRIDGE_SCRIPT}
 ${ELEMENT_BRIDGE_SCRIPT}
 const send=m=>parent.postMessage({...m,channel},'*');
+${PROTOTYPE_BRIDGE_SCRIPT}
 const imageSource=new RegExp(${JSON.stringify(IMAGE_SOURCE_PATTERN)});
 const pathPattern=/^\\d{1,5}(?:\\.\\d{1,5}){0,23}$/;
 function elementPath(el){const parts=[];while(el!==root&&parts.length<24){const parent=el.parentElement;if(!parent)return '';parts.unshift(Array.prototype.indexOf.call(parent.children,el));el=parent}const path=parts.join('.');return el===root&&pathPattern.test(path)?path:''}
@@ -17,7 +19,8 @@ function select(el){
   const leaf=textLayer(el);
   const text=leaf?(el.textContent||'').slice(0,500):'';
   const image=el.tagName==='IMG'?{alt:el.alt.slice(0,500)}:{};
-  send({type:'selected',id,path:elementPath(el),tag:el.tagName.toLowerCase(),leaf,text,...image,...inspectorSnapshot(el)});paintSelection();
+  const action=prototypeAction(el);
+  send({type:'selected',id,path:elementPath(el),tag:el.tagName.toLowerCase(),leaf,text,...image,...(action?{prototypeAction:action}:{}),...inspectorSnapshot(el)});paintSelection();
 }
 function serialize(){
   const clone=root.cloneNode(true);
@@ -79,10 +82,11 @@ function replaceImage(el,source){
 window.addEventListener('message',event=>{
   if(event.source!==parent||!event.data||typeof event.data!=='object')return;
   const m=event.data;
-  const shapes={init:['html','styles','tokenStyles','stamp','editable','interactive','zoom'],render:['html','styles','tokenStyles','stamp'],setTokenStyles:['tokenStyles'],
+  const shapes={init:['html','styles','tokenStyles','stamp','editable','interactive','zoom','playback','enabled','hints'],render:['html','styles','tokenStyles','stamp'],setTokenStyles:['tokenStyles'],
     selectPath:['path'],clearSelection:[],editText:['id','text'],editStyle:['id','property','value'],editStyles:['id','patch'],
     alignElement:['id','axis','alignment'],exportLayer:['id'],addElement:['id','kind','source'],manageLayer:['id','action'],
-    replaceImage:['id','source'],imageAlt:['id','alt'],configureEditor:['editable','interactive','zoom'],serialize:[]};
+    replaceImage:['id','source'],imageAlt:['id','alt'],configureEditor:['editable','interactive','zoom'],editPrototype:['id','action'],
+    configurePlayback:['enabled','hints'],serialize:[]};
   if(typeof m.type!=='string'||!Object.hasOwn(shapes,m.type)||Object.keys(m).some(k=>!['type','channel',...shapes[m.type]].includes(k))
     ||('id'in m&&(typeof m.id!=='string'||!/^n[0-9]{1,10}$/.test(m.id))))return;
   if(!channel){if(m.type!=='init'||typeof m.channel!=='string'||m.channel.length<20||m.channel.length>100)return;channel=m.channel;hostOrigin=event.origin}
@@ -95,9 +99,11 @@ window.addEventListener('message',event=>{
     let style=document.head.querySelector('#design-styles');
     if(!style){style=document.createElement('style');style.id='design-styles';document.head.append(style)}
     style.textContent=m.styles;
-    if(m.type==='init')configureEditor(m.editable,m.interactive,m.zoom);
+    if(m.type==='init'){playback=m.playback===true;configurePlayback(m);configureEditor(!playback&&m.editable,m.interactive,m.zoom)}
+    if(playback)preparePlayback();
     return;
   }
+  if(playback){if(m.type==='configurePlayback')configurePlayback(m);return}
   if(m.type==='configureEditor'){configureEditor(m.editable,m.interactive,m.zoom);return}
   if(m.type==='setTokenStyles'){if(applyInspectorTokenStyles(m.tokenStyles)&&selected)select(selected);return}
   if(m.type==='clearSelection'){clearSelection();return}
@@ -109,6 +115,12 @@ window.addEventListener('message',event=>{
   const target=typeof m.id==='string'&&selected?.dataset.ormiNode===m.id?selected:null;
   if(m.type==='exportLayer'){if(target)exportInspectorLayer(target);return}
   if(!editable||gesture||textEdit)return;
+  if(m.type==='editPrototype'&&target){
+    if(m.action==='')target.removeAttribute(prototypeAttribute);
+    else if(typeof m.action==='string'&&prototypePattern.test(m.action))target.setAttribute(prototypeAttribute,m.action);
+    else return;
+    select(target);serialize();return;
+  }
   if(m.type==='editText'&&textLayer(target)&&typeof m.text==='string'&&m.text.length<=500){
     target.textContent=m.text;select(target);serialize();return;
   }
@@ -124,8 +136,9 @@ window.addEventListener('message',event=>{
   const el=event.target;
   if(!(el instanceof Element)||!root.contains(el)||textEdit)return;
   event.preventDefault();event.stopPropagation();
+  if(playback){if(playing)triggerPrototype(el);return}
   if(el===root){clearSelection();send({type:'selectionCleared'})}
   else select(el);
 });})();`;
-export const BRIDGE_HASH = '9EU2At0yvx7yyFt5XkKtm5z/wFuRCwd0oybsI9bMBpk=';
-export const BRIDGE_SRC_DOC = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-${BRIDGE_HASH}'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; worker-src 'none'"><style>html,body,#root{height:100%;margin:0}*,*::before,*::after{box-sizing:border-box}#root>svg:only-child{display:block}</style></head><body><div id="root"></div><script>${BRIDGE_SCRIPT}</script></body></html>`;
+export const BRIDGE_HASH = 'DGruM4p9at4XSnuzFcmk/JtZqxPG+4p8q66y+2WddjE=';
+export const BRIDGE_SRC_DOC = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-${BRIDGE_HASH}'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; worker-src 'none'"><style>html,body,#root{height:100%;margin:0}*,*::before,*::after{box-sizing:border-box}#root>svg:only-child{display:block}${PROTOTYPE_BRIDGE_CSS}</style></head><body><div id="root"></div><script>${BRIDGE_SCRIPT}</script></body></html>`;

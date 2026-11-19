@@ -1,4 +1,5 @@
 import createDOMPurify from 'dompurify';
+import { DESIGN_PROTOTYPE_ATTRIBUTE, isDesignPrototypeAction } from '@ormicode/protocol';
 import { constrainSvg, MAX_SVG_SOURCE, SVG_GEOMETRY_ATTRS, SVG_NS } from './vector-svg.ts';
 
 const DOMPurify = createDOMPurify(window);
@@ -8,7 +9,8 @@ export const SANITIZE_CONFIG: NonNullable<Parameters<typeof DOMPurify.sanitize>[
   FORBID_TAGS: ['script', 'iframe', 'frame', 'object', 'embed', 'form', 'input', 'select', 'textarea', 'a', 'area', 'base', 'meta', 'link', 'video', 'audio', 'source'],
   FORBID_ATTR: ['srcdoc', 'srcset', 'action', 'formaction', 'target', 'download', 'ping', 'autofocus', 'contenteditable'],
   ALLOW_DATA_ATTR: false,
-  ADD_URI_SAFE_ATTR: SVG_GEOMETRY_ATTRS,
+  ADD_ATTR: [DESIGN_PROTOTYPE_ATTRIBUTE],
+  ADD_URI_SAFE_ATTR: [...SVG_GEOMETRY_ATTRS, DESIGN_PROTOTYPE_ATTRIBUTE],
   ALLOWED_URI_REGEXP: /^data:image\/(?:png|jpeg|gif|webp|avif);base64,/i,
 };
 
@@ -20,6 +22,9 @@ export function sanitizeMarkup(input: string): string {
 function parseMarkup(input: string, config = SANITIZE_CONFIG): HTMLTemplateElement {
   const fragment = DOMPurify.sanitize(input, { ...config, RETURN_DOM_FRAGMENT: true });
   constrainSvg(fragment);
+  for (const element of fragment.querySelectorAll(`[${DESIGN_PROTOTYPE_ATTRIBUTE}]`)) {
+    if (!isDesignPrototypeAction(element.getAttribute(DESIGN_PROTOTYPE_ATTRIBUTE))) element.removeAttribute(DESIGN_PROTOTYPE_ATTRIBUTE);
+  }
   const template = window.document.createElement('template');
   template.content.append(fragment);
   return template;

@@ -35,6 +35,8 @@ import type { ReviewComment } from './review/review-model.ts';
 import { useCanvasViewport, useFitOnPageChange } from './useCanvasViewport.ts';
 import { DesignBoardHeader } from './DesignBoardHeader.tsx';
 import { InsertElementMenu, InsertFrameMenu } from './DesignInsertMenus.tsx';
+import { DesignPrototypeInspector } from './DesignPrototypeInspector.tsx';
+import { DesignPrototypeLauncher } from './DesignPrototypePlayer.tsx';
 
 type BoardSummary = { slug: string; name: string; revision: number; frames: number };
 type Result = { document: DesignDocument; history: DesignHistorySummary[] };
@@ -317,7 +319,8 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
     <section className="design-main" aria-label="Board editor">
       <DesignBoardHeader boards={boards} name={document?.name} slug={slug} status={status} failure={failure} error={error} canReload={Boolean(canReload)}
         loading={loading} saving={saving} sourceDirty={sourceDirty} inspectorOpen={inspectorOpen} createOpen={createOpen}
-        newName={newName} newSlug={newSlug} insertFrame={insertFrame} readBoard={readBoard} reloadCurrent={reloadCurrent}
+        newName={newName} newSlug={newSlug} readBoard={readBoard} reloadCurrent={reloadCurrent}
+        insertFrame={<><DesignPrototypeLauncher key={JSON.stringify([session, slug, pages.active.id])} document={document} page={pages.active} tokenStyles={tokenStyles} disabled={loading || saving || sourceDirty} />{insertFrame}</>}
         toggleInspector={() => setInspectorOpen(shown => !shown)} createBoard={createBoard}
         setCreateOpen={setCreateOpen} setError={setError} setNewName={setNewName} setNewSlug={setNewSlug} />
       <DesignCanvas canvas={canvas} frames={visibleFrames} selectedFrame={selectedFrame} selectedIds={frameOps.ids} view={view} tool={tool} panning={drag.panning} onTool={next => { artwork.clear(); setTool(next); }}
@@ -353,6 +356,9 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
         </div></div> : null} />
     </section>
     {inspectorOpen ? <DesignInspector tab={tab} onTab={setTab} document={document} activeFrame={activeFrame} selectedElement={selectedElement}
+      prototype={document && <DesignPrototypeInspector element={selectedElement} frame={activeFrame} frames={document.frames} pages={pages.pages} disabled={saving || sourceDirty}
+        onLink={(id, action) => { if (editable && !savingRef.current && !dirtyRef.current) bridge.current('editPrototype', { id, action }); }}
+        onStart={frameId => pages.act({ type: 'page.start', pageId: pages.active.id, frameId })} />}
       approval={activeFrame ? <DesignFrameApproval frame={activeFrame} sessions={review.sessions} disabled={saving || sourceDirty} onApprove={status => void review.approve(activeFrame.id, status)} /> : null}
       versions={activeFrame && document ? <DesignFrameVersions session={session} slug={slug} revision={document.revision} frame={activeFrame} disabled={saving || sourceDirty} onRestore={revision => void review.restore(activeFrame.id, revision)} /> : null}
       review={document ? <DesignReviewPanel key={session + ':' + slug} document={document} review={review} disabled={saving || sourceDirty} onThread={openThread}

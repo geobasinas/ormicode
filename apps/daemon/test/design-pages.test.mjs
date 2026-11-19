@@ -93,3 +93,23 @@ test('multi-frame operations preserve page ownership and prototype starts', () =
     assert.equal(document.frames.length, 2);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('duplicating a page rebinds local prototype links and preserves cross-page links', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ormi-pages-'));
+  try {
+    let document = createDesign(dir, 'board', 'Board').document;
+    const apply = (...operations) => (document = updateDesign(dir, 'board', document.revision, operations, session).document);
+    apply({ type: 'page.add', name: 'Other' });
+    const other = document.pages[1].id;
+    apply(...['default', 'default', other].map(pageId => ({ type: 'frame.add', ...fields, pageId })));
+    const [start, next, external] = document.frames;
+    const example = `<!-- data-ormi-prototype="frame:${next.id}" -->`;
+    const html = `${example}<button DATA-ORMI-PROTOTYPE='frame&#58;${next.id}'>Next</button><div data-ormi-prototype="overlay:${next.id}">Open</div><div data-ormi-prototype="frame:${external.id}">Other</div>`;
+    apply({ type: 'frame.update', frameId: start.id, patch: { html } }, { type: 'page.start', pageId: 'default', frameId: start.id },
+      { type: 'page.duplicate', pageId: 'default' });
+    const [copy, copyNext] = document.frames.slice(-2);
+    assert.equal(document.pages[1].startFrameId, copy.id);
+    assert.equal(copy.html, `${example}<button data-ormi-prototype="frame:${copyNext.id}">Next</button><div data-ormi-prototype="overlay:${copyNext.id}">Open</div><div data-ormi-prototype="frame:${external.id}">Other</div>`);
+    assert.equal(document.frames[0].html, html);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

@@ -1,4 +1,4 @@
-import { DESIGN_STYLE_VALUE_LIMIT, STYLE_RULES, isEditableProperty, styleRule } from '@ormicode/protocol';
+import { DESIGN_STYLE_VALUE_LIMIT, STYLE_RULES, isDesignPrototypeAction, isEditableProperty, styleRule } from '@ormicode/protocol';
 import { validElementGeometry } from './design-inspector-model.ts';
 import { INSPECTOR_LAYER_EXPORT_LIMIT } from './inspector-bridge-script.ts';
 
@@ -47,7 +47,8 @@ export function validateBridgeMessage(value: unknown, channel: string): value is
   const message = value as Record<string, unknown>;
   if (message.channel !== channel || typeof message.type !== 'string') return false;
   if (message.type === 'selected') {
-    if (Object.keys(message).some(key => !['channel', 'type', 'id', 'path', 'tag', 'leaf', 'text', 'styles', 'computed', 'geometry', 'alt'].includes(key)) || typeof message.id !== 'string' || !/^n[0-9]{1,10}$/.test(message.id) || typeof message.path !== 'string' || (message.path !== '' && !/^\d{1,5}(?:\.\d{1,5}){0,23}$/.test(message.path)) || typeof message.tag !== 'string' || !/^[a-z0-9]{1,20}$/.test(message.tag) || typeof message.leaf !== 'boolean' || typeof message.text !== 'string' || message.text.length > 500) return false;
+    if (Object.keys(message).some(key => !['channel', 'type', 'id', 'path', 'tag', 'leaf', 'text', 'styles', 'computed', 'geometry', 'alt', 'prototypeAction'].includes(key)) || typeof message.id !== 'string' || !/^n[0-9]{1,10}$/.test(message.id) || typeof message.path !== 'string' || (message.path !== '' && !/^\d{1,5}(?:\.\d{1,5}){0,23}$/.test(message.path)) || typeof message.tag !== 'string' || !/^[a-z0-9]{1,20}$/.test(message.tag) || typeof message.leaf !== 'boolean' || typeof message.text !== 'string' || message.text.length > 500) return false;
+    if ('prototypeAction' in message && !isDesignPrototypeAction(message.prototypeAction)) return false;
     if ('alt' in message && (message.tag !== 'img' || typeof message.alt !== 'string' || message.alt.length > 500)) return false;
     if (message.geometry !== undefined && !validElementGeometry(message.geometry)) return false;
     return validStyleSnapshot(message.styles) && validStyleSnapshot(message.computed);

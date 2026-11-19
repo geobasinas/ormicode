@@ -1,4 +1,4 @@
-import { Code2, Copy, History, MessageSquare, MousePointer2, PanelsTopLeft, SlidersHorizontal, Star, Trash2 } from 'lucide-react';
+import { Code2, Copy, History, MessageSquare, MousePointer2, PanelsTopLeft, SlidersHorizontal, Star, Trash2, Workflow } from 'lucide-react';
 import type { DesignDocument, DesignFrame, DesignHistorySummary, DesignOperation, DesignStylePatch, DesignToken, EditableProperty } from '@ormicode/protocol';
 import type { ElementSelection } from './DesignFramePreview.tsx';
 import { DesignElementStyles } from './DesignElementStyles.tsx';
@@ -9,6 +9,7 @@ import type { ReactNode } from 'react';
 
 const tabs = [
   { id: 'inspect', label: 'Design', icon: SlidersHorizontal },
+  { id: 'prototype', label: 'Prototype', icon: Workflow },
   { id: 'html', label: 'Source', icon: Code2 },
   { id: 'feedback', label: 'Feedback', icon: MessageSquare },
   { id: 'history', label: 'History', icon: History },
@@ -44,6 +45,7 @@ type Props = {
   approval?: ReactNode;
   review?: ReactNode;
   versions?: ReactNode;
+  prototype?: ReactNode;
 };
 
 const geometry = [
@@ -64,6 +66,7 @@ export function DesignInspector(props: Props) {
         aria-label={label} title={label} aria-pressed={tab === id} onClick={() => props.onTab(id)}><Icon size={15} />{tab === id ? <span>{label}</span> : null}</button>)}
     </nav>
     <div className="design-inspector-scroll">
+      {tab === 'prototype' ? props.prototype : null}
       {tab === 'inspect' && frame ? <>
         <header className="design-selection">
           <span className="design-selection-icon">{element ? <MousePointer2 size={17} /> : <PanelsTopLeft size={17} />}</span>

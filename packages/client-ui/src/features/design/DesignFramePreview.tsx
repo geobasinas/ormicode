@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, type MutableRefObject } from 'react';
-import type { DesignFrame } from '@ormicode/protocol';
+import type { DesignFrame, DesignPrototypeAction } from '@ormicode/protocol';
 import { BRIDGE_SRC_DOC } from './bridge.ts';
 import { sanitizeMarkup } from './sanitize.ts';
 import { validateBridgeMessage } from './design-model.ts';
@@ -11,12 +11,13 @@ export interface ElementSelection {
   computed: Record<string, string>;
   geometry?: ElementGeometry;
   alt?: string;
+  prototypeAction?: DesignPrototypeAction;
 }
 
 export type PreviewSource = Pick<DesignFrame, 'html' | 'styles'>;
 type RenderedSource = PreviewSource & { sourceHtml: string; tokenStyles: string; stamp: number };
 const TOKENS = ['--bg-main', '--bg-window', '--bg-card', '--bg-raised', '--bg-inset', '--bg-selected', '--text-title', '--text-active', '--text-label', '--text-secondary', '--accent-mint', '--accent-amber', '--accent-red', '--line-divider', '--line-card'];
-function themedStyles(styles: string): string {
+export function themedStyles(styles: string): string {
   const values = TOKENS.flatMap(name => {
     const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
     return /^#[0-9a-f]{3,8}$/i.test(value) ? [`${name}:${value}`] : [];
@@ -51,6 +52,7 @@ export function DesignFramePreview({ frame, active, editable, interactive, zoom,
         styles: event.data.styles as Record<string, string>, computed: event.data.computed as Record<string, string>,
         geometry: event.data.geometry as ElementGeometry | undefined,
         alt: event.data.alt as string | undefined,
+        prototypeAction: event.data.prototypeAction as DesignPrototypeAction | undefined,
       });
       if (event.data.type === 'selectionCleared') callbacks.current.onReset();
       if (event.data.type === 'serialized' && event.data.stamp === rendered.current.stamp) {

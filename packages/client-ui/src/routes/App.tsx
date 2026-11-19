@@ -32,7 +32,7 @@ function Titlebar({ platform, workspace, onWorkspaceChange, sidebarOpen, onSideb
   const d = platform.desktop;
   const btn = { ...noDrag, width: 46, height: 40, font: 'inherit', fontSize: 13, border: 'none', cursor: 'default', background: 'transparent', color: 'var(--text-secondary)' };
   return (
-    <div style={{ ...drag, height: 40, display: 'flex', alignItems: 'center', paddingLeft: 14, background: 'var(--bg-window)', flexShrink: 0 }}>
+    <div className="app-titlebar" style={{ ...drag, height: 40, display: 'flex', alignItems: 'center', paddingLeft: 14, background: 'var(--bg-window)', flexShrink: 0 }}>
       <button type="button" className="hv" title="Toggle sidebar" aria-label="Toggle sidebar" aria-expanded={sidebarOpen} onClick={onSidebarToggle}
         style={{ ...noDrag, display: 'grid', placeItems: 'center', padding: 4, borderRadius: 5, marginLeft: -4, marginRight: -4, color: 'var(--text-secondary)' }}><PanelLeft size={15} /></button>
       <WorkspaceSwitcher workspace={workspace} onChange={onWorkspaceChange} />

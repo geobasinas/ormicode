@@ -1,5 +1,6 @@
 @import "./frames/frames.css";
 @import './design-inspector.css';
+@import './design-prototype.css';
 
 .design-workspace, .design-no-session, .design-property-popup {
   --design-accent: var(--text-secondary);

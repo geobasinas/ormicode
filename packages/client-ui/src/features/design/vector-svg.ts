@@ -1,3 +1,5 @@
+import { DESIGN_PROTOTYPE_ATTRIBUTE, isDesignPrototypeAction } from '@ormicode/protocol';
+
 export const SVG_NS = 'http://www.w3.org/2000/svg';
 export const MAX_SVG_SOURCE = 12288;
 const NUMBER = '[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:e[+-]?\\d+)?';
@@ -44,6 +46,7 @@ export const SVG_GEOMETRY_ATTRS = [
 function validAttribute(tag: string, attr: Attr) {
   if (attr.namespaceURI) return false;
   const { name, value } = attr;
+  if (name === DESIGN_PROTOTYPE_ATTRIBUTE) return isDesignPrototypeAction(value);
   if (common.has(name)) return common.get(name)!(value);
   if (geometry.get(tag)?.has(name)) return length(value);
   if (tag === 'path' && name === 'd') return path(value);

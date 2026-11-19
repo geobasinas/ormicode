@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { DesignDocument, DesignOperation } from '@ormicode/protocol';
 import { DesignError } from './design-error.ts';
+import { remapPrototypeTargets } from './design-prototype.ts';
 
 const fail = (message: string): never => { throw new DesignError('design.invalid', message); };
 export function materializePages(document: DesignDocument): void {
@@ -57,12 +58,14 @@ export function applyPageOperation(document: DesignDocument, op: DesignOperation
     case 'page.duplicate': {
       const copy = { ...page, id: randomUUID(), name: `${page.name.slice(0, 115)} copy`, guides: page.guides?.map(guide => ({ ...guide, id: randomUUID() })) };
       const groups = new Map<string, string>();
-      const frames = document.frames.filter(frame => frame.pageId === page.id).map(frame => {
-        const id = randomUUID();
+      const originals = document.frames.filter(frame => frame.pageId === page.id);
+      const frameIds = new Map(originals.map(frame => [frame.id, randomUUID()]));
+      const frames = originals.map(frame => {
+        const id = frameIds.get(frame.id)!;
         if (frame.id === page.startFrameId) copy.startFrameId = id;
         const key = frame.groupId;
         const groupId = key ? groups.get(key) ?? groups.set(key, randomUUID()).get(key)! : undefined;
-        return { ...frame, id, pageId: copy.id, groupId };
+        return { ...frame, id, pageId: copy.id, groupId, html: remapPrototypeTargets(frame.html, frameIds) };
       });
       if (document.frames.length + frames.length > 24) fail('At most 24 frames are supported');
       pages.splice(pages.indexOf(page) + 1, 0, copy); document.frames.push(...frames); break;
