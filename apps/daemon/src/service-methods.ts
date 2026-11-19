@@ -25,7 +25,7 @@ export async function serviceMethod(
       return client.link.reply(id, ctx.services.previewConsole(session,
         typeof body.after === 'number' ? body.after : undefined, typeof body.limit === 'number' ? body.limit : undefined));
     }
-    if (method === 'preview.console_clear') {
+    if (method === 'preview.consoleClear') {
       ctx.services.clearPreviewConsole(session);
       return client.link.reply(id, { cleared: true });
     }

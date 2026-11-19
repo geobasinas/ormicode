@@ -383,7 +383,7 @@ export const responseBodies = {
 } as const;
 
 export type ImplementedMethod = keyof typeof requestBodies;
-export const methodNameSchema = z.string().check(z.regex(/^[a-z][a-zA-Z0-9_]*(?:\.[a-z][a-zA-Z0-9_]*)+$/));
+export const methodNameSchema = z.string().check(z.regex(/^[a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)+$/));
 export const genericBodySchema = jsonObjectSchema;
 
 function parseBody(registry: typeof requestBodies | typeof responseBodies, method: string, body: unknown) {

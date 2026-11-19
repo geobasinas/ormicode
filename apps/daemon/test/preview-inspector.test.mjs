@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, request as httpRequest } from 'node:http';
 import { parseWireFrame } from '@ormicode/protocol';
+import { onClientFrame } from '../src/dispatch.ts';
 import { PreviewProxy, previewLabel } from '../src/preview-proxy.ts';
 import { isInspectorHttpFailure, serializeInspectorValue, trimInspectorStack } from '../src/preview-inspector-helpers.ts';
 import { PreviewInspector, buildElementSelector, parseReactDebugStack, previewInspectorScript, truncateInspectorText } from '../src/preview-inspector.ts';
@@ -17,12 +18,22 @@ const request = (port, host, path, options = {}) => new Promise((resolve, reject
   req.end(options.body);
 });
 
-test('preview console clear requests are accepted by the wire parser', () => {
+test('preview console clear frames parse and dispatch', async () => {
+  const session = 's_00000000000000000000000000';
+  const id = 'req_00000000000000000000000000';
   const frame = JSON.stringify({
-    v: 1, type: 'req', id: 'req_00000000000000000000000000', method: 'preview.console_clear',
-    body: { session: 's_preview' }, ts: Date.now(),
+    v: 1, type: 'req', id, method: 'preview.consoleClear', body: { session }, ts: Date.now(),
   });
-  assert.equal(parseWireFrame(frame).success, true);
+  const parsed = parseWireFrame(frame);
+  assert.equal(parsed.success, true);
+  if (!parsed.success) return;
+  let cleared;
+  let reply;
+  await onClientFrame({ db: {}, services: { clearPreviewConsole: value => { cleared = value; } } },
+    { link: { reply: (requestId, body) => { reply = { requestId, body }; }, replyError: (_requestId, code, message) => { throw new Error(`${code}: ${message}`); } }, subscriptions: new Set(), device: 'test' },
+    parsed.data);
+  assert.equal(cleared, session);
+  assert.deepEqual(reply, { requestId: id, body: { cleared: true } });
 });
 
 test('inspector helper truncation and React dev-stack parsing are bounded', () => {

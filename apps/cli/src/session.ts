@@ -5,47 +5,52 @@ import { withDaemon } from './daemon.ts';
 const fail = (res: { type: string; code?: string; message?: string }): 0 | 1 =>
   res.type === 'err' ? (console.error(`${res.code}: ${res.message}`), 1) : 0;
 
+const startUsage = 'usage: ormi session start <vendor> [--transport t] [--project p] [--scratch] [--checkout <branch> | --worktree <base> [--branch-name <name>] [--include-dirty] | --existing <path>] [--model m] [--effort e] [--mode m] [--agentCommand c]';
+
+function startOptions(args: string[]) {
+  const vendor = args[0];
+  const scratch = args.includes('--scratch');
+  const worktree = flag(args, '--worktree');
+  const branchName = flag(args, '--branch-name');
+  const existing = flag(args, '--existing');
+  const checkout = flag(args, '--checkout');
+  const includeDirty = args.includes('--include-dirty');
+  if (!vendor || (args.includes('--worktree') && !worktree) || (args.includes('--branch-name') && !branchName)
+    || (args.includes('--existing') && !existing) || (args.includes('--checkout') && !checkout)
+    || [worktree, existing, checkout].filter(Boolean).length > 1
+    || worktree?.startsWith('--') || branchName?.startsWith('--') || existing?.startsWith('--') || checkout?.startsWith('--')
+    || ((branchName || includeDirty) && !worktree) || (scratch && (worktree || existing || checkout))) return undefined;
+  const workspace = scratch ? { kind: 'scratch' as const }
+    : existing ? { kind: 'existing' as const, path: existing }
+      : worktree ? {
+        kind: 'worktree' as const, branch: worktree,
+        ...(branchName ? { name: branchName } : {}),
+        ...(includeDirty ? { includeDirty: true } : {}),
+      }
+        : checkout ? { kind: 'checkout' as const, branch: checkout }
+          : { kind: 'current' as const };
+  return { vendor, scratch, workspace };
+}
+
 export async function sessionCommand(verb: string, args: string[]): Promise<number> {
+  if (verb === 'start') {
+    const options = startOptions(args);
+    if (!options) { console.error(startUsage); return 2; }
+    return withDaemon(async link => {
+      const res = await link.request('session.start', {
+        machine: newId('m'), project: options.scratch ? 'scratch' : flag(args, '--project') ?? process.cwd(),
+        vendor: options.vendor, transport: flag(args, '--transport') ?? 'cli',
+        model: flag(args, '--model') ?? 'default', effort: flag(args, '--effort') ?? 'default', mode: flag(args, '--mode') ?? 'default',
+        workspace: options.workspace,
+        ...(flag(args, '--agentCommand') ? { agentCommand: flag(args, '--agentCommand') } : {}),
+      });
+      if (res.type === 'err') return fail(res);
+      console.log((res.body as { session: string }).session);
+      return 0;
+    });
+  }
   return withDaemon(async link => {
     switch (verb) {
-      case 'start': {
-        const vendor = args[0];
-        const usage = 'usage: ormi session start <vendor> [--transport t] [--project p] [--scratch] [--checkout <branch> | --worktree <base> [--branch-name <name>] [--include-dirty] | --existing <path>] [--model m] [--effort e] [--mode m] [--agentCommand c]';
-        if (!vendor) { console.error(usage); return 2; }
-        const scratch = args.includes('--scratch');
-        const worktree = flag(args, '--worktree');
-        const branchName = flag(args, '--branch-name');
-        const existing = flag(args, '--existing');
-        const checkout = flag(args, '--checkout');
-        const includeDirty = args.includes('--include-dirty');
-        if ((args.includes('--worktree') && !worktree) || (args.includes('--branch-name') && !branchName)
-          || (args.includes('--existing') && !existing) || (args.includes('--checkout') && !checkout)
-          || [worktree, existing, checkout].filter(Boolean).length > 1
-          || worktree?.startsWith('--') || branchName?.startsWith('--') || existing?.startsWith('--') || checkout?.startsWith('--')
-          || ((branchName || includeDirty) && !worktree) || (scratch && (worktree || existing || checkout))) {
-          console.error(usage);
-          return 2;
-        }
-        const workspace = scratch ? { kind: 'scratch' as const }
-          : existing ? { kind: 'existing' as const, path: existing }
-            : worktree ? {
-              kind: 'worktree' as const, branch: worktree,
-              ...(branchName ? { name: branchName } : {}),
-              ...(includeDirty ? { includeDirty: true } : {}),
-            }
-              : checkout ? { kind: 'checkout' as const, branch: checkout }
-                : { kind: 'current' as const };
-        const res = await link.request('session.start', {
-          machine: newId('m'), project: scratch ? 'scratch' : flag(args, '--project') ?? process.cwd(),
-          vendor, transport: flag(args, '--transport') ?? 'cli',
-          model: flag(args, '--model') ?? 'default', effort: flag(args, '--effort') ?? 'default', mode: flag(args, '--mode') ?? 'default',
-          workspace,
-          ...(flag(args, '--agentCommand') ? { agentCommand: flag(args, '--agentCommand') } : {}),
-        });
-        if (res.type === 'err') return fail(res);
-        console.log((res.body as { session: string }).session);
-        return 0;
-      }
       case 'list': {
         const res = await link.request('session.list', { archived: args.includes('--archived') });
         for (const s of (res.body as { sessions: { id: string; title: string | null; state: string; vendor: string; transport: string }[] }).sessions)

@@ -10,6 +10,8 @@ import { TranscriptScroller } from './TranscriptScroller.tsx';
 import { ChangedFilesCard } from './ChangedFilesCard.tsx';
 import { AgentActions, PromptActions } from './MessageActions.tsx';
 import { ErrorRow, HandoffRow } from './TranscriptRows.tsx';
+import { contextChipLabel } from './composer-parts.tsx';
+import type { PromptContext } from '@ormicode/protocol';
 
 const mono = { fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap' as const, wordBreak: 'break-word' as const };
 const small = { fontSize: 12 };
@@ -72,7 +74,7 @@ function line(e: TranscriptEvent, ctx: Ctx): ReactNode {
               border: '1px solid var(--line-card)', borderRadius: 'var(--radius-md)',
               color: 'var(--text-active)', fontSize: 14, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
             }}>
-              {Array.isArray(b.context) && b.context.length ? <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 5 }}>{(b.context as { kind: string; path?: string }[]).map((entry, i) => <span key={i} style={{ padding: '1px 5px', borderRadius: 4, background: 'var(--bg-inset)', color: 'var(--text-hint)', fontSize: 10 }}>@{entry.path ?? (entry.kind === 'diff' ? 'Diff' : entry.kind === 'terminal' ? 'Terminal' : entry.kind === 'notes' ? 'Notes' : entry.kind)}</span>)}</div> : null}
+              {Array.isArray(b.context) && b.context.length ? <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 5 }}>{(b.context as PromptContext[]).map((entry, i) => <span key={i} style={{ padding: '1px 5px', borderRadius: 4, background: 'var(--bg-inset)', color: 'var(--text-hint)', fontSize: 10 }}>{contextChipLabel(entry)}</span>)}</div> : null}
               {Array.isArray(b.attachments) && b.attachments.length ? <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 5 }}>{(b.attachments as { name: string; size?: number }[]).map((file, i) => <span key={i} style={{ padding: '2px 5px', borderRadius: 4, background: 'var(--bg-inset)', color: 'var(--text-hint)', fontSize: 10 }}>{file.name}{file.size ? ` · ${Math.ceil(file.size / 1024)} KB` : ''}</span>)}</div> : null}
               {String(b.text)}
             </div>

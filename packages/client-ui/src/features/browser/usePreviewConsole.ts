@@ -47,7 +47,7 @@ export function usePreviewConsole(session: string) {
     cursor.current.reset();
     clearing.current = true;
     try {
-      const response = await transport.request('preview.console_clear', { session });
+      const response = await transport.request('preview.consoleClear', { session });
       if (response.type === 'res') {
         stored.current = [];
         setEntries([]); setUnread(0); setDropped(0);

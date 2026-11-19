@@ -86,9 +86,18 @@ export function BrowserAnnotator({ frame: initialFrame, storageKey, onSubmit, on
         ctx.save(); ctx.font = `${12 * Math.max(sx, sy)}px sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
         const label = `${item.index}. ${item.comment.slice(0, 90)}`;
         const x = Math.min(target.width - 220 * sx, Math.max(0, badge.x * sx + 14 * sx));
-        const y = Math.max(14 * sy, badge.y * sy + 18 * sy);
-        ctx.fillStyle = panel; ctx.fillRect(x, y - 11 * sy, Math.min(220 * sx, ctx.measureText(label).width + 12 * sx), 22 * sy);
-        ctx.fillStyle = labelColor; ctx.fillText(label, x + 6 * sx, y); ctx.restore();
+        const labelHeight = 22 * sy; const gap = 4 * sy;
+        const boxTop = item.kind === 'box' && item.points[1] ? Math.min(first.y, item.points[1].y) * sy : undefined;
+        const boxBottom = item.kind === 'box' && item.points[1] ? Math.max(first.y, item.points[1].y) * sy : undefined;
+        const labelY = boxTop === undefined || boxBottom === undefined ? badge.y * sy + 18 * sy
+          : boxTop >= labelHeight + gap ? boxTop - gap - labelHeight / 2 : boxBottom + gap + labelHeight / 2;
+        const y = Math.min(target.height - labelHeight / 2, Math.max(labelHeight / 2, labelY));
+        const maxWidth = Math.max(1, Math.min(220 * sx, target.width - x));
+        const textWidth = Math.max(1, maxWidth - 12 * sx);
+        let shown = label;
+        while (shown.length > 1 && ctx.measureText(shown).width > textWidth) shown = `${shown.slice(0, -2).trimEnd()}…`;
+        ctx.fillStyle = panel; ctx.fillRect(x, y - labelHeight / 2, Math.min(maxWidth, ctx.measureText(shown).width + 12 * sx), labelHeight);
+        ctx.fillStyle = labelColor; ctx.fillText(shown, x + 6 * sx, y, textWidth); ctx.restore();
       }
     }
   }, [drawing, frame.pageHeight, frame.pageWidth, items]);
@@ -158,7 +167,7 @@ export function BrowserAnnotator({ frame: initialFrame, storageKey, onSubmit, on
         {edit && anchor ? <div style={{ position: 'absolute', left: Math.min(Math.max(0, frame.pageWidth * scale - 216), anchor.x * scale), top: Math.min(Math.max(0, frame.pageHeight * scale - 72), anchor.y * scale), zIndex: 2, width: 210, padding: 6, border: '1px solid var(--line-card)', borderRadius: 7, background: 'var(--bg-raised)', boxShadow: '0 8px 24px var(--shadow-color)' }}>
           <textarea autoFocus value={edit.comment} placeholder={`Comment ${edit.index}…`} onChange={event => updateComment(event.target.value)}
             onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); setEditing(undefined); } }}
-            onBlur={() => setEditing(undefined)} style={{ width: '100%', minHeight: 48, resize: 'vertical', border: 0, outline: 0, background: 'transparent', color: 'var(--text-label)', font: 'inherit', fontSize: 11 }} />
+            style={{ width: '100%', minHeight: 48, resize: 'vertical', border: 0, outline: 0, background: 'transparent', color: 'var(--text-label)', font: 'inherit', fontSize: 11 }} />
           <button type="button" onClick={() => setEditing(undefined)} style={{ ...iconStyle(false), float: 'right', width: 22, height: 20 }}><X size={12} /></button>
         </div> : null}
       </div>

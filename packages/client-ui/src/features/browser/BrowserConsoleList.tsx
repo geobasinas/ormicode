@@ -36,7 +36,10 @@ export function BrowserConsoleList({ entries, dropped, filter, onAdd, onSend }: 
           {entry.source ? <div>Source: {entry.source}{entry.line ? `:${entry.line}:${entry.col ?? 0}` : ''}</div> : null}
           {entry.method || entry.url || entry.status !== undefined ? <div>{entry.method} {entry.url}{entry.status === undefined ? '' : ` · ${entry.status}`}{entry.durationMs === undefined ? '' : ` · ${entry.durationMs}ms`}</div> : null}
           {entry.requestBody ? <pre style={{ margin: '5px 0', whiteSpace: 'pre-wrap' }}>Request:\n{entry.requestBody}</pre> : null}
-          {entry.responseBody ? <pre style={{ margin: '5px 0', whiteSpace: 'pre-wrap' }}>Response:\n{entry.responseBody}</pre> : null}
+          {entry.responseBody ? <div style={{ margin: '5px 0' }}>
+            <div>Response:</div>
+            <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{entry.responseBody}</pre>
+          </div> : null}
         </div> : null}
       </article>;
     })}

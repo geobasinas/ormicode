@@ -20,7 +20,7 @@ export const serviceRequests = {
   'service.logs': z.object({ session: sessionIdSchema, service: nonEmpty, after: z.optional(cursorSchema) }),
   'preview.url': z.object({ session: sessionIdSchema, port: count, path: z.optional(z.string()) }),
   'preview.console': z.object({ session: sessionIdSchema, after: z.optional(cursorSchema), limit: z.optional(count.check(z.gte(1), z.lte(500))) }),
-  'preview.console_clear': z.object({ session: sessionIdSchema }),
+  'preview.consoleClear': z.object({ session: sessionIdSchema }),
 } as const;
 
 export const previewConsoleEntry = z.object({
@@ -45,5 +45,5 @@ export const serviceResponses = {
   'service.logs': z.object({ lines: z.array(z.string()), next: count, truncated: z.boolean() }),
   'preview.url': z.object({ url: nonEmpty }),
   'preview.console': z.object({ entries: z.array(previewConsoleEntry), next: count, dropped: count }),
-  'preview.console_clear': z.object({ cleared: z.literal(true) }),
+  'preview.consoleClear': z.object({ cleared: z.literal(true) }),
 } as const;
