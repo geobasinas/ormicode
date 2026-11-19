@@ -21,6 +21,14 @@ export async function serviceMethod(
     if (method === 'preview.url') {
       return client.link.reply(id, { url: await ctx.services.previewUrl(session, Number(body.port), String(body.path ?? '/')) });
     }
+    if (method === 'preview.console') {
+      return client.link.reply(id, ctx.services.previewConsole(session,
+        typeof body.after === 'number' ? body.after : undefined, typeof body.limit === 'number' ? body.limit : undefined));
+    }
+    if (method === 'preview.console_clear') {
+      ctx.services.clearPreviewConsole(session);
+      return client.link.reply(id, { cleared: true });
+    }
   } catch (error) {
     if (error instanceof ServiceError) return client.link.replyError(id, error.code, error.message);
     return client.link.replyError(id, 'service.failed', error instanceof Error ? error.message : String(error));

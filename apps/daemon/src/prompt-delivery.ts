@@ -3,6 +3,7 @@ import { getSession, listQueuedPrompts, removeQueuedPrompt, setQueuedPromptError
 import type { Store } from '@ormicode/session-store';
 import type { TerminalHub } from './terminal-methods.ts';
 import { expandPrompt, PromptInvalidError } from './prompt-context.ts';
+import type { PreviewConsoleEntry } from './preview-inspector.ts';
 
 type Prompt = { text: string; images?: unknown[]; context?: PromptContext[]; attachments?: PromptAttachment[] };
 
@@ -15,6 +16,7 @@ interface PromptDeliveryOptions {
   ensureWorker(session: string): Promise<void>;
   toWorker(session: string, method: string, body: Record<string, unknown>): Promise<Frame | undefined>;
   terminals: TerminalHub;
+  previewEntries(session: string, ids: string[]): PreviewConsoleEntry[];
   record(session: string, kind: string, payload: Record<string, unknown>): void;
 }
 
@@ -39,6 +41,7 @@ export function createPromptDelivery(options: PromptDeliveryOptions) {
         baseCommit: row.base_commit,
         notesDir: options.notesDir,
         terminalOutput: (id, terminal) => options.terminals.recentOutput(id, terminal),
+        previewEntries: options.previewEntries,
       }, { text, context: opts?.context, attachments: opts?.attachments });
     } catch (error) {
       throw new PromptInvalidError(error instanceof Error ? error.message : String(error));

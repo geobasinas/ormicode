@@ -5,6 +5,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 import { expandPrompt } from '../src/prompt-context.ts';
+import { PreviewInspector } from '../src/preview-inspector.ts';
 
 function makeRepo() {
   const root = mkdtempSync(join(tmpdir(), 'ormi-context-'));
@@ -80,4 +81,39 @@ test('attachments outside a repository do not modify another repository exclude'
   const root = { cwd: nested, session: 's_nested', notesDir: join(nested, 'notes'), terminalOutput: () => undefined };
   expandPrompt(root, { text: 'read this', attachments: [{ name: 'nested.txt', mimeType: 'text/plain', data: Buffer.from('nested').toString('base64') }] });
   assert.equal(readFileSync(excludePath, 'utf8'), excludeBefore);
+});
+
+test('element and console contexts expand with details for the agent', () => {
+  const cwd = makeRepo();
+  const inspector = new PreviewInspector();
+  try {
+    inspector.report('s_context', 41000, { path: '/admin', entries: [{
+      kind: 'network', level: 'error', message: 'HTTP 500', method: 'GET', url: '/api', status: 500,
+      requestBody: '{"x":1}', responseBody: 'failed',
+    }] });
+    const consoleId = inspector.list('s_context').entries[0].id;
+    inspector.report('s_context', 41000, { path: '/admin', entries: Array.from({ length: 12 }, (_, index) => ({
+      kind: 'error', level: index === 10 ? 'warn' : 'error', message: `latest-${index}`,
+    })) });
+    const root = {
+      cwd, session: 's_context', notesDir: join(cwd, 'notes'), terminalOutput: () => undefined,
+      previewEntries: (session, ids) => inspector.forPrompt(session, ids),
+    };
+    const result = expandPrompt({
+      ...root, previewEntries: (_session, ids) => inspector.forPrompt(_session, ids),
+    }, { text: 'fix', context: [
+      { kind: 'element', element: { url: 'http://web.localhost/admin', selector: '#save', html: '<button id="save">Save</button>', text: 'Save', styles: { color: 'red' }, rect: { x: 1, y: 2, width: 3, height: 4 }, component: 'SaveButton', source: 'src/App.tsx:4:2', comment: 'Make this primary', index: 2 } },
+      { kind: 'console', console: { ids: [consoleId] } },
+    ] });
+    assert.match(result.text, /Element #2 on http:\/\/web\.localhost\/admin/);
+    assert.match(result.text, /Selector: #save/);
+    assert.match(result.text, /SaveButton \(src\/App\.tsx:4:2\)/);
+    assert.match(result.text, /Comment: Make this primary/);
+    assert.match(result.text, /Preview console:[\s\S]*HTTP 500[\s\S]*Request body:[\s\S]*Response body:/);
+    const latest = expandPrompt(root, { text: 'fix latest', context: [{ kind: 'console', console: { ids: [] } }] });
+    assert.match(latest.text, /latest-11/);
+    assert.doesNotMatch(latest.text, /latest-0/);
+  } finally {
+    rmSync(cwd, { recursive: true, force: true });
+  }
 });

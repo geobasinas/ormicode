@@ -1,10 +1,11 @@
 /** Pieces shared by the Home and session composers: image attachments
  * (pick or paste), picker chips and inline-editable chips. */
 import { useRef, useState, type ClipboardEvent, type ReactNode } from 'react';
-import { Check, ChevronDown, FolderOpen, Pencil, RefreshCw, X } from 'lucide-react';
+import { Check, ChevronDown, FolderOpen, MousePointerSquareDashed, Pencil, RefreshCw, X } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuLabel } from '../../components/ui/dropdown-menu.tsx';
 import { projectName } from '../../lib/format.ts';
 import type { ListedModel } from './useModels.ts';
+import type { PromptContext } from '@ormicode/protocol';
 
 export interface Attached { data: string; mimeType: string; url: string; name: string; size: number }
 const MAX_BYTES = 5 * 1024 * 1024;
@@ -35,6 +36,11 @@ export function useImages() {
     const next = await Promise.all(ok.filter(f => f.size <= MAX_BYTES).map(read));
     setImages(cur => [...cur, ...next]);
   };
+  const addAttached = (attached: Attached[]) => {
+    const accepted = attached.filter(image => image.mimeType.startsWith('image/') && image.size <= MAX_BYTES);
+    setImages(cur => [...cur, ...accepted]);
+    if (accepted.length !== attached.length) setError('An image is over 5 MB or is not an image');
+  };
   const remove = (i: number) => setImages(cur => cur.filter((_, j) => j !== i));
   const clear = () => setImages([]);
   const onPaste = (e: ClipboardEvent) => {
@@ -43,7 +49,23 @@ export function useImages() {
   };
   const picker = <input ref={input} type="file" accept="image/*" multiple hidden onChange={e => { void add(e.target.files ?? []); e.target.value = ''; }} />;
   const wire = images.map(({ data, mimeType, name, size }) => ({ data, mimeType, name, size }));
-  return { images, wire, error, add, remove, clear, onPaste, picker, pick: () => input.current?.click() };
+  return { images, wire, error, add, addAttached, remove, clear, onPaste, picker, pick: () => input.current?.click() };
+}
+
+export function ContextChips({ entries, onRemove }: { entries: PromptContext[]; onRemove: (entry: PromptContext) => void }) {
+  const label = (entry: PromptContext) => entry.kind === 'element'
+    ? entry.element?.component ?? entry.element?.selector ?? (entry.element?.index ? `Element #${entry.element.index}` : 'Element')
+    : entry.path ?? (entry.kind === 'diff' ? 'Diff' : entry.kind === 'terminal' ? 'Terminal' : entry.kind === 'console' ? 'Console' : 'Notes');
+  return <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 5 }}>
+    {entries.map((entry, index) => <span key={`${entry.kind}-${entry.path ?? entry.element?.index ?? ''}-${index}`}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 3, borderRadius: 5, padding: '2px 5px', color: 'var(--text-secondary)', background: 'var(--bg-inset)', fontSize: 10 }}>
+      {entry.kind === 'element' ? <MousePointerSquareDashed size={11} /> : null}
+      {entry.kind === 'element' ? <button type="button" className="primary" title={entry.element?.selector}
+        style={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', padding: '1px 4px', border: '1px solid var(--line-card)', borderRadius: 4, background: 'var(--bg-selected)', color: 'var(--text-active)', fontSize: 9.5, cursor: 'default' }}>{label(entry)}</button>
+        : entry.kind === 'console' ? '@Console' : `@${label(entry)}`}
+      <button onClick={() => onRemove(entry)} style={iconBtn}><X size={10} /></button>
+    </span>)}
+  </div>;
 }
 
 export function useFiles() {

@@ -28,6 +28,7 @@ export function usage(code: number): never {
   ormi checkpoint list <id> | diff <id> <from> [to] | restore <id> <cp> [--conversation] | fork <id> <cp> [--branch b]
   ormi service list|start|stop|restart|logs <session> [service]  manage session web services
   ormi preview url <session> <port> [path]        get an authenticated local preview URL
+  ormi preview console <session> [--after n]       read preview console and network errors
   ormi file ls [path] | cat <path> | search <query> [--content] [--regex] | blame <path> | history <path> --session <id>
   ormi run <vendor> [--transport t] [agent args]   start a session and attach (Ctrl+] detaches)
   ormi attach <id>                                reattach a running session

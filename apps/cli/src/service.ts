@@ -31,8 +31,24 @@ export async function serviceCommand(verb: string | undefined, args: string[]): 
 }
 
 export async function previewCommand(verb: string | undefined, args: string[]): Promise<number> {
+  if (verb === 'console') {
+    const [session, ...options] = args;
+    let after: number | undefined;
+    if (!session || options.length !== 0 && (options.length !== 2 || options[0] !== '--after'
+      || !Number.isInteger(Number(options[1])) || Number(options[1]) < 0)) {
+      console.error('usage: ormi preview console <session> [--after n]');
+      return 2;
+    }
+    if (options.length) after = Number(options[1]);
+    return withDaemon(async link => {
+      const response = await link.request('preview.console', { session, ...(after === undefined ? {} : { after }) });
+      if (fail(response)) return 1;
+      console.log(JSON.stringify(response.body, null, 2));
+      return 0;
+    });
+  }
   if (verb !== 'url' || args.length < 2 || args.length > 3) {
-    console.error('usage: ormi preview url <session> <port> [path]');
+    console.error('usage: ormi preview url <session> <port> [path] | preview console <session> [--after n]');
     return 2;
   }
   const [session, portText, path] = args;

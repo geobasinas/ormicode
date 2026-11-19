@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { FileText, Folder, GitBranch, Terminal } from 'lucide-react';
+import { FileText, Folder, GitBranch, Terminal, TerminalSquare } from 'lucide-react';
 import type { PromptContext } from '@ormicode/protocol';
 import { usePlatform } from '../../lib/platform.ts';
 
@@ -31,6 +31,7 @@ export function MentionPopover({
     const contextItems: MentionItem[] = [
       { label: 'Diff', context: { kind: 'diff' as const }, group: 'context' as const, hint: 'uncommitted changes' },
       { label: 'Terminal', context: { kind: 'terminal' as const }, group: 'context' as const, hint: 'latest output' },
+      { label: 'Console', context: { kind: 'console' as const, console: { ids: [] } }, group: 'context' as const, hint: 'latest preview errors' },
       { label: 'Notes', context: { kind: 'notes' as const }, group: 'context' as const, hint: 'session notes' },
     ].filter(item => !hideDiff || item.context.kind !== 'diff');
     onItemsChange(contextItems);
@@ -62,7 +63,8 @@ export function MentionPopover({
     const index = items.indexOf(item);
     const path = item.context.path;
     if (!path) {
-      const Icon = item.context.kind === 'diff' ? GitBranch : item.context.kind === 'terminal' ? Terminal : FileText;
+      const Icon = item.context.kind === 'diff' ? GitBranch : item.context.kind === 'terminal' ? Terminal
+        : item.context.kind === 'console' ? TerminalSquare : FileText;
       return <button key={`${item.context.kind}-${item.label}`} onMouseDown={event => event.preventDefault()} onClick={() => onPick(item)} style={{ width: '100%', height: 28, display: 'flex', alignItems: 'center', gap: 8, border: 0, borderRadius: 5, background: index === selectedIndex ? 'var(--bg-selected)' : 'transparent', color: index === selectedIndex ? 'var(--text-active)' : 'var(--text-secondary)', textAlign: 'left', padding: '0 7px', fontSize: 11, cursor: 'pointer' }}>
         <Icon size={13} style={{ flexShrink: 0, color: 'var(--text-hint)' }} />
         <span>{item.label}</span>

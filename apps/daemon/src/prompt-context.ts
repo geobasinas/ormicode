@@ -3,6 +3,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 import { execFileSync } from 'node:child_process';
 import { ATTACHMENT_MAX_BYTES, ATTACHMENTS_MAX_BYTES, newId } from '@ormicode/protocol';
 import type { PromptAttachment, PromptContext } from '@ormicode/protocol';
+import type { PreviewConsoleEntry } from './preview-inspector.ts';
 import { resolvePath } from '@ormicode/files';
 import { diffPatch, isGitRepo } from '@ormicode/git-core';
 import { listNotes } from '@ormicode/session-store';
@@ -19,6 +20,7 @@ export interface PromptRoot {
   baseCommit?: string | null;
   notesDir: string;
   terminalOutput: (session: string, terminal?: string) => { terminal: string; output: string } | undefined;
+  previewEntries?: (session: string, ids: string[]) => PreviewConsoleEntry[];
 }
 
 const DIFF_CAP = 64 * 1024;
@@ -100,6 +102,14 @@ export function expandPrompt(root: PromptRoot, prompt: PromptAppendix): { text: 
     } else if (item.kind === 'notes') {
       const notes = listNotes(root.notesDir, root.session);
       if (notes.length) sections.push(`Session notes:\n${notes.map(note => `## ${note.title}\n${note.body}`).join('\n\n')}`);
+    } else if (item.kind === 'element' && item.element) {
+      const element = item.element;
+      const title = `Element${element.index ? ` #${element.index}` : ''} on ${element.url}`;
+      const styles = Object.entries(element.styles).map(([name, value]) => `- ${name}: ${value}`).join('\n');
+      sections.push(`${title}\nSelector: ${element.selector}${element.component ? `\nComponent: ${element.component}` : ''}${element.source ? ` (${element.source})` : ''}${element.text ? `\nText: ${element.text}` : ''}${element.comment ? `\nComment: ${element.comment}` : ''}${styles ? `\nKey styles:\n${styles}` : ''}\nHTML:\n\`\`\`html\n${element.html}\n\`\`\``);
+    } else if (item.kind === 'console' && item.console) {
+      const entries = root.previewEntries?.(root.session, item.console.ids) ?? [];
+      if (entries.length) sections.push(`Preview console:\n${entries.map(formatConsoleEntry).join('\n\n')}`);
     }
   }
   if (paths.length) sections.unshift(`Referenced paths:\n${paths.map(path => `- ${path}`).join('\n')}`);
@@ -133,4 +143,15 @@ export function expandPrompt(root: PromptRoot, prompt: PromptAppendix): { text: 
     text: sections.length ? `${prompt.text}\n\n---\n${sections.join('\n\n')}` : prompt.text,
     attachments: infos,
   };
+}
+
+function formatConsoleEntry(entry: PreviewConsoleEntry): string {
+  const lines = [`[${entry.kind}/${entry.level}] ${entry.message}`, `${entry.path} · port ${entry.port}`];
+  if (entry.stack) lines.push(`Stack/source:\n\`\`\`\n${entry.stack}${entry.source ? `\n${entry.source}` : ''}\n\`\`\``);
+  else if (entry.source) lines.push(`Source: ${entry.source}${entry.line ? `:${entry.line}:${entry.col ?? 0}` : ''}`);
+  if (entry.method || entry.url || entry.status !== undefined)
+    lines.push(`Request: ${entry.method ?? ''} ${entry.url ?? ''}${entry.status === undefined ? '' : ` · ${entry.status}`}`.trim());
+  if (entry.requestBody) lines.push(`Request body:\n\`\`\`\n${entry.requestBody}\n\`\`\``);
+  if (entry.responseBody) lines.push(`Response body:\n\`\`\`\n${entry.responseBody}\n\`\`\``);
+  return lines.join('\n');
 }

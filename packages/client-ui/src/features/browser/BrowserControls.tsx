@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   ChevronDown, ChevronLeft, ChevronRight, Eraser, ExternalLink, Globe, LockKeyhole, Monitor,
-  MoreHorizontal, Play, Plus, RotateCw, Server, Smartphone, Square, Tablet, ScrollText, X,
+  MoreHorizontal, MousePointerSquareDashed, PenLine, Play, Plus, RotateCw, Server, Smartphone, Square, Tablet, ScrollText, TerminalSquare, X,
 } from 'lucide-react';
 import {
   DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
@@ -14,10 +14,12 @@ import { BrowserIconButton, ServiceStatusDot } from './browser-ui.tsx';
 type Props = {
   pages: BrowserPage[]; active: number; listed?: BrowserListed; current?: BrowserPage;
   canBack: boolean; canForward: boolean; loading: boolean; address: string; history: string[];
+  pickActive: boolean; consoleUnread: number;
   device: DevicePreset; fixed: boolean; busyService: string; actionError: string; keepSignins: boolean;
   onSelectPage: (index: number) => void; onClosePage: (index: number) => void;
   onOpenPortal: (port: number, path: string, title: string) => void;
   onBack: () => void; onForward: () => void; onReload: () => void;
+  onPick: () => void; onAnnotate: () => void; onConsole: () => void;
   onAddressChange: (value: string) => void; onAddressSubmit: () => void;
   onDeviceChange: (device: DevicePreset) => void; onRotate: () => void;
   onRefresh: () => void; onServiceAction: (action: 'service.start' | 'service.stop' | 'service.restart', service: string) => void;
@@ -91,6 +93,13 @@ export function BrowserControls(props: Props) {
           placeholder="Enter path" style={{ width: '100%', minWidth: 0, border: 0, outline: 0, background: 'transparent', color: 'var(--text-label)', fontFamily: 'var(--font-mono)', fontSize: 12 }} />
         <datalist id={`browser-history-${props.current?.port ?? 'none'}`}>{props.history.map(path => <option key={path} value={path} />)}</datalist>
       </div>
+      <BrowserIconButton title={props.pickActive ? 'Cancel picking' : 'Pick element (Ctrl+Shift+C)'} aria-pressed={props.pickActive} onClick={props.onPick}
+        style={props.pickActive ? { background: 'var(--bg-selected)', color: 'var(--text-active)' } : undefined}><MousePointerSquareDashed size={14} /></BrowserIconButton>
+      <BrowserIconButton title="Annotate preview" onClick={props.onAnnotate}><PenLine size={14} /></BrowserIconButton>
+      <button type="button" title="Preview console" aria-label="Preview console" onClick={props.onConsole} className="hv ormi-browser-console-toggle" style={{ ...toolbarButton, padding: '0 5px', position: 'relative' }}>
+        <TerminalSquare size={14} /><span className="ormi-browser-wide-label">Console</span>
+        {props.consoleUnread ? <span style={{ minWidth: 14, height: 14, display: 'inline-grid', placeItems: 'center', padding: '0 3px', borderRadius: 8, background: 'var(--accent-red)', color: 'var(--text-onAccent)', fontSize: 9 }}>{props.consoleUnread > 99 ? '99+' : props.consoleUnread}</span> : null}
+      </button>
       <DropdownMenu open={deviceOpen} onOpenChange={setDeviceOpen}>
         <DropdownMenuTrigger asChild><button type="button" title="Device preset" aria-label="Device preset" className="hv" style={toolbarButton}>
           <DeviceIcon size={14} /><span className="ormi-pane-narrow-hide">{props.device}</span><ChevronDown size={11} className="ormi-pane-narrow-hide" />

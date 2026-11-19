@@ -1,6 +1,9 @@
 import * as z from 'zod/mini';
 import { cursorSchema, jsonObjectSchema, requestIdSchema, sessionIdSchema, idSchema, timestampSchema } from './schema.ts';
 import { portBlock, serviceRequests, serviceResponses } from './service-contracts.ts';
+import { promptContextSchema } from './prompt-context-schema.ts';
+export type { PromptContext } from './prompt-context-schema.ts';
+export type { PreviewConsoleEntry } from './service-contracts.ts';
 
 const session = { session: sessionIdSchema };
 const draftSession = z.union([sessionIdSchema, z.literal('home')]);
@@ -77,11 +80,6 @@ export const ATTACHMENTS_MAX_BYTES = 25 * 1024 * 1024;
 const imageSchema = z.object({
   data: nonEmpty, mimeType: nonEmpty, name: z.optional(nonEmpty), size: z.optional(count),
 });
-const promptContextSchema = z.object({
-  kind: z.enum(['file', 'folder', 'diff', 'terminal', 'notes']),
-  path: z.optional(nonEmpty), terminal: z.optional(nonEmpty),
-});
-export type PromptContext = z.infer<typeof promptContextSchema>;
 const attachmentSchema = z.object({
   name: nonEmpty, mimeType: nonEmpty,
   data: z.string().check(z.minLength(1), z.maxLength(14 * 1024 * 1024)),

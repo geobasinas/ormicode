@@ -148,8 +148,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
       }
     });
     proc.on('error', e => { lastError = String(e); });
-    if (waking) void runSessionHook(row, 'resume', base, record);
-    return worker;
+    if (waking) void runSessionHook(row, 'resume', base, record); return worker;
   };
   const onWorkerFrame = (link: Link, frame: Frame) => {
     if (frame.type !== 'req') return;
@@ -288,6 +287,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   });
   const { sendPrompt, drainQueue } = createPromptDelivery({
     db, notesDir, paused, heldPrompts, lastPrompt, ensureWorker, toWorker, terminals, record,
+    previewEntries: (session, ids) => services.previewEntries(session, ids),
   });
   // Sessions paused by a rate limit wake at the provider's reset time and retry
   // the held prompt; timers are in-memory and re-armed from the journal on boot.

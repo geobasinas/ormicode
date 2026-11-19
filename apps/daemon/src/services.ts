@@ -10,6 +10,7 @@ import { killTreePid } from './proctree.ts';
 import { allocateSessionPorts } from './session-ports.ts';
 import { environmentForSession } from './session-env.ts';
 import { PreviewProxy } from './preview-proxy.ts';
+import type { PreviewConsoleEntry } from './preview-inspector.ts';
 
 const serviceSchema = z.object({
   command: z.string().min(1),
@@ -176,6 +177,20 @@ export class Services {
       config: { found: config.found, ...(config.path ? { path: config.path } : {}), ...(config.error ? { error: config.error } : {}) },
       services: runtimes.map(runtime => this.view(session, runtime, ports.base)), detected,
     };
+  }
+
+  previewConsole(session: string, after?: number, limit?: number) {
+    if (!getSession(this.db, session)) throw new ServiceError('session.not_found', session);
+    return this.proxy.console(session, after, limit);
+  }
+
+  clearPreviewConsole(session: string): void {
+    if (!getSession(this.db, session)) throw new ServiceError('session.not_found', session);
+    this.proxy.clearConsole(session);
+  }
+
+  previewEntries(session: string, ids: string[]): PreviewConsoleEntry[] {
+    return this.proxy.consoleEntries(session, ids);
   }
 
   async start(session: string, name: string): Promise<ServiceView> {

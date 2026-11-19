@@ -173,9 +173,31 @@ test('service and preview methods validate their request and response contracts'
   assert.equal(parseRequestBody('service.start', { session, service: 'web' }).success, true);
   assert.equal(parseRequestBody('service.logs', { session, service: 'web', after: 4 }).success, true);
   assert.equal(parseRequestBody('preview.url', { session, port: 41000, path: '/admin' }).success, true);
+  assert.equal(parseRequestBody('preview.console', { session, after: 10, limit: 20 }).success, true);
+  assert.equal(parseRequestBody('preview.console_clear', { session }).success, true);
   assert.equal(parseResponseBody('service.list', { ports: { base: 41000, count: 10 }, proxy: { port: 123 }, config: { found: true }, services: [entry], detected: [] }).success, true);
   assert.equal(parseResponseBody('service.logs', { lines: ['line'], next: 1, truncated: false }).success, true);
   assert.equal(parseResponseBody('preview.url', { url: 'http://web.localhost:123/__ormi/auth?t=x' }).success, true);
+  const consoleEntry = { id: 'pc_1', seq: 1, ts: 10, port: 41000, path: '/', kind: 'network', level: 'error', message: 'HTTP 500', method: 'GET', url: '/broken', status: 500 };
+  assert.equal(parseResponseBody('preview.console', { entries: [consoleEntry], next: 1, dropped: 0 }).success, true);
+  assert.equal(parseResponseBody('preview.console_clear', { cleared: true }).success, true);
+});
+
+test('prompt contexts accept bounded element and console references', () => {
+  const element = {
+    kind: 'element', element: {
+      url: 'http://web.localhost/page', selector: '#card', html: '<div id="card"></div>', text: 'Card',
+      styles: { display: 'block' }, rect: { x: 1, y: 2, width: 30, height: 40, devicePixelRatio: 2 },
+      component: 'Card', source: 'src/Card.tsx:1:1', comment: 'Change this', index: 1,
+    },
+  };
+  assert.equal(parseRequestBody('session.prompt', { session, text: 'inspect', context: [element, { kind: 'console', console: { ids: [] } }] }).success, true);
+  assert.equal(parseRequestBody('session.prompt', {
+    session, text: 'inspect', context: [{ ...element, element: { ...element.element, html: 'x'.repeat(4097) } }],
+  }).success, false);
+  assert.equal(parseRequestBody('session.prompt', {
+    session, text: 'inspect', context: [{ ...element, element: { ...element.element, styles: Object.fromEntries(Array.from({ length: 21 }, (_, index) => [`style-${index}`, 'x'])) } }],
+  }).success, false);
 });
 
 test('session controls and notes use matching request and response contracts', () => {

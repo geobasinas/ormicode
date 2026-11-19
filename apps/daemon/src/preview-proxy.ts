@@ -2,8 +2,11 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer, request as httpRequest, type IncomingMessage, type OutgoingHttpHeaders, type Server, type ServerResponse } from 'node:http';
 import { createConnection } from 'node:net';
 import type { Duplex } from 'node:stream';
+import { PreviewInspector, previewInspectorScript } from './preview-inspector.ts';
 
 interface Target { session: string; port: number; base: number; token: string; detected: boolean }
+const HTML_CAP = 5 * 1024 * 1024;
+const REPORT_CAP = 64 * 1024;
 
 function token(): string { return randomBytes(24).toString('base64url'); }
 function targetKey(session: string, port: number): string { return `${session}:${port}`; }
@@ -33,6 +36,7 @@ function page(status: number, title: string, message: string): { status: number;
 
 export class PreviewProxy {
   private readonly server: Server;
+  readonly inspector = new PreviewInspector();
   private readonly targets = new Map<string, Target>();
   private readonly sockets = new Set<Duplex>();
   private portValue = 0;
@@ -115,6 +119,13 @@ export class PreviewProxy {
     return sameToken(cookieValue(req.headers.cookie), target.token);
   }
 
+  console(session: string, after?: number, limit?: number) {
+    return this.inspector.list(session, after, limit);
+  }
+
+  clearConsole(session: string): void { this.inspector.clear(session); }
+  consoleEntries(session: string, ids: string[]) { return this.inspector.forPrompt(session, ids); }
+
   private handleAuth(req: IncomingMessage, res: ServerResponse, target: Target): void {
     let parsed: URL;
     try { parsed = new URL(req.url ?? '/', 'http://preview.local'); }
@@ -135,14 +146,29 @@ export class PreviewProxy {
   private handle(req: IncomingMessage, res: ServerResponse): void {
     const target = this.route(req);
     if (!target) { res.writeHead(404, { 'content-type': 'text/plain' }).end('Not found'); return; }
-    if ((req.url ?? '').startsWith('/__ormi/auth')) return this.handleAuth(req, res, target);
+    let pathname = '/';
+    try { pathname = new URL(req.url ?? '/', 'http://preview.local').pathname; } catch { /* handled upstream as not found */ }
+    if (pathname === '/__ormi/auth') return this.handleAuth(req, res, target);
     if (!this.authorized(req, target)) {
       const denied = page(403, 'Preview access required', 'Open this preview from OrmiCode to authorize it.');
       res.writeHead(denied.status, { 'content-type': 'text/html; charset=utf-8' }).end(denied.body);
       return;
     }
+    if (pathname === '/__ormi/inspect.js') {
+      if (req.method !== 'GET') { res.writeHead(405, { allow: 'GET' }).end(); return; }
+      res.writeHead(200, { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
+      res.end(previewInspectorScript);
+      return;
+    }
+    if (pathname === '/__ormi/report') {
+      if (req.method !== 'POST') { res.writeHead(405, { allow: 'POST' }).end(); return; }
+      void this.handleReport(req, res, target);
+      return;
+    }
     const headers: OutgoingHttpHeaders = { ...req.headers, host: `127.0.0.1:${target.port}` };
     if (req.headers.origin) headers.origin = `http://127.0.0.1:${target.port}`;
+    const htmlRequest = Boolean(req.headers.accept?.toLowerCase().includes('text/html'));
+    if (htmlRequest) headers['accept-encoding'] = 'identity';
     const cookie = stripPreviewCookie(req.headers.cookie);
     if (cookie) headers.cookie = cookie; else delete headers.cookie;
     headers['x-forwarded-host'] = req.headers.host;
@@ -152,8 +178,12 @@ export class PreviewProxy {
     }, response => {
       const outgoing = { ...response.headers };
       if (typeof outgoing.location === 'string') outgoing.location = this.rewriteLocation(outgoing.location, target);
-      res.writeHead(response.statusCode ?? 502, outgoing);
-      response.pipe(res);
+      const contentType = response.headers['content-type'];
+      const inject = req.method === 'GET' && htmlRequest && (response.statusCode ?? 0) >= 200 && (response.statusCode ?? 0) < 300
+        && typeof contentType === 'string' && contentType.toLowerCase().includes('text/html')
+        && (!response.headers['content-encoding'] || response.headers['content-encoding'] === 'identity');
+      if (inject) this.injectHtml(response, res);
+      else { res.writeHead(response.statusCode ?? 502, outgoing); response.pipe(res); }
     });
     upstream.on('error', () => {
       if (res.headersSent) { res.destroy(); return; }
@@ -161,6 +191,59 @@ export class PreviewProxy {
       res.writeHead(down.status, { 'content-type': 'text/html; charset=utf-8' }).end(down.body);
     });
     req.pipe(upstream);
+  }
+
+  private async handleReport(req: IncomingMessage, res: ServerResponse, target: Target): Promise<void> {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let tooLarge = false;
+    for await (const chunk of req) {
+      const bytes = Buffer.from(chunk);
+      size += bytes.length;
+      if (size > REPORT_CAP) tooLarge = true;
+      else if (!tooLarge) chunks.push(bytes);
+    }
+    if (tooLarge) { res.writeHead(413).end(); return; }
+    let body: unknown;
+    try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
+    catch { res.writeHead(400).end(); return; }
+    if (!body || typeof body !== 'object' || !Array.isArray((body as { entries?: unknown }).entries)
+      || (body as { entries: unknown[] }).entries.length > 50) {
+      res.writeHead(400).end();
+      return;
+    }
+    const result = this.inspector.report(target.session, target.port, body);
+    res.writeHead(204, { 'cache-control': 'no-store', 'x-ormi-dropped': String(result.dropped) }).end();
+  }
+
+  private injectHtml(response: IncomingMessage, res: ServerResponse): void {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let passthrough = false;
+    const headers = { ...response.headers };
+    response.on('data', (chunk: Buffer) => {
+      if (passthrough) { res.write(chunk); return; }
+      size += chunk.length;
+      if (size <= HTML_CAP) { chunks.push(chunk); return; }
+      passthrough = true;
+      res.writeHead(response.statusCode ?? 502, headers);
+      res.write(Buffer.concat([...chunks, chunk]));
+      chunks.length = 0;
+    });
+    response.on('end', () => {
+      if (passthrough) { res.end(); return; }
+      const body = Buffer.concat(chunks);
+      const html = body.toString('latin1');
+      const head = /<head\b[^>]*>/i.exec(html);
+      const offset = head ? head.index + head[0].length : 0;
+      const script = Buffer.from('<script src="/__ormi/inspect.js"></script>', 'ascii');
+      const output = Buffer.concat([body.subarray(0, offset), script, body.subarray(offset)]);
+      delete headers['content-length'];
+      delete headers.etag;
+      res.writeHead(response.statusCode ?? 200, headers);
+      res.end(output);
+    });
+    response.on('error', () => res.destroy());
   }
 
   private rewriteLocation(location: string, target: Target): string {

@@ -5,13 +5,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Plus, AtSign, Mic, ArrowUp, Square, Cpu, Gauge, X, GripVertical, FileText, History, GitBranch } from 'lucide-react';
 import { usePlatform } from '../../lib/platform.ts';
 import type { SessionDetails } from './useSession.ts';
-import { useImages, useFiles, ImageStrip, MenuChip, ModelChip, EffortChip, chip, iconBtn } from './composer-parts.tsx';
+import { useImages, useFiles, ImageStrip, ContextChips, MenuChip, ModelChip, EffortChip, chip, iconBtn } from './composer-parts.tsx';
 import { useModels } from './useModels.ts';
 import { useComposerDraft } from './useComposerDraft.ts';
 import { MentionPopover, type MentionItem } from './MentionPopover.tsx';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../components/ui/dropdown-menu.tsx';
 import type { PromptContext } from '@ormicode/protocol';
 import { feedback } from '../../lib/feedback.ts';
+import { useComposerInbox } from '../../lib/composer-inbox.ts';
 
 const LIVE = new Set(['running', 'starting', 'retrying']);
 type QueuedItem = { id: string; text: string; createdAt: number; images?: number; error?: string };
@@ -121,29 +122,32 @@ export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefi
     if (res.type === 'err') setError(res.code === 'agent.unsupported' ? `${details?.vendor ?? 'agent'} can't change ${res.message} here` : res.message);
     return res.type !== 'err';
   };
-  const send = async (steer = false) => {
-    const t = text.trim(); if (!t) return;
-    const images = img.wire.length ? img.wire : undefined;
+  const send = async (steer = false, override?: { text: string; context: PromptContext[]; images: typeof img.images }) => {
+    const t = (override?.text ?? text).trim(); if (!t) return;
+    const images = override ? override.images.map(({ data, mimeType, name, size }) => ({ data, mimeType, name, size }))
+      : img.wire.length ? img.wire : undefined;
     const attachments = files.wire.length ? files.wire : undefined;
+    const promptContext = override?.context ?? context;
     if (live) {
       if (steer) {
-        const res = await transport.request('session.steer', { session, text: t, images, attachments, context }).catch(() => undefined);
+        const res = await transport.request('session.steer', { session, text: t, images, attachments, context: promptContext }).catch(() => undefined);
         if (res?.type === 'res') { setText(''); setContext([]); img.clear(); files.clear(); requestAnimationFrame(grow); return; }
         if (res?.type !== 'err' || res.code !== 'agent.unsupported') {
           setError(res?.type === 'err' ? res.message : 'Steering failed'); return;
         }
         setError('Steering is unavailable; queued instead.');
       }
-      const queued = await transport.request('session.queue.add', { session, text: t, images, attachments, context }).catch(() => undefined);
+      const queued = await transport.request('session.queue.add', { session, text: t, images, attachments, context: promptContext }).catch(() => undefined);
       if (queued?.type === 'err' || !queued) {
         const message = queued?.type === 'err' ? queued.message : 'Queue failed';
         setError(message); feedback.error(message); return;
       }
       await refreshQueue();
-    } else if (!await call('session.prompt', { text: t, images, attachments, context })) return;
+    } else if (!await call('session.prompt', { text: t, images, attachments, context: promptContext })) return;
     setContext([]);
     setText(''); img.clear(); files.clear(); requestAnimationFrame(grow);
   };
+  useComposerInbox(session, { text, context, images: img.images, setText, setContext, addImages: img.addAttached, send: draft => { void send(false, draft); } });
   const removeQueued = async (id: string) => {
     await transport.request('session.queue.remove', { session, id });
     await refreshQueue();
@@ -200,11 +204,7 @@ export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefi
     setContext(current => [...current.filter(entry => JSON.stringify(entry) !== JSON.stringify(item.context)), item.context]);
     setMentionOpen(false); area.current?.focus();
   };
-  const removeContext = (entry: PromptContext) => {
-    const token = `@${entry.path ?? (entry.kind === 'diff' ? 'Diff' : entry.kind === 'terminal' ? 'Terminal' : 'Notes')}`;
-    setText(value => value.replace(token, '').replace(/\s{2,}/g, ' '));
-    setContext(current => current.filter(item => item !== entry));
-  };
+  const removeContext = (entry: PromptContext) => { if (entry.kind !== 'element' && entry.kind !== 'console') setText(value => value.replace(`@${entry.path ?? (entry.kind === 'diff' ? 'Diff' : entry.kind === 'terminal' ? 'Terminal' : 'Notes')}`, '').replace(/\s{2,}/g, ' ')); setContext(current => current.filter(item => item !== entry)); };
   const openHistory = () => { setHistoryQuery(''); setHistorySelection(0); setHistoryOpen(true); };
   const applyHistoryText = (value: string) => {
     setText(value);
@@ -281,7 +281,7 @@ export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefi
               <button aria-label="remove queued prompt" onClick={() => void removeQueued(item.id)} style={{ ...iconBtn, padding: 2 }}><X size={12} /></button>
             </div>)}
         </div> : null}
-        {context.length ? <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 5 }}>{context.map((entry, index) => <span key={`${entry.kind}-${entry.path ?? ''}-${index}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, borderRadius: 5, padding: '2px 5px', color: 'var(--text-secondary)', background: 'var(--bg-inset)', fontSize: 10 }}>@{entry.path ?? (entry.kind === 'diff' ? 'Diff' : entry.kind === 'terminal' ? 'Terminal' : 'Notes')}<button onClick={() => removeContext(entry)} style={iconBtn}><X size={10} /></button></span>)}</div> : null}
+        {context.length ? <ContextChips entries={context} onRemove={removeContext} /> : null}
         <ImageStrip images={img.images} onRemove={img.remove} />
         {files.files.length ? <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', padding: '2px 0 6px' }}>{files.files.map((file, index) => <span key={`${file.name}-${index}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, maxWidth: 190, fontSize: 10, color: 'var(--text-secondary)', background: 'var(--bg-inset)', borderRadius: 5, padding: '3px 5px' }}><FileText size={11} /><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name} · {Math.ceil(file.size / 1024)} KB</span><button onClick={() => files.remove(index)} style={iconBtn}><X size={10} /></button></span>)}</div> : null}
         <textarea
@@ -290,7 +290,8 @@ export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefi
           onChange={e => {
             const value = e.target.value; setText(value); grow();
             setHistoryIndex(-1);
-            setContext(current => current.filter(entry => value.includes(`@${entry.path ?? (entry.kind === 'diff' ? 'Diff' : entry.kind === 'terminal' ? 'Terminal' : 'Notes')}`)));
+            setContext(current => current.filter(entry => entry.kind === 'element' || entry.kind === 'console'
+              || value.includes(`@${entry.path ?? (entry.kind === 'diff' ? 'Diff' : entry.kind === 'terminal' ? 'Terminal' : 'Notes')}`)));
             const before = value.slice(0, e.target.selectionStart);
             const match = /(^|\s)@([^\s]*)$/.exec(before);
             if (match) { const start = e.target.selectionStart - match[2]!.length - 1; mentionRange.current = { start, end: e.target.selectionStart }; openMention(match[2]); }

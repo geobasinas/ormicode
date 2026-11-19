@@ -163,6 +163,8 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
       case 'service.restart':
       case 'service.logs':
       case 'preview.url':
+      case 'preview.console':
+      case 'preview.console_clear':
         return await serviceMethod(ctx, client, id, method, body);
       case 'pricing.status':
       case 'pricing.refresh':
@@ -297,7 +299,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         const attachments = [...(pending?.attachments ?? []), ...(body.attachments as PromptAttachment[] | undefined ?? [])];
         let prepared: ReturnType<typeof expandPrompt>;
         try {
-          prepared = expandPrompt({ cwd: row.cwd, session, baseCommit: row.base_commit, notesDir: ctx.notesDir, terminalOutput: (s, terminal) => ctx.terminals.recentOutput(s, terminal) },
+          prepared = expandPrompt({ cwd: row.cwd, session, baseCommit: row.base_commit, notesDir: ctx.notesDir, terminalOutput: (s, terminal) => ctx.terminals.recentOutput(s, terminal), previewEntries: (s, ids) => ctx.services.previewEntries(s, ids) },
             { text: String(body.text), context, attachments });
         } catch (error) {
           return client.link.replyError(id, 'prompt.invalid', error instanceof Error ? error.message : String(error));

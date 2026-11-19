@@ -4,6 +4,10 @@ import { usePlatform } from '../../lib/platform.ts';
 import { useSession } from '../session/useSession.ts';
 import { BrowserControls } from './BrowserControls.tsx';
 import { BrowserLogDrawer } from './BrowserLogDrawer.tsx';
+import { BrowserAnnotator } from './BrowserAnnotator.tsx';
+import { annotationStorageKey, useBrowserInspector } from './useBrowserInspector.ts';
+import { usePreviewConsole } from './usePreviewConsole.ts';
+import { pushToComposer } from '../../lib/composer-inbox.ts';
 import { ChoosePreview, EmptyPreview, RemotePreview, StoppedPreview } from './BrowserNotice.tsx';
 import type { BrowserListed, BrowserPage, DevicePreset } from './browser-types.ts';
 
@@ -29,6 +33,8 @@ export function BrowserPane({ session }: { session: string }) {
   const [active, setActive] = useState(0);
   const [listed, setListed] = useState<BrowserListed>();
   const [logsService, setLogsService] = useState('');
+  const [drawerTab, setDrawerTab] = useState<'logs' | 'console'>();
+  const [consoleFilter, setConsoleFilter] = useState<'all' | 'errors' | 'network'>('all');
   const [logs, setLogs] = useState<string[]>([]);
   const [logsHeight, setLogsHeight] = useState(180);
   const [followLogs, setFollowLogs] = useState(true);
@@ -52,9 +58,12 @@ export function BrowserPane({ session }: { session: string }) {
   const historyKeyRef = useRef(historyKey);
   const serviceStates = useRef(new Map<number, string>());
   const current = pages[active];
+  const inspector = useBrowserInspector(session, webview, current, Boolean(readyId && webviewReady));
+  const previewConsole = usePreviewConsole(session);
   const partition = `${keepSignins ? 'persist:' : ''}ormi-preview-${projectId}`;
   const remote = platform.kind !== 'desktop' || (desktop?.remote() !== null && desktop?.remote() !== undefined);
   const currentService = listed?.services.find(service => service.port === current?.port);
+  useEffect(() => { previewConsole.setOpen(drawerTab === 'console'); }, [drawerTab, previewConsole.setOpen]);
 
   const refresh = async () => {
     const response = await transport.request('service.list', { session });
@@ -165,7 +174,7 @@ export function BrowserPane({ session }: { session: string }) {
     if (logsService && paneSize[1] > 0) setLogsHeight(Math.max(140, Math.min(500, Math.round(paneSize[1] * 0.35))));
   }, [logsService, paneSize[1]]);
   useEffect(() => {
-    if (!logsService) return;
+    if (drawerTab !== 'logs' || !logsService) return;
     let alive = true;
     logsCursor.current = 0;
     setLogs([]);
@@ -181,7 +190,16 @@ export function BrowserPane({ session }: { session: string }) {
     void load();
     const timer = setInterval(() => void load(), 1000);
     return () => { alive = false; clearInterval(timer); };
-  }, [logsService, session, transport]);
+  }, [drawerTab, logsService, session, transport]);
+
+  useEffect(() => {
+    const keydown = (event: KeyboardEvent) => {
+      if (!event.ctrlKey || !event.shiftKey || event.key.toLowerCase() !== 'c' || !paneRef.current?.contains(document.activeElement)) return;
+      event.preventDefault(); void inspector.pick();
+    };
+    document.addEventListener('keydown', keydown);
+    return () => document.removeEventListener('keydown', keydown);
+  }, [inspector.pick]);
 
   const navigate = async (port: number, path: string, title = 'Preview') => {
     const normalized = path.startsWith('/') ? path : `/${path}`;
@@ -246,6 +264,11 @@ export function BrowserPane({ session }: { session: string }) {
     const done = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', done); };
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', done);
   };
+  const openLogs = (service: string) => { setLogsService(service); setDrawerTab('logs'); };
+  const addConsoleEntry = (entry: { id: string }) => pushToComposer(session, { context: [{ kind: 'console', console: { ids: [entry.id] } }] });
+  const sendConsoleEntry = (entry: { id: string }) => pushToComposer(session, {
+    text: 'Fix this error from the preview:', context: [{ kind: 'console', console: { ids: [entry.id] } }], send: true,
+  });
 
   const dimensions = device === 'Phone' ? [390, 844] : device === 'Tablet' ? [820, 1180] : device === 'Desktop' ? [1440, 900] : undefined;
   const deviceSize = dimensions ? [rotated ? dimensions[1] : dimensions[0], rotated ? dimensions[0] : dimensions[1]] : undefined;
@@ -258,9 +281,11 @@ export function BrowserPane({ session }: { session: string }) {
     ? <>
       {createElement('webview' as any, {
         key: `${current.id}:${partition}:${current.url}`, ref: webview, src: current.url, partition,
-        style: { background: 'var(--bg-main)', visibility: snapshotVisible ? 'hidden' : 'visible', ...style },
+        style: { background: 'var(--bg-main)', visibility: snapshotVisible || Boolean(inspector.frame) ? 'hidden' : 'visible', ...style },
       })}
       {snapshotVisible ? <img src={snapshot} alt="" aria-hidden="true" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', pointerEvents: 'none' }} /> : null}
+      {inspector.frame && current ? <BrowserAnnotator key={current.id} frame={inspector.frame} storageKey={annotationStorageKey(session, current.id)}
+        onSubmit={inspector.submitAnnotations} onDiscard={() => inspector.setFrame(undefined)} /> : null}
     </>
     : <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: 'var(--text-hint)' }}>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 11 }}><span className="ormi-browser-spinner" />Loading preview…</span>
@@ -278,12 +303,15 @@ export function BrowserPane({ session }: { session: string }) {
       }}
       onOpenPortal={openPortal} onBack={() => webview.current?.goBack()} onForward={() => webview.current?.goForward()}
       onReload={() => webview.current?.reload()} onAddressChange={setAddress} onAddressSubmit={() => void addressSubmit()}
+      pickActive={inspector.pickActive} consoleUnread={previewConsole.unread} onPick={() => void inspector.pick()}
+      onAnnotate={() => void inspector.annotate()} onConsole={() => setDrawerTab('console')}
       onDeviceChange={setDevice} onRotate={() => setRotated(value => !value)} onRefresh={() => void refresh()}
-      onServiceAction={(action, name) => void serviceAction(action, name)} onLogs={setLogsService}
+      onServiceAction={(action, name) => void serviceAction(action, name)} onLogs={openLogs}
       onOpenExternal={() => void openExternalCurrent()} onKeepSigninsChange={value => {
         setKeepSignins(value); localStorage.setItem(`ormi.browser.signins.${projectId}`, String(value));
       }} onClearBrowsingData={clearBrowsingData} onOverlayOpenChange={setOverlaysOpen}
     /> : null}
+    {inspector.hint && !remote ? <div role="status" style={{ padding: '5px 10px', borderBottom: '1px solid var(--line-subtle)', background: 'var(--bg-raised)', color: 'var(--text-hint)', fontSize: 10.5 }}>{inspector.hint}</div> : null}
     {remote ? <main style={{ flex: 1, minHeight: 0, display: 'grid', placeItems: 'center', background: 'var(--bg-inset)' }}><RemotePreview /></main>
       : <main ref={paneRef} style={{
         position: 'relative', flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden',
@@ -309,12 +337,15 @@ export function BrowserPane({ session }: { session: string }) {
             : displayedStopped ? <StoppedPreview service={displayedStopped} starting={displayedStopped.state === 'starting'} onStart={() => void serviceAction('service.start', displayedStopped.name)} />
               : <ChoosePreview listed={listed} onOpenPortal={openPortal} />}
       </main>}
-    {logsService && !remote ? <>
+    {drawerTab && !remote ? <>
       <div role="separator" aria-orientation="horizontal" aria-label="Resize service logs" className="ormi-handle ormi-handle-horizontal"
         onPointerDown={startResize} style={{ height: 6, width: 'auto', flexShrink: 0, cursor: 'ns-resize', touchAction: 'none' }} />
-      <BrowserLogDrawer service={logsService} services={listed?.services.map(service => service.name) ?? [logsService]} lines={logs}
+      <BrowserLogDrawer tab={drawerTab} unread={previewConsole.unread} entries={previewConsole.entries} dropped={previewConsole.dropped}
+        filter={consoleFilter} onTabChange={setDrawerTab} onFilterChange={setConsoleFilter}
+        onConsoleClear={() => void previewConsole.clear()} onConsoleAdd={addConsoleEntry} onConsoleSend={sendConsoleEntry}
+        service={logsService} services={listed?.services.map(service => service.name) ?? (logsService ? [logsService] : [])} lines={logs}
         height={logsHeight} follow={followLogs} onServiceChange={setLogsService} onFollowChange={setFollowLogs}
-        onClear={() => setLogs([])} onClose={() => setLogsService('')} onScroll={setFollowLogs} />
+        onClear={() => setLogs([])} onClose={() => setDrawerTab(undefined)} onScroll={setFollowLogs} />
     </> : null}
   </div>;
 }
