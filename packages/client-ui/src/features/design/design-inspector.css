@@ -1,0 +1,31 @@
+.design-element-inspector .design-inspector-field-wide { grid-column: 1 / -1; }
+.design-inspector-field-tools, .design-inspector-actions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.design-inspector-actions { flex-wrap: wrap; gap: 5px; }
+.design-inspector-field-tools > button { flex: 0 0 auto; }
+.design-inspector-subheading { color: var(--text-secondary); font-size: 10px; }
+.design-inspector-sizing { display: grid; gap: 4px; min-width: 0; }
+.design-inspector-align { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px; }
+.design-inspector-align button { width: 100%; }
+.design-inspector-aspect {
+  display: flex;
+  align-items: end;
+  gap: 4px;
+  padding-bottom: 5px;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.design-inspector-border { border-top: 1px solid var(--line-divider); padding: 5px 0; }
+.design-inspector-border summary { color: var(--text-secondary); font-size: 11px; cursor: pointer; }
+.design-inspector-border .design-field-grid { margin-top: 5px; }
+.design-inspector-bound { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.design-inspector-token-trigger[aria-pressed="true"] { background: var(--bg-selected); color: var(--text-active); }
+.design-inspector-token-popup { display: grid; gap: 5px; width: min(230px, 85vw); }
+.design-inspector-token-popup form, .design-inspector-token-popup label { display: grid; gap: 5px; }
+.design-inspector-token-popup label, .design-inspector-token-popup small { font-size: 11px; }
+.design-inspector-token-list { display: grid; gap: 3px; max-height: 180px; overflow: auto; }
+.design-inspector-token-list button { justify-content: space-between; }
+.design-inspector-token-list small { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; }

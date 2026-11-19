@@ -3,11 +3,13 @@ import type { DesignFrame } from '@ormicode/protocol';
 import { BRIDGE_SRC_DOC } from './bridge.ts';
 import { sanitizeMarkup } from './sanitize.ts';
 import { validateBridgeMessage } from './design-model.ts';
+import type { ElementGeometry } from './design-inspector-model.ts';
 
 export interface ElementSelection {
   id: string; path: string; tag: string; leaf: boolean; text: string;
   styles: Record<string, string>;
   computed: Record<string, string>;
+  geometry?: ElementGeometry;
 }
 
 const TOKENS = ['--bg-main', '--bg-window', '--bg-card', '--bg-raised', '--bg-inset', '--bg-selected', '--text-title', '--text-active', '--text-label', '--text-secondary', '--accent-mint', '--accent-amber', '--accent-red', '--line-divider', '--line-card'];
@@ -19,18 +21,20 @@ function themedStyles(styles: string): string {
   return `:root{${values.join(';')}}\n${styles}`;
 }
 
-export function DesignFramePreview({ frame, active, onSelect, onMarkup, onReset, bridge, selectionRequest }: {
+export function DesignFramePreview({ frame, active, onSelect, onMarkup, onReset, bridge, selectionRequest, tokenStyles = '', onLayerExport }: {
   frame: DesignFrame; active: boolean; onSelect(message: ElementSelection): void;
   onMarkup(html: string): void;
   onReset(): void;
   selectionRequest?: { path: string };
+  tokenStyles?: string;
+  onLayerExport?(html: string): void;
   bridge: MutableRefObject<(type: string, body?: Record<string, unknown>) => void>;
 }) {
   const iframe = useRef<HTMLIFrameElement>(null);
   const channel = useRef('');
-  const rendered = useRef({ html: '', styles: '' });
-  const callbacks = useRef({ onSelect, onMarkup, onReset });
-  callbacks.current = { onSelect, onMarkup, onReset };
+  const rendered = useRef({ html: '', styles: '', tokenStyles: '' });
+  const callbacks = useRef({ onSelect, onMarkup, onReset, onLayerExport });
+  callbacks.current = { onSelect, onMarkup, onReset, onLayerExport };
 
   useEffect(() => {
     const receive = (event: MessageEvent) => {
@@ -39,12 +43,14 @@ export function DesignFramePreview({ frame, active, onSelect, onMarkup, onReset,
       if (event.data.type === 'selected') callbacks.current.onSelect({
         id: String(event.data.id), path: String(event.data.path), tag: String(event.data.tag), leaf: Boolean(event.data.leaf), text: String(event.data.text),
         styles: event.data.styles as Record<string, string>, computed: event.data.computed as Record<string, string>,
+        geometry: event.data.geometry as ElementGeometry | undefined,
       });
       if (event.data.type === 'serialized') {
         const html = sanitizeMarkup(String(event.data.html));
         rendered.current.html = html;
         callbacks.current.onMarkup(html);
       }
+      if (event.data.type === 'layerExport') callbacks.current.onLayerExport?.(String(event.data.html));
     };
     window.addEventListener('message', receive);
     return () => { window.removeEventListener('message', receive); channel.current = ''; };
@@ -65,18 +71,23 @@ export function DesignFramePreview({ frame, active, onSelect, onMarkup, onReset,
   const onLoad = () => {
     const token = globalThis.crypto.randomUUID();
     channel.current = token;
-    rendered.current = { html: sanitizeMarkup(frame.html), styles: frame.styles };
-    iframe.current?.contentWindow?.postMessage({ type: 'init', channel: token, html: rendered.current.html, styles: themedStyles(frame.styles) }, '*');
+    rendered.current = { html: sanitizeMarkup(frame.html), styles: frame.styles, tokenStyles };
+    iframe.current?.contentWindow?.postMessage({ type: 'init', channel: token, html: rendered.current.html, styles: themedStyles(frame.styles), tokenStyles }, '*');
     if (selectionRequest) send('selectPath', { path: selectionRequest.path });
   };
   useEffect(() => {
     if (!channel.current) return;
     const html = sanitizeMarkup(frame.html);
-    if (rendered.current.html === html && rendered.current.styles === frame.styles) return;
-    rendered.current = { html, styles: frame.styles };
+    if (rendered.current.html === html && rendered.current.styles === frame.styles) {
+      if (rendered.current.tokenStyles === tokenStyles) return;
+      rendered.current.tokenStyles = tokenStyles;
+      send('setTokenStyles', { tokenStyles });
+      return;
+    }
+    rendered.current = { html, styles: frame.styles, tokenStyles };
     callbacks.current.onReset();
-    send('render', { html, styles: themedStyles(frame.styles) });
-  }, [frame.html, frame.styles]);
+    send('render', { html, styles: themedStyles(frame.styles), tokenStyles });
+  }, [frame.html, frame.styles, tokenStyles, send]);
   useEffect(() => {
     if (selectionRequest) send('selectPath', { path: selectionRequest.path });
   }, [selectionRequest, send]);

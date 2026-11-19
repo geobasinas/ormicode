@@ -96,7 +96,7 @@ test('trusted bridge edits only leaf text, validates commands and omits runtime 
     assert.equal(window.document.querySelector('p').textContent, 'Hello');
     command({ type: 'editText', id: selected().id, text: 'Updated' });
     assert.equal(window.document.querySelector('p').textContent, 'Updated');
-    command({ type: 'editStyle', id: selected().id, property: 'position', value: 'fixed' });
+    command({ type: 'editStyle', id: selected().id, property: 'position', value: 'overlay' });
     assert.equal(window.document.querySelector('p').style.position, '');
     command({ type: 'editStyle', id: selected().id, property: 'color', value: 'var(--accent-mint)' });
     assert.equal(window.document.querySelector('p').style.color, 'var(--accent-mint)');

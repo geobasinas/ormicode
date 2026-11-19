@@ -5,6 +5,7 @@ import { applyPageOperation, clearPageStart, materializePages, validatePages } f
 import { DesignError } from './design-error.ts';
 import { applyFrameOperation, normalizeGroups } from './design-frame-ops.ts';
 import { DESIGN_DOCUMENT_BYTES, DESIGN_STORAGE_BYTES, DESIGN_HISTORY_LIMIT, designDocumentSchema, designStorageSchema, designSlugSchema, type DesignDocument, type DesignOperation, type DesignStorage } from '@ormicode/protocol';
+import { setDesignToken } from './design-inspector-store.ts';
 
 export { DesignError } from './design-error.ts';
 const bytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value), 'utf8');
@@ -150,6 +151,7 @@ function apply(document: DesignDocument, operations: DesignOperation[], session:
       case 'frame.duplicate': { const original = frame(operation.frameId); document.frames.push({ ...original, id: randomUUID(), name: `${original.name.slice(0, 110)} copy`, x: Math.min(100000, original.x + 40), y: Math.min(100000, original.y + 40) }); break; }
       case 'direction.select': if (operation.frameId !== null) frame(operation.frameId); document.workingFrameId = operation.frameId; break;
       case 'board.rename': document.name = operation.name; break;
+      case 'token.set': setDesignToken(document, operation.token, fail); break;
       case 'comment.add':
         if (operation.frameId !== null) frame(operation.frameId);
         document.comments.push({ id: randomUUID(), frameId: operation.frameId, ...(operation.element ? { element: operation.element } : {}), text: operation.text, resolved: false, session, createdAt: Date.now() });

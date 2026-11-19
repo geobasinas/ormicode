@@ -1,107 +1,107 @@
-import { useState } from 'react';
-import { RotateCcw } from 'lucide-react';
-import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/popover.tsx';
+import { type ReactNode } from 'react';
+import type { DesignStylePatch, DesignToken, EditableProperty } from '@ormicode/protocol';
 import type { ElementSelection } from './DesignFramePreview.tsx';
-import { COLOR_CHOICES, hexFromComputedColor, STYLE_CHOICES, type EditableProperty } from './design-style.ts';
+import { DesignStyleField } from './DesignStyleField.tsx';
+import { DesignLayerGeometry } from './DesignLayerGeometry.tsx';
+import { DesignBackgroundImage } from './DesignBackgroundImage.tsx';
+import type { LayerAlignment, LayerAxis } from './design-inspector-model.ts';
 
 type Field = readonly [EditableProperty, string];
+const padding: Field[] = [['paddingTop', 'Top'], ['paddingRight', 'Right'], ['paddingBottom', 'Bottom'], ['paddingLeft', 'Left']];
+const sides = ['Top', 'Right', 'Bottom', 'Left'] as const;
 
-const groups: { name: string; fields: Field[] }[] = [
-  { name: 'Appearance', fields: [['backgroundColor', 'Fill'], ['opacity', 'Opacity'], ['borderRadius', 'Radius']] },
-  { name: 'Border', fields: [['borderColor', 'Color'], ['borderStyle', 'Style'], ['borderWidth', 'Width']] },
-  { name: 'Typography', fields: [['color', 'Text color'], ['fontSize', 'Size'], ['fontWeight', 'Weight'], ['lineHeight', 'Line height'], ['textAlign', 'Alignment']] },
-  { name: 'Layout', fields: [['width', 'Width'], ['height', 'Height'], ['display', 'Display'], ['flexDirection', 'Direction'], ['alignItems', 'Align items'], ['justifyContent', 'Justify']] },
-  { name: 'Spacing', fields: [['padding', 'Padding'], ['margin', 'Margin'], ['gap', 'Gap']] },
-];
-
-export function DesignElementStyles({ element, disabled, onStyle }: {
+type Props = {
   element: ElementSelection;
   disabled: boolean;
-  onStyle(property: EditableProperty, value: string): void;
-}) {
+  tokens: readonly DesignToken[];
+  onStyle(patch: DesignStylePatch): void;
+  onAlign(axis: LayerAxis, alignment: LayerAlignment): void;
+  onCreateToken(property: EditableProperty, token: DesignToken): void;
+  onUpdateToken(token: DesignToken): void;
+  onExport(): void;
+};
+
+export function DesignElementStyles({ element, disabled, tokens, onStyle, onAlign, onCreateToken, onUpdateToken, onExport }: Props) {
   const display = element.computed.display || element.styles.display || '';
   const flex = display.includes('flex');
-  const canAlign = flex || display.includes('grid');
-  return <>
-    <datalist id="design-style-colors">{COLOR_CHOICES.map(value => <option key={value} value={value} />)}</datalist>
-    {groups.map(({ name, fields }) => {
-      const visible = fields.filter(([property]) => {
-        if (property === 'flexDirection') return flex;
-        if (property === 'alignItems' || property === 'justifyContent' || property === 'gap') return canAlign;
-        return true;
-      });
-      return <section key={name} className="design-properties">
-        <h3>{name}</h3>
+  const grid = display.includes('grid');
+  const parentLayout = element.geometry?.parentLayout ?? '';
+  const field = (property: EditableProperty, label: string, onCommit?: (value: string) => void, wide = false) => (
+    <DesignStyleField key={property} property={property} label={label} inline={element.styles[property] ?? ''}
+      computed={element.computed[property] ?? ''} disabled={disabled} tokens={tokens} canCreateToken={Boolean(element.path)}
+      className={wide ? 'design-inspector-field-wide' : undefined}
+      onCommit={value => { if (value !== (element.styles[property] ?? '')) (onCommit ?? (next => onStyle({ [property]: next })))(value); }}
+      onCreateToken={token => onCreateToken(property, token)} onUpdateToken={onUpdateToken} />
+  );
+  return <div className="design-element-inspector">
+    <DesignLayerGeometry element={element} disabled={disabled} field={field} onStyle={onStyle} onAlign={onAlign} />
+    <Section title="Layout">
+      <div className="design-field-grid">
+        {field('display', 'Display')}
+        {flex ? field('flexDirection', 'Direction') : null}
+        {flex ? field('flexWrap', 'Wrap') : null}
+        {grid ? field('gridTemplateColumns', 'Columns') : null}
+        {grid ? field('gridTemplateRows', 'Rows') : null}
+        {flex || grid ? <>
+          {field('alignItems', 'Align items')}
+          {field('justifyContent', 'Justify content')}
+          {field('alignContent', 'Align content')}
+          {field('gap', 'Gap')}
+        </> : null}
+        {grid ? field('justifyItems', 'Justify items') : null}
+        {parentLayout.includes('flex') || parentLayout.includes('grid') ? field('alignSelf', 'Align self') : null}
+        {parentLayout.includes('grid') ? field('justifySelf', 'Justify self') : null}
+      </div>
+      <div className="design-inspector-subheading">Padding</div>
+      <div className="design-field-grid">{padding.map(([property, side]) => field(property, side + ' padding'))}</div>
+      <div className="design-field-grid">{field('margin', 'Margin')}</div>
+    </Section>
+    <Section title="Appearance">
+      <div className="design-field-grid">
+        {field('opacity', 'Opacity')}
+        {field('borderRadius', 'Corner radius')}
+        {field('overflow', 'Clip content')}
+        {field('visibility', 'Visibility')}
+      </div>
+    </Section>
+    <Section title="Fill">
+      <div className="design-field-grid">{field('backgroundColor', 'Fill color', undefined, true)}</div>
+      <DesignBackgroundImage element={element} disabled={disabled} onCommit={value => onStyle({ backgroundImage: value })} />
+      <div className="design-field-grid">
+        {element.computed.backgroundImage && element.computed.backgroundImage !== 'none' ? <>
+          {field('backgroundSize', 'Image size')}
+          {field('backgroundPosition', 'Image position')}
+          {field('backgroundRepeat', 'Image repeat')}
+        </> : null}
+        {element.tag === 'img' ? field('objectFit', 'Image fit') : null}
+      </div>
+    </Section>
+    <Section title="Borders">
+      {sides.map(side => <details className="design-inspector-border" key={side}>
+        <summary>{side}</summary>
         <div className="design-field-grid">
-          {visible.map(([property, label]) => <StyleField key={element.id + ':' + property} property={property} label={label}
-            inline={element.styles[property] ?? ''} computed={element.computed[property] ?? ''} disabled={disabled}
-            onCommit={value => { if (value !== (element.styles[property] ?? '')) onStyle(property, value); }} />)}
+          {field(`border${side}Width`, side + ' border width')}
+          {field(`border${side}Style`, side + ' border style')}
+          {field(`border${side}Color`, side + ' border color', undefined, true)}
         </div>
-      </section>;
-    })}
-  </>;
-}
-
-function StyleField({ property, label, inline, computed, disabled, onCommit }: {
-  property: EditableProperty;
-  label: string;
-  inline: string;
-  computed: string;
-  disabled: boolean;
-  onCommit(value: string): void;
-}) {
-  const id = 'design-style-' + property;
-  const choices = (STYLE_CHOICES as Partial<Record<EditableProperty, readonly string[]>>)[property];
-  const color = property === 'color' || property === 'backgroundColor' || property === 'borderColor';
-  const hex = color ? hexFromComputedColor(computed) : undefined;
-  const displayValue = color ? hexFromComputedColor(inline) ?? inline : inline;
-  return <div className="design-property">
-    <div className="design-property-heading">
-      <label htmlFor={id}>{label}</label>
-      {inline ? <button className="design-property-reset" type="button" aria-label={'Reset ' + property}
-        title="Remove inline override" disabled={disabled} onClick={() => onCommit('')}><RotateCcw size={11} /></button> : null}
-    </div>
-    {choices ? <select className="design-input ormi-select" id={id} aria-label={'Selected element ' + property}
-      disabled={disabled} value={inline} onChange={event => onCommit(event.currentTarget.value)}>
-      <option value="">{computed || 'Auto'}</option>
-      {inline && !choices.includes(inline) ? <option value={inline}>{inline}</option> : null}
-      {choices.map(choice => <option key={choice} value={choice}>{choice}</option>)}
-    </select> : <div className="design-style-input">
-      {color ? <ColorSwatch label={label} value={hex} disabled={disabled} onCommit={onCommit} /> : null}
-      <input className="design-input" id={id} aria-label={'Selected element ' + property} disabled={disabled}
-        maxLength={120} defaultValue={displayValue} placeholder={hex ?? (computed || 'Auto')} title={displayValue || computed || 'Auto'}
-        list={color ? 'design-style-colors' : undefined}
-        onKeyDown={event => {
-          if (event.key === 'Escape') event.currentTarget.value = displayValue;
-          if (event.key === 'Escape' || event.key === 'Enter') event.currentTarget.blur();
-        }}
-        onBlur={event => {
-          const value = event.currentTarget.value;
-          event.currentTarget.value = displayValue;
-          if (value !== displayValue) onCommit(value.trim().replace(/\s+/g, ' '));
-        }} />
-    </div>}
+      </details>)}
+    </Section>
+    <Section title="Typography">
+      <div className="design-field-grid">
+        {field('fontFamily', 'Font family', undefined, true)}
+        {field('fontSize', 'Font size')}
+        {field('fontWeight', 'Weight')}
+        {field('color', 'Text color', undefined, true)}
+        {field('lineHeight', 'Line height')}
+        {field('textAlign', 'Text alignment')}
+      </div>
+    </Section>
+    <Section title="Export">
+      <button type="button" className="design-button" onClick={onExport} disabled={disabled}>Download layer HTML</button>
+    </Section>
   </div>;
 }
 
-function ColorSwatch({ label, value, disabled, onCommit }: {
-  label: string;
-  value?: string;
-  disabled: boolean;
-  onCommit(value: string): void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState('#000000');
-  const initialColor = value && value.length >= 7 ? value.slice(0, 7) : '#000000';
-  return <Popover open={open} onOpenChange={next => { if (next) setDraft(initialColor); setOpen(next); }}>
-    <PopoverTrigger asChild>
-      <button type="button" className="design-swatch" aria-label={'Pick ' + label.toLowerCase()} disabled={disabled}>
-        <span style={{ backgroundColor: value }} />
-      </button>
-    </PopoverTrigger>
-    <PopoverContent className="design-property-popup" align="start" side="left" aria-label={label + ' picker'}>
-      <input type="color" aria-label={label} value={draft} onChange={event => setDraft(event.currentTarget.value)} />
-      <button type="button" className="design-button" disabled={disabled} onClick={() => { setOpen(false); onCommit(draft); }}>Apply color</button>
-    </PopoverContent>
-  </Popover>;
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return <section className="design-properties"><h3>{title}</h3>{children}</section>;
 }

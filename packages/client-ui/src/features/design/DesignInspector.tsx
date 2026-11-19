@@ -1,7 +1,8 @@
 import { Code2, Copy, History, MessageSquare, MousePointer2, PanelsTopLeft, SlidersHorizontal, Star, Trash2 } from 'lucide-react';
-import type { DesignDocument, DesignFrame, DesignHistorySummary, DesignOperation } from '@ormicode/protocol';
+import type { DesignDocument, DesignFrame, DesignHistorySummary, DesignOperation, DesignStylePatch, DesignToken, EditableProperty } from '@ormicode/protocol';
 import type { ElementSelection } from './DesignFramePreview.tsx';
 import { DesignElementStyles } from './DesignElementStyles.tsx';
+import type { LayerAlignment, LayerAxis } from './design-inspector-model.ts';
 
 const tabs = [
   { id: 'inspect', label: 'Design', icon: SlidersHorizontal },
@@ -20,7 +21,10 @@ type Props = {
   selectedElement: ElementSelection | null;
   onElementText(text: string): void;
   onSaveText(): void;
-  onStyle(property: string, value: string): void;
+  onStyle(patch: DesignStylePatch): void;
+  onAlign(axis: LayerAxis, alignment: LayerAlignment): void;
+  onCreateToken(property: EditableProperty, token: DesignToken): void;
+  onExportLayer(): void;
   sourceHtml: string;
   sourceStyles: string;
   sourceDirty: boolean;
@@ -66,7 +70,9 @@ export function DesignInspector(props: Props) {
             <textarea aria-label="Selected element text" className="design-input" rows={3} value={element.text} onChange={event => props.onElementText(event.target.value.slice(0, 500))} />
             <button className="design-button" type="button" disabled={locked} onClick={props.onSaveText}>Apply text</button>
           </section> : null}
-          <DesignElementStyles element={element} disabled={locked} onStyle={props.onStyle} />
+          <DesignElementStyles key={frame.id + element.id} element={element} disabled={locked} tokens={document?.tokens ?? []}
+            onStyle={props.onStyle} onAlign={props.onAlign} onCreateToken={props.onCreateToken}
+            onUpdateToken={token => props.onMutate([{ type: 'token.set', token }])} onExport={props.onExportLayer} />
         </> : <>
           <section className="design-properties">
             <h3>Frame</h3>

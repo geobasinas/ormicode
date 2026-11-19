@@ -1,4 +1,6 @@
-import { isEditableProperty, STYLE_RULES } from './design-style.ts';
+import { DESIGN_STYLE_VALUE_LIMIT, STYLE_RULES, isEditableProperty, styleRule } from '@ormicode/protocol';
+import { validElementGeometry } from './design-inspector-model.ts';
+import { INSPECTOR_LAYER_EXPORT_LIMIT } from './inspector-bridge-script.ts';
 
 export const MIN_ZOOM = 0.2;
 export const MAX_ZOOM = 3;
@@ -45,15 +47,19 @@ export function validateBridgeMessage(value: unknown, channel: string): value is
   const message = value as Record<string, unknown>;
   if (message.channel !== channel || typeof message.type !== 'string') return false;
   if (message.type === 'selected') {
-    if (Object.keys(message).some(key => !['channel', 'type', 'id', 'path', 'tag', 'leaf', 'text', 'styles', 'computed'].includes(key)) || typeof message.id !== 'string' || !/^n[0-9]{1,10}$/.test(message.id) || typeof message.path !== 'string' || (message.path !== '' && !/^\d{1,5}(?:\.\d{1,5}){0,23}$/.test(message.path)) || typeof message.tag !== 'string' || !/^[a-z0-9]{1,20}$/.test(message.tag) || typeof message.leaf !== 'boolean' || typeof message.text !== 'string' || message.text.length > 500) return false;
+    if (Object.keys(message).some(key => !['channel', 'type', 'id', 'path', 'tag', 'leaf', 'text', 'styles', 'computed', 'geometry'].includes(key)) || typeof message.id !== 'string' || !/^n[0-9]{1,10}$/.test(message.id) || typeof message.path !== 'string' || (message.path !== '' && !/^\d{1,5}(?:\.\d{1,5}){0,23}$/.test(message.path)) || typeof message.tag !== 'string' || !/^[a-z0-9]{1,20}$/.test(message.tag) || typeof message.leaf !== 'boolean' || typeof message.text !== 'string' || message.text.length > 500) return false;
+    if (message.geometry !== undefined && !validElementGeometry(message.geometry)) return false;
     return validStyleSnapshot(message.styles) && validStyleSnapshot(message.computed);
   }
   if (message.type === 'serialized') return Object.keys(message).every(key => ['channel', 'type', 'html'].includes(key)) && typeof message.html === 'string' && message.html.length <= 65536;
+  if (message.type === 'layerExport') return Object.keys(message).every(key => ['channel', 'type', 'html'].includes(key))
+    && typeof message.html === 'string' && message.html.length <= INSPECTOR_LAYER_EXPORT_LIMIT;
   return false;
 }
 
 function validStyleSnapshot(value: unknown): boolean {
   return !!value && typeof value === 'object' && !Array.isArray(value)
     && Object.keys(value).length <= Object.keys(STYLE_RULES).length
-    && Object.entries(value).every(([key, style]) => isEditableProperty(key) && typeof style === 'string' && style.length <= 120);
+    && Object.entries(value).every(([key, style]) => isEditableProperty(key) && typeof style === 'string'
+      && style.length <= (styleRule(key).limit ?? DESIGN_STYLE_VALUE_LIMIT));
 }

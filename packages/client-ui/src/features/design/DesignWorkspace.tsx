@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type MutableRefObject, type R
 import { ChevronDown, FolderGit2, Frame, Monitor, PanelRight, PanelsTopLeft, Plus, RefreshCw, Smartphone, SquarePlus, X } from 'lucide-react';
 import { pushToComposer } from '../../lib/composer-inbox.ts';
 import { usePlatform } from '../../lib/platform.ts';
-import type { DesignDocument, DesignFrame, DesignOperation, DesignHistorySummary } from '@ormicode/protocol';
+import { designTokenBinding, styleRule, type DesignDocument, type DesignFrame, type DesignOperation, type DesignHistorySummary, type DesignStylePatch } from '@ormicode/protocol';
 import { DesignFramePreview, type ElementSelection } from './DesignFramePreview.tsx';
 import { DesignCanvas, type CanvasTool } from './DesignCanvas.tsx';
 import { DesignInspector, type InspectorTab } from './DesignInspector.tsx';
@@ -11,6 +11,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { sanitizeMarkup } from './sanitize.ts';
 import { clampPosition, fitCanvas, reconcileFrameSelection, resizeRect, zoomAt, type Rect, type View } from './design-model.ts';
 import { validateStyleEdit } from './design-style.ts';
+import { frameMarkupWithToken, renderDesignTokenStyles } from './design-inspector-model.ts';
+import { downloadDesignLayer } from './design-layer-export.ts';
 import { useDesignDrag } from './useDesignDrag.ts';
 import { acceptsDesignRevision, sourceMatches } from './design-live.ts';
 import { useDesignLive } from './useDesignLive.ts';
@@ -268,12 +270,17 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
   const selectedElementRef = useRef<ElementSelection | null>(null);
   selectedElementRef.current = selectedElement;
   const sendText = () => { const selected = selectedElementRef.current; if (selected?.leaf && !savingRef.current && !dirtyRef.current) bridge.current('editText', { id: selected.id, text: selected.text }); };
-  const sendStyle = (property: string, value: string) => {
+  const sendStyle = (patch: DesignStylePatch) => {
     if (savingRef.current || dirtyRef.current) return;
     const selected = selectedElementRef.current;
-    if (!validateStyleEdit(property, value)) { setError(`Invalid value for ${property}.`); return; }
-    if (selected) bridge.current('editStyle', { id: selected.id, property, value });
+    if (!selected || selected.id !== selectedElement?.id || selectedFrameRef.current !== selectedFrame) return;
+    const invalid = Object.entries(patch).find(([property, value]) => !validateStyleEdit(property, value)
+      || (value && !CSS.supports(property.replace(/[A-Z]/g, letter => '-' + letter.toLowerCase()), value)));
+    if (invalid) { setError(`Invalid value for ${invalid[0]}.`); return; }
+    setError('');
+    bridge.current('editStyles', { id: selected.id, patch });
   };
+  const tokenStyles = renderDesignTokenStyles(document?.tokens);
   const zoom = (factor: number) => setView(current => zoomAt(current, { x: canvasSize.width / 2, y: canvasSize.height / 2 }, factor));
   const addElement = (kind: string) => { if (!savingRef.current && !dirtyRef.current) bridge.current('addElement', { kind }); };
   const createComment = () => {
@@ -369,7 +376,8 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
           const patch = kind === 'resize' ? { width: rect.width, height: rect.height } : { x: clampPosition(frame.x + dx), y: clampPosition(frame.y + dy) };
           void mutate([{ type: 'frame.update', frameId: frame.id, patch }]);
         }} onZoom={zoom} onFit={() => fit()} onFitSelection={activeFrame ? () => fit([activeFrame]) : undefined}
-        preview={frame => <DesignFramePreview frame={previewFrame?.id === frame.id ? previewFrame : frame} active={frame.id === selectedFrame} bridge={bridge}
+        preview={frame => <DesignFramePreview frame={previewFrame?.id === frame.id ? previewFrame : frame} active={frame.id === selectedFrame} bridge={bridge} tokenStyles={tokenStyles}
+          onLayerExport={html => { if (selectedFrameRef.current === frame.id && !downloadDesignLayer(html, frame.name + ' layer')) setError('This layer could not be exported within the size limit.'); }}
           selectionRequest={selectionRequest?.frameId === frame.id ? selectionRequest : undefined}
           onReset={() => { if (selectedFrameRef.current === frame.id) setSelectedElement(null); }}
           onSelect={selection => {
@@ -396,6 +404,18 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
     </section>
     {inspectorOpen ? <DesignInspector tab={tab} onTab={setTab} document={document} activeFrame={activeFrame} selectedElement={selectedElement}
       onElementText={text => setSelectedElement(current => current ? { ...current, text } : null)} onSaveText={sendText} onStyle={sendStyle}
+      onAlign={(axis, alignment) => { if (selectedElement && !savingRef.current && !dirtyRef.current) bridge.current('alignElement', { id: selectedElement.id, axis, alignment }); }}
+      onExportLayer={() => { if (selectedElement) bridge.current('exportLayer', { id: selectedElement.id }); }}
+      onCreateToken={(property, token) => {
+        if (!selectedElement || !activeFrame || styleRule(property).token !== token.kind || savingRef.current || dirtyRef.current) return;
+        const html = frameMarkupWithToken(sanitizeMarkup(activeFrame.html), selectedElement.path, selectedElement.tag, property, designTokenBinding(token.name));
+        if (html === undefined) { setError('Select the layer again to bind its new token.'); return; }
+        const { id, path } = selectedElement;
+        void mutate([{ type: 'token.set', token }, { type: 'frame.update', frameId: activeFrame.id, patch: { html } }]).then(ok => {
+          const currentSelection = selectedElementRef.current;
+          if (ok && selectedFrameRef.current === activeFrame.id && (!currentSelection || currentSelection.id === id)) setSelectionRequest({ frameId: activeFrame.id, path });
+        });
+      }}
       sourceHtml={sourceHtml} sourceStyles={sourceStyles} sourceDirty={sourceDirty} sourceConflict={sourceConflict} onSource={updateSource} onSaveSource={saveSource}
       onDiscardSource={() => { dirtyRef.current = false; draftBase.current = undefined; setSourceDirty(false); chooseFrame(reconcileFrameSelection(frames, selectedFrame)); setError(''); }}
       history={history} onRestore={revision => void restore(revision)} feedback={feedback} onFeedback={setFeedback} onAddComment={createComment}

@@ -3,7 +3,7 @@ import { constrainSvg, MAX_SVG_SOURCE, SVG_GEOMETRY_ATTRS, SVG_NS } from './vect
 
 const DOMPurify = createDOMPurify(window);
 
-export const SANITIZE_CONFIG: Parameters<typeof DOMPurify.sanitize>[1] = {
+export const SANITIZE_CONFIG: NonNullable<Parameters<typeof DOMPurify.sanitize>[1]> = {
   USE_PROFILES: { html: true, svg: true },
   FORBID_TAGS: ['script', 'iframe', 'frame', 'object', 'embed', 'form', 'input', 'select', 'textarea', 'a', 'area', 'base', 'meta', 'link', 'video', 'audio', 'source'],
   FORBID_ATTR: ['srcdoc', 'srcset', 'action', 'formaction', 'target', 'download', 'ping', 'autofocus'],
@@ -30,4 +30,8 @@ export function standaloneSvg(input: string): SVGSVGElement | null {
   const { content } = parseMarkup(input.trim());
   const svg = content.firstElementChild;
   return content.childNodes.length === 1 && svg?.namespaceURI === SVG_NS && svg.localName === 'svg' ? svg as SVGSVGElement : null;
+}
+
+export function sanitizeLayerMarkup(input: string): string {
+  return DOMPurify.sanitize(input, { ...SANITIZE_CONFIG, FORBID_TAGS: [...SANITIZE_CONFIG.FORBID_TAGS!, 'style', 'template'] });
 }

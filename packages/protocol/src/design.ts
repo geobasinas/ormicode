@@ -4,6 +4,7 @@ import { designActivityResponseSchema } from './design-activity.ts';
 export { DESIGN_ACTIVITY_LIMIT, type DesignActivityItem } from './design-activity.ts';
 import { designPageSchema, designPageOperations } from './design-pages.ts';
 import { designFrameLayerFields, designFrameOperationSchemas } from './design-frame-ops.ts';
+import { designTokensSchema, designTokenSetSchema } from './design-inspector.ts';
 
 export const DESIGN_DOCUMENT_BYTES = 96 * 1024;
 export const DESIGN_STORAGE_BYTES = 224 * 1024;
@@ -29,6 +30,7 @@ export const designDocumentSchema = z.strictObject({
   pages: z.optional(z.array(designPageSchema).check(z.maxLength(24))),
   frames: z.array(designFrameSchema).check(z.maxLength(24)),
   workingFrameId: z.nullable(id), comments: z.array(designCommentSchema).check(z.maxLength(100)),
+  tokens: z.optional(designTokensSchema),
 }).check(z.refine(document => encodedBytes(document) <= DESIGN_DOCUMENT_BYTES));
 export const designHistorySummarySchema = z.strictObject({ revision, at: z.number().check(z.gte(0)), summary: name });
 export const designStorageSchema = z.strictObject({
@@ -43,6 +45,7 @@ export const designOperationSchema = z.union([
   z.strictObject({ type: z.literal('frame.duplicate'), frameId: id }),
   z.strictObject({ type: z.literal('direction.select'), frameId: z.nullable(id) }),
   z.strictObject({ type: z.literal('board.rename'), name }),
+  designTokenSetSchema,
   z.strictObject({ type: z.literal('comment.add'), frameId: z.nullable(id), element: z.optional(z.string().check(z.maxLength(240))), text: z.string().check(z.minLength(1), z.maxLength(2000)) }),
   z.strictObject({ type: z.literal('comment.resolve'), commentId: id, resolved: z.boolean() }),
   z.strictObject({ type: z.literal('comment.remove'), commentId: id }),

@@ -6,3 +6,5 @@ export * from './events.ts';
 export * from './design.ts';
 export * from './design-pages.ts';
 export * from './design-frame-ops.ts';
+export * from './design-inspector.ts';
+export * from './design-inspector-style.ts';
