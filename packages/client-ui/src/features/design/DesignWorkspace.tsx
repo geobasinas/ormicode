@@ -2,14 +2,14 @@ import { useCallback, useEffect, useRef, useState, type MutableRefObject, type R
 import { FolderGit2, PanelsTopLeft, Plus } from 'lucide-react';
 import { pushToComposer } from '../../lib/composer-inbox.ts';
 import { usePlatform } from '../../lib/platform.ts';
-import { designTokenBinding, styleRule, type DesignDocument, type DesignFrame, type DesignOperation, type DesignHistorySummary, type DesignStylePatch } from '@ormicode/protocol';
-import { DesignFramePreview, type ElementSelection } from './DesignFramePreview.tsx';
+import { designTokenBinding, styleRule, type DesignDocument, type DesignFrame, type DesignOperation, type DesignHistorySummary } from '@ormicode/protocol';
+import { DesignFramePreview, type ElementSelection, type PreviewSource } from './DesignFramePreview.tsx';
 import { DesignCanvas, type CanvasTool } from './DesignCanvas.tsx';
 import { DesignInspector, type InspectorTab } from './DesignInspector.tsx';
 import { DesignLayers } from './DesignLayers.tsx';
 import { sanitizeMarkup } from './sanitize.ts';
 import { clampPosition, fitCanvas, reconcileFrameSelection, type Rect } from './design-model.ts';
-import { validateStyleEdit } from './design-style.ts';
+import { useDesignElementCommands } from './useDesignElementCommands.ts';
 import { frameMarkupWithToken, renderDesignTokenStyles } from './design-inspector-model.ts';
 import { downloadDesignLayer } from './design-layer-export.ts';
 import { useDesignDrag } from './useDesignDrag.ts';
@@ -220,12 +220,15 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
     return true;
   };
   const saveSource = () => { if (selectedFrame) void mutate([{ type: 'frame.update', frameId: selectedFrame, patch: { html: sanitizeMarkup(sourceHtml), styles: sourceStyles } }]); };
-  const directMarkup = (id: string, html: string) => {
+  const directMarkup = (id: string, html: string, source: PreviewSource) => {
     const token = generation.current;
     const base = board.current?.frames.find(frame => frame.id === id);
-    if (!dirtyRef.current) void mutate([{ type: 'frame.update', frameId: id, patch: { html } }]).then(ok => {
+    if (!base || base.locked || dirtyRef.current || selectedFrameRef.current !== id) return;
+    const draft = { ...base, ...source };
+    const save = sourceMatches(base, draft) ? mutate([{ type: 'frame.update', frameId: id, patch: { html } }]) : Promise.resolve(false);
+    void save.then(ok => {
       if (!ok && base && token === generation.current && selectedFrameRef.current === id) {
-        dirtyRef.current = true; draftBase.current = base; setSourceDirty(true); setSourceHtml(html); setSourceStyles(base.styles); setTab('html');
+        dirtyRef.current = true; draftBase.current = draft; setSourceDirty(true); setSourceHtml(html); setSourceStyles(draft.styles); setTab('html');
       }
     });
   };
@@ -270,19 +273,9 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
 
   const selectedElementRef = useRef<ElementSelection | null>(null);
   selectedElementRef.current = selectedElement;
-  const sendText = () => { const selected = selectedElementRef.current; if (selected?.leaf && !savingRef.current && !dirtyRef.current) bridge.current('editText', { id: selected.id, text: selected.text }); };
-  const sendStyle = (patch: DesignStylePatch) => {
-    if (savingRef.current || dirtyRef.current) return;
-    const selected = selectedElementRef.current;
-    if (!selected || selected.id !== selectedElement?.id || selectedFrameRef.current !== selectedFrame) return;
-    const invalid = Object.entries(patch).find(([property, value]) => !validateStyleEdit(property, value)
-      || (value && !CSS.supports(property.replace(/[A-Z]/g, letter => '-' + letter.toLowerCase()), value)));
-    if (invalid) { setError(`Invalid value for ${invalid[0]}.`); return; }
-    setError('');
-    bridge.current('editStyles', { id: selected.id, patch });
-  };
+  const editable = Boolean(activeFrame && !activeFrame.locked && !saving && !sourceDirty);
+  const elementCommands = useDesignElementCommands(activeFrame, selectedElement, editable, session + ':' + slug, bridge, setError);
   const tokenStyles = renderDesignTokenStyles(document?.tokens);
-  const addElement = (kind: string) => { if (!savingRef.current && !dirtyRef.current) bridge.current('addElement', { kind }); };
   const artwork = useDesignArtwork({
     owner: document, scope: JSON.stringify([session, slug, pages.active.id]), frame: activeFrame, enabled: Boolean(document && !saving && !sourceDirty),
     view, size: canvasSize, onError: setError,
@@ -340,6 +333,7 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
         onDrop={frameOps.drop} onDragOver={frameOps.dragOver}
         onNudge={frameOps.nudge} onZoom={zoom} onFit={() => fit()} onFitSelection={visibleFrames.some(frame => frameOps.ids.includes(frame.id)) ? () => fit(visibleFrames.filter(frame => frameOps.ids.includes(frame.id))) : undefined}
         preview={frame => <DesignFramePreview frame={previewFrame?.id === frame.id ? previewFrame : frame} active={frame.id === selectedFrame} bridge={bridge} tokenStyles={tokenStyles}
+          editable={editable} interactive={tool === 'select' && !artwork.drawing} zoom={view.scale}
           onLayerExport={html => { if (selectedFrameRef.current === frame.id && !downloadDesignLayer(html, frame.name + ' layer')) setError('This layer could not be exported within the size limit.'); }}
           selectionRequest={selectionRequest?.frameId === frame.id ? selectionRequest : undefined}
           onReset={() => { if (selectedFrameRef.current === frame.id) setSelectedElement(null); }}
@@ -349,8 +343,8 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
             setSelectedElement(selection);
             setTab(current => current === 'html' ? 'inspect' : current);
             setInspectorOpen(true);
-          }} onMarkup={html => { if (!frame.locked) directMarkup(frame.id, html); }} />}
-        insert={activeFrame ? <InsertElementMenu disabled={saving || sourceDirty || Boolean(activeFrame.locked)} addElement={addElement} /> : null}
+          }} onMarkup={(html, base) => directMarkup(frame.id, html, base)} />}
+        insert={activeFrame ? <InsertElementMenu disabled={!editable || tool !== 'select' || artwork.drawing} addElement={elementCommands.add} addImage={elementCommands.addImage} /> : null}
         empty={!frames.length && !artwork.drawing ? <div className="design-empty-stage"><div className="design-empty">
           <div className="design-empty-icon"><PanelsTopLeft size={24} /></div>
           <h1>{loading ? 'Loading board…' : document ? 'Add your first frame' : slug ? 'Board unavailable' : 'Start a design board'}</h1>
@@ -364,7 +358,7 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
       review={document ? <DesignReviewPanel key={session + ':' + slug} document={document} review={review} disabled={saving || sourceDirty} onThread={openThread}
         target={review.pending ?? { frameId: activeFrame?.id ?? null, ...(selectedElement ? { path: selectedElement.path, element: selectedElement.tag } : {}) }}
         onChat={text => { onShowSidebar(); pushToComposer(session, { text }); }} /> : null}
-      onElementText={text => setSelectedElement(current => current ? { ...current, text } : null)} onSaveText={sendText} onStyle={sendStyle}
+      onElementText={text => setSelectedElement(current => current ? { ...current, text } : null)} onSaveText={elementCommands.text} onStyle={elementCommands.style} elementCommands={elementCommands}
       onAlign={(axis, alignment) => { if (selectedElement && !savingRef.current && !dirtyRef.current) bridge.current('alignElement', { id: selectedElement.id, axis, alignment }); }}
       onExportLayer={() => { if (selectedElement) bridge.current('exportLayer', { id: selectedElement.id }); }}
       onCreateToken={(property, token) => {

@@ -2,6 +2,8 @@ import { Code2, Copy, History, MessageSquare, MousePointer2, PanelsTopLeft, Slid
 import type { DesignDocument, DesignFrame, DesignHistorySummary, DesignOperation, DesignStylePatch, DesignToken, EditableProperty } from '@ormicode/protocol';
 import type { ElementSelection } from './DesignFramePreview.tsx';
 import { DesignElementStyles } from './DesignElementStyles.tsx';
+import { DesignImageLayer } from './DesignImageLayer.tsx';
+import type { useDesignElementCommands } from './useDesignElementCommands.ts';
 import type { LayerAlignment, LayerAxis } from './design-inspector-model.ts';
 import type { ReactNode } from 'react';
 
@@ -23,6 +25,7 @@ type Props = {
   onElementText(text: string): void;
   onSaveText(): void;
   onStyle(patch: DesignStylePatch): void;
+  elementCommands: Pick<ReturnType<typeof useDesignElementCommands>, 'replaceImage' | 'imageAlt' | 'manage'>;
   onAlign(axis: LayerAxis, alignment: LayerAlignment): void;
   onCreateToken(property: EditableProperty, token: DesignToken): void;
   onExportLayer(): void;
@@ -67,6 +70,8 @@ export function DesignInspector(props: Props) {
           <div><strong>{element ? element.text.trim().slice(0, 46) || element.tag : frame.name}</strong><small>{element ? '<' + element.tag + '> · ' + frame.name : (frame.width < 600 ? 'Mobile frame' : 'Frame')}</small></div>
         </header>
         {element ? <>
+          {element.tag === 'img' ? <DesignImageLayer key={element.id} alt={element.alt ?? ''} disabled={frameLocked}
+            onReplace={props.elementCommands.replaceImage} onAlt={props.elementCommands.imageAlt} /> : null}
           {element.leaf ? <section className="design-properties">
             <h3>Content</h3>
             <textarea aria-label="Selected element text" className="design-input" rows={3} value={element.text} disabled={frameLocked} onChange={event => props.onElementText(event.target.value.slice(0, 500))} />
@@ -75,6 +80,13 @@ export function DesignInspector(props: Props) {
           <DesignElementStyles key={frame.id + element.id} element={element} disabled={frameLocked} tokens={document?.tokens ?? []}
             onStyle={props.onStyle} onAlign={props.onAlign} onCreateToken={props.onCreateToken}
             onUpdateToken={token => props.onMutate([{ type: 'token.set', token }])} onExport={props.onExportLayer} />
+          <section className="design-properties">
+            <h3>Layer actions</h3>
+            <div className="design-inline">
+              <button className="design-button" type="button" disabled={frameLocked} onClick={() => props.elementCommands.manage('duplicate')}><Copy size={14} /> Duplicate element</button>
+              <button className="design-icon-button destructive" type="button" disabled={frameLocked} title="Delete element" aria-label="Delete element" onClick={() => props.elementCommands.manage('remove')}><Trash2 size={15} /></button>
+            </div>
+          </section>
         </> : <>
           <section className="design-properties">
             <h3>Frame</h3>

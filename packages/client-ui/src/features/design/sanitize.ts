@@ -6,7 +6,7 @@ const DOMPurify = createDOMPurify(window);
 export const SANITIZE_CONFIG: NonNullable<Parameters<typeof DOMPurify.sanitize>[1]> = {
   USE_PROFILES: { html: true, svg: true },
   FORBID_TAGS: ['script', 'iframe', 'frame', 'object', 'embed', 'form', 'input', 'select', 'textarea', 'a', 'area', 'base', 'meta', 'link', 'video', 'audio', 'source'],
-  FORBID_ATTR: ['srcdoc', 'srcset', 'action', 'formaction', 'target', 'download', 'ping', 'autofocus'],
+  FORBID_ATTR: ['srcdoc', 'srcset', 'action', 'formaction', 'target', 'download', 'ping', 'autofocus', 'contenteditable'],
   ALLOW_DATA_ATTR: false,
   ADD_URI_SAFE_ATTR: SVG_GEOMETRY_ATTRS,
   ALLOWED_URI_REGEXP: /^data:image\/(?:png|jpeg|gif|webp|avif);base64,/i,

@@ -47,11 +47,14 @@ export function validateBridgeMessage(value: unknown, channel: string): value is
   const message = value as Record<string, unknown>;
   if (message.channel !== channel || typeof message.type !== 'string') return false;
   if (message.type === 'selected') {
-    if (Object.keys(message).some(key => !['channel', 'type', 'id', 'path', 'tag', 'leaf', 'text', 'styles', 'computed', 'geometry'].includes(key)) || typeof message.id !== 'string' || !/^n[0-9]{1,10}$/.test(message.id) || typeof message.path !== 'string' || (message.path !== '' && !/^\d{1,5}(?:\.\d{1,5}){0,23}$/.test(message.path)) || typeof message.tag !== 'string' || !/^[a-z0-9]{1,20}$/.test(message.tag) || typeof message.leaf !== 'boolean' || typeof message.text !== 'string' || message.text.length > 500) return false;
+    if (Object.keys(message).some(key => !['channel', 'type', 'id', 'path', 'tag', 'leaf', 'text', 'styles', 'computed', 'geometry', 'alt'].includes(key)) || typeof message.id !== 'string' || !/^n[0-9]{1,10}$/.test(message.id) || typeof message.path !== 'string' || (message.path !== '' && !/^\d{1,5}(?:\.\d{1,5}){0,23}$/.test(message.path)) || typeof message.tag !== 'string' || !/^[a-z0-9]{1,20}$/.test(message.tag) || typeof message.leaf !== 'boolean' || typeof message.text !== 'string' || message.text.length > 500) return false;
+    if ('alt' in message && (message.tag !== 'img' || typeof message.alt !== 'string' || message.alt.length > 500)) return false;
     if (message.geometry !== undefined && !validElementGeometry(message.geometry)) return false;
     return validStyleSnapshot(message.styles) && validStyleSnapshot(message.computed);
   }
-  if (message.type === 'serialized') return Object.keys(message).every(key => ['channel', 'type', 'html'].includes(key)) && typeof message.html === 'string' && message.html.length <= 65536;
+  if (message.type === 'serialized') return Object.keys(message).every(key => ['channel', 'type', 'html', 'stamp'].includes(key))
+    && Number.isSafeInteger(message.stamp) && typeof message.html === 'string' && message.html.length <= 65536;
+  if (message.type === 'selectionCleared') return Object.keys(message).length === 2;
   if (message.type === 'layerExport') return Object.keys(message).every(key => ['channel', 'type', 'html'].includes(key))
     && typeof message.html === 'string' && message.html.length <= INSPECTOR_LAYER_EXPORT_LIMIT;
   return false;

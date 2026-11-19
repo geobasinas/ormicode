@@ -73,7 +73,7 @@ export function DesignElementStyles({ element, disabled, tokens, onStyle, onAlig
           {field('backgroundPosition', 'Image position')}
           {field('backgroundRepeat', 'Image repeat')}
         </> : null}
-        {element.tag === 'img' ? field('objectFit', 'Image fit') : null}
+        {element.tag === 'img' ? <>{field('objectFit', 'Image fit')}{field('objectPosition', 'Crop position')}</> : null}
       </div>
     </Section>
     <Section title="Borders">

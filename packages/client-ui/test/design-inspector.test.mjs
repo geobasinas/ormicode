@@ -19,12 +19,63 @@ function bridgeSession() {
   window.CSS.escape = String;
   new Script(BRIDGE_SCRIPT).runInContext(dom.getInternalVMContext());
   const send = body => window.dispatchEvent(new window.MessageEvent('message', { source: window, origin: 'https://host.invalid', data: { channel, ...body } }));
-  send({ type: 'init', html: '<section><div id="layer" style="width: 40px"><b>Chosen child</b></div><p>Other layer</p></section>',
+  send({ type: 'init', editable: true, interactive: true, stamp: 7, html: '<section><div id="layer" style="width: 40px"><b>Chosen child</b></div><p>Other layer</p></section>',
     styles: '#layer { color: rgb(12, 34, 56); opacity: 0.5 } #layer b { font-size: 22px }', tokenStyles: renderDesignTokenStyles([token]) });
   send({ type: 'selectPath', path: '0.0' });
   const last = type => messages.findLast(message => message.type === type);
   return { window, send, last, messages, layer: window.document.querySelector('#layer') };
 }
+
+test('element editing commits text and embedded images through the selected layer', () => {
+  const { window, send, last, messages, layer } = bridgeSession();
+  const source = 'data:image/png;base64,AAAA';
+  const replacement = 'data:image/webp;base64,BBBB';
+  try {
+    const section = layer.parentElement;
+    const paragraph = section.querySelector('p');
+    paragraph.dispatchEvent(new window.MouseEvent('dblclick', { bubbles: true }));
+    assert.equal(paragraph.getAttribute('contenteditable'), 'plaintext-only');
+    paragraph.textContent = 'Try another title';
+    paragraph.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.equal(paragraph.textContent, 'Other layer');
+    assert.equal(last('serialized'), undefined);
+    paragraph.dispatchEvent(new window.MouseEvent('dblclick', { bubbles: true }));
+    paragraph.textContent = '<strong>A title</strong>';
+    paragraph.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    assert.equal(last('serialized').stamp, 7);
+    assert.match(last('serialized').html, /&lt;strong&gt;A title&lt;\/strong&gt;/);
+    assert.doesNotMatch(last('serialized').html, /contenteditable|data-ormi-node/);
+    assert.ok(validateBridgeMessage(last('serialized'), channel));
+
+    const paragraphId = last('selected').id;
+    send({ type: 'addElement', id: paragraphId, kind: 'image', source: 'data:image/svg+xml;base64,AAAA' });
+    assert.equal(section.querySelector('img'), null);
+    send({ type: 'addElement', id: paragraphId, kind: 'image', source });
+    const img = section.querySelector('img');
+    assert.equal(paragraph.nextElementSibling, img);
+    const imageId = last('selected').id;
+    send({ type: 'replaceImage', id: paragraphId, source: replacement });
+    assert.equal(img.getAttribute('src'), source);
+    send({ type: 'replaceImage', id: imageId, source: replacement });
+    send({ type: 'imageAlt', id: imageId, alt: 'A wind turbine' });
+    send({ type: 'editStyles', id: imageId, patch: { objectFit: 'cover', objectPosition: '20% 45%' } });
+    assert.equal(img.getAttribute('src'), replacement);
+    assert.equal(img.alt, 'A wind turbine');
+    assert.equal(img.style.objectPosition, '20% 45%');
+    assert.equal(last('selected').alt, 'A wind turbine');
+    send({ type: 'manageLayer', id: imageId, action: 'duplicate' });
+    assert.equal(section.querySelectorAll('img').length, 2);
+    send({ type: 'manageLayer', id: last('selected').id, action: 'remove' });
+    assert.equal(section.querySelectorAll('img').length, 1);
+
+    const saved = messages.filter(message => message.type === 'serialized').length;
+    send({ type: 'configureEditor', editable: false, interactive: false });
+    send({ type: 'manageLayer', id: last('selected').id, action: 'remove' });
+    paragraph.dispatchEvent(new window.MouseEvent('dblclick', { bubbles: true }));
+    assert.equal(paragraph.hasAttribute('contenteditable'), false);
+    assert.equal(messages.filter(message => message.type === 'serialized').length, saved);
+  } finally { window.close(); }
+});
 
 test('inspector bridge applies bounded edit batches, keeps authored and computed values separate, and aligns within the parent', () => {
   const { window, send, last, messages, layer } = bridgeSession();

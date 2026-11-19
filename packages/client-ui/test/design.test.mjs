@@ -79,7 +79,7 @@ test('trusted bridge edits only leaf text, validates commands and omits runtime 
   const command = (body, origin = 'https://host.invalid') => window.dispatchEvent(new window.MessageEvent('message', { source: window, origin, data: { channel, ...body } }));
   const selected = () => sent.findLast(message => message.type === 'selected');
   try {
-    command({ type: 'init', html: '<section><p>Hello</p><span>World</span></section>', styles: 'p { color: rgb(12, 34, 56); opacity: 0.5 }' });
+    command({ type: 'init', editable: true, html: '<section><p>Hello</p><span>World</span></section>', styles: 'p { color: rgb(12, 34, 56); opacity: 0.5 }' });
     command({ type: 'selectPath', path: '0.1' }, 'https://wrong.invalid');
     assert.equal(selected(), undefined);
     command({ type: 'selectPath', path: '0.10000.0' });
@@ -112,8 +112,8 @@ test('trusted bridge edits only leaf text, validates commands and omits runtime 
     assert.equal(selected().path, '0');
     command({ type: 'editText', id: selected().id, text: 'Would destroy children' });
     assert.ok(window.document.querySelector('section p'));
-    command({ type: 'addElement', kind: 'button' });
-    assert.equal(window.document.querySelector('#root > button').type, 'button');
+    command({ type: 'addElement', kind: 'button', id: selected().id });
+    assert.equal(window.document.querySelector('#root > section > button').type, 'button');
     const serialized = sent.findLast(message => message.type === 'serialized').html;
     assert.match(serialized, /Updated/);
     assert.doesNotMatch(serialized, /data-ormi-node|script|2147483647/);

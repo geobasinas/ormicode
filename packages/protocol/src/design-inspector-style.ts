@@ -75,6 +75,7 @@ export const STYLE_RULES = {
   backgroundPosition: pattern('(?:left|right|top|bottom|center|' + length + ')(?: (?:left|right|top|bottom|center|' + length + '))?'),
   backgroundRepeat: choices('repeat', 'no-repeat', 'repeat-x', 'repeat-y', 'space', 'round'),
   objectFit: choices('fill', 'contain', 'cover', 'none', 'scale-down'),
+  objectPosition: pattern('(?:left|right|top|bottom|center|-?' + length + ')(?: (?:left|right|top|bottom|center|-?' + length + '))?'),
   borderWidth: pattern('thin|medium|thick|' + lengths), borderStyle: { choices: borderStyle },
   borderTopWidth: borderWidth, borderRightWidth: borderWidth, borderBottomWidth: borderWidth, borderLeftWidth: borderWidth,
   borderTopStyle: { choices: borderStyle }, borderRightStyle: { choices: borderStyle },
