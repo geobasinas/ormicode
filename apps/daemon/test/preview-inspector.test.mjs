@@ -61,8 +61,9 @@ test('inspector helper truncation and React dev-stack parsing are bounded', () =
 
 test('inspector captures HTTP failures and serializes errors and circular values safely', () => {
   const error = new Error('fixture failed');
-  assert.match(serializeInspectorValue(error, 2048), /^Error: fixture failed\nError: fixture failed/);
-  assert.match(serializeInspectorValue(error, 2048), /preview-inspector\.test\.mjs/);
+  assert.equal(serializeInspectorValue(error, 2048), 'Error: fixture failed');
+  assert.match(previewInspectorScript, /stack: trimStack\(error && error\.stack/);
+  assert.doesNotMatch(serializeInspectorValue(error, 2048), /preview-inspector\.test\.mjs/);
   const circular = { ok: true }; circular.self = circular;
   assert.match(serializeInspectorValue(circular, 2048), /"\[Circular\]"/);
   assert.ok(serializeInspectorValue({ value: 'x'.repeat(100) }, 32).length <= 32);

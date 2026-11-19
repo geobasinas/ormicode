@@ -17,6 +17,7 @@ export const chip = {
 };
 export const iconBtn = { background: 'none', border: 'none', color: 'var(--text-hint)', font: 'inherit', cursor: 'pointer', padding: 4, display: 'inline-flex', borderRadius: 6 };
 const chev = <ChevronDown size={11} style={{ color: 'var(--text-hint)', flexShrink: 0 }} />;
+const pickerChip = { ...chip, minWidth: 64, maxWidth: 160 };
 
 const read = (f: File) => new Promise<Attached>((ok, fail) => {
   const r = new FileReader();
@@ -148,8 +149,9 @@ export function ModelChip({ value, models, loading, onChange, refresh, icon, tit
   return (
     <DropdownMenu onOpenChange={open => { if (!open) setQuery(''); }}>
       <DropdownMenuTrigger asChild>
-        <button className="hv-sub" style={chip} title={title}>
-          {icon}<span className="ormi-chip-text">{value === 'default' ? 'default' : current?.label ?? value}</span>{chev}
+        <button className="hv-sub" style={pickerChip} title={`${title ?? 'Model'}: ${current ? `${current.label} (${current.id})` : value}`}>
+          {icon ? <span style={{ display: 'inline-flex', flexShrink: 0 }}>{icon}</span> : null}
+          <span className="ormi-chip-text" style={{ flex: '1 1 20px', minWidth: 20, whiteSpace: 'nowrap' }}>{value === 'default' ? 'default' : current?.label ?? value}</span>{chev}
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" style={{ width: 300, maxWidth: 'calc(100vw - 16px)', maxHeight: 420 }}>
@@ -218,15 +220,19 @@ export function EffortChip({ value, model, models, onChange, icon, title, width 
     if (sets.length && new Set(sets).size === 1) choices = models[0]!.efforts;
   }
   if (selected && !choices?.length) {
-    return <button disabled style={{ ...chip, color: 'var(--text-hint)', cursor: 'not-allowed' }} title="This model has no effort levels">{icon}<span className="ormi-chip-text">{value}</span>{chev}</button>;
+    return <button disabled style={{ ...pickerChip, color: 'var(--text-hint)', cursor: 'not-allowed' }} title="This model has no effort levels">
+      {icon ? <span style={{ display: 'inline-flex', flexShrink: 0 }}>{icon}</span> : null}
+      <span className="ormi-chip-text" style={{ flex: '1 1 20px', minWidth: 20, whiteSpace: 'nowrap' }}>{value}</span>{chev}
+    </button>;
   }
   if (!choices?.length) return <TextChip title={title} icon={icon} width={width} value={value} onCommit={onChange} />;
   const invalid = value !== 'default' && !choices.includes(value);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="hv-sub" style={chip} title={invalid ? 'not offered by this model' : title}>
-          {icon}<span className="ormi-chip-text">{value}</span>
+        <button className="hv-sub" style={pickerChip} title={invalid ? 'not offered by this model' : `${title ?? 'Effort'}: ${value}`}>
+          {icon ? <span style={{ display: 'inline-flex', flexShrink: 0 }}>{icon}</span> : null}
+          <span className="ormi-chip-text" style={{ flex: '1 1 20px', minWidth: 20, whiteSpace: 'nowrap' }}>{value}</span>
           {invalid ? <span aria-label="not offered by this model" style={{ color: 'var(--accent-amber)', fontSize: 10, lineHeight: 1 }}>●</span> : null}
           {chev}
         </button>

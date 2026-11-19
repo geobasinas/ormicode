@@ -176,7 +176,7 @@ test('service and preview methods validate their request and response contracts'
   assert.equal(parseRequestBody('preview.console', { session, after: 10, limit: 20 }).success, true);
   assert.equal(parseRequestBody('preview.consoleClear', { session }).success, true);
   assert.equal(parseResponseBody('service.list', { ports: { base: 41000, count: 10 }, proxy: { port: 123 }, config: { found: true }, services: [entry], detected: [] }).success, true);
-  assert.equal(parseResponseBody('service.logs', { lines: ['line'], next: 1, truncated: false }).success, true);
+  assert.equal(parseResponseBody('service.logs', { lines: [{ text: 'line', stream: 'stderr' }], next: 1, truncated: false }).success, true);
   assert.equal(parseResponseBody('preview.url', { url: 'http://web.localhost:123/__ormi/auth?t=x' }).success, true);
   const consoleEntry = { id: 'pc_1', seq: 1, ts: 10, port: 41000, path: '/', kind: 'network', level: 'error', message: 'HTTP 500', method: 'GET', url: '/broken', status: 500 };
   assert.equal(parseResponseBody('preview.console', { entries: [consoleEntry], next: 1, dropped: 0 }).success, true);

@@ -6,6 +6,7 @@ export type BrowserService = {
   name: string;
   state: BrowserServiceState;
   port: number;
+  code?: number | null;
   detail?: string;
   portals: Portal[];
 };
@@ -20,6 +21,5 @@ export type BrowserListed = {
 export const SERVICES_YAML = `services:
   web:
     command: pnpm dev --port "$PORT"
-    port: 0
     portals: [{ url: /, title: Home }]
 `;

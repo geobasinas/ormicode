@@ -77,7 +77,7 @@ export const serviceResponses = {
   'service.start': z.object({ service: serviceView }),
   'service.stop': z.object({ service: serviceView }),
   'service.restart': z.object({ service: serviceView }),
-  'service.logs': z.object({ lines: z.array(z.string()), next: count, truncated: z.boolean() }),
+  'service.logs': z.object({ lines: z.array(z.object({ text: z.string(), stream: z.enum(['stdout', 'stderr']) })), next: count, truncated: z.boolean() }),
   'preview.url': z.object({ url: nonEmpty }),
   'preview.console': z.object({ entries: z.array(previewConsoleEntry), next: count, dropped: count }),
   'preview.consoleClear': z.object({ cleared: z.literal(true) }),

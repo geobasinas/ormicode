@@ -82,10 +82,10 @@ export function SessionView({ session, rail = 'none', onRail, onOpen, handoffOpe
   if (rail === 'none' || (scratch && rail === 'git')) return <div style={{ height: '100%', background: 'var(--bg-main)' }}>{chat}</div>;
   return (
     <Group id={rail === 'browser' ? 'ormi.session.browser' : 'ormi.session.notes'} orientation="horizontal" defaultLayout={railLayout.defaultLayout} onLayoutChanged={onNotesLayoutChanged} style={{ height: '100%', background: 'var(--bg-main)' }}>
-      <Panel id="chat" minSize={440}>{chat}</Panel>
+      <Panel id="chat" minSize={rail === 'browser' ? 320 : 440}>{chat}</Panel>
       <Separator className="ormi-handle ormi-handle-line" />
       <Panel id="notes" defaultSize={layout?.source === 'user' && layout.regions.rightRail?.size
-        ? layout.regions.rightRail.size : rail === 'browser' ? '50' : '42'} minSize={rail === 'browser' ? 400 : 340} maxSize="65">
+        ? layout.regions.rightRail.size : rail === 'browser' ? '50' : '42'} minSize={rail === 'browser' ? 400 : 340} maxSize={rail === 'browser' ? '80' : '65'}>
         <div className="ormi-pane" style={{ height: '100%', background: 'var(--bg-main)', minWidth: 0, overflow: 'hidden' }}>
           {rail === 'notes' ? <NotesPanel session={session} /> : rail === 'git' ? <GitPane session={session} /> : rail === 'files' ? <FilesPane session={session} onOpenSession={onOpen} /> : rail === 'browser' ? <BrowserPane session={session} /> : <TerminalPane session={session} />}
         </div>

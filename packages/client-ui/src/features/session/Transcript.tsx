@@ -14,6 +14,7 @@ import { ErrorRow, HandoffRow } from './TranscriptRows.tsx';
 import { contextChipLabel } from './composer-parts.tsx';
 import type { PromptContext } from '@ormicode/protocol';
 import { BrowserActionRow } from './BrowserActionRow.tsx';
+import { TranscriptContextDetails } from './TranscriptContextDetails.tsx';
 
 const mono = { fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap' as const, wordBreak: 'break-word' as const };
 const small = { fontSize: 12 };
@@ -70,6 +71,7 @@ function line(e: TranscriptEvent, ctx: Ctx): ReactNode {
   switch (e.kind) {
     case 'prompt': {
       const previousCheckpoint = ctx.events.filter(event => event.kind === 'checkpoint' && event.seq < e.seq).at(-1);
+      const promptContexts = Array.isArray(b.context) ? b.context as PromptContext[] : [], inspectableContexts = promptContexts.filter(entry => entry.kind === 'element' || entry.kind === 'console');
       return (
         <div className="ormi-hover-zone" style={{ display: 'flex', justifyContent: 'flex-end', margin: '10px 0' }}>
           <div style={{ maxWidth: '78%' }}>
@@ -78,9 +80,10 @@ function line(e: TranscriptEvent, ctx: Ctx): ReactNode {
               border: '1px solid var(--line-card)', borderRadius: 'var(--radius-md)',
               color: 'var(--text-active)', fontSize: 14, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
             }}>
-              {Array.isArray(b.context) && b.context.length ? <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 5 }}>{(b.context as PromptContext[]).map((entry, i) => <span key={i} style={{ padding: '1px 5px', borderRadius: 4, background: 'var(--bg-inset)', color: 'var(--text-hint)', fontSize: 10 }}>{contextChipLabel(entry)}</span>)}</div> : null}
+              {promptContexts.length ? <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 5 }}>{promptContexts.map((entry, i) => <span key={i} style={{ padding: '1px 5px', borderRadius: 4, background: 'var(--bg-inset)', color: 'var(--text-hint)', fontSize: 10 }}>{contextChipLabel(entry)}</span>)}</div> : null}
               {Array.isArray(b.attachments) && b.attachments.length ? <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 5 }}>{(b.attachments as { name: string; size?: number }[]).map((file, i) => <span key={i} style={{ padding: '2px 5px', borderRadius: 4, background: 'var(--bg-inset)', color: 'var(--text-hint)', fontSize: 10 }}>{file.name}{file.size ? ` · ${Math.ceil(file.size / 1024)} KB` : ''}</span>)}</div> : null}
               {String(b.text)}
+              {inspectableContexts.length ? <TranscriptContextDetails contexts={inspectableContexts} /> : null}
             </div>
             <PromptActions session={ctx.session} text={String(b.text)} checkpoint={previousCheckpoint ? String(previousCheckpoint.body.id) : undefined} onEdit={ctx.onEditPrompt} />
           </div>

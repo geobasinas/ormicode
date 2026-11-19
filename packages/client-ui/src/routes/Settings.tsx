@@ -1,12 +1,13 @@
 /** Settings tab (Settings-2 mockup): inner nav + one section at a time. Only
  * client-side prefs and existing daemon methods are wired; the rest say so. */
 import { useEffect, useState, type ReactNode } from 'react';
-import { Settings as Gear, Palette, SlidersHorizontal, Bell, Keyboard, Smartphone, Laptop, Shield, Info, Coins, KeyRound, type LucideIcon } from 'lucide-react';
+import { Settings as Gear, Palette, SlidersHorizontal, Bell, Keyboard, Smartphone, Laptop, Shield, Info, Coins, KeyRound, Globe, type LucideIcon } from 'lucide-react';
 import { usePlatform } from '../lib/platform.ts';
 import { ago, compactTokens, formatUsd, projectName } from '../lib/format.ts';
 import { useSessions } from '../features/session/useSessions.ts';
 import { LayoutSettings } from './LayoutSettings.tsx';
 import { BrowserSettings } from './BrowserSettings.tsx';
+import { SettingsSwitch } from './SettingsSwitch.tsx';
 
 export interface Prefs { theme: string; defaultVendor: string; defaultProject: string; worktreeBranchPrefix?: string; projects?: string[]; safeMode?: boolean; screenshotAtCheckpoint?: boolean }
 const KEY = 'ormi.prefs';
@@ -28,6 +29,7 @@ const NAV: { group: string; items: Section[] }[] = [
     { id: 'general', label: 'General', icon: Gear }, { id: 'appearance', label: 'Appearance', icon: Palette },
     { id: 'defaults', label: 'Session defaults', icon: SlidersHorizontal }, { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'layout', label: 'Layout', icon: SlidersHorizontal },
+    { id: 'browser', label: 'Browser', icon: Globe },
     { id: 'shortcuts', label: 'Keyboard shortcuts', icon: Keyboard }] },
   { group: 'CONNECTION', items: [{ id: 'devices', label: 'Paired devices', icon: Smartphone }, { id: 'machines', label: 'Machines', icon: Laptop }] },
   { group: 'DATA', items: [{ id: 'usage', label: 'Usage', icon: Coins }, { id: 'secrets', label: 'Secrets', icon: KeyRound }, { id: 'privacy', label: 'Data and privacy', icon: Shield }, { id: 'about', label: 'About', icon: Info }] },
@@ -39,6 +41,7 @@ const TITLES: Record<string, [string, string]> = {
   layout: ['Layout', 'Arrange the regions in your workspace'],
   notifications: ['Notifications', 'When ormicode should get your attention'],
   shortcuts: ['Keyboard shortcuts', 'Ctrl on Windows and Linux, Cmd on macOS'],
+  browser: ['Browser', 'Preview browser and checkpoint screenshots'],
   devices: ['Paired devices', 'Phones and browsers that can reach this hub'],
   machines: ['Machines', 'Computers running an ormicode daemon'],
   usage: ['Usage', 'Stored token and cost totals'],
@@ -66,14 +69,6 @@ function Row({ title, hint, children, mono, monoTitle }: { title: string; hint?:
       </div>
       {children}
     </div>
-  );
-}
-function Switch({ on, onChange, disabled }: { on: boolean; onChange?: (v: boolean) => void; disabled?: boolean }) {
-  return (
-    <button role="switch" aria-checked={on} disabled={disabled} onClick={() => onChange?.(!on)} style={{
-      width: 30, height: 17, borderRadius: 999, border: 'none', padding: 2, flexShrink: 0, cursor: disabled ? 'default' : 'pointer',
-      background: on ? 'var(--bg-selected)' : 'var(--bg-raised)', display: 'flex', justifyContent: on ? 'flex-end' : 'flex-start',
-    }}><span style={{ width: 13, height: 13, borderRadius: 999, background: on ? 'var(--bg-main)' : 'var(--text-hint)' }} /></button>
   );
 }
 const Soon = ({ what }: { what: string }) => <span style={{ fontSize: 10.5, color: 'var(--text-hint)' }}>{what}</span>;
@@ -326,7 +321,7 @@ export function SettingsView({ prefs, onPrefs, connection }: { prefs: Prefs; onP
           <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>{sub}</div>
           {section === 'general' ? <>
             <Group title="STARTUP">
-              <Row title="Launch at login" hint="Open ormicode when you sign in to your computer"><Switch on={false} disabled /></Row>
+              <Row title="Launch at login" hint="Open ormicode when you sign in to your computer"><SettingsSwitch on={false} disabled /></Row>
               <Row title="Keep running in the tray" hint="The daemon keeps sessions running after you close the window"><Soon what="daemon always runs" /></Row>
             </Group>
             <Group title="WORKSPACE">
@@ -339,13 +334,13 @@ export function SettingsView({ prefs, onPrefs, connection }: { prefs: Prefs; onP
               </Row>
               <Row title="Language" hint="Used for menus and messages"><Soon what="English" /></Row>
             </Group>
-            <BrowserSettings enabled={prefs.screenshotAtCheckpoint !== false} onChange={value => set({ screenshotAtCheckpoint: value })} />
           </> : null}
+          {section === 'browser' ? <BrowserSettings enabled={prefs.screenshotAtCheckpoint !== false} onChange={value => set({ screenshotAtCheckpoint: value })} /> : null}
           {section === 'appearance' ? (
             <Group title="THEME">
               {['dark', 'light'].map(t => (
                 <Row key={t} title={t === 'dark' ? 'Dark' : 'Light'} hint={t === 'dark' ? 'Matches the mockups' : 'Same layout, light palette'}>
-                  <Switch on={prefs.theme === t} onChange={() => set({ theme: t })} />
+                  <SettingsSwitch on={prefs.theme === t} onChange={() => set({ theme: t })} />
                 </Row>
               ))}
             </Group>
