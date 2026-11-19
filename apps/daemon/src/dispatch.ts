@@ -44,6 +44,8 @@ import { copyOutMethod, countScratchFiles } from './scratch-methods.ts';
 import { SESSION_PORT_COUNT } from './session-ports.ts';
 import { serviceMethod } from './service-methods.ts';
 import type { Services } from './services.ts';
+import type { AgentBrowser } from './agent-browser.ts';
+import { browserMethod } from './browser-methods.ts';
 
 /** What a client transport must do: send frames and answer requests. */
 export interface ClientLink {
@@ -78,6 +80,7 @@ export interface DispatchCtx {
   secrets: SecretBroker;
   terminals: TerminalHub;
   services: Services;
+  agentBrowser: AgentBrowser;
   prices: PriceBook;
   record(session: string, kind: string, payload: Record<string, unknown>): void;
 }
@@ -166,6 +169,10 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
       case 'preview.console':
       case 'preview.consoleClear':
         return await serviceMethod(ctx, client, id, method, body);
+      case 'browser.status': case 'browser.settings': case 'browser.setSettings': case 'browser.install':
+      case 'browser.open': case 'browser.click': case 'browser.type': case 'browser.snapshot':
+      case 'browser.screenshot': case 'browser.close': case 'browser.artifact':
+        return await browserMethod(ctx, client, id, method, body);
       case 'pricing.status':
       case 'pricing.refresh':
         await ctx.prices.ensure(method === 'pricing.refresh');
@@ -250,6 +257,8 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
       case 'session.retry': return await retryPrompt(ctx, client, id, body);
       case 'session.delete': case 'session.archive': {
         const session = String(body.session);
+        if (method === 'session.delete') await ctx.agentBrowser.deleteSession(session);
+        else await ctx.agentBrowser.closeSession(session);
         await ctx.services.stopSession(session);
         archiveSession(db, session);
         releaseForSession(db, session);

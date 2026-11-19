@@ -5,6 +5,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { Pencil, CircleAlert, RotateCw, Pause, ChevronRight, History, CircleCheck, MessageCircle, Clock3, Search, Cpu, Gauge } from 'lucide-react';
 import { ToolRow, ThinkingRow, CheckpointMark } from './ToolRow.tsx';
 import type { TranscriptEvent } from './useTranscript.ts';
+import { checkpointPreview } from './checkpoint-preview.ts';
 import { Markdown } from './Markdown.tsx';
 import { TranscriptScroller } from './TranscriptScroller.tsx';
 import { ChangedFilesCard } from './ChangedFilesCard.tsx';
@@ -12,6 +13,7 @@ import { AgentActions, PromptActions } from './MessageActions.tsx';
 import { ErrorRow, HandoffRow } from './TranscriptRows.tsx';
 import { contextChipLabel } from './composer-parts.tsx';
 import type { PromptContext } from '@ormicode/protocol';
+import { BrowserActionRow } from './BrowserActionRow.tsx';
 
 const mono = { fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap' as const, wordBreak: 'break-word' as const };
 const small = { fontSize: 12 };
@@ -33,6 +35,8 @@ const keyOf = (event: TranscriptEvent, index: number) => event.seq > 0 ? event.s
 
 function toolRow(event: TranscriptEvent, ctx: Ctx) {
   const callId = String(event.body.callId);
+  const checkpoint = ctx.results.has(callId) ? ctx.cpAfter.get(ctx.results.get(callId)!.seq) : undefined;
+  const previews = checkpoint ? checkpointPreview(ctx.events, checkpoint) : undefined;
   const children = ctx.children.get(callId) ?? [];
   const nested = renderEvents(children, ctx, true);
   const childRunning = children.some(child =>
@@ -44,7 +48,7 @@ function toolRow(event: TranscriptEvent, ctx: Ctx) {
       && (index === 0 || children[index - 1]?.kind !== child.kind)).length;
   return <ToolRow
     call={event} result={ctx.results.get(callId)}
-    checkpoint={ctx.results.has(callId) ? ctx.cpAfter.get(ctx.results.get(callId)!.seq) : undefined}
+    checkpoint={checkpoint} screenshot={previews?.screenshot} previous={previews?.previous}
     session={ctx.session} childCount={childCount} childRunning={childRunning} nested={nested.length ? nested : undefined}
     busy={ctx.busy} onOpenSession={ctx.onOpenSession} hideCheckpoint={ctx.scratch}
   />;
@@ -92,7 +96,10 @@ function line(e: TranscriptEvent, ctx: Ctx): ReactNode {
     case 'plan':
       return <div style={{ ...mono, ...small, color: 'var(--text-secondary)', fontStyle: 'italic' }}>{String(b.text)}</div>;
     case 'tool_call':
+      if (/^mcp__ormi__ormi_browser_/.test(String(b.name ?? b.tool ?? ''))) return null;
       return toolRow(e, ctx);
+    case 'browser_action':
+      return <BrowserActionRow event={e} session={ctx.session} />;
     case 'tool_result':
       return null;
     case 'error':
@@ -117,10 +124,17 @@ function line(e: TranscriptEvent, ctx: Ctx): ReactNode {
     case 'interrupted':
       return <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--accent-amber)', ...small }}><Pause size={12} /> interrupted{typeof b.reason === 'string' ? ` — ${b.reason}` : ''}</div>;
     case 'checkpoint':
-      if (ctx.attached.has(e.seq)) return null;
-      return <div className="ormi-hover-zone" style={{ position: 'relative', height: 14 }}>
-        <span style={{ position: 'absolute', right: -26, top: -4, width: 22, display: 'inline-flex', justifyContent: 'center' }}><CheckpointMark session={ctx.session} cp={e} busy={ctx.busy} onOpenSession={ctx.onOpenSession} /></span>
-      </div>;
+      {
+        if (ctx.attached.has(e.seq)) return null;
+        const previews = checkpointPreview(ctx.events, e);
+        return <div className="ormi-hover-zone" style={{ position: 'relative', height: 14 }}>
+          <span style={{ position: 'absolute', right: -26, top: -4, width: 22, display: 'inline-flex', justifyContent: 'center' }}><CheckpointMark session={ctx.session} cp={e}
+            screenshot={previews.screenshot} previous={previews.previous}
+            busy={ctx.busy} onOpenSession={ctx.onOpenSession} /></span>
+        </div>;
+      }
+    case 'checkpoint_screenshot':
+      return null;
     case 'checkpoint_restored':
       return <div style={{ ...small, color: 'var(--text-hint)', display: 'flex', gap: 6, alignItems: 'center', margin: '4px 0' }} title={String(b.id ?? '')}>
         <History size={11} />Restored files to checkpoint <span style={mono}>{String(b.id ?? '').slice(0, 7)}</span>

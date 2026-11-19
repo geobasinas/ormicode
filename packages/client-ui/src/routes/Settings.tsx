@@ -6,12 +6,13 @@ import { usePlatform } from '../lib/platform.ts';
 import { ago, compactTokens, formatUsd, projectName } from '../lib/format.ts';
 import { useSessions } from '../features/session/useSessions.ts';
 import { LayoutSettings } from './LayoutSettings.tsx';
+import { BrowserSettings } from './BrowserSettings.tsx';
 
-export interface Prefs { theme: string; defaultVendor: string; defaultProject: string; worktreeBranchPrefix?: string; projects?: string[]; safeMode?: boolean }
+export interface Prefs { theme: string; defaultVendor: string; defaultProject: string; worktreeBranchPrefix?: string; projects?: string[]; safeMode?: boolean; screenshotAtCheckpoint?: boolean }
 const KEY = 'ormi.prefs';
 export const VENDORS = ['claude', 'codex', 'opencode', 'pi', 'grok', 'vibe', 'fake'];
 export function loadPrefs(theme = 'dark'): Prefs {
-  const base: Prefs = { theme, defaultVendor: 'claude', defaultProject: 'scratch', worktreeBranchPrefix: 'ormi/', safeMode: false };
+  const base: Prefs = { theme, defaultVendor: 'claude', defaultProject: 'scratch', worktreeBranchPrefix: 'ormi/', safeMode: false, screenshotAtCheckpoint: true };
   try { return { ...base, ...JSON.parse(globalThis.localStorage?.getItem(KEY) ?? '{}') as Partial<Prefs> }; } catch { return base; }
 }
 function savePrefs(p: Prefs) { try { globalThis.localStorage?.setItem(KEY, JSON.stringify(p)); } catch { /* private mode */ } }
@@ -338,6 +339,7 @@ export function SettingsView({ prefs, onPrefs, connection }: { prefs: Prefs; onP
               </Row>
               <Row title="Language" hint="Used for menus and messages"><Soon what="English" /></Row>
             </Group>
+            <BrowserSettings enabled={prefs.screenshotAtCheckpoint !== false} onChange={value => set({ screenshotAtCheckpoint: value })} />
           </> : null}
           {section === 'appearance' ? (
             <Group title="THEME">

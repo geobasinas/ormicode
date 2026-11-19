@@ -47,6 +47,14 @@ export const eventBodies = {
   }),
   // A restore point after a tool call (seq = the tool_result); overCap = bytes when one checkpoint alone exceeds the cap.
   checkpoint: z.looseObject({ kind: z.literal('checkpoint'), id: nonEmpty, seq: count, tool: text, overCap: z.optional(count) }),
+  browser_action: z.looseObject({
+    kind: z.literal('browser_action'), action: z.enum(['open', 'click', 'type', 'snapshot', 'screenshot', 'close']),
+    target: z.optional(text), url: text, ok: z.boolean(), error: z.optional(text), artifact: z.optional(nonEmpty),
+    actor: z.enum(['agent', 'user', 'auto']),
+  }),
+  checkpoint_screenshot: z.looseObject({
+    kind: z.literal('checkpoint_screenshot'), checkpoint: nonEmpty, artifact: nonEmpty, url: text, actor: z.literal('auto'),
+  }),
   checkpoint_restored: z.looseObject({ kind: z.literal('checkpoint_restored'), id: nonEmpty, mode: nonEmpty }),
   conversation_rewound: z.looseObject({ kind: z.literal('conversation_rewound'), to: count, checkpoint: nonEmpty }),
   renamed: z.looseObject({ kind: z.literal('renamed'), title: nonEmpty }),

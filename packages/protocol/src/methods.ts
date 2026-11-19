@@ -1,6 +1,6 @@
 import * as z from 'zod/mini';
 import { cursorSchema, jsonObjectSchema, requestIdSchema, sessionIdSchema, idSchema, timestampSchema } from './schema.ts';
-import { portBlock, serviceRequests, serviceResponses } from './service-contracts.ts';
+import { portBlock, serviceRequests, serviceResponses, browserRequests, browserResponses } from './service-contracts.ts';
 import { promptContextSchema } from './prompt-context-schema.ts';
 export type { PromptContext } from './prompt-context-schema.ts';
 export type { PreviewConsoleEntry } from './service-contracts.ts';
@@ -200,6 +200,7 @@ export const requestBodies = {
   'terminal.close': z.object({ terminal: nonEmpty }),
   'terminal.list': z.object({}),
   ...serviceRequests,
+  ...browserRequests,
   'checkpoint.list': z.object(session),
   // Without `to`: what `from` changed since the checkpoint before it.
   'checkpoint.diff': z.object({ ...session, from: nonEmpty, to: z.optional(nonEmpty) }),
@@ -240,6 +241,7 @@ export const responseBodies = {
   'session.export': z.object({ text: z.string() }),
   'session.list': z.object({ sessions: z.array(summarySchema) }),
   ...serviceResponses,
+  ...browserResponses,
   'session.prompt': z.object({ accepted: z.literal(true) }),
   'session.draft.get': z.object({ text: z.string() }),
   'session.draft.set': z.object({ saved: z.literal(true) }),
