@@ -30,8 +30,8 @@ export function StateIcon({ state, size = 13 }: { state: string; size?: number }
   return <g.icon size={size} aria-label={stateLabel(state)} style={{ color: g.color, flexShrink: 0 }} fill={g.fill ? 'currentColor' : 'none'} />;
 }
 
-/** Mono sub-line under a session title: `branch` or `scratch · no git`. */
+/** Mono sub-line under a session title. */
 export function whereLine(s: { project: string; branch?: string | null }, withProject?: string): string {
-  if (s.project === 'scratch' || !s.branch) return s.project === 'scratch' ? 'scratch · no git' : withProject ?? 'no branch';
+  if (s.project === 'scratch' || !s.branch) return s.project === 'scratch' ? 'No project' : withProject ?? 'no branch';
   return withProject ? `${withProject} · ${s.branch}` : s.branch;
 }

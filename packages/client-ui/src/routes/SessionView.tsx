@@ -17,19 +17,33 @@ import { stateLabel } from '../features/session/state.tsx';
 import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels';
 import { usePlatform } from '../lib/platform.ts';
 import { HandoffDialog } from '../features/session/HandoffDialog.tsx';
+import type { LayoutDescriptor } from '../lib/layout.ts';
 
 interface SessionCost {
   input: number; output: number; cacheRead: number; cacheWrite: number; turns: number;
   usd: number | null; source: 'reported' | 'estimate' | 'none'; priceVersion: string | null; model: string | null;
 }
 
-export function SessionView({ session, rail = 'none', onRail, onOpen, handoffOpen = false, onHandoffChange }: { session: string; rail?: RailPane; onRail?: (r: RailPane) => void; onOpen?: (session: string) => void; handoffOpen?: boolean; onHandoffChange?(open: boolean): void }) {
+export function SessionView({ session, rail = 'none', onRail, onOpen, handoffOpen = false, onHandoffChange, layout, onLayoutChange }: { session: string; rail?: RailPane; onRail?: (r: RailPane) => void; onOpen?: (session: string) => void; handoffOpen?: boolean; onHandoffChange?(open: boolean): void; layout?: LayoutDescriptor; onLayoutChange?(layout: LayoutDescriptor): void }) {
   const { events, approvals } = useTranscript(session);
   const details = useSession(session);
+  const scratch = details?.project === 'scratch';
   const { transport } = usePlatform();
   const [cost, setCost] = useState<SessionCost>();
   const [editedPrompt, setEditedPrompt] = useState<string>();
   const notesLayout = useDefaultLayout({ id: 'ormi.session.notes', storage: globalThis.localStorage });
+  const onNotesLayoutChanged: typeof notesLayout.onLayoutChanged = (panelLayout, meta) => {
+    notesLayout.onLayoutChanged(panelLayout, meta);
+    if (!meta.isUserInteraction || typeof panelLayout.notes !== 'number') return;
+    const available = Math.max(0, window.innerWidth - (layout?.regions.sidebar?.size ?? 268) - 46);
+    const size = Math.round(panelLayout.notes * available / 100);
+    onLayoutChange?.({
+      ...(layout ?? { version: 1, regions: {} }), source: 'user',
+      regions: { ...layout?.regions, rightRail: { order: layout?.regions.rightRail?.order ?? 3, collapsed: layout?.regions.rightRail?.collapsed ?? true, size } },
+    });
+  };
+  useEffect(() => { if (scratch && rail === 'git') onRail?.('none'); }, [scratch, rail, onRail]);
+  const approvalsAtTop = (layout?.regions.approval?.order ?? 0) > 0;
   useEffect(() => {
     if (!details) return;
     let alive = true;
@@ -50,21 +64,24 @@ export function SessionView({ session, rail = 'none', onRail, onOpen, handoffOpe
           {cost && tokens > 0 ? <span title={costTitle}> · {compactTokens(tokens)} tokens{cost.usd !== null ? ` · ${cost.source === 'estimate' ? '~' : ''}${formatUsd(cost.usd)}` : ''}</span> : null}
         </div>
       </div> : null}
-      <Transcript events={events} session={session} busy={Boolean(details && ['starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying', 'paused_rate_limited'].includes(details.state))} onHandoff={() => onHandoffChange?.(true)} onOpenSession={onOpen} onEditPrompt={setEditedPrompt} />
-      <Approvals session={session} pending={approvals} events={events} />
-      <Composer session={session} details={details} onGit={onRail ? () => onRail('git') : undefined}
+      {approvalsAtTop ? <Approvals session={session} pending={approvals} events={events} /> : null}
+      <Transcript events={events} session={session} scratch={scratch} busy={Boolean(details && ['starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying', 'paused_rate_limited'].includes(details.state))} onHandoff={() => onHandoffChange?.(true)} onOpenSession={onOpen} onEditPrompt={setEditedPrompt} />
+      {!approvalsAtTop ? <Approvals session={session} pending={approvals} events={events} /> : null}
+      <div style={{ minHeight: layout?.regions.composer?.size ?? 0 }}>
+      <Composer session={session} details={details} onGit={scratch ? undefined : onRail ? () => onRail('git') : undefined}
         onOpenRail={onRail ? pane => onRail(pane) : undefined} onHandoff={() => onHandoffChange?.(true)}
         prefill={editedPrompt} onPrefillApplied={() => setEditedPrompt(undefined)} />
+      </div>
       <HandoffDialog session={session} details={details} open={handoffOpen}
         onClose={() => onHandoffChange?.(false)} onOpenSession={onOpen} />
     </div>
   );
-  if (rail === 'none') return <div style={{ height: '100%', background: 'var(--bg-main)' }}>{chat}</div>;
+  if (rail === 'none' || (scratch && rail === 'git')) return <div style={{ height: '100%', background: 'var(--bg-main)' }}>{chat}</div>;
   return (
-    <Group id="ormi.session.notes" orientation="horizontal" defaultLayout={notesLayout.defaultLayout} onLayoutChanged={notesLayout.onLayoutChanged} style={{ height: '100%', background: 'var(--bg-main)' }}>
+    <Group id="ormi.session.notes" orientation="horizontal" defaultLayout={notesLayout.defaultLayout} onLayoutChanged={onNotesLayoutChanged} style={{ height: '100%', background: 'var(--bg-main)' }}>
       <Panel id="chat" minSize={440}>{chat}</Panel>
       <Separator className="ormi-handle ormi-handle-line" />
-      <Panel id="notes" defaultSize="42" minSize={340} maxSize="65">
+      <Panel id="notes" defaultSize={layout?.regions.rightRail?.size ?? '42'} minSize={340} maxSize="65">
         <div className="ormi-pane" style={{ height: '100%', background: 'var(--bg-main)', minWidth: 0, overflow: 'hidden' }}>
           {rail === 'notes' ? <NotesPanel session={session} /> : rail === 'git' ? <GitPane session={session} /> : rail === 'files' ? <FilesPane session={session} onOpenSession={onOpen} /> : <TerminalPane session={session} />}
         </div>

@@ -96,6 +96,7 @@ const queuedPrompt = z.object({
 });
 const detailsSchema = z.extend(summarySchema, {
   cwd: nonEmpty,
+  scratchFiles: z.optional(count),
   model: z.nullable(z.string()), effort: z.nullable(z.string()), mode: z.optional(z.nullable(z.string())),
   // What actually ran: the agent's own session id for resume, its reported version,
   // and the negotiated ACP protocol version when the transport is acp.
@@ -121,6 +122,7 @@ export const requestBodies = {
     parent: z.optional(sessionIdSchema),
   }),
   'session.get': z.object(session),
+  'session.copyOut': z.object({ ...session, paths: z.array(nonEmpty).check(z.minLength(1), z.maxLength(100)), project: nonEmpty, dest: z.optional(z.string()), overwrite: z.optional(z.boolean()) }),
   'session.rename': z.object({ ...session, title: nonEmpty }),
   'session.export': z.object({ ...session, format: z.literal('markdown') }),
   'session.list': z.object({ archived: z.optional(z.boolean()) }),
@@ -236,6 +238,7 @@ export const responseBodies = {
   'daemon.status': z.object({ version: nonEmpty, uptimeMs: cursorSchema, liveWorkers: cursorSchema, relay: z.enum(['connected', 'disconnected']), lastError: z.nullable(z.string()) }),
   'session.start': z.object({ session: sessionIdSchema }),
   'session.get': detailsSchema,
+  'session.copyOut': z.object({ copied: z.array(z.object({ from: nonEmpty, to: nonEmpty })) }),
   'session.rename': z.object({ renamed: z.literal(true), title: nonEmpty }),
   'session.export': z.object({ text: z.string() }),
   'session.list': z.object({ sessions: z.array(summarySchema) }),

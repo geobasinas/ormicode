@@ -32,6 +32,8 @@ const bridge = {
     void ipcRenderer.invoke('ormi:showItemInFolder', absPath).catch(() => undefined);
   },
   pickFolder: (): Promise<string | null> => ipcRenderer.invoke('ormi:pickFolder', 'Choose a project folder'),
+  layoutRead: (): Promise<{ descriptor: unknown | null; errors: string[] }> => ipcRenderer.invoke('ormi:layout:read'),
+  layoutWrite: (descriptor: unknown): Promise<void> => ipcRenderer.invoke('ormi:layout:write', descriptor),
 };
 
 contextBridge.exposeInMainWorld('ormi', bridge);

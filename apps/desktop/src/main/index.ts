@@ -20,6 +20,29 @@ const socketPath = () => process.env.ORMICODE_SOCKET ?? daemonSocket.defaultSock
 const desktopDir = join(daemonSocket.ormicodeDir(), 'desktop');
 const tokenFile = join(desktopDir, 'device.token');
 const remoteFile = join(desktopDir, 'remote.json');
+const layoutFile = join(desktopDir, 'layout.json');
+const layoutRegions = new Set(['sidebar', 'main', 'composer', 'rightRail', 'now.widgets', 'session.panel', 'approval']);
+
+function layoutErrors(value: unknown): string[] {
+  if (!value || typeof value !== 'object') return ['layout is not an object'];
+  const layout = value as { version?: unknown; regions?: unknown };
+  const errors: string[] = [];
+  if (layout.version !== 1) errors.push(`unsupported layout version ${String(layout.version)}`);
+  if (!layout.regions || typeof layout.regions !== 'object' || Array.isArray(layout.regions)) return [...errors, 'layout regions are invalid'];
+  for (const [id, raw] of Object.entries(layout.regions)) {
+    if (!layoutRegions.has(id)) { errors.push(`unknown region ${id}`); continue; }
+    if (!raw || typeof raw !== 'object') { errors.push(`region ${id} is invalid`); continue; }
+    const region = raw as { order?: unknown; size?: unknown; visible?: unknown; collapsed?: unknown };
+    if (typeof region.order !== 'number' || !Number.isFinite(region.order)) errors.push(`region ${id}: order must be a number`);
+    if (region.size !== undefined && (typeof region.size !== 'number' || !Number.isFinite(region.size) || region.size <= 0))
+      errors.push(`region ${id}: size must be positive`);
+    if (region.visible !== undefined && typeof region.visible !== 'boolean') errors.push(`region ${id}: visible must be boolean`);
+    if (region.collapsed !== undefined && typeof region.collapsed !== 'boolean') errors.push(`region ${id}: collapsed must be boolean`);
+    if (id === 'approval' && region.visible === false) errors.push('approval surface cannot be hidden');
+    if (id === 'approval' && typeof region.size === 'number' && region.size < 48) errors.push('approval surface cannot be smaller than 48px');
+  }
+  return errors;
+}
 
 interface RemoteFile { relayUrl: string; account: string; device: string; name: string }
 type AnyLink = Link | WsLink;
@@ -169,6 +192,18 @@ app.whenReady().then(async () => {
     const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
     const picked = await dialog.showOpenDialog(win!, { title: typeof title === 'string' ? title : 'Choose a project folder', properties: ['openDirectory', 'createDirectory'] });
     return picked.canceled ? null : picked.filePaths[0] ?? null;
+  });
+  ipcMain.handle('ormi:layout:read', () => {
+    try {
+      const descriptor = JSON.parse(readFileSync(layoutFile, 'utf8')) as unknown;
+      return { descriptor, errors: layoutErrors(descriptor) };
+    } catch { return { descriptor: null, errors: [] }; }
+  });
+  ipcMain.handle('ormi:layout:write', (_e, descriptor: unknown) => {
+    const errors = layoutErrors(descriptor);
+    if (errors.length) throw new Error(`Invalid layout: ${errors.join('; ')}`);
+    mkdirSync(desktopDir, { recursive: true });
+    writeFileSync(layoutFile, JSON.stringify(descriptor, null, 2), { mode: 0o600 });
   });
   ipcMain.on('ormi:subscribe', (_e, session: string, after?: number) => {
     void link?.request('session.subscribe', { session, ...(after !== undefined ? { after } : {}) });

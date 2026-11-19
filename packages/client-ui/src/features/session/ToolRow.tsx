@@ -182,9 +182,9 @@ export function Detail({ name, input, raw }: { name: string; input: Record<strin
   return <><div style={{ ...hint, marginBottom: 4 }}>{name}</div>{pretty(raw)}</>;
 }
 
-export function ToolRow({ call, result, checkpoint, session, childCount = 0, childRunning, nested }: {
+export function ToolRow({ call, result, checkpoint, session, childCount = 0, childRunning, nested, hideCheckpoint }: {
   call: TranscriptEvent; result?: TranscriptEvent; checkpoint?: TranscriptEvent; session: string;
-  childCount?: number; childRunning?: boolean; nested?: ReactNode; busy?: boolean; onOpenSession?(session: string): void;
+  childCount?: number; childRunning?: boolean; nested?: ReactNode; busy?: boolean; onOpenSession?(session: string): void; hideCheckpoint?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const input = (call.body.input && typeof call.body.input === 'object' ? call.body.input : {}) as Record<string, unknown>;
@@ -212,7 +212,7 @@ export function ToolRow({ call, result, checkpoint, session, childCount = 0, chi
           {open ? <ChevronDown size={11} style={{ ...hint, flexShrink: 0 }} /> : <ChevronRight size={11} className="ormi-hover-reveal" style={{ ...hint, flexShrink: 0 }} />}
           <span style={{ flex: 1 }} />
         </div>
-        {checkpoint ? <span style={{ position: 'absolute', right: -26, top: -1, width: 22, display: 'inline-flex', justifyContent: 'center' }}><CheckpointMark session={session} cp={checkpoint} inline /></span> : null}
+        {checkpoint && !hideCheckpoint ? <span style={{ position: 'absolute', right: -26, top: -1, width: 22, display: 'inline-flex', justifyContent: 'center' }}><CheckpointMark session={session} cp={checkpoint} inline /></span> : null}
       </div>
       {open ? <div style={{ margin: '2px 0 6px 19px', padding: '6px 9px', borderRadius: 6, background: 'var(--bg-inset)', ...mono, fontSize: 11, color: 'var(--text-label)', maxHeight: 280, overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
         <Detail name={String(call.body.name)} input={input} raw={call.body.input} />

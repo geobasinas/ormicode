@@ -31,11 +31,11 @@ function Row({ s, active, onSelect }: { s: SessionSummary; active?: string; onSe
           <span style={{ fontSize: 10.5, color: needs ? 'var(--accent-amber)' : 'var(--text-secondary)', flexShrink: 0 }}>{ago(s.updatedAt ?? 0)}</span>
         </span>
         <span style={{ ...mono, display: 'flex', alignItems: 'center', gap: 4, marginTop: 2, color: 'var(--text-secondary)', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-          {scratch || !s.branch ? <span>{scratch ? 'scratch · no git' : s.vendor ?? ''}</span>
+          {scratch || !s.branch ? <span>{scratch ? 'No project' : s.vendor ?? ''}</span>
             : <><GitBranch size={9} style={{ flexShrink: 0 }} /><span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.branch}</span></>}
           {s.worktree ? <span title="own worktree" style={{ border: '1px solid var(--line-card)', borderRadius: 4, padding: '0 3px', fontSize: 9, flexShrink: 0 }}>wt</span> : null}
           <span style={{ flex: 1 }} />
-          {s.diff ? (s.diff.added || s.diff.removed ? <span title={`${s.diff.files} files changed`} style={{ flexShrink: 0, display: 'inline-flex', gap: 4 }}>
+          {!scratch && s.diff ? (s.diff.added || s.diff.removed ? <span title={`${s.diff.files} files changed`} style={{ flexShrink: 0, display: 'inline-flex', gap: 4 }}>
             {s.diff.added ? <span style={{ color: 'var(--accent-mint)' }}>+{s.diff.added}</span> : null}
             {s.diff.removed ? <span style={{ color: 'var(--accent-red)' }}>−{s.diff.removed}</span> : null}</span>
             : <span style={{ flexShrink: 0 }}>clean</span>) : null}
@@ -76,7 +76,7 @@ export function SessionList({ active, onSelect, query }: { active?: string; onSe
               fontSize: 12, fontWeight: 600, color: project === 'scratch' ? 'var(--text-secondary)' : 'var(--text-label)',
             }}>
               <Folder size={13} style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
-              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{project === 'scratch' ? 'no project' : projectName(project)}</span>
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{project === 'scratch' ? 'No project' : projectName(project)}</span>
               {waiting ? <span style={{ fontWeight: 400, color: 'var(--accent-amber)', fontSize: 10.5 }} title="needs you">{waiting} waiting</span> : null}
             </div>
             {open.map(s => <Row key={s.id} s={s} active={active} onSelect={onSelect} />)}

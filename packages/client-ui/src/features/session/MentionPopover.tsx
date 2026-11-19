@@ -6,7 +6,7 @@ import { usePlatform } from '../../lib/platform.ts';
 export type MentionItem = { label: string; context: PromptContext; group: 'context' | 'files'; hint?: string };
 
 export function MentionPopover({
-  open, query, project, session, position, items, selectedIndex, onItemsChange, onPick,
+  open, query, project, session, position, items, selectedIndex, onItemsChange, onPick, hideDiff,
 }: {
   open: boolean;
   query: string;
@@ -15,6 +15,7 @@ export function MentionPopover({
   position: { left: number; bottom: number };
   items: MentionItem[];
   selectedIndex: number;
+  hideDiff?: boolean;
   onItemsChange: (items: MentionItem[]) => void;
   onPick: (item: MentionItem) => void;
 }) {
@@ -28,10 +29,10 @@ export function MentionPopover({
     }
     const currentRequest = ++requestId.current;
     const contextItems: MentionItem[] = [
-      { label: 'Diff', context: { kind: 'diff' }, group: 'context', hint: 'uncommitted changes' },
-      { label: 'Terminal', context: { kind: 'terminal' }, group: 'context', hint: 'latest output' },
-      { label: 'Notes', context: { kind: 'notes' }, group: 'context', hint: 'session notes' },
-    ];
+      { label: 'Diff', context: { kind: 'diff' as const }, group: 'context' as const, hint: 'uncommitted changes' },
+      { label: 'Terminal', context: { kind: 'terminal' as const }, group: 'context' as const, hint: 'latest output' },
+      { label: 'Notes', context: { kind: 'notes' as const }, group: 'context' as const, hint: 'session notes' },
+    ].filter(item => !hideDiff || item.context.kind !== 'diff');
     onItemsChange(contextItems);
     const timer = window.setTimeout(() => {
       const search = async () => {
@@ -54,7 +55,7 @@ export function MentionPopover({
       window.clearTimeout(timer);
       if (requestId.current === currentRequest) requestId.current++;
     };
-  }, [open, onItemsChange, project, query, session, transport]);
+  }, [open, onItemsChange, project, query, session, transport, hideDiff]);
 
   if (!open) return null;
   const row = (item: MentionItem) => {

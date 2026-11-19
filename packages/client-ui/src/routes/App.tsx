@@ -62,7 +62,7 @@ function Tab({ id, n, active, onSelect, onClose }: { id: string; n?: number; act
       <span className={active ? undefined : 'hv-tab'} style={{ position: 'relative', zIndex: 2, display: 'inline-flex', alignItems: 'center', gap: 8, padding: '4px 11px', borderRadius: 8 }}>
         {n !== undefined ? <span style={{ width: 18, height: 18, borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: active ? 'var(--bg-badge)' : 'var(--bg-raised)', color: active ? 'var(--text-onAccent)' : 'var(--text-label)', fontSize: 10, fontWeight: 700 }}>{n}</span> : null}
         <span style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
-        {active && details?.branch ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'var(--font-mono)', fontSize: 10.5, fontWeight: 400, color: 'var(--text-secondary)' }}><GitBranch size={10} />{details.branch}</span> : null}
+        {active && details?.project !== 'scratch' && details?.branch ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'var(--font-mono)', fontSize: 10.5, fontWeight: 400, color: 'var(--text-secondary)' }}><GitBranch size={10} />{details.branch}</span> : null}
         {onClose ? <X size={12} className="hv-x" style={{ color: 'var(--text-hint)', borderRadius: 4 }} onClick={e => { e.stopPropagation(); onClose(); }} /> : null}
       </span>
       {active ? fillet('right') : null}
@@ -86,12 +86,13 @@ const PANES: string[] = ['notes', 'git', 'terminal', 'files'];
 
 function Rail({ route, rail, onRail }: { route: string; rail: RailPane; onRail: (r: RailPane) => void }) {
   const isSession = route !== 'now';
+  const details = useSession(isSession && route !== 'settings' ? route : undefined);
   return (
     <div style={{
       width: 46, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center',
       padding: '12px 0 0', gap: 4, background: 'var(--bg-window)', alignSelf: 'flex-start',
     }}>
-      {RAIL_ICONS.map(({ id, icon: Icon, label, soon }) => {
+      {RAIL_ICONS.filter(item => !(details?.project === 'scratch' && item.id === 'git')).map(({ id, icon: Icon, label, soon }) => {
         const enabled = PANES.includes(id) ? isSession : !soon;
         const active = id === rail;
         return (
@@ -118,11 +119,15 @@ function ActiveHeader({ session, onOpen, onHandoff }: { session: string; onOpen:
 export function App({ platform, theme: initialTheme, layout }: { platform: ClientPlatform; theme?: string; layout?: LayoutDescriptor }) {
   const [prefs, setPrefs] = useState<Prefs>(() => loadPrefs(initialTheme));
   const theme = prefs.theme;
+  const [storedLayout, setStoredLayout] = useState<LayoutDescriptor>(() => {
+    if (layout) return layout;
+    try { return JSON.parse(globalThis.localStorage?.getItem('ormi.layout') ?? 'null') ?? defaultLayout; } catch { return defaultLayout; }
+  });
   const [tabs, setTabs] = useState<string[]>([]);
   const [route, setRoute] = useState<string>('now');
   const [state, setState] = useState<string>('connecting');
   const [query, setQuery] = useState('');
-  const [rail, setRail] = useState<RailPane>('none');
+  const [rail, setRail] = useState<RailPane>(() => storedLayout.regions.rightRail?.collapsed === false ? 'files' : 'none');
   const [handoffOpen, setHandoffOpen] = useState(false);
   useEffect(() => {
     const on = () => setRail('files');
@@ -131,10 +136,31 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
   }, []);
   const [filter, setFilter] = useState<(typeof FILTER_TABS)[number]>('All');
   const resolved = useMemo(() => {
-    if (!layout) return defaultLayout;
-    const v = validateLayout(layout);
-    return v.ok ? applyLayout(defaultLayout, layout) : defaultLayout;
-  }, [layout]);
+    const v = validateLayout(storedLayout);
+    return v.ok ? applyLayout(defaultLayout, storedLayout, prefs.safeMode) : defaultLayout;
+  }, [storedLayout, prefs.safeMode]);
+  const layoutWriteTimer = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (resolved.regions.rightRail?.collapsed !== false) setRail('none');
+    else setRail(current => current === 'none' ? 'files' : current);
+  }, [resolved.regions.rightRail?.collapsed]);
+  useEffect(() => {
+    const update = (event: Event) => {
+      const descriptor = (event as CustomEvent<LayoutDescriptor>).detail;
+      if (!descriptor) return;
+      setStoredLayout(descriptor);
+      window.clearTimeout(layoutWriteTimer.current);
+      layoutWriteTimer.current = window.setTimeout(() => {
+        if (platform.desktop) void platform.desktop.layoutWrite(descriptor).catch(() => undefined);
+        else try { globalThis.localStorage?.setItem('ormi.layout', JSON.stringify(descriptor)); } catch { /* private mode */ }
+      }, 300);
+    };
+    window.addEventListener('ormi-layout-change', update);
+    return () => {
+      window.removeEventListener('ormi-layout-change', update);
+      window.clearTimeout(layoutWriteTimer.current);
+    };
+  }, [platform]);
 
   useEffect(() => { applyTheme(themeByName(theme)); }, [theme]);
   const searchRef = useMemo(() => ({ current: null as HTMLInputElement | null }), []);
@@ -157,6 +183,19 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
   const sidebar = resolved.regions.sidebar;
   const openRef = useRef((id: string) => { void id; });
   const shellLayout = useDefaultLayout({ id: 'ormi.shell', storage: globalThis.localStorage });
+  const onShellLayoutChanged: typeof shellLayout.onLayoutChanged = (panelLayout, meta) => {
+    shellLayout.onLayoutChanged(panelLayout, meta);
+    if (!meta.isUserInteraction) return;
+    const width = panelLayout.sidebar;
+    if (typeof width !== 'number' || !Number.isFinite(width)) return;
+    const size = Math.round(width * Math.max(0, window.innerWidth - 46) / 100);
+    if (Math.abs(size - (sidebar?.size ?? 268)) < 2) return;
+    const descriptor: LayoutDescriptor = {
+      ...resolved, source: 'user',
+      regions: { ...resolved.regions, sidebar: { ...sidebar, order: sidebar?.order ?? 0, size } },
+    };
+    window.dispatchEvent(new CustomEvent('ormi-layout-change', { detail: descriptor }));
+  };
   const open = (id: string) => {
     setTabs(ts => ts.includes(id) ? ts : [...ts.slice(-(MAX_TABS - 1)), id]);
     setRoute(id);
@@ -173,8 +212,8 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
       <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-window)', color: 'var(--text-label)', fontFamily: 'var(--font-ui)', fontSize: 14, borderRadius: 14, overflow: 'hidden' }}>
         <Titlebar platform={platform} />
         <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-        <Group id="ormi.shell" orientation="horizontal" defaultLayout={shellLayout.defaultLayout} onLayoutChanged={shellLayout.onLayoutChanged} style={{ flex: 1, minWidth: 0 }}>
-          {sidebar?.visible !== false ? <>
+        <Group id="ormi.shell" orientation="horizontal" defaultLayout={shellLayout.defaultLayout} onLayoutChanged={onShellLayoutChanged} style={{ flex: 1, minWidth: 0 }}>
+          {sidebar?.visible !== false && sidebar?.collapsed !== true ? <>
             <Panel id="sidebar" defaultSize={sidebar?.size ?? 268} minSize={220} maxSize={420}>
             <aside style={{
               width: '100%', height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column',
@@ -238,9 +277,10 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
               flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg-main)',
               borderRadius: route === 'now' ? '0 12px 12px 12px' : 12,
             }}>
-              {route === 'now' ? <Now onOpen={open} state={state} />
+              {route === 'now' ? <Now onOpen={open} state={state} layout={resolved} />
                 : route === 'settings' ? <SettingsView prefs={prefs} onPrefs={setPrefs} connection={state} />
-                : <SessionView key={route} session={route} rail={rail} onRail={setRail} onOpen={open} handoffOpen={handoffOpen} onHandoffChange={setHandoffOpen} />}
+                : <SessionView key={route} session={route} rail={rail} onRail={setRail} onOpen={open} handoffOpen={handoffOpen} onHandoffChange={setHandoffOpen} layout={resolved}
+                  onLayoutChange={descriptor => window.dispatchEvent(new CustomEvent('ormi-layout-change', { detail: descriptor }))} />}
             </div>
           </main>
           </Panel>

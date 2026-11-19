@@ -43,12 +43,12 @@ function effortChoices(model: string, models: ListedModel[]): string[] {
 
 /** One chip for everything about the worker: agent + transport in the top
  * section, model and effort behind ▸ submenus. */
-export function AgentChip({ vendor, via, agents, onPick, model, models, onModel, effort, onEffort, loading, refresh, icon, title }: {
+export function AgentChip({ vendor, via, agents, onPick, model, models, onModel, effort, onEffort, loading, refresh, icon, title, fullWidth, showDefaults }: {
   vendor: string; via: string; agents: { vendor: string; transports: string[] }[];
   onPick: (vendor: string, transport: string) => void;
   model: string; models: ListedModel[]; onModel: (id: string) => void;
   effort: string; onEffort: (v: string) => void;
-  loading: boolean; refresh: () => Promise<unknown>; icon?: ReactNode; title?: string;
+  loading: boolean; refresh: () => Promise<unknown>; icon?: ReactNode; title?: string; fullWidth?: boolean; showDefaults?: boolean;
 }) {
   const [query, setQuery] = useState('');
   const list = models.filter(m => m.id !== 'default');
@@ -60,12 +60,12 @@ export function AgentChip({ vendor, via, agents, onPick, model, models, onModel,
   return (
     <DropdownMenu onOpenChange={open => { if (!open) setQuery(''); }}>
       <DropdownMenuTrigger asChild>
-        <button className="hv-sub" style={chip} title={title}>
+        <button className="hv-sub" style={fullWidth ? { ...chip, width: '100%', minWidth: 0, justifyContent: 'flex-start' } : chip} title={title}>
           {icon ?? <VendorIcon vendor={vendor} size={11} />}
           <span className="ormi-chip-text">
             {pair}
-            {model !== 'default' ? ` · ${current?.label ?? model}` : ''}
-            {effort !== 'default' ? ` · ${effort}` : ''}
+            {model !== 'default' || showDefaults ? ` · ${current?.label ?? model}` : ''}
+            {effort !== 'default' || showDefaults ? ` · ${effort}` : ''}
           </span>{chev}
         </button>
       </DropdownMenuTrigger>

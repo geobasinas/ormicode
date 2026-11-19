@@ -68,6 +68,20 @@ test('handoff estimate and brief contracts validate inputs and results', () => {
   }).success, true);
 });
 
+test('scratch copy-out contracts validate project paths and overwrite intent', () => {
+  const request = { session, paths: ['notes/brief.md'], project: '/repo', dest: 'docs' };
+  assert.equal(parseRequestBody('session.copyOut', request).success, true);
+  assert.equal(parseRequestBody('session.copyOut', { ...request, paths: [] }).success, false);
+  assert.equal(parseRequestBody('session.copyOut', { ...request, overwrite: 'yes' }).success, false);
+  assert.equal(parseResponseBody('session.copyOut', { copied: [{ from: 'notes/brief.md', to: 'docs/notes/brief.md' }] }).success, true);
+  assert.equal(parseResponseBody('session.copyOut', { copied: [{ from: '../secret', to: '/tmp/secret' }] }).success, true);
+  const details = {
+    id: session, title: null, state: 'idle', project: 'scratch', cwd: '/scratch/session', vendor: 'fake',
+    transport: 'cli', updatedAt: 1, model: null, effort: null, scratchFiles: 2,
+  };
+  assert.equal(parseResponseBody('session.get', details).success, true);
+});
+
 test('cost totals contracts validate time filters and all aggregation buckets', () => {
   assert.equal(parseRequestBody('cost.totals', {}).success, true);
   assert.equal(parseRequestBody('cost.totals', { since: 0 }).success, true);

@@ -6,6 +6,7 @@ export interface SessionDetails {
   id: string; title: string | null; state: string; project: string; cwd?: string;
   vendor: string; transport: string; updatedAt: number; branch?: string | null;
   worktree?: boolean;
+  scratchFiles?: number;
   model?: string | null; effort?: string | null; mode?: string | null; nativeId?: string | null;
   modes?: { id: string; name: string }[];
   parent?: string | null;

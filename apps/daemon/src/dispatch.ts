@@ -40,6 +40,7 @@ import { expandPrompt, PromptInvalidError, validatePrompt } from './prompt-conte
 import { retryPrompt } from './prompt-methods.ts';
 import { listModels } from './models.ts';
 import { startSession } from './session-start.ts';
+import { copyOutMethod, countScratchFiles } from './scratch-methods.ts';
 
 /** What a client transport must do: send frames and answer requests. */
 export interface ClientLink {
@@ -173,11 +174,13 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         return client.link.reply(id, {
           id: s.id, title: s.title, state: s.state, project: s.project, vendor: s.vendor,
           cwd: s.cwd,
+          ...(s.project === 'scratch' ? { scratchFiles: countScratchFiles(s.cwd) } : {}),
           transport: s.transport, updatedAt: s.updated_at, branch: s.branch, worktree: Boolean(s.worktree),
           model: s.model, effort: s.effort, mode: s.mode,
           nativeId: s.native_id, acpVersion: s.acp_version, parent: s.parent,
         });
       }
+      case 'session.copyOut': return copyOutMethod(ctx, client, id, body);
       case 'session.prompt': {
         const session = String(body.session);
         const s = getSession(db, session);

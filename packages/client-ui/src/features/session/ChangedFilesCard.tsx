@@ -6,7 +6,7 @@ import type { TranscriptEvent } from './useTranscript.ts';
 const countLines = (value: unknown) => typeof value === 'string' && value.length ? value.replace(/\n$/, '').split('\n').length : 0;
 const str = (value: unknown) => typeof value === 'string' ? value : '';
 
-export function ChangedFilesCard({ session, events }: { session: string; events: TranscriptEvent[] }) {
+export function ChangedFilesCard({ session, events, allowDiff = true }: { session: string; events: TranscriptEvent[]; allowDiff?: boolean }) {
   const [open, setOpen] = useState(false);
   const files = useMemo(() => {
     const changed = new Map<string, { path: string; added: number; removed: number }>();
@@ -39,7 +39,7 @@ export function ChangedFilesCard({ session, events }: { session: string; events:
       {removed ? <span style={{ color: 'var(--accent-red)' }}>−{removed}</span> : null}
     </button>
     {open ? <div style={{ display: 'grid', gap: 2, margin: '3px 0 0 17px' }}>
-      {files.map(file => <button key={file.path} type="button" onClick={() => requestOpenFile(session, file.path, true)} title={`Open ${file.path} diff in Files`} style={{ display: 'flex', gap: 6, alignItems: 'center', minWidth: 0, border: 0, padding: '2px 0', background: 'transparent', color: 'var(--text-secondary)', font: 'inherit', cursor: 'pointer', textAlign: 'left' }}>
+      {files.map(file => <button key={file.path} type="button" onClick={() => requestOpenFile(session, file.path, allowDiff)} title={`Open ${file.path}${allowDiff ? ' diff' : ''} in Files`} style={{ display: 'flex', gap: 6, alignItems: 'center', minWidth: 0, border: 0, padding: '2px 0', background: 'transparent', color: 'var(--text-secondary)', font: 'inherit', cursor: 'pointer', textAlign: 'left' }}>
         <FileText size={11} style={{ flexShrink: 0 }} /><span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.path}</span>
         {file.added ? <span style={{ color: 'var(--accent-mint)' }}>+{file.added}</span> : null}{file.removed ? <span style={{ color: 'var(--accent-red)' }}>−{file.removed}</span> : null}
       </button>)}

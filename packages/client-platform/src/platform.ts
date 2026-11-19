@@ -38,6 +38,8 @@ export interface DesktopExtras {
   showItemInFolder(absPath: string): void;
   /** Native folder picker for the project chip; null when cancelled. */
   pickFolder(): Promise<string | null>;
+  layoutRead(): Promise<{ descriptor: unknown | null; errors: string[] }>;
+  layoutWrite(descriptor: unknown): Promise<void>;
 }
 
 export interface ClientPlatform {

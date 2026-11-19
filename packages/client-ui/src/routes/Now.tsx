@@ -6,6 +6,7 @@ import { PairCard } from '../features/pair/PairCard.tsx';
 import { StateIcon, NEEDS_YOU, LIVE, stateLabel, whereLine } from '../features/session/state.tsx';
 import { useDigest, type DigestEntry } from '../features/session/useDigest.ts';
 import { ago, compactTokens, greeting, projectName } from '../lib/format.ts';
+import type { LayoutDescriptor } from '../lib/layout.ts';
 
 const cardBox = {
   background: 'var(--bg-card)', border: '1px solid var(--line-card)',
@@ -77,7 +78,7 @@ function AttentionRow({ s, n, entry, onOpen }: { s: SessionSummary; n: number; e
   );
 }
 
-export function Now({ onOpen, state }: { onOpen: (session: string) => void; state?: string }) {
+export function Now({ onOpen, state, layout }: { onOpen: (session: string) => void; state?: string; layout?: LayoutDescriptor }) {
   const { sessions } = useSessions();
   const digest = useDigest(sessions);
   const sessionsById = new Map(sessions.map(s => [s.id, s]));
@@ -95,6 +96,8 @@ export function Now({ onOpen, state }: { onOpen: (session: string) => void; stat
   }
   const recent = [...sessions].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)).slice(0, 4);
   const right = rows.slice(0, 5);
+  const configuredWidgets = layout?.regions['now.widgets']?.widgets;
+  const widgets = configuredWidgets?.filter(widget => widget === 'recent' || widget === 'needs') ?? ['recent', 'needs'];
   const empty = (t: string) => <div style={{ color: 'var(--text-secondary)', fontSize: 12, height: 38, display: 'flex', alignItems: 'center', padding: '0 12px' }}>{t}</div>;
   return (
     <div style={{ overflow: 'auto', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
@@ -103,20 +106,19 @@ export function Now({ onOpen, state }: { onOpen: (session: string) => void; stat
         {state === 'unpaired' ? <PairCard /> : null}
         <NewSession onStarted={onOpen} />
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}>
-          <div>
-            <div style={head}>RECENT SESSIONS</div>
-            <div style={cardBox}>
-              {recent.map((s, i) => <SessionRow key={s.id} s={s} first={i === 0} onOpen={onOpen} />)}
-              {!recent.length ? empty('No sessions yet. Start one above.') : null}
-            </div>
-          </div>
-          <div>
+          {widgets.map(widget => widget === 'needs' ? <div key="needs">
             <div style={head}>NEEDS YOU</div>
             <div style={cardBox}>
               {right.map(({ s, entry }, i) => <AttentionRow key={s.id} s={s} n={i + 1} entry={entry} onOpen={onOpen} />)}
               {!right.length ? empty('Nothing new since you left') : null}
             </div>
-          </div>
+          </div> : <div key="recent">
+            <div style={head}>RECENT SESSIONS</div>
+            <div style={cardBox}>
+              {recent.map((s, i) => <SessionRow key={s.id} s={s} first={i === 0} onOpen={onOpen} />)}
+              {!recent.length ? empty('No sessions yet. Start one above.') : null}
+            </div>
+          </div>)}
         </div>
       </div>
     </div>

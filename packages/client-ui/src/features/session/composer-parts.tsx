@@ -222,16 +222,18 @@ export function ProjectChip({ value, projects, onChange, onBrowse, icon, title }
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button className="hv-sub" style={chip} title={title}>
-          {icon}<span className="ormi-chip-text">{projectName(value)}</span>{chev}
+          {value === 'scratch' ? <FolderOpen size={12} style={{ color: 'var(--text-hint)' }} /> : icon}
+          <span className="ormi-chip-text">{value === 'scratch' ? 'No project' : projectName(value)}</span>{chev}
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" style={{ maxWidth: 'calc(100vw - 16px)' }}>
         <DropdownMenuLabel>Project</DropdownMenuLabel>
         {['scratch', ...new Map(projects.map(p => [p.replace(/\\/g, '/').toLowerCase(), p])).values()].map(path => (
-          <DropdownMenuItem key={path} onSelect={() => onChange(path)} title={path === 'scratch' ? 'no project folder' : path} className="text-xs">
+          <DropdownMenuItem key={path} onSelect={() => onChange(path)} title={path === 'scratch' ? 'scratch folder, no git' : path} className="text-xs">
             <span style={{ width: 16, display: 'inline-flex' }}>{value === path ? <Check size={13} /> : null}</span>
-            <span className="min-w-0 flex-1 truncate">{projectName(path)}</span>
-            {path !== 'scratch' ? <span style={{ color: 'var(--text-hint)', fontFamily: 'var(--font-mono)', fontSize: 10 }} className="truncate">{path}</span> : null}
+            {path === 'scratch' ? <FolderOpen size={13} style={{ color: 'var(--text-hint)' }} /> : null}
+            <span className="min-w-0 flex-1 truncate">{path === 'scratch' ? 'No project' : projectName(path)}</span>
+            {path === 'scratch' ? <span style={{ color: 'var(--text-hint)', fontSize: 10 }}>scratch folder, no git</span> : <span style={{ color: 'var(--text-hint)', fontFamily: 'var(--font-mono)', fontSize: 10 }} className="truncate">{path}</span>}
           </DropdownMenuItem>
         ))}
         <DropdownMenuSeparator />

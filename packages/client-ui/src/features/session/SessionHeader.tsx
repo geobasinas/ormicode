@@ -7,6 +7,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '../../components/ui/dropdown-menu.tsx';
 import type { SessionDetails } from './useSession.ts';
+import { CopyOutDialog } from './CopyOutDialog.tsx';
 
 
 export function SessionHeader({ session, details, onOpen, onHandoff }: { session: string; details: SessionDetails | undefined; onOpen?: (session: string) => void; onHandoff?(): void }) {
@@ -15,6 +16,8 @@ export function SessionHeader({ session, details, onOpen, onHandoff }: { session
   const [machine, setMachine] = useState('local');
   const [renaming, setRenaming] = useState(false);
   const [title, setTitle] = useState(details?.title ?? '');
+  const [copying, setCopying] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   useEffect(() => {
     try {
       const r = desktop?.remote?.();
@@ -50,7 +53,7 @@ export function SessionHeader({ session, details, onOpen, onHandoff }: { session
     if (fork.type === 'res' && typeof fork.body.session === 'string') onOpen?.(fork.body.session);
   };
 
-  return (
+  return <>
     <div style={{
       display: 'flex', alignItems: 'center', gap: 10, height: 30, minWidth: 0,
       padding: '0 11px 0 var(--space-3)', flexShrink: 1,
@@ -73,8 +76,9 @@ export function SessionHeader({ session, details, onOpen, onHandoff }: { session
           </div> : null}
           {details?.cwd ? <DropdownMenuItem onClick={() => void navigator.clipboard.writeText(details.cwd!)}>Copy path</DropdownMenuItem> : null}
           {details?.cwd && desktop ? <DropdownMenuItem onClick={() => void desktop.openPath(details.cwd!)}>Open worktree folder</DropdownMenuItem> : null}
+          {details?.project === 'scratch' ? <DropdownMenuItem onSelect={() => setCopying(true)}>Copy to project…</DropdownMenuItem> : null}
           <DropdownMenuItem onClick={() => void exportTranscript()}>Export transcript as Markdown</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => void forkLatest()}>Fork from latest checkpoint</DropdownMenuItem>
+          {details?.project !== 'scratch' ? <DropdownMenuItem onClick={() => void forkLatest()}>Fork from latest checkpoint</DropdownMenuItem> : null}
           <DropdownMenuItem onClick={onHandoff}>Hand off…</DropdownMenuItem>
           {canPause ? <DropdownMenuItem onClick={() => act('session.pause')}>Pause session</DropdownMenuItem> : null}
           {canResume ? <DropdownMenuItem onClick={() => act('session.resume')}>Resume session</DropdownMenuItem> : null}
@@ -84,9 +88,22 @@ export function SessionHeader({ session, details, onOpen, onHandoff }: { session
           }}>{copied ? 'Copied!' : 'Copy session id'}</DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => act('session.archive')}>Archive session</DropdownMenuItem>
+          {details?.project === 'scratch' ? <DropdownMenuItem onSelect={event => { event.preventDefault(); setConfirmDelete(true); }}>Delete session…</DropdownMenuItem> : null}
+          {confirmDelete && details?.project === 'scratch' ? <div style={{ padding: '7px 10px', width: 240 }}>
+            <div style={{ fontSize: 11, color: 'var(--accent-amber)', marginBottom: 7 }}>
+              Deletes the scratch folder and {details.scratchFiles ?? 0} files
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
+              <button onClick={() => setConfirmDelete(false)} style={smallButton}>Cancel</button>
+              <button onClick={() => { setConfirmDelete(false); void act('session.delete'); }} style={{ ...smallButton, color: 'var(--accent-red)' }}>Delete</button>
+            </div>
+          </div> : null}
           {canStop ? <DropdownMenuItem variant="destructive" onClick={() => act('session.abort')}>Stop session</DropdownMenuItem> : null}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
-  );
+    {copying && details?.project === 'scratch' ? <CopyOutDialog session={session} onClose={() => setCopying(false)} /> : null}
+  </>;
 }
+
+const smallButton = { border: '1px solid var(--line-card)', borderRadius: 5, background: 'var(--bg-raised)', color: 'var(--text-secondary)', padding: '4px 7px', font: 'inherit', fontSize: 10.5, cursor: 'pointer' };

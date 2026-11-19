@@ -21,7 +21,7 @@ function eventLine(icon: ReactNode, text: string, color = 'var(--text-hint)') {
 interface Ctx {
   session: string; results: Map<string, TranscriptEvent>; cpAfter: Map<number, TranscriptEvent>;
   calls: Set<string>; attached: Set<number>; children: Map<string, TranscriptEvent[]>;
-  hiddenCount: number; showHidden: boolean; toggleHidden(): void; events: TranscriptEvent[];
+  hiddenCount: number; showHidden: boolean; toggleHidden(): void; events: TranscriptEvent[]; scratch: boolean;
   onHandoff?: () => void; onOpenSession?: (session: string) => void; onEditPrompt?: (text: string) => void; busy?: boolean;
 }
 
@@ -44,7 +44,7 @@ function toolRow(event: TranscriptEvent, ctx: Ctx) {
     call={event} result={ctx.results.get(callId)}
     checkpoint={ctx.results.has(callId) ? ctx.cpAfter.get(ctx.results.get(callId)!.seq) : undefined}
     session={ctx.session} childCount={childCount} childRunning={childRunning} nested={nested.length ? nested : undefined}
-    busy={ctx.busy} onOpenSession={ctx.onOpenSession}
+    busy={ctx.busy} onOpenSession={ctx.onOpenSession} hideCheckpoint={ctx.scratch}
   />;
 }
 
@@ -284,7 +284,7 @@ function renderEvents(events: TranscriptEvent[], ctx: Ctx, includeChildren = fal
       if (turnStart !== undefined && turnHadTool && event.ts !== undefined) {
         rows.push(<div key={keyOf(event, i)}>{eventLine(null, durationLabel(turnStart, event.ts))}</div>);
       }
-      rows.push(<ChangedFilesCard key={`changed-${keyOf(event, i)}`} session={ctx.session} events={events.slice((turnStartIndex ?? i) + 1, i)} />);
+      rows.push(<ChangedFilesCard key={`changed-${keyOf(event, i)}`} session={ctx.session} events={events.slice((turnStartIndex ?? i) + 1, i)} allowDiff={!ctx.scratch} />);
       turnStart = undefined;
       turnStartIndex = undefined;
       turnHadTool = false;
@@ -351,7 +351,7 @@ function renderEvents(events: TranscriptEvent[], ctx: Ctx, includeChildren = fal
   return rows;
 }
 
-export function Transcript({ events, session, onHandoff, onOpenSession, onEditPrompt, busy }: { events: TranscriptEvent[]; session: string; onHandoff?: () => void; onOpenSession?: (session: string) => void; onEditPrompt?: (text: string) => void; busy?: boolean }) {
+export function Transcript({ events, session, onHandoff, onOpenSession, onEditPrompt, busy, scratch = false }: { events: TranscriptEvent[]; session: string; onHandoff?: () => void; onOpenSession?: (session: string) => void; onEditPrompt?: (text: string) => void; busy?: boolean; scratch?: boolean }) {
   const [showHidden, setShowHidden] = useState(false);
   const rewind = [...events].reverse().find(event => event.kind === 'conversation_rewound');
   const rewindTo = typeof rewind?.body.to === 'number' ? rewind.body.to : -1;
@@ -370,7 +370,7 @@ export function Transcript({ events, session, onHandoff, onOpenSession, onEditPr
     }
     const resultSeqs = new Set([...results.values()].filter(r => calls.has(String(r.body.callId))).map(r => r.seq));
     for (const e of visibleEvents) if (e.kind === 'checkpoint' && resultSeqs.has(Number(e.body.seq))) { cpAfter.set(Number(e.body.seq), e); attached.add(e.seq); }
-    return { session, results, calls, cpAfter, attached, children, hiddenCount, showHidden, toggleHidden: () => setShowHidden(value => !value), events, onHandoff, onOpenSession, onEditPrompt, busy };
-  }, [visibleEvents, events, session, hiddenCount, showHidden, onHandoff, onOpenSession, onEditPrompt, busy]);
+    return { session, results, calls, cpAfter, attached, children, hiddenCount, showHidden, toggleHidden: () => setShowHidden(value => !value), events, onHandoff, onOpenSession, onEditPrompt, busy, scratch };
+  }, [visibleEvents, events, session, hiddenCount, showHidden, onHandoff, onOpenSession, onEditPrompt, busy, scratch]);
   return <TranscriptScroller count={events.length}>{renderEvents(visibleEvents, ctx)}</TranscriptScroller>;
 }

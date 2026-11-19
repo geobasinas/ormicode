@@ -10,6 +10,7 @@ import { OPEN_FILE, takeOpenFile } from '../../lib/openFile.ts';
 import { useListings, useFileRequest } from './useFiles.ts';
 import { FileView } from './FileView.tsx';
 import { SearchView } from './SearchView.tsx';
+import { CopyOutDialog } from '../session/CopyOutDialog.tsx';
 import { type Entry, GIT_COLOR, GIT_LETTER, baseName, dirName, formatDate, formatSize, sortEntries, typeLabel } from './types.ts';
 
 const ROW = 26;
@@ -37,9 +38,14 @@ export function FilesPane({ session, onOpenSession }: { session: string; onOpenS
   const [view, setView] = useState<'tree' | 'search' | { path: string; line?: number; diff?: boolean }>('tree');
   const [hideIgnored, setHideIgnored] = useState(false);
   const [isGit, setIsGit] = useState(false);
+  const [isScratch, setIsScratch] = useState(false);
+  const [copying, setCopying] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { void request('git.status').then(r => setIsGit(!r.error)); }, [request]);
+  useEffect(() => {
+    void request('git.status').then(r => setIsGit(!r.error));
+    void request<{ project: string }>('session.get').then(r => setIsScratch(r.body?.project === 'scratch'));
+  }, [request]);
   useEffect(() => { void load(cwd); }, [load, cwd]);
   const root = dirs['']?.root ?? dirs[cwd]?.root;
 
@@ -120,6 +126,7 @@ export function FilesPane({ session, onOpenSession }: { session: string; onOpenS
           <DropdownMenuContent align="end">
             {desk?.openPath && abs(cwd) ? <DropdownMenuItem onClick={() => void desk.openPath!(abs(cwd)!)}>Open folder in file manager</DropdownMenuItem> : null}
             {desk?.showItemInFolder && selected && abs(selected) ? <DropdownMenuItem onClick={() => desk.showItemInFolder!(abs(selected)!)}>Show selected in file manager</DropdownMenuItem> : null}
+            {isScratch ? <DropdownMenuItem disabled={!selected} onSelect={() => setCopying(true)}>Copy to project…</DropdownMenuItem> : null}
             <DropdownMenuItem onClick={() => setHideIgnored(h => !h)}>{hideIgnored ? 'Show ignored files' : 'Hide ignored files'}</DropdownMenuItem>
             {selected ? <DropdownMenuItem onClick={() => void navigator.clipboard.writeText(selected)}>Copy relative path</DropdownMenuItem> : null}
           </DropdownMenuContent>
@@ -167,6 +174,7 @@ export function FilesPane({ session, onOpenSession }: { session: string; onOpenS
         <span style={{ flex: 1 }} />
         <span>{listing?.free != null ? `${formatSize(listing.free)} free` : ''}</span>
       </div>
+      {copying ? <CopyOutDialog session={session} initialPaths={selected ? [selected] : []} onClose={() => setCopying(false)} /> : null}
     </div>
   );
 }

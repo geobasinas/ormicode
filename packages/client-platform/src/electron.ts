@@ -26,6 +26,8 @@ interface OrmiBridge {
   openPath(absPath: string): Promise<string>;
   showItemInFolder(absPath: string): void;
   pickFolder(): Promise<string | null>;
+  layoutRead(): Promise<{ descriptor: unknown | null; errors: string[] }>;
+  layoutWrite(descriptor: unknown): Promise<void>;
 }
 
 declare global {
@@ -66,6 +68,8 @@ export function electronPlatform(): ClientPlatform {
       openPath: absPath => b.openPath(absPath),
       showItemInFolder: absPath => b.showItemInFolder(absPath),
       pickFolder: () => b.pickFolder(),
+      layoutRead: () => b.layoutRead(),
+      layoutWrite: descriptor => b.layoutWrite(descriptor),
     },
   };
 }

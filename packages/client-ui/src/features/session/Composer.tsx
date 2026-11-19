@@ -325,7 +325,7 @@ export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefi
           <button className="ormi-narrow-hide" style={iconBtn} title="Prompt history (Ctrl+R)" onClick={openHistory}><History size={14} /></button>
           <button className="ormi-narrow-hide" style={{ ...iconBtn, opacity: 0.45, cursor: 'default' }} title="voice (soon)" disabled><Mic size={15} /></button>
           <span style={{ flex: 1, minWidth: 4 }} />
-          {details?.branch ? (
+          {details?.project !== 'scratch' && details?.branch ? (
             <button
               className="ormi-narrow-hide hv-sub"
               onClick={onGit}
@@ -359,7 +359,7 @@ export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefi
             }}><ArrowUp size={15} strokeWidth={2.5} /></button>
           )}
         </div>
-        <MentionPopover open={mentionOpen} query={mentionQuery} project={details?.project} session={session}
+        <MentionPopover open={mentionOpen} query={mentionQuery} project={details?.project} session={session} hideDiff={details?.project === 'scratch'}
           position={mentionPosition.current} items={mentionItems} selectedIndex={mentionIndex}
           onItemsChange={setMentionItems} onPick={chooseMention} />
         {slashOpen || slashAction ? <div style={{ position: 'absolute', left: 12, bottom: 48, width: 300, maxWidth: 'calc(100vw - 40px)', maxHeight: 320, zIndex: 24, overflowY: 'auto', background: 'var(--bg-raised)', border: '1px solid var(--line-card)', borderRadius: 9, boxShadow: 'var(--shadow-md)', padding: 5 }}>

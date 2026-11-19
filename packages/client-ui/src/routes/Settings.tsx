@@ -5,12 +5,13 @@ import { Settings as Gear, Palette, SlidersHorizontal, Bell, Keyboard, Smartphon
 import { usePlatform } from '../lib/platform.ts';
 import { ago, compactTokens, formatUsd, projectName } from '../lib/format.ts';
 import { useSessions } from '../features/session/useSessions.ts';
+import { LayoutSettings } from './LayoutSettings.tsx';
 
-export interface Prefs { theme: string; defaultVendor: string; defaultProject: string; worktreeBranchPrefix?: string; projects?: string[] }
+export interface Prefs { theme: string; defaultVendor: string; defaultProject: string; worktreeBranchPrefix?: string; projects?: string[]; safeMode?: boolean }
 const KEY = 'ormi.prefs';
 export const VENDORS = ['claude', 'codex', 'opencode', 'pi', 'grok', 'vibe', 'fake'];
 export function loadPrefs(theme = 'dark'): Prefs {
-  const base: Prefs = { theme, defaultVendor: 'claude', defaultProject: 'scratch', worktreeBranchPrefix: 'ormi/' };
+  const base: Prefs = { theme, defaultVendor: 'claude', defaultProject: 'scratch', worktreeBranchPrefix: 'ormi/', safeMode: false };
   try { return { ...base, ...JSON.parse(globalThis.localStorage?.getItem(KEY) ?? '{}') as Partial<Prefs> }; } catch { return base; }
 }
 function savePrefs(p: Prefs) { try { globalThis.localStorage?.setItem(KEY, JSON.stringify(p)); } catch { /* private mode */ } }
@@ -25,6 +26,7 @@ const NAV: { group: string; items: Section[] }[] = [
   { group: 'GENERAL', items: [
     { id: 'general', label: 'General', icon: Gear }, { id: 'appearance', label: 'Appearance', icon: Palette },
     { id: 'defaults', label: 'Session defaults', icon: SlidersHorizontal }, { id: 'notifications', label: 'Notifications', icon: Bell },
+    { id: 'layout', label: 'Layout', icon: SlidersHorizontal },
     { id: 'shortcuts', label: 'Keyboard shortcuts', icon: Keyboard }] },
   { group: 'CONNECTION', items: [{ id: 'devices', label: 'Paired devices', icon: Smartphone }, { id: 'machines', label: 'Machines', icon: Laptop }] },
   { group: 'DATA', items: [{ id: 'usage', label: 'Usage', icon: Coins }, { id: 'secrets', label: 'Secrets', icon: KeyRound }, { id: 'privacy', label: 'Data and privacy', icon: Shield }, { id: 'about', label: 'About', icon: Info }] },
@@ -33,6 +35,7 @@ const TITLES: Record<string, [string, string]> = {
   general: ['General', 'How ormicode runs on this computer'],
   appearance: ['Appearance', 'Theme for this window'],
   defaults: ['Session defaults', 'Used when you start a session from Home'],
+  layout: ['Layout', 'Arrange the regions in your workspace'],
   notifications: ['Notifications', 'When ormicode should get your attention'],
   shortcuts: ['Keyboard shortcuts', 'Ctrl on Windows and Linux, Cmd on macOS'],
   devices: ['Paired devices', 'Phones and browsers that can reach this hub'],
@@ -125,6 +128,24 @@ interface ListedSecret { name: string; scope: 'project' | 'machine'; declared: b
 interface SecretList { keyring: string; available: boolean; message?: string; secrets: ListedSecret[] }
 const secretName = /^[A-Z_][A-Z0-9_]*$/;
 const secretButton = { ...ctl, cursor: 'pointer', fontSize: 11 } as const;
+
+function DefaultProjectPicker({ value, onChange }: { value: string; onChange(path: string): void }) {
+  const { desktop } = usePlatform();
+  const projects = loadPrefs().projects ?? [];
+  const choose = async () => {
+    const path = await desktop?.pickFolder?.() ?? (desktop ? null : globalThis.prompt?.('Project folder path') ?? null);
+    if (path) { rememberProject(path); onChange(path); }
+  };
+  return <select aria-label="default project" className="ormi-select" style={{ ...ctl, width: 200 }} value={value} onChange={event => {
+    if (event.target.value === '__choose') void choose();
+    else onChange(event.target.value);
+  }}>
+    <option value="scratch">No project</option>
+    {value !== 'scratch' && !projects.includes(value) ? <option value={value}>{projectName(value)}</option> : null}
+    {projects.filter(path => path !== 'scratch').map(path => <option key={path} value={path}>{projectName(path)}</option>)}
+    <option value="__choose">Choose folder…</option>
+  </select>;
+}
 
 function SecretItem({ item, project, available, changed }: { item: ListedSecret; project: string; available: boolean; changed: () => void }) {
   const { transport } = usePlatform();
@@ -284,7 +305,7 @@ export function SettingsView({ prefs, onPrefs, connection }: { prefs: Prefs; onP
             </Group>
             <Group title="WORKSPACE">
               <Row title="Default project folder" hint={prefs.defaultProject} mono>
-                <input aria-label="default project" style={{ ...ctl, width: 200, fontFamily: 'var(--font-mono)' }} value={prefs.defaultProject} onChange={e => set({ defaultProject: e.target.value || 'scratch' })} />
+                <DefaultProjectPicker value={prefs.defaultProject} onChange={path => set({ defaultProject: path })} />
               </Row>
               <Row title="Worktree branch prefix" hint="Prefix for new worktree branches" monoTitle>
                 <input aria-label="Worktree branch prefix" style={{ ...ctl, width: 200, fontFamily: 'var(--font-mono)' }}
@@ -310,10 +331,11 @@ export function SettingsView({ prefs, onPrefs, connection }: { prefs: Prefs; onP
                 </select>
               </Row>
               <Row title="Project" hint="Path, or scratch for no project" mono>
-                <input aria-label="default session project" style={{ ...ctl, width: 200, fontFamily: 'var(--font-mono)' }} value={prefs.defaultProject} onChange={e => set({ defaultProject: e.target.value || 'scratch' })} />
+                <DefaultProjectPicker value={prefs.defaultProject} onChange={path => set({ defaultProject: path })} />
               </Row>
             </Group>
           ) : null}
+          {section === 'layout' ? <LayoutSettings safeMode={prefs.safeMode ?? false} onSafeMode={value => set({ safeMode: value })} /> : null}
           {section === 'notifications' ? <Group title="ALERTS"><Row title="Approval and question alerts" hint="Desktop notifications are not wired yet; Needs you on Home lists them"><Soon what="soon" /></Row></Group> : null}
           {section === 'shortcuts' ? <Group title="SHORTCUTS">{SHORTCUTS.map(([a, k]) => <Row key={a} title={a}><span style={{ ...ctl, fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--text-label)' }}>{k}</span></Row>)}</Group> : null}
           {section === 'devices' ? <Devices /> : null}

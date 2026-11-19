@@ -499,11 +499,11 @@ States with several causes carry a `reason` (e.g. `interrupted`: `host_restart`,
 **Ending**
 - `done` when the agent finishes with nothing pending. `archived` when you say so or after an inactivity sweep. Archiving never deletes; retention does.
 - `session.list` hides archived unless `{archived:true}`.
-- `session.delete` hides the session and keeps its record and journal until retention. For a no-project session it also deletes the scratchpad folder, after a warning that names the folder (decided, was G8).
+- `session.delete` hides the session and keeps its record and journal until retention. For a no-project session it also deletes the scratchpad folder after a warning that names the folder and file count.
 
 **Carry-over:** unfinished sessions stay at the top until archived. After 7 days untouched they sink into the normal list.
 
-**Scratchpads:** see [Sessions without a project](#sessions-without-a-project).
+**Scratchpads:** see [Sessions without a project](#sessions-without-a-project). Scratch sessions expose a file count in `session.get`; the UI warns before deletion and supports safe copy-out to a recent or chosen project.
 
 **Children:** a session can own child sessions and form a team ([Teams](#teams)).
 
@@ -736,13 +736,13 @@ An uncertain in-flight tool call is marked interrupted, never automatically repl
 
 ## Sessions without a project
 
-> **Status:** next · **Needs:** [Sessions](#sessions)
+> **Status:** now · **Needs:** [Sessions](#sessions)
 
 **Sessions for work that isn't code: research, writing, admin, small operational jobs.**
 
 - Same app, same agents, terminal, files, artifacts, approvals. Only the defaults change.
 - **No git** — no branches, worktrees, checkpoints or PRs.
-- **Scratchpad:** the session gets `~/.ormicode/scratch/<session>/`. Everything it makes goes there until you copy it somewhere. Deleting the session deletes the folder (with a warning).
+- **Scratchpad:** the session gets `~/.ormicode/scratch/<session>/`. Everything it makes goes there until you copy it somewhere. Deleting the session warns with the file count. “Copy to project…” transfers selected files or folders; paths must stay inside the scratch root and conflicts require explicit overwrite confirmation.
 - **Picking it:** the project dropdown has one extra entry, **No project**. It's drawn by the client only — there's no stored project with that name, so it never shows up in lists, queries or counts. Screens that would be empty are hidden, not greyed out.
 - Moving output into a real project later is a copy; nothing is linked back.
 - **Permissions:** whatever the agent asks, forwarded word for word ([README: approvals](#approvals)). That includes actions that leave the machine (submitting on a website, computer use, driving the browser).
@@ -1106,7 +1106,7 @@ Replay fixtures: a `vibe-acp` v1 and a `codex-acp` v2 capture, each checking one
 
 ## Handoff
 
-> **Status:** next · **Needs:** [Agent adapters](#agent-adapters), [Sessions](#sessions)
+> **Status:** now · **Needs:** [Agent adapters](#agent-adapters), [Sessions](#sessions)
 
 **Switch model, effort or agent mid-task without losing the thread.**
 
@@ -2327,7 +2327,7 @@ CLI is for you and scripts; the built-in MCP server is for models. Both use the 
 
 ## Desktop and web layout
 
-> **Status:** next — descriptor validation + merge implemented in `packages/client-ui/src/lib/layout.ts` (version check, region rules, approval can never be hidden); editing UX, history and agent-applied layouts still ahead. · **Needs:** [First screens](#first-screens)
+> **Status:** in progress — descriptor validation, safe-mode filtering, restricted desktop `layout.read`/`layout.write` IPC, web localStorage, a region editor, 300 ms debounced persistence, sidebar resize updates, Home widget ordering, and a 20-entry history are implemented. Phone/secondary-panel resize integration remains. · **Needs:** [First screens](#first-screens)
 
 **One renderer (`packages/client-ui`) in two shells: Electron on desktop, Worker static assets in the browser.**
 
@@ -2353,7 +2353,7 @@ Each has `order`, `size`, `collapsed`, `visible`. Unknown ids are kept but ignor
 
 **The approval surface** can be moved, resized and collapsed, but never hidden, covered or pushed off-screen, and nothing may render or imitate its buttons. Answers always go through `session.decide`. A layout that breaks these rules is rejected entirely.
 
-**Descriptor:** one JSON per device with version, surface entries, and `source` (`user` or the session that applied it). Desktop: `~/.ormicode/desktop/layout.json`; web: IndexedDB per browser profile. Validated before applying. Client-only — never on the wire; the CLI ignores it. No file = defaults.
+**Descriptor:** one JSON per device with version, surface entries, and `source` (`user` or the session that applied it). Desktop: `~/.ormicode/desktop/layout.json`; web: localStorage per browser profile. Validated before applying and before desktop writes. The last 20 timestamped descriptors are retained in renderer storage. Client-only — never on the wire; the CLI ignores it. No file = defaults.
 
 **Editing**
 - **You:** drag, resize, collapse, show/hide, with keyboard equivalents. Focus and screen-reader order follow visual order.
