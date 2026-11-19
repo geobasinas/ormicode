@@ -17,7 +17,7 @@ export function TerminalPane({ session }: { session: string }) {
             <span key={t.terminal} onClick={() => setActive(t.terminal)} className={on ? undefined : 'hv'} style={{
               display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 8px', borderRadius: 6, cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap',
               fontFamily: 'var(--font-mono)', fontSize: 11, background: on ? 'var(--bg-raised)' : 'transparent',
-              color: on ? 'var(--text-active)' : 'var(--text-hint)', opacity: t.exited ? 0.6 : 1,
+              color: on ? 'var(--text-active)' : 'var(--text-hint)',
             }}>
               <SquareTerminal size={12} />{t.shell}
               <X size={11} style={{ color: 'var(--text-hint)' }} onClick={e => { e.stopPropagation(); close(t.terminal); }} />

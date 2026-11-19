@@ -5,19 +5,19 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { usePlatform } from '../../lib/platform.ts';
 
-const css = (name: string, fallback: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 /** xterm palette from the app's theme tokens, so the terminal follows dark/light themes. */
 function tokenTheme() {
-  const red = css('--accent-red', '#d69c98'); const green = css('--accent-mint', '#9acbaf'); const yellow = css('--accent-amber', '#d9b878');
+  const red = css('--accent-red'); const green = css('--accent-mint'); const yellow = css('--accent-amber');
   return {
-    background: css('--bg-inset', '#171717'), foreground: css('--text-label', '#b7b7b7'),
-    cursor: css('--text-title', '#f2f2f2'), cursorAccent: css('--bg-inset', '#171717'), selectionBackground: css('--bg-raised', '#2a2a2a'),
-    black: css('--bg-raised', '#2a2a2a'), brightBlack: css('--text-hint', '#878787'),
+    background: css('--bg-inset'), foreground: css('--text-label'),
+    cursor: css('--text-title'), cursorAccent: css('--bg-inset'), selectionBackground: css('--bg-raised'),
+    black: css('--bg-raised'), brightBlack: css('--text-hint'),
     red, brightRed: red, green, brightGreen: green, yellow, brightYellow: yellow,
-    ...(document.documentElement.dataset.theme === 'light'
-      ? { blue: '#3f6fa8', brightBlue: '#5583bb', magenta: '#8a5aa8', brightMagenta: '#9d6fba', cyan: '#2f8a86', brightCyan: '#3e9c97' }
-      : { blue: '#8faed1', brightBlue: '#a9c2df', magenta: '#bfa2d1', brightMagenta: '#cdb6dc', cyan: '#8ec5c2', brightCyan: '#a7d3d0' }),
-    white: css('--text-label', '#b7b7b7'), brightWhite: css('--text-title', '#f2f2f2'),
+    blue: css('--ansi-blue'), brightBlue: css('--ansi-bright-blue'),
+    magenta: css('--ansi-magenta'), brightMagenta: css('--ansi-bright-magenta'),
+    cyan: css('--ansi-cyan'), brightCyan: css('--ansi-bright-cyan'),
+    white: css('--text-label'), brightWhite: css('--text-title'),
   };
 }
 

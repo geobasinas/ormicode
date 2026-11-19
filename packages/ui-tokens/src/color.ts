@@ -11,20 +11,20 @@ export interface ColorTokens {
 
 /** The built-in `dark` theme — the reference palette from the designs. */
 export const dark: ColorTokens = {
-  'bg.window': '#101010', 'bg.main': '#1B1B1B', 'bg.card': '#202020', 'bg.raised': '#2A2A2A', 'bg.inset': '#171717', 'bg.chip': '#242424', 'bg.hover': '#262626', 'bg.badge': '#C7C7C7',
-  'line.card': '#2E2E2E', 'line.divider': '#262626', 'line.pane': '#222222', 'line.subtle': '#1F1F1F',
-  'text.title': '#F2F2F2', 'text.active': '#FAFAFA', 'text.label': '#B7B7B7', 'text.secondary': '#909090', 'text.hint': '#878787',
-  'accent.mint': '#9ACBAF', 'accent.amber': '#D9B878', 'accent.red': '#D69C98',
-  'tint.mint': '#2A332D', 'tint.amber': '#2B2518', 'tint.red': '#2A1D1D',
+  'bg.window': '#101010', 'bg.main': '#1B1B1B', 'bg.card': '#202020', 'bg.raised': '#2D2D2D', 'bg.inset': '#171717', 'bg.chip': '#282828', 'bg.hover': '#2E2E2E', 'bg.badge': '#C7C7C7',
+  'line.card': '#3A3A3A', 'line.divider': '#313131', 'line.pane': '#2C2C2C', 'line.subtle': '#262626',
+  'text.title': '#F2F2F2', 'text.active': '#FAFAFA', 'text.label': '#D0D0D0', 'text.secondary': '#ADADAD', 'text.hint': '#9A9A9A',
+  'accent.mint': '#7DDBA8', 'accent.amber': '#F2C25E', 'accent.red': '#F48C84',
+  'tint.mint': '#1F3A2A', 'tint.amber': '#3A2E12', 'tint.red': '#3D201E',
   'text.onAccent': '#181818',
 };
 
 /** Built-in `light` theme — same semantic names, light values. */
 export const light: ColorTokens = {
-  'bg.window': '#E7E7E7', 'bg.main': '#F2F2F2', 'bg.card': '#FAFAFA', 'bg.raised': '#FFFFFF', 'bg.inset': '#EBEBEB', 'bg.chip': '#E4E4E4', 'bg.hover': '#EDEDED', 'bg.badge': '#4A4A4A',
-  'line.card': '#CBCBCB', 'line.divider': '#D2D2D2', 'line.pane': '#C7C7C7', 'line.subtle': '#E8E8E8',
-  'text.title': '#1B1B1B', 'text.active': '#101010', 'text.label': '#353535', 'text.secondary': '#4A4A4A', 'text.hint': '#6A6E76',
-  'accent.mint': '#3B8A64', 'accent.amber': '#A2741C', 'accent.red': '#B4534C',
-  'tint.mint': '#DCEEE3', 'tint.amber': '#F4EBD6', 'tint.red': '#F5E1DE',
+  'bg.window': '#E7E7E7', 'bg.main': '#F2F2F2', 'bg.card': '#FAFAFA', 'bg.raised': '#FFFFFF', 'bg.inset': '#EBEBEB', 'bg.chip': '#E0E0E0', 'bg.hover': '#E8E8E8', 'bg.badge': '#4A4A4A',
+  'line.card': '#B8B8B8', 'line.divider': '#C4C4C4', 'line.pane': '#BABABA', 'line.subtle': '#DEDEDE',
+  'text.title': '#1B1B1B', 'text.active': '#101010', 'text.label': '#242424', 'text.secondary': '#3A3A3A', 'text.hint': '#575B63',
+  'accent.mint': '#1C7547', 'accent.amber': '#8A5A00', 'accent.red': '#B3352B',
+  'tint.mint': '#D2EEDD', 'tint.amber': '#F6E6C2', 'tint.red': '#F7D9D5',
   'text.onAccent': '#FAFAFA',
 };

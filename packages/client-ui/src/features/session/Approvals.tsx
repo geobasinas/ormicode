@@ -30,7 +30,7 @@ function Choice({ label, title, primary, danger, busy, picked, onClick }: { labe
     <button onClick={onClick} disabled={busy} title={title} className={danger ? 'ormi-choice ormi-choice-danger' : 'ormi-choice'} style={{
       font: 'inherit', fontSize: 11.5, height: 22, padding: '0 8px', borderRadius: 6, border: 'none', cursor: busy ? 'default' : 'pointer',
       display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', flexShrink: 0,
-      background: primary || picked ? 'var(--bg-chip)' : 'transparent', color: primary || picked ? 'var(--text-title)' : 'var(--text-label)',
+      background: primary || picked ? 'var(--bg-raised)' : 'transparent', color: primary || picked ? 'var(--text-active)' : 'var(--text-label)',
     }}>{picked ? <Check size={11} /> : null}{label}</button>
   );
 }

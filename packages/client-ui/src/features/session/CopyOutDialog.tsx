@@ -65,13 +65,13 @@ export function CopyOutDialog({ session, onClose, initialPaths = [] }: { session
   };
 
   return <div role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }} style={{
-    position: 'fixed', inset: 0, zIndex: 90, display: 'grid', placeItems: 'center', padding: 20, background: 'rgba(0,0,0,.42)',
+    position: 'fixed', inset: 0, zIndex: 90, display: 'grid', placeItems: 'center', padding: 20, background: 'var(--modal-scrim)',
   }}>
     <section ref={dialog} role="dialog" aria-modal="true" aria-label="Copy to project" onKeyDown={event => {
       if (event.key === 'Enter' && event.target instanceof HTMLInputElement) { event.preventDefault(); void copy(); }
     }} style={{
       width: 'min(440px, 100%)', maxHeight: '85vh', overflow: 'auto', padding: 24, borderRadius: 12,
-      background: 'var(--bg-card)', border: '1px solid var(--line-card)', color: 'var(--text-active)', boxShadow: '0 16px 48px rgba(0,0,0,.3)',
+      background: 'var(--bg-card)', border: '1px solid var(--line-card)', color: 'var(--text-active)', boxShadow: '0 16px 48px var(--shadow-color)',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12 }}>
         <strong style={{ flex: 1, fontSize: 15 }}>Copy to project</strong>

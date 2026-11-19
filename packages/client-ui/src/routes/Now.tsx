@@ -12,7 +12,7 @@ const cardBox = {
   background: 'var(--bg-card)', border: '1px solid var(--line-card)',
   borderRadius: 12, padding: 3, overflow: 'hidden' as const,
 };
-const head = { fontSize: 10, fontWeight: 600, color: 'var(--text-label)', letterSpacing: 1, margin: '0 0 6px 0' };
+const head = { fontSize: 10, fontWeight: 500, color: 'var(--text-label)', letterSpacing: 1, margin: '0 0 6px 0' };
 const rowBtn = {
   textAlign: 'left' as const, font: 'inherit', cursor: 'pointer', width: '100%', height: 38,
   padding: '0 12px 0 9px', background: 'transparent', border: 'none',

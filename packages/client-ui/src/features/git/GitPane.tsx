@@ -29,9 +29,9 @@ export function GitPane({ session }: { session: string }) {
       <div className="ormi-tabs" style={{ display: 'flex', height: 38, boxSizing: 'border-box', borderBottom: '1px solid var(--line-subtle)', padding: '0 4px', flexShrink: 0, overflowX: 'auto' }}>
         {TABS.map(({ id, label, icon: Icon, count, mint }) => (
           <button key={id} onClick={() => setTab(id)} style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 8px', height: 37, flexShrink: 0, border: 'none', background: 'transparent', cursor: 'pointer', font: 'inherit', fontSize: 11.5, whiteSpace: 'nowrap',
-            color: tab === id ? 'var(--text-title)' : 'var(--text-hint)', fontWeight: tab === id ? 600 : 400,
-            borderBottom: tab === id ? '1.5px solid var(--text-title)' : '1.5px solid transparent',
+            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 8px', height: 37, flexShrink: 0, border: 'none', borderRadius: 6, background: tab === id ? 'var(--bg-raised)' : 'transparent', cursor: 'pointer', font: 'inherit', fontSize: 11.5, whiteSpace: 'nowrap',
+            color: tab === id ? 'var(--text-active)' : 'var(--text-hint)', fontWeight: tab === id ? 500 : 400,
+            borderBottom: tab === id ? '1.5px solid var(--accent-mint)' : '1.5px solid transparent',
           }}><Icon size={12} className="ormi-pane-narrow-hide" />{label}{count ? <span className={id === 'pr' ? undefined : 'ormi-pane-narrow-hide'} style={{ display: 'inline-flex' }}><Count mint={mint && id === 'pr'}>{count}</Count></span> : null}</button>
         ))}
       </div>

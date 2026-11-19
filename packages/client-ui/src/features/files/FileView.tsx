@@ -113,7 +113,7 @@ export function FileView({ session, path, line, initialDiff, git, isGit, onBack:
         {editing ? <>
           {saving ? <Loader2 size={13} className="animate-spin" style={{ color: 'var(--text-hint)' }} /> : null}
           <button onClick={() => { setEditing(false); setDraft(undefined); }} className="hv" style={{ ...btn }}><X size={12} />Cancel</button>
-          <button onClick={() => void save()} disabled={draft === undefined || saving} style={{ ...btn, background: 'var(--text-title)', color: 'var(--bg-main)', fontWeight: 600, opacity: draft === undefined ? 0.5 : 1 }}><Check size={12} />Save</button>
+          <button onClick={() => void save()} disabled={draft === undefined || saving} style={{ ...btn, background: 'var(--text-title)', color: 'var(--bg-main)', fontWeight: 600, opacity: draft === undefined ? 0.8 : 1 }}><Check size={12} />Save</button>
         </> : <>
           <Tool title="Ask about the selected lines" disabled={!sel} onClick={() => setAsking(true)}><MessageSquarePlus size={13} /></Tool>
           {isGit ? <Tool title="Diff against HEAD" on={diff !== null} disabled={!text || Boolean(at)} onClick={() => void toggleDiff()}><GitCompareArrows size={13} /></Tool> : null}
@@ -165,11 +165,11 @@ export function FileView({ session, path, line, initialDiff, git, isGit, onBack:
         </div> : null}
       </div>
       {discardAction ? <div role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setDiscardAction(null); }} style={{
-        position: 'fixed', inset: 0, zIndex: 90, display: 'grid', placeItems: 'center', padding: 20, background: 'rgba(0,0,0,.42)',
+        position: 'fixed', inset: 0, zIndex: 90, display: 'grid', placeItems: 'center', padding: 20, background: 'var(--modal-scrim)',
       }}>
         <section ref={discardDialog} role="dialog" aria-modal="true" aria-label="Discard unsaved changes" style={{
           width: 'min(360px, 100%)', padding: 20, borderRadius: 12, background: 'var(--bg-card)', border: '1px solid var(--line-card)',
-          color: 'var(--text-active)', boxShadow: '0 16px 48px rgba(0,0,0,.3)',
+          color: 'var(--text-active)', boxShadow: '0 16px 48px var(--shadow-color)',
         }}>
           <div style={{ fontSize: 14, fontWeight: 600 }}>Discard unsaved changes?</div>
           <div style={{ marginTop: 7, fontSize: 11.5, color: 'var(--text-secondary)' }}>Your edits to {baseName(path)} will be lost.</div>

@@ -46,7 +46,7 @@ const TITLES: Record<string, [string, string]> = {
   about: ['About', 'Versions and connection'],
 };
 
-const label = { fontSize: 10, fontWeight: 600, color: 'var(--text-label)', letterSpacing: 1 };
+const label = { fontSize: 10, fontWeight: 500, color: 'var(--text-label)', letterSpacing: 1 };
 const card = { background: 'var(--bg-card)', border: '1px solid var(--line-card)', borderRadius: 10, overflow: 'hidden' as const };
 const ctl = {
   font: 'inherit', fontSize: 11.5, color: 'var(--text-title)', background: 'transparent', border: '1px solid var(--line-card)',
@@ -313,7 +313,7 @@ export function SettingsView({ prefs, onPrefs, connection }: { prefs: Prefs; onP
               <button key={it.id} className="hv-sub" onClick={() => setSection(it.id)} style={{
                 display: 'flex', alignItems: 'center', gap: 9, width: '100%', height: 29, padding: '0 9px', border: 'none', borderRadius: 7,
                 font: 'inherit', fontSize: 13, cursor: 'pointer', textAlign: 'left',
-                background: section === it.id ? 'var(--bg-card)' : 'transparent', color: section === it.id ? 'var(--text-title)' : 'var(--text-label)',
+                background: section === it.id ? 'var(--bg-raised)' : 'transparent', color: section === it.id ? 'var(--text-active)' : 'var(--text-label)',
               }}><it.icon size={14} style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />{it.label}</button>
             ))}
           </div>

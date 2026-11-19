@@ -72,10 +72,10 @@ export function ImageStrip({ images, onRemove }: { images: Attached[]; onRemove:
       {images.map((im, i) => (
         <span key={i} title={im.name} style={{ position: 'relative', width: 44, height: 44, borderRadius: 7, overflow: 'hidden', border: '1px solid var(--line-card)' }}>
           <img src={im.url} alt={im.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          <span style={{ position: 'absolute', left: 2, bottom: 2, borderRadius: 3, padding: '1px 3px', background: 'rgba(0,0,0,0.65)', color: '#fff', fontSize: 8, lineHeight: 1.2, pointerEvents: 'none' }}>Image #{i + 1}</span>
+          <span style={{ position: 'absolute', left: 2, bottom: 2, borderRadius: 3, padding: '1px 3px', background: 'var(--image-badge)', color: 'var(--text-active)', fontSize: 8, lineHeight: 1.2, pointerEvents: 'none' }}>Image #{i + 1}</span>
           <button aria-label={`remove ${im.name}`} onClick={() => onRemove(i)} style={{
             position: 'absolute', top: 2, right: 2, width: 16, height: 16, borderRadius: 999, border: 'none', padding: 0, cursor: 'pointer',
-            background: 'rgba(0,0,0,0.65)', color: '#ddd', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            background: 'var(--image-badge)', color: 'var(--text-active)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           }}><X size={10} /></button>
         </span>
       ))}
@@ -186,7 +186,7 @@ export function EffortChip({ value, model, models, onChange, icon, title, width 
     if (sets.length && new Set(sets).size === 1) choices = models[0]!.efforts;
   }
   if (selected && !choices?.length) {
-    return <button disabled style={{ ...chip, opacity: 0.45, cursor: 'not-allowed' }} title="This model has no effort levels">{icon}<span className="ormi-chip-text">{value}</span>{chev}</button>;
+    return <button disabled style={{ ...chip, opacity: 0.8, cursor: 'not-allowed' }} title="This model has no effort levels">{icon}<span className="ormi-chip-text">{value}</span>{chev}</button>;
   }
   if (!choices?.length) return <TextChip title={title} icon={icon} width={width} value={value} onCommit={onChange} />;
   const invalid = value !== 'default' && !choices.includes(value);

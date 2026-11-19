@@ -57,8 +57,8 @@ function Tab({ id, n, active, onSelect, onClose }: { id: string; n?: number; act
     <span ref={ref} style={{
       position: 'relative', display: 'inline-flex', alignItems: 'center', fontSize: 11.5, fontWeight: active ? 600 : 400,
       padding: '2px 0 4px', borderRadius: `${R}px ${R}px 0 0`, cursor: 'pointer', whiteSpace: 'nowrap',
-      background: active ? 'var(--bg-main)' : 'transparent',
-      color: active ? 'var(--text-title)' : 'var(--text-secondary)',
+      background: active ? 'var(--bg-raised)' : 'transparent',
+      color: active ? 'var(--text-active)' : 'var(--text-secondary)',
     }} onClick={onSelect}>
       <span className={active ? undefined : 'hv-tab'} style={{ position: 'relative', zIndex: 2, display: 'inline-flex', alignItems: 'center', gap: 8, padding: '4px 11px', borderRadius: 8 }}>
         {n !== undefined ? <span style={{ width: 18, height: 18, borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: active ? 'var(--bg-badge)' : 'var(--bg-raised)', color: active ? 'var(--text-onAccent)' : 'var(--text-label)', fontSize: 10, fontWeight: 700 }}>{n}</span> : null}
@@ -283,10 +283,10 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
               <button className="hv-sub" onClick={() => open('settings')} style={{
                 height: 32, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '0 10px', marginTop: 4,
                 font: 'inherit', cursor: 'pointer', border: 'none', borderRadius: 8, textAlign: 'left',
-                background: route === 'settings' ? 'var(--bg-inset)' : 'transparent',
+                background: route === 'settings' ? 'var(--bg-raised)' : 'transparent',
               }}>
-                <Settings size={15} style={{ color: route === 'settings' ? 'var(--text-title)' : 'var(--text-label)', flexShrink: 0 }} />
-                <span style={{ fontSize: 12.5, color: route === 'settings' ? 'var(--text-title)' : 'var(--text-label)' }}>Settings</span>
+                <Settings size={15} style={{ color: route === 'settings' ? 'var(--text-active)' : 'var(--text-label)', flexShrink: 0 }} />
+                <span style={{ fontSize: 12.5, color: route === 'settings' ? 'var(--text-active)' : 'var(--text-label)' }}>Settings</span>
               </button>
             </aside>
             </Panel>

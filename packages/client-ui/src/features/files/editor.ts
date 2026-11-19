@@ -24,7 +24,7 @@ const theme = EditorView.theme({
   '.cm-selectionBackground, &.cm-focused .cm-selectionBackground, ::selection': { backgroundColor: 'var(--bg-raised) !important' },
   '.cm-selectionMatch': { backgroundColor: 'color-mix(in srgb, var(--accent-amber) 18%, transparent)' },
   '.cm-matchingBracket': { backgroundColor: 'var(--bg-raised)', outline: 'none' },
-  '.cm-foldGutter .cm-gutterElement': { padding: '0 4px', opacity: 0.6 },
+  '.cm-foldGutter .cm-gutterElement': { padding: '0 4px', opacity: 0.8 },
   '.cm-panels': { backgroundColor: 'var(--bg-card)', color: 'var(--text-label)', borderColor: 'var(--line-card)' },
   '.cm-panels input, .cm-panels button': { font: 'inherit', fontSize: '11px' },
   '.cm-searchMatch': { backgroundColor: 'color-mix(in srgb, var(--accent-amber) 28%, transparent)' },

@@ -128,7 +128,7 @@ function relativeTime(timestamp: number): string {
 }
 
 const group = { marginTop: 18 };
-const caption = { marginBottom: 7, fontSize: 10, fontWeight: 600, letterSpacing: 1, color: 'var(--text-label)' };
+const caption = { marginBottom: 7, fontSize: 10, fontWeight: 500, letterSpacing: 1, color: 'var(--text-label)' };
 const card = { overflow: 'hidden', border: '1px solid var(--line-card)', borderRadius: 9, background: 'var(--bg-card)' };
 const knob = { width: 13, height: 13, borderRadius: 99, background: 'var(--bg-main)' };
 const switchStyle = (on: boolean) => ({ width: 30, height: 17, padding: 2, border: 0, borderRadius: 99, background: on ? 'var(--accent-mint)' : 'var(--bg-raised)', display: 'flex', justifyContent: on ? 'flex-end' : 'flex-start', cursor: 'pointer' });

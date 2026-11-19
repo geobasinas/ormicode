@@ -70,8 +70,8 @@ export function ChangesTab({ session, diff, reloadDiff }: { session: string; dif
           </div>
           <textarea value={body} onChange={e => setBody(e.target.value)} placeholder="Description (optional)" rows={3} style={{ width: '100%', marginTop: 6, resize: 'none', background: 'transparent', border: 'none', outline: 'none', color: 'var(--text-label)', font: 'inherit', fontSize: 11.5, lineHeight: 1.5 }} />
           <div style={{ display: 'flex', gap: 12, ...hint }}>
-            <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center', opacity: 0.5 }} title="soon"><Users size={11} />Co-author</span>
-            <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center', opacity: 0.5 }} title="soon"><Link2 size={11} />Link issue</span>
+            <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center', color: 'var(--text-hint)' }} title="soon"><Users size={11} />Co-author</span>
+            <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center', color: 'var(--text-hint)' }} title="soon"><Link2 size={11} />Link issue</span>
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 0', ...hint }}>

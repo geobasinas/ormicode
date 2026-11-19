@@ -67,7 +67,7 @@ export function Notice({ children, tone = 'hint' }: { children: ReactNode; tone?
 }
 
 export function Section({ children }: { children: ReactNode }) {
-  return <div style={{ ...mono, fontSize: 9.5, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--text-hint)', padding: '12px 12px 4px' }}>{children}</div>;
+  return <div style={{ ...mono, fontSize: 9.5, fontWeight: 500, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--text-hint)', padding: '12px 12px 4px' }}>{children}</div>;
 }
 
 export const scroll: CSSProperties = { flex: 1, minHeight: 0, overflowY: 'auto' };

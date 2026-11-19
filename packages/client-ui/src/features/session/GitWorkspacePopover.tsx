@@ -258,7 +258,7 @@ export function GitChip({ value, onChange, info, project, mode, onModeChange, br
             boxSizing: 'border-box', padding: 12,
             background: 'var(--bg-raised)', border: '1px solid var(--line-card)', borderRadius: 10,
             color: 'var(--text-active)', fontSize: 12,
-            boxShadow: '0 12px 32px rgba(0,0,0,.24)', outline: 'none',
+            boxShadow: '0 12px 32px var(--shadow-color)', outline: 'none',
           }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexShrink: 0 }}>
             <div style={{ minWidth: 0, flex: 1 }}>

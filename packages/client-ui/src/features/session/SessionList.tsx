@@ -18,7 +18,7 @@ function Row({ s, active, onSelect }: { s: SessionSummary; active?: string; onSe
   return (
     <button className="hv-sub" onClick={() => onSelect(s.id)} title={stateLabel(s.state)} style={{
       textAlign: 'left', width: '100%', height: 38, padding: '0 8px 0 10px', flexShrink: 0,
-      border: 'none', cursor: 'pointer', font: 'inherit', background: selected ? 'var(--bg-card)' : 'transparent',
+      border: 'none', cursor: 'pointer', font: 'inherit', background: selected ? 'var(--bg-raised)' : 'transparent',
       borderRadius: 7, display: 'flex', alignItems: 'center', gap: 13,
     }}>
       <span style={{ width: 14, display: 'inline-flex', justifyContent: 'center' }}><StateIcon state={s.state} size={12} /></span>

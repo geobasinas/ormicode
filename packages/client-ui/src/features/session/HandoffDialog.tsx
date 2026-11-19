@@ -110,13 +110,13 @@ export function HandoffDialog({ session, details, open, onClose, onOpenSession }
     ? `Hand off · ${usd == null ? 'cost unknown' : `$${usd.toFixed(2)}`}`
     : estimate?.confirmRequired ? 'Review estimate' : 'Hand off';
   return <div role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }} style={{
-    position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(0,0,0,.42)', display: 'grid', placeItems: 'center', padding: 20,
+    position: 'fixed', inset: 0, zIndex: 80, background: 'var(--modal-scrim)', display: 'grid', placeItems: 'center', padding: 20,
   }}>
     <section ref={dialog} role="dialog" aria-modal="true" aria-label="Hand off session" onKeyDown={event => {
       if (event.key === 'Enter' && event.target instanceof HTMLInputElement) { event.preventDefault(); void submit(); }
     }} style={{
       width: 'min(440px, 100%)', maxHeight: '85vh', overflow: 'auto', background: 'var(--bg-card)',
-      border: '1px solid var(--line-card)', borderRadius: 12, padding: 24, color: 'var(--text-active)', boxShadow: '0 16px 48px rgba(0,0,0,.3)',
+      border: '1px solid var(--line-card)', borderRadius: 12, padding: 24, color: 'var(--text-active)', boxShadow: '0 16px 48px var(--shadow-color)',
     }}>
       <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 12 }}>Hand off to another agent</div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -136,7 +136,7 @@ export function HandoffDialog({ session, details, open, onClose, onOpenSession }
               flex: 1, minWidth: 0, height: 28, border: 0, borderRadius: 6, padding: '0 4px',
               font: 'inherit', fontSize: 11.5, cursor: disabled ? 'not-allowed' : 'pointer',
               color: mode === value ? 'var(--text-active)' : 'var(--text-hint)',
-              background: mode === value ? 'var(--bg-raised)' : 'transparent', opacity: disabled ? .45 : 1,
+              background: mode === value ? 'var(--bg-raised)' : 'transparent', opacity: disabled ? .8 : 1,
             }}>
             {value === 'in_place' ? 'In place' : value === 'rehydrate' ? 'Rehydrate' : 'Fork'}
           </button>;
@@ -165,7 +165,7 @@ export function HandoffDialog({ session, details, open, onClose, onOpenSession }
           display: 'block', width: '100%', boxSizing: 'border-box', minHeight: 144, maxHeight: 288, marginTop: 6,
           padding: '8px 10px', border: `1px solid ${briefFocused ? 'var(--text-active)' : 'var(--line-card)'}`, borderRadius: 7, background: 'var(--bg-inset)',
           color: 'var(--text-active)', fontFamily: 'var(--font-mono)', fontSize: 11.5, lineHeight: 1.5,
-          resize: 'vertical', overflow: 'auto', outline: 'none', boxShadow: briefFocused ? '0 0 0 2px color-mix(in srgb, var(--text-active) 16%, transparent)' : 'none',
+          resize: 'vertical', overflow: 'auto', outline: briefFocused ? '1px solid var(--focus-ring)' : 'none', outlineOffset: -1, boxShadow: 'none',
         }} /> : null}
       </div>
       <div style={{
