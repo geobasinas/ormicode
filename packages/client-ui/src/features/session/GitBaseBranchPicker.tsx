@@ -49,7 +49,7 @@ export function GitBaseBranchPicker({ info, base, options, search, onSearch, act
               style={{
                 width: '100%', minWidth: 0, minHeight: 36, display: 'flex', alignItems: 'center', gap: 7,
                 border: 0, borderRadius: 4, padding: '4px 6px', textAlign: 'left',
-                color: 'var(--text-active)', background: activeIndex === index ? 'var(--bg-card)' : 'transparent',
+                color: activeIndex === index ? 'var(--text-active)' : 'var(--text-secondary)', background: activeIndex === index ? 'var(--bg-selected)' : 'transparent',
                 font: 'inherit', cursor: 'pointer',
               }}>
               <span style={{ width: 14, flexShrink: 0, color: 'var(--text-title)' }}>{base === option.name ? <Check size={12} /> : null}</span>

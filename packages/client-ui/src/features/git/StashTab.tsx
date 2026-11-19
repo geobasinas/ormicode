@@ -23,7 +23,7 @@ export function StashTab({ session }: { session: string }) {
       {list.error ? <Notice tone="red">{list.error}</Notice> : null}
       <div style={scroll}>
         {stashes.map(s => (
-          <div key={s.ref} onClick={() => setSel(s.index)} className={cur?.index === s.index ? undefined : 'hv'} style={{ padding: '7px 12px', margin: '0 6px', borderRadius: 7, cursor: 'pointer', background: cur?.index === s.index ? 'var(--bg-raised)' : 'transparent' }}>
+          <div key={s.ref} onClick={() => setSel(s.index)} className={cur?.index === s.index ? undefined : 'hv'} style={{ padding: '7px 12px', margin: '0 6px', borderRadius: 7, cursor: 'pointer', background: cur?.index === s.index ? 'var(--bg-selected)' : 'transparent' }}>
             <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
               <span style={{ ...mono, ...hint, fontSize: 10.5 }}>{s.ref}</span>
               <span style={{ fontSize: 12, color: 'var(--text-title)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.message}</span>

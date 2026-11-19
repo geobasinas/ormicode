@@ -1,6 +1,6 @@
 /** Open file: viewer (syntax highlighted, huge-file guard), diff against
  *  HEAD, blame, history, plain-text editing (daemon checkpoints first) and
- *  "Ask about this" for a selection. */
+ *"Ask about this" for a selection. */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, GitCompareArrows, UserRound, History, Pencil, Check, X, ExternalLink, MessageSquarePlus, FileWarning, Loader2 } from 'lucide-react';
 import { useFileRequest } from './useFiles.ts';
@@ -15,8 +15,8 @@ const mono = { fontFamily: 'var(--font-mono)' } as const;
 function Tool({ title, on, disabled, onClick, children }: { title: string; on?: boolean; disabled?: boolean; onClick?: () => void; children: React.ReactNode }) {
   return <button title={title} aria-pressed={on} disabled={disabled} onClick={onClick} className={disabled || on ? undefined : 'hv'} style={{
     border: 'none', width: 24, height: 24, borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-    background: on ? 'var(--bg-raised)' : 'transparent', color: on ? 'var(--text-title)' : 'var(--text-hint)',
-    cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.4 : 1,
+    background: on ? 'var(--bg-selected)' : 'transparent', color: disabled ? 'var(--text-hint)' : on ? 'var(--text-active)' : 'var(--text-secondary)',
+    cursor: disabled ? 'default' : 'pointer',
   }}>{children}</button>;
 }
 
@@ -153,7 +153,7 @@ export function FileView({ session, path, line, initialDiff, git, isGit, onBack:
           <div style={{ overflowY: 'auto', padding: '0 6px 6px' }}>
             {!commits.length ? <div style={{ padding: '4px 6px 8px', fontSize: 11.5, color: 'var(--text-hint)' }}>No commits touch this file yet.</div> : null}
             {commits.map(c => (
-              <div key={c.sha} onClick={() => setAt(c)} className={at?.sha === c.sha ? undefined : 'hv-row'} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 8px', borderRadius: 7, cursor: 'pointer', background: at?.sha === c.sha ? 'var(--bg-raised)' : 'transparent' }}>
+              <div key={c.sha} onClick={() => setAt(c)} className={at?.sha === c.sha ? undefined : 'hv-row'} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 8px', borderRadius: 7, cursor: 'pointer', background: at?.sha === c.sha ? 'var(--bg-selected)' : 'transparent' }}>
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ display: 'block', fontSize: 12, color: 'var(--text-title)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.subject}</span>
                   <span style={{ display: 'block', ...mono, fontSize: 10.5, color: 'var(--text-hint)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.sha.slice(0, 7)} · {c.author} · {ago(c.ts)}</span>

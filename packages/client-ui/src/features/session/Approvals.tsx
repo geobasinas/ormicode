@@ -30,7 +30,7 @@ function Choice({ label, title, primary, danger, busy, picked, onClick }: { labe
     <button onClick={onClick} disabled={busy} title={title} className={danger ? 'ormi-choice ormi-choice-danger' : 'ormi-choice'} style={{
       font: 'inherit', fontSize: 11.5, height: 22, padding: '0 8px', borderRadius: 6, border: 'none', cursor: busy ? 'default' : 'pointer',
       display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', flexShrink: 0,
-      background: primary || picked ? 'var(--bg-raised)' : 'transparent', color: primary || picked ? 'var(--text-active)' : 'var(--text-label)',
+      background: primary || picked ? 'var(--bg-selected)' : 'transparent', color: primary || picked ? 'var(--text-active)' : 'var(--text-label)',
     }}>{picked ? <Check size={11} /> : null}{label}</button>
   );
 }
@@ -93,7 +93,7 @@ function ApprovalLine({ session, req, events }: { session: string; req: Transcri
           {handoff ? `Agent wants to hand off to ${String(target.vendor ?? 'another agent')}` : sub ? `Allow ${sub.name}` : 'Approval needed'}
         </span>
         {handoff ? <span style={{ fontSize: 11, color: 'var(--text-hint)' }}>{typeof estimate.usd === 'number' ? `· ~$${estimate.usd.toFixed(2)}` : '· cost unknown'}</span> : null}
-        {s ? <span style={{ ...mono, fontSize: 11, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: 0.85 }}>{s.target ?? s.detail ?? sub!.title ?? ''}</span> : null}
+        {s ? <span style={{ ...mono, fontSize: 11, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>{s.target ?? s.detail ?? sub!.title ?? ''}</span> : null}
         {destructive ? <span style={{ color: 'var(--accent-red)', fontSize: 11, flexShrink: 0 }}>destructive{b.rule ? ` · ${String(b.rule)}` : ''}</span> : null}
       </Line>
       {typeof b.title === 'string' || typeof b.description === 'string' || typeof b.reason === 'string'

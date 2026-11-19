@@ -186,7 +186,7 @@ export function EffortChip({ value, model, models, onChange, icon, title, width 
     if (sets.length && new Set(sets).size === 1) choices = models[0]!.efforts;
   }
   if (selected && !choices?.length) {
-    return <button disabled style={{ ...chip, opacity: 0.8, cursor: 'not-allowed' }} title="This model has no effort levels">{icon}<span className="ormi-chip-text">{value}</span>{chev}</button>;
+    return <button disabled style={{ ...chip, color: 'var(--text-hint)', cursor: 'not-allowed' }} title="This model has no effort levels">{icon}<span className="ormi-chip-text">{value}</span>{chev}</button>;
   }
   if (!choices?.length) return <TextChip title={title} icon={icon} width={width} value={value} onCommit={onChange} />;
   const invalid = value !== 'default' && !choices.includes(value);

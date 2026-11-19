@@ -293,7 +293,7 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <DropdownMenu><DropdownMenuTrigger asChild><button className="hv-sub" style={iconBtn} title="attach" aria-label="attach"><Plus size={17} /></button></DropdownMenuTrigger><DropdownMenuContent align="start"><DropdownMenuItem onSelect={() => img.pick()}>Images…</DropdownMenuItem><DropdownMenuItem onSelect={() => files.pick()}>Files…</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
         <button style={iconBtn} title="Mention files or context" onClick={openMention}><AtSign size={16} /></button>
-        <button style={{ ...iconBtn, opacity: 0.45, cursor: 'default' }} title="voice (soon)" disabled><Mic size={16} /></button>
+        <button style={{ ...iconBtn, color: 'var(--text-hint)', cursor: 'default' }} title="voice (soon)" disabled><Mic size={16} /></button>
         <span style={{ flex: 1 }} />
         <ProjectChip title="project folder or 'scratch'" icon={<Folder size={12} style={{ color: 'var(--text-hint)' }} />}
           value={project} projects={projects}
@@ -323,8 +323,8 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
         }}>{preparingWorktree ? <Loader2 size={14} className="animate-spin" /> : <ArrowUp size={15} strokeWidth={2.5} />}</button>
       </div>
-      {mentionOpen ? <div style={{ position: 'absolute', left: 22, bottom: 52, width: 280, maxHeight: 220, overflowY: 'auto', zIndex: 20, background: 'var(--bg-raised)', border: '1px solid var(--line-card)', borderRadius: 8, boxShadow: 'var(--shadow-md)', padding: 4 }}>{mentionItems.map((item, index) => <button key={`${item.context.kind}-${item.label}`} onMouseDown={event => event.preventDefault()} onClick={() => chooseMention(item)} style={{ width: '100%', border: 0, borderRadius: 5, background: index === mentionIndex ? 'var(--bg-card)' : 'transparent', color: 'var(--text-secondary)', textAlign: 'left', padding: '5px 7px', fontSize: 11, cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.label}</button>)}</div> : null}
-      {dropping ? <div style={{ position: 'absolute', inset: 4, border: '1px dashed var(--text-hint)', borderRadius: 9, background: 'color-mix(in srgb, var(--bg-raised) 88%, transparent)', display: 'grid', placeItems: 'center', color: 'var(--text-secondary)', fontSize: 12, pointerEvents: 'none' }}>Drop to attach</div> : null}
+      {mentionOpen ? <div style={{ position: 'absolute', left: 22, bottom: 52, width: 280, maxHeight: 220, overflowY: 'auto', zIndex: 20, background: 'var(--bg-raised)', border: '1px solid var(--line-card)', borderRadius: 8, boxShadow: 'var(--shadow-md)', padding: 4 }}>{mentionItems.map((item, index) => <button key={`${item.context.kind}-${item.label}`} onMouseDown={event => event.preventDefault()} onClick={() => chooseMention(item)} style={{ width: '100%', border: 0, borderRadius: 5, background: index === mentionIndex ? 'var(--bg-selected)' : 'transparent', color: index === mentionIndex ? 'var(--text-active)' : 'var(--text-secondary)', textAlign: 'left', padding: '5px 7px', fontSize: 11, cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.label}</button>)}</div> : null}
+      {dropping ? <div style={{ position: 'absolute', inset: 4, border: '1px dashed var(--line-card)', borderRadius: 9, background: 'var(--bg-selected)', display: 'grid', placeItems: 'center', color: 'var(--text-label)', fontSize: 12, pointerEvents: 'none' }}>Drop to attach</div> : null}
     </div>
   );
 }

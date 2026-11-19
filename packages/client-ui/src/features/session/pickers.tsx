@@ -9,7 +9,7 @@ import {
   DropdownMenuSubTrigger, DropdownMenuTrigger,
 } from '../../components/ui/dropdown-menu.tsx';
 import { chip } from './composer-parts.tsx';
-import { VendorIcon, vendorColor } from './vendor-icons.tsx';
+import { VendorIcon } from './vendor-icons.tsx';
 import type { ListedModel } from './useModels.ts';
 
 const chev = <ChevronDown size={11} style={{ color: 'var(--text-hint)', flexShrink: 0 }} />;
@@ -23,11 +23,11 @@ const VENDOR_META: Record<string, { name: string }> = {
 const TRANSPORT_DESC: Record<string, string> = { sdk: 'in-process', cli: 'command line', acp: 'agent protocol' };
 const meta = (vendor: string) => VENDOR_META[vendor] ?? { name: vendor };
 
-/** Brand mark on a tinted tile. */
+/** Brand mark on a neutral tile. */
 const tile = (vendor: string) => (
   <span style={{
     width: 18, height: 18, borderRadius: 5, flexShrink: 0,
-    background: `color-mix(in srgb, ${vendorColor(vendor)} 15%, transparent)`,
+    background: 'var(--bg-chip)',
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
   }}><VendorIcon vendor={vendor} /></span>
 );

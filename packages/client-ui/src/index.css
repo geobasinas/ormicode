@@ -23,52 +23,40 @@
   --card-foreground: var(--text-label);
   --popover: var(--bg-raised);
   --popover-foreground: var(--text-label);
-  --primary: var(--accent-mint);
+  --primary: var(--text-title);
   --primary-foreground: var(--text-onAccent);
   --secondary: var(--bg-raised);
   --secondary-foreground: var(--text-label);
   --muted: var(--bg-inset);
   --muted-foreground: var(--text-secondary);
-  --accent: var(--bg-raised);
+  --accent: var(--bg-selected);
   --accent-foreground: var(--text-active);
   --destructive: var(--accent-red);
   --destructive-foreground: var(--text-onAccent);
   --border: var(--line-card);
   --input: var(--line-card);
-  --ring: var(--accent-mint);
+  --ring: var(--line-mint);
   --radius: 0.5rem;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
-  --chart-1: var(--accent-mint);
-  --chart-2: var(--accent-amber);
-  --chart-3: var(--accent-red);
-  --chart-4: var(--text-secondary);
-  --chart-5: var(--text-hint);
+  --chart-1: var(--text-title);
+  --chart-2: var(--text-secondary);
+  --chart-3: var(--text-hint);
+  --chart-4: var(--text-label);
+  --chart-5: var(--line-divider);
   --sidebar: var(--bg-window);
   --sidebar-foreground: var(--text-label);
-  --sidebar-primary: var(--accent-mint);
+  --sidebar-primary: var(--text-title);
   --sidebar-primary-foreground: var(--text-onAccent);
-  --sidebar-accent: var(--bg-card);
+  --sidebar-accent: var(--bg-selected);
   --sidebar-accent-foreground: var(--text-active);
   --sidebar-border: var(--line-pane);
-  --sidebar-ring: var(--accent-mint);
-  --focus-ring: color-mix(in srgb, var(--accent-mint) 60%, transparent);
-  --modal-scrim: color-mix(in srgb, var(--bg-window) 72%, transparent);
-  --shadow-color: color-mix(in srgb, var(--bg-window) 24%, transparent);
-  --image-badge: color-mix(in srgb, var(--bg-window) 70%, var(--text-active) 30%);
-  --ansi-blue: color-mix(in srgb, var(--accent-mint) 70%, var(--text-hint) 30%);
-  --ansi-bright-blue: color-mix(in srgb, var(--accent-mint) 45%, var(--text-active) 55%);
-  --ansi-magenta: color-mix(in srgb, var(--accent-red) 70%, var(--accent-mint) 30%);
-  --ansi-bright-magenta: color-mix(in srgb, var(--accent-red) 45%, var(--text-active) 55%);
-  --ansi-cyan: color-mix(in srgb, var(--accent-mint) 45%, var(--text-hint) 55%);
-  --ansi-bright-cyan: color-mix(in srgb, var(--accent-mint) 30%, var(--text-active) 70%);
-}
-
-:root[data-theme="light"] {
-  --modal-scrim: color-mix(in srgb, var(--text-title) 48%, transparent);
-  --shadow-color: color-mix(in srgb, var(--text-title) 18%, transparent);
+  --sidebar-ring: var(--line-mint);
+  --focus-ring: var(--line-mint);
+  --modal-scrim: var(--bg-scrim);
+  --image-badge: var(--bg-chip);
 }
 
 @theme inline {
@@ -126,19 +114,21 @@
 }
 
 .hv { transition: background-color 120ms, color 120ms; }
-.hv:hover { background-color: var(--bg-raised) !important; color: var(--text-active) !important; }
-.hv-close:hover { background-color: var(--tint-red) !important; color: var(--accent-red) !important; }
-.hv-sub:hover { background-color: var(--bg-card) !important; }
+.hv:hover { background-color: var(--bg-hover) !important; color: var(--text-label) !important; }
+.hv-close:hover { background-color: var(--tint-red) !important; color: var(--accent-red) !important; outline: 1px solid var(--line-red); }
+.hv-sub:hover { background-color: var(--bg-hover) !important; }
+.ormi-selected-row:hover { background-color: var(--bg-selected) !important; }
 
 .hv-tab { transition: background-color 120ms, color 120ms; }
-.hv-tab:hover { background-color: var(--bg-hover); color: var(--text-active); }
-.hv-x:hover { background-color: var(--bg-raised); color: var(--text-active) !important; }
+.hv-tab:hover { background-color: var(--bg-hover); color: var(--text-label); }
+.hv-x:hover { background-color: var(--bg-hover); color: var(--text-active) !important; }
 
 button:focus { outline: none; }
 :focus-visible { outline: 1px solid var(--focus-ring) !important; outline-offset: 1px; box-shadow: none !important; }
 :focus:not(:focus-visible) { outline: none !important; box-shadow: none !important; }
-[role="menuitem"]:focus, [role="menuitem"][data-highlighted] { background: var(--bg-raised) !important; color: var(--text-active) !important; }
-button:disabled, input:disabled, textarea:disabled, select:disabled, [aria-disabled="true"], [data-disabled] { opacity: 0.8 !important; }
+[role="menuitem"]:focus, [role="menuitem"][data-highlighted] { background: var(--bg-selected) !important; color: var(--text-active) !important; }
+[role="menuitem"][data-variant="destructive"]:focus, [role="menuitem"][data-variant="destructive"][data-highlighted] { background: var(--tint-red) !important; color: var(--accent-red) !important; outline: 1px solid var(--line-red); }
+button:disabled, input:disabled, textarea:disabled, select:disabled, [aria-disabled="true"], [data-disabled] { opacity: 1 !important; color: var(--text-hint) !important; }
 .hv-row { transition: background-color 120ms; }
 .hv-row:hover { background-color: var(--bg-hover) !important; }
 .ormi-handle { position: relative; width: 6px; flex-shrink: 0; outline: none; }
@@ -158,21 +148,21 @@ button:disabled, input:disabled, textarea:disabled, select:disabled, [aria-disab
 .ormi-hover-reveal { opacity: 0; transition: opacity 0.12s ease; }
 .ormi-hover-zone:hover .ormi-hover-reveal, .ormi-hover-reveal:focus-visible, .ormi-hover-reveal[data-state="open"], .ormi-hover-reveal[aria-expanded="true"] { opacity: 1; }
 .ormi-tool-line:hover, .ormi-tool-line:hover span { color: var(--text-label) !important; }
-.ormi-toast-action { background: transparent !important; color: var(--accent-mint) !important; font-weight: 600 !important; transition: background-color 120ms, color 120ms; }
-.ormi-toast-action:hover { background: var(--bg-inset) !important; color: var(--text-title) !important; }
+.ormi-toast-action { background: transparent !important; color: var(--text-title) !important; font-weight: 600 !important; transition: background-color 120ms, color 120ms; }
+.ormi-toast-action:hover { background: var(--bg-inset) !important; color: var(--text-active) !important; }
 .ormi-toast-action:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 1px; }
 .ormi-toast-toaster [data-sonner-toast] { transition: opacity 120ms, height 400ms, box-shadow 200ms; }
 
 /* Native controls restyled to match the app (no browser-default checkboxes/selects). */
 .ormi-check { appearance: none; width: 13px; height: 13px; margin: 0; border-radius: 4px; border: 1px solid var(--text-hint); background: transparent; cursor: pointer; display: inline-grid; place-content: center; flex-shrink: 0; }
-.ormi-check:checked { background: var(--accent-mint); border-color: var(--accent-mint); }
-.ormi-check:checked::after { content: ''; width: 7px; height: 4px; border-left: 1.5px solid var(--bg-main); border-bottom: 1.5px solid var(--bg-main); transform: rotate(-45deg) translate(1px, -1px); }
+.ormi-check:checked { background: var(--bg-selected); border-color: var(--line-card); }
+.ormi-check:checked::after { content: ''; width: 7px; height: 4px; border-left: 1.5px solid var(--text-active); border-bottom: 1.5px solid var(--text-active); transform: rotate(-45deg) translate(1px, -1px); }
 .ormi-select { appearance: none; padding-right: 24px !important; cursor: pointer; background-image: linear-gradient(45deg, transparent 50%, var(--text-hint) 50%), linear-gradient(135deg, var(--text-hint) 50%, transparent 50%); background-repeat: no-repeat; background-size: 4px 4px; background-position: calc(100% - 13px) 50%, calc(100% - 9px) 50%; }
 .ormi-select option { background: var(--bg-card); color: var(--text-title); }
-input::placeholder, textarea::placeholder { color: var(--text-hint); opacity: 0.8; }
+input::placeholder, textarea::placeholder { color: var(--text-hint); }
 .ormi-choice { transition: background-color 120ms, color 120ms; }
-.ormi-choice:hover:not(:disabled) { background-color: var(--bg-hover) !important; color: var(--text-active) !important; }
-.ormi-choice-danger:hover:not(:disabled) { background-color: var(--tint-red) !important; color: var(--accent-red) !important; }
+.ormi-choice:hover:not(:disabled) { background-color: var(--bg-hover) !important; color: var(--text-label) !important; }
+.ormi-choice-danger:hover:not(:disabled) { background-color: var(--tint-red) !important; color: var(--accent-red) !important; outline: 1px solid var(--line-red); }
 .ormi-choice:disabled { opacity: 1 !important; color: var(--text-hint) !important; }
 
 .ormi-markdown ul { list-style-type: disc; }
@@ -187,12 +177,12 @@ input::placeholder, textarea::placeholder { color: var(--text-hint); opacity: 0.
 
 /* Syntax colours for the Files viewer (CodeMirror), derived from the palette. */
 :root {
-  --syn-keyword: var(--accent-red);
-  --syn-string: var(--accent-mint);
-  --syn-number: var(--accent-amber);
+  --syn-keyword: var(--text-title);
+  --syn-string: var(--text-secondary);
+  --syn-number: var(--text-label);
   --syn-function: var(--text-secondary);
-  --syn-type: var(--accent-mint);
-  --syn-property: var(--accent-amber);
+  --syn-type: var(--text-active);
+  --syn-property: var(--text-label);
 }
 
 .ormi-file-link { cursor: pointer; border-radius: 3px; }

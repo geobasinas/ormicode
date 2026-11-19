@@ -11,8 +11,8 @@ const input = { padding: '6px 10px', borderRadius: 7, border: '1px solid var(--l
 
 function Row({ b, remote, active, onClick }: { b: Branch; remote?: boolean; active: boolean; onClick: () => void }) {
   return (
-    <div onClick={onClick} className={active ? undefined : 'hv'} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 12px', margin: '0 6px', borderRadius: 7, cursor: 'pointer', background: active ? 'var(--bg-raised)' : 'transparent' }}>
-      {remote ? <Cloud size={12} style={{ color: 'var(--text-hint)' }} /> : <GitBranch size={12} style={{ color: b.current ? 'var(--accent-mint)' : 'var(--text-hint)' }} />}
+    <div onClick={onClick} className={active ? undefined : 'hv'} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 12px', margin: '0 6px', borderRadius: 7, cursor: 'pointer', background: active ? 'var(--bg-selected)' : 'transparent', color: active ? 'var(--text-active)' : undefined }}>
+      {remote ? <Cloud size={12} style={{ color: 'var(--text-hint)' }} /> : <GitBranch size={12} style={{ color: 'var(--text-hint)' }} />}
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ ...mono, fontSize: 11.5, color: remote ? 'var(--text-secondary)' : 'var(--text-title)' }}>{b.name}</div>
         {remote ? null : <div style={{ ...hint, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><span style={mono}>{b.sha.slice(0, 7)}</span> · {b.subject} · {ago(b.ts)}</div>}

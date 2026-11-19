@@ -12,7 +12,7 @@ export interface Blame { hunks: { start: number; count: number; sha: string }[];
 export interface FileCommit { sha: string; subject: string; author: string; ts: number; session?: string }
 
 export const GIT_COLOR: Partial<Record<GitMark, string>> = {
-  modified: 'var(--accent-amber)', renamed: 'var(--accent-amber)', added: 'var(--accent-mint)', untracked: 'var(--accent-mint)',
+  modified: 'var(--text-secondary)', renamed: 'var(--text-secondary)', added: 'var(--accent-mint)', untracked: 'var(--accent-mint)',
   deleted: 'var(--accent-red)', conflicted: 'var(--accent-red)',
 };
 export const GIT_LETTER: Partial<Record<GitMark, string>> = { modified: 'M', renamed: 'R', added: 'A', untracked: 'U', deleted: 'D', conflicted: '!' };

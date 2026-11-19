@@ -15,7 +15,7 @@ function Message({
   className,
   align = "start",
   ...props
-}: React.ComponentProps<"div"> & { align?: "start" | "end" }) {
+}: React.ComponentProps<"div"> & { align?: "start" |"end" }) {
   return (
     <div
       data-slot="message"

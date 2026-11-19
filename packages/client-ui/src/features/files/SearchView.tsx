@@ -6,7 +6,7 @@ import { useFileRequest } from './useFiles.ts';
 import { type NameHit, type TextHit, baseName, dirName } from './types.ts';
 
 const mono = { fontFamily: 'var(--font-mono)' } as const;
-const mark = { color: 'var(--text-title)', background: 'color-mix(in srgb, var(--accent-amber) 26%, transparent)', borderRadius: 2 };
+const mark = { color: 'var(--text-active)', background: 'var(--bg-selected)', borderRadius: 2 };
 
 function Highlight({ text, ranges }: { text: string; ranges: [number, number][] }) {
   const parts: React.ReactNode[] = []; let at = 0;
@@ -50,7 +50,7 @@ export function SearchView({ session, onOpen, onClose }: { session: string; onOp
   }, [hits]);
   const tab = (id: 'name' | 'content', label: string) => (
     <button onClick={() => setMode(id)} style={{ font: 'inherit', fontSize: 11, height: 22, padding: '0 9px', borderRadius: 6, fontWeight: mode === id ? 600 : 400, border: 'none', cursor: 'pointer',
-      background: mode === id ? 'var(--bg-raised)' : 'transparent', color: mode === id ? 'var(--text-title)' : 'var(--text-hint)' }}>{label}</button>
+      background: mode === id ? 'var(--bg-selected)' : 'transparent', color: mode === id ? 'var(--text-active)' : 'var(--text-secondary)' }}>{label}</button>
   );
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
@@ -60,7 +60,7 @@ export function SearchView({ session, onOpen, onClose }: { session: string; onOp
         <input autoFocus value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Escape') onClose(); }}
           placeholder={mode === 'name' ? 'Go to file…' : 'Search in files…'}
           style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', color: 'var(--text-title)', font: 'inherit', fontSize: 12 }} />
-        {mode === 'content' ? <button title="Regular expression" aria-pressed={regex} onClick={() => setRegex(r => !r)} className={regex ? undefined : 'hv'} style={{ border: 'none', width: 22, height: 22, borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', background: regex ? 'var(--bg-raised)' : 'transparent', color: regex ? 'var(--text-title)' : 'var(--text-hint)' }}><Regex size={12} /></button> : null}
+        {mode === 'content' ? <button title="Regular expression" aria-pressed={regex} onClick={() => setRegex(r => !r)} className={regex ? undefined : 'hv'} style={{ border: 'none', width: 22, height: 22, borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', background: regex ? 'var(--bg-selected)' : 'transparent', color: regex ? 'var(--text-active)' : 'var(--text-secondary)' }}><Regex size={12} /></button> : null}
         </span>
         <span style={{ display: 'inline-flex', gap: 2, background: 'var(--bg-inset)', borderRadius: 8, padding: 2, flexShrink: 0 }}>{tab('name', 'Files')}{tab('content', 'Text')}</span>
         <button title="Close search" onClick={onClose} className="hv" style={{ border: 'none', background: 'transparent', color: 'var(--text-hint)', display: 'inline-flex', padding: 4, borderRadius: 6, cursor: 'pointer' }}><X size={13} /></button>

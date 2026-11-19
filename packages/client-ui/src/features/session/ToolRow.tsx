@@ -20,7 +20,7 @@ interface Shape { icon: ReactNode; verb: string; target?: string; detail?: strin
 
 export function shape(name: string, input: Record<string, unknown>): Shape {
   const file = str(input.file_path ?? input.filePath ?? input.path ?? input.notebook_path);
-  const ic = (I: typeof Pencil) => <I size={12} style={{ color: 'var(--text-hint)', flexShrink: 0, opacity: 0.8 }} />;
+  const ic = (I: typeof Pencil) => <I size={12} style={{ color: 'var(--text-hint)', flexShrink: 0 }} />;
   const n = name.toLowerCase();
   if (['edit', 'multiedit', 'notebookedit', 'write', 'str_replace_based_edit_tool'].includes(n)) {
     const edits = Array.isArray(input.edits) ? input.edits as Record<string, unknown>[] : [input];
@@ -145,7 +145,7 @@ export function CheckpointMark({ session, cp, inline, busy, onOpenSession }: {
             border: 'none', background: 'transparent', color: 'var(--text-hint)', cursor: 'pointer', padding: 3, borderRadius: 5, display: 'inline-flex',
           }}><History size={11} /></button>
         </PopoverTrigger>
-        <PopoverContent align="end" side="top" style={{ width: 330, maxWidth: 'calc(100vw - 24px)', padding: 10, background: 'var(--bg-card)', borderColor: 'var(--line-card)', color: 'var(--text-active)' }}>
+        <PopoverContent align="end" side="top" style={{ width: 330, maxWidth: 'calc(100vw - 24px)', padding: 10, background: 'var(--bg-raised)', borderColor: 'var(--line-card)', color: 'var(--text-active)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 11, color: 'var(--text-hint)', marginBottom: 7 }}>
             <span>{tool} · {when}</span><span style={mono}>{id.slice(0, 7)}</span>
           </div>
@@ -227,14 +227,14 @@ export function ToolRow({ call, result, checkpoint, session, childCount = 0, chi
         }}>
           {status === 'running' ? <Loader2 size={12} className="animate-spin" style={{ color: 'var(--text-hint)', flexShrink: 0 }} /> : s.icon}
           <span style={{ whiteSpace: 'nowrap' }}><span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{s.verb}</span>{s.target ? ' ' : ''}{s.target ? (file ? <span className="ormi-file-link" title={`Open ${file} in Files`} onClick={e => { e.stopPropagation(); requestOpenFile(session, file); }}>{s.target}</span> : s.target) : ''}</span>
-          <span style={{ ...mono, fontSize: 11, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: 0.85 }}>{s.detail ?? ''}</span>
-          {s.added || s.removed ? <span style={{ ...mono, fontSize: 11, display: 'inline-flex', gap: 5, flexShrink: 0, opacity: 0.85 }}>
+          <span style={{ ...mono, fontSize: 11, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>{s.detail ?? ''}</span>
+          {s.added || s.removed ? <span style={{ ...mono, fontSize: 11, display: 'inline-flex', gap: 5, flexShrink: 0 }}>
             {s.added ? <span style={{ color: 'var(--accent-mint)' }}>+{s.added}</span> : null}{s.removed ? <span style={{ color: 'var(--accent-red)' }}>−{s.removed}</span> : null}
           </span> : null}
           {delegated ? <span style={{ fontSize: 10, flexShrink: 0 }}>· {childCount} steps</span> : null}
           {delegated && childRunning ? <Loader2 size={11} className="animate-spin" style={{ flexShrink: 0 }} /> : null}
-          {status === 'failed' ? <span style={{ color: 'var(--accent-red)', fontSize: 11, flexShrink: 0, opacity: 0.85 }}>failed</span>
-            : status === 'interrupted' ? <span style={{ color: 'var(--accent-amber)', fontSize: 11, flexShrink: 0, opacity: 0.85 }}>interrupted</span> : null}
+          {status === 'failed' ? <span style={{ color: 'var(--accent-red)', fontSize: 11, flexShrink: 0 }}>failed</span>
+            : status === 'interrupted' ? <span style={{ color: 'var(--accent-amber)', fontSize: 11, flexShrink: 0 }}>interrupted</span> : null}
           {open ? <ChevronDown size={11} style={{ ...hint, flexShrink: 0 }} /> : <ChevronRight size={11} className="ormi-hover-reveal" style={{ ...hint, flexShrink: 0 }} />}
           <span style={{ flex: 1 }} />
         </div>
@@ -254,7 +254,7 @@ export function ThinkingRow({ text }: { text: string }) {
   return (
     <div style={{ margin: '3px 0' }}>
       <div onClick={() => setOpen(o => !o)} className="ormi-tool-line" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: 12, lineHeight: '18px', padding: '2px 0', ...hint }}>
-        <Brain size={12} style={{ opacity: 0.8 }} />Thinking{open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+        <Brain size={12} />Thinking{open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
       </div>
       {open ? <div style={{ padding: '2px 0 0 19px' }}><Markdown text={text} muted /></div> : null}
     </div>

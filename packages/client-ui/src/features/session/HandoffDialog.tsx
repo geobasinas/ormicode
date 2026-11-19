@@ -135,8 +135,7 @@ export function HandoffDialog({ session, details, open, onClose, onOpenSession }
             onClick={() => setMode(value)} style={{
               flex: 1, minWidth: 0, height: 28, border: 0, borderRadius: 6, padding: '0 4px',
               font: 'inherit', fontSize: 11.5, cursor: disabled ? 'not-allowed' : 'pointer',
-              color: mode === value ? 'var(--text-active)' : 'var(--text-hint)',
-              background: mode === value ? 'var(--bg-raised)' : 'transparent', opacity: disabled ? .8 : 1,
+              background: mode === value ? 'var(--bg-selected)' : 'transparent', color: disabled ? 'var(--text-hint)' : mode === value ? 'var(--text-active)' : 'var(--text-label)',
             }}>
             {value === 'in_place' ? 'In place' : value === 'rehydrate' ? 'Rehydrate' : 'Fork'}
           </button>;

@@ -15,6 +15,7 @@ import { SessionView } from './SessionView.tsx';
 import { OPEN_FILE } from '../lib/openFile.ts';
 import { SettingsView, loadPrefs, type Prefs } from './Settings.tsx';
 import { SessionHeader } from '../features/session/SessionHeader.tsx';
+import { NEEDS_YOU } from '../features/session/state.tsx';
 import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels';
 import { Toaster } from '../components/ui/sonner.tsx';
 
@@ -45,6 +46,7 @@ const PAGES: Record<string, string> = { now: 'Home', settings: 'Settings' };
 function Tab({ id, n, active, onSelect, onClose }: { id: string; n?: number; active: boolean; onSelect: () => void; onClose?: () => void }) {
   const details = useSession(PAGES[id] ? undefined : id);
   const label = PAGES[id] ?? (details?.title || id.slice(0, 14));
+  const needsYou = !!details && NEEDS_YOU.has(details.state);
   const R = 10;
   const ref = useRef<HTMLSpanElement>(null);
   useLayoutEffect(() => { const el = ref.current; if (el) { el.style.minWidth = ''; el.style.minWidth = `${Math.ceil(el.getBoundingClientRect().width)}px`; } }, [label, active, onClose]);
@@ -57,11 +59,11 @@ function Tab({ id, n, active, onSelect, onClose }: { id: string; n?: number; act
     <span ref={ref} style={{
       position: 'relative', display: 'inline-flex', alignItems: 'center', fontSize: 11.5, fontWeight: active ? 600 : 400,
       padding: '2px 0 4px', borderRadius: `${R}px ${R}px 0 0`, cursor: 'pointer', whiteSpace: 'nowrap',
-      background: active ? 'var(--bg-raised)' : 'transparent',
+      background: active ? 'var(--bg-main)' : 'transparent',
       color: active ? 'var(--text-active)' : 'var(--text-secondary)',
     }} onClick={onSelect}>
       <span className={active ? undefined : 'hv-tab'} style={{ position: 'relative', zIndex: 2, display: 'inline-flex', alignItems: 'center', gap: 8, padding: '4px 11px', borderRadius: 8 }}>
-        {n !== undefined ? <span style={{ width: 18, height: 18, borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: active ? 'var(--bg-badge)' : 'var(--bg-raised)', color: active ? 'var(--text-onAccent)' : 'var(--text-label)', fontSize: 10, fontWeight: 700 }}>{n}</span> : null}
+        {n !== undefined ? <span style={{ width: 18, height: 18, borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: needsYou ? 'var(--tint-amber)' : 'var(--bg-chip)', color: needsYou ? 'var(--accent-amber)' : 'var(--text-label)', fontSize: 10, fontWeight: 700 }}>{n}</span> : null}
         <span style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
         {active && details?.project !== 'scratch' && details?.branch ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'var(--font-mono)', fontSize: 10.5, fontWeight: 400, color: 'var(--text-secondary)' }}><GitBranch size={10} />{details.branch}</span> : null}
         {onClose ? <X size={12} className="hv-x" style={{ color: 'var(--text-hint)', borderRadius: 4 }} onClick={e => { e.stopPropagation(); onClose(); }} /> : null}
@@ -102,9 +104,8 @@ function Rail({ route, rail, onRail }: { route: string; rail: RailPane; onRail: 
             style={{
               width: 32, height: 32, border: 'none', borderRadius: 8, cursor: enabled ? 'pointer' : 'default',
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              background: active ? 'var(--bg-raised)' : 'transparent',
+              background: active ? 'var(--bg-selected)' : 'transparent',
               color: active ? 'var(--text-active)' : 'var(--text-hint)',
-              opacity: enabled ? 1 : 0.45,
             }}><Icon size={16} /></button>
         );
       })}
@@ -268,7 +269,7 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
                     <button key={f} onClick={() => setFilter(f)} style={{
                       flex: 1, font: 'inherit', fontSize: 12, fontWeight: filter === f ? 500 : 400, cursor: 'pointer',
                       padding: '4px 0', border: 'none', borderRadius: 7, textAlign: 'center',
-                      background: filter === f ? 'var(--bg-raised)' : 'transparent',
+                      background: filter === f ? 'var(--bg-selected)' : 'transparent',
                       color: filter === f ? 'var(--text-active)' : 'var(--text-secondary)',
                     }}>{f}</button>
                   ))}
@@ -283,7 +284,7 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
               <button className="hv-sub" onClick={() => open('settings')} style={{
                 height: 32, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '0 10px', marginTop: 4,
                 font: 'inherit', cursor: 'pointer', border: 'none', borderRadius: 8, textAlign: 'left',
-                background: route === 'settings' ? 'var(--bg-raised)' : 'transparent',
+                background: route === 'settings' ? 'var(--bg-selected)' : 'transparent',
               }}>
                 <Settings size={15} style={{ color: route === 'settings' ? 'var(--text-active)' : 'var(--text-label)', flexShrink: 0 }} />
                 <span style={{ fontSize: 12.5, color: route === 'settings' ? 'var(--text-active)' : 'var(--text-label)' }}>Settings</span>

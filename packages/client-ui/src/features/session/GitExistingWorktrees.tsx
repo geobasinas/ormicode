@@ -42,7 +42,7 @@ export function GitExistingWorktrees({ info, project, expanded, onToggle, onUse 
           <button type="button" disabled={busy} title={busy ? 'This worktree is in use by another session' : 'Use this worktree'}
             onClick={() => onUse(worktree.path)} style={{
               ...mutedButton, fontSize: 10, borderRadius: 4, padding: '4px 7px',
-              background: 'var(--bg-raised)', opacity: busy ? 0.45 : 1, cursor: busy ? 'not-allowed' : 'pointer',
+              background: 'var(--bg-raised)', color: busy ? 'var(--text-hint)' : 'var(--text-secondary)', cursor: busy ? 'not-allowed' : 'pointer',
             }}>Use</button>
         </div>;
       }) : <div style={{ ...quiet, padding: '5px 0' }}>No linked worktrees</div>}

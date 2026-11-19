@@ -5,8 +5,8 @@ export const mono: CSSProperties = { fontFamily: 'var(--font-mono)' };
 export const hint: CSSProperties = { color: 'var(--text-hint)', fontSize: 11 };
 export const card: CSSProperties = { background: 'var(--bg-card)', border: '1px solid var(--line-card)', borderRadius: 10 };
 
-export function Count({ children, mint }: { children: ReactNode; mint?: boolean }) {
-  return <span style={{ ...mono, fontSize: 10, padding: '1px 6px', borderRadius: 6, background: 'var(--bg-chip)', color: mint ? 'var(--accent-mint)' : 'var(--text-hint)' }}>{children}</span>;
+export function Count({ children }: { children: ReactNode }) {
+  return <span style={{ ...mono, fontSize: 10, padding: '1px 6px', borderRadius: 6, background: 'var(--bg-chip)', color: 'var(--text-hint)' }}>{children}</span>;
 }
 
 export function Stat({ added, removed }: { added: number; removed: number }) {
@@ -16,13 +16,13 @@ export function Stat({ added, removed }: { added: number; removed: number }) {
   </span>;
 }
 
-const STATUS_COLOR: Record<string, string> = { M: 'var(--accent-amber)', modified: 'var(--accent-amber)', A: 'var(--accent-mint)', added: 'var(--accent-mint)', '?': 'var(--accent-mint)', D: 'var(--accent-red)', deleted: 'var(--accent-red)', R: 'var(--text-secondary)', renamed: 'var(--text-secondary)', U: 'var(--accent-red)' };
+const STATUS_COLOR: Record<string, string> = { M: 'var(--text-secondary)', modified: 'var(--text-secondary)', A: 'var(--accent-mint)', added: 'var(--accent-mint)', '?': 'var(--accent-mint)', D: 'var(--accent-red)', deleted: 'var(--accent-red)', R: 'var(--text-secondary)', renamed: 'var(--text-secondary)', U: 'var(--accent-red)' };
 const LETTER: Record<string, string> = { modified: 'M', added: 'A', deleted: 'D', renamed: 'R', '?': 'A' };
 
 export function FileRow({ path, status, added, removed, active, onClick }: { path: string; status: string; added: number; removed: number; active?: boolean; onClick?: () => void }) {
   const i = path.lastIndexOf('/');
   return (
-    <div onClick={onClick} className={onClick && !active ? 'hv' : undefined} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 12px', borderRadius: 6, cursor: onClick ? 'pointer' : 'default', background: active ? 'var(--bg-raised)' : 'transparent', fontSize: 12 }}>
+    <div onClick={onClick} className={onClick && !active ? 'hv' : undefined} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 12px', borderRadius: 6, cursor: onClick ? 'pointer' : 'default', background: active ? 'var(--bg-selected)' : 'transparent', fontSize: 12 }}>
       <span style={{ ...mono, fontSize: 10, width: 10, color: STATUS_COLOR[status] ?? 'var(--text-hint)' }}>{LETTER[status] ?? status}</span>
       <span style={{ color: 'var(--text-title)', whiteSpace: 'nowrap' }}>{path.slice(i + 1)}</span>
       <span style={{ ...hint, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{i > 0 ? path.slice(0, i) : ''}</span>
@@ -45,16 +45,16 @@ export function Btn({ children, onClick, primary, danger, disabled, title }: { c
   return (
     <button title={title} disabled={disabled} onClick={onClick} className={disabled || primary ? undefined : 'hv'} style={{
       display: 'inline-flex', alignItems: 'center', gap: 6, height: 28, padding: '0 11px', borderRadius: 7, font: 'inherit', fontSize: 11.5, whiteSpace: 'nowrap', flexShrink: 0,
-      cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.45 : 1,
-      border: primary ? 'none' : danger ? 'none' : '1px solid var(--line-card)',
-      background: primary ? 'var(--text-title)' : danger ? 'transparent' : 'var(--bg-card)',
-      color: primary ? 'var(--bg-main)' : danger ? 'var(--accent-red)' : 'var(--text-label)', fontWeight: primary ? 600 : 400,
+      cursor: disabled ? 'default' : 'pointer',
+      border: primary ? 'none' : danger ? '1px solid var(--line-red)' : '1px solid var(--line-card)',
+      background: primary ? 'var(--text-title)' : danger ? 'var(--tint-red)' : 'var(--bg-card)',
+      color: primary ? 'var(--text-onAccent)' : danger ? 'var(--accent-red)' : 'var(--text-label)', fontWeight: primary ? 600 : 400,
     }}>{children}</button>
   );
 }
 
 export function IconBtn({ children, onClick, title, disabled }: { children: ReactNode; onClick?: () => void; title: string; disabled?: boolean }) {
-  return <button title={title} onClick={disabled ? undefined : onClick} className={disabled ? undefined : 'hv'} style={{ border: 'none', background: 'transparent', color: 'var(--text-hint)', display: 'inline-flex', padding: 4, borderRadius: 6, cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.45 : 1 }}>{children}</button>;
+  return <button title={title} disabled={disabled} onClick={disabled ? undefined : onClick} className={disabled ? undefined : 'hv'} style={{ border: 'none', background: 'transparent', color: 'var(--text-hint)', display: 'inline-flex', padding: 4, borderRadius: 6, cursor: disabled ? 'default' : 'pointer' }}>{children}</button>;
 }
 
 export function Footer({ children }: { children: ReactNode }) {

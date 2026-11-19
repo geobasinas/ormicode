@@ -327,7 +327,7 @@ export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefi
           <DropdownMenu><DropdownMenuTrigger asChild><button className="hv-sub" style={{ ...iconBtn, flexShrink: 0 }} title="attach" aria-label="attach"><Plus size={16} /></button></DropdownMenuTrigger><DropdownMenuContent align="start"><DropdownMenuItem onSelect={() => img.pick()}>Images…</DropdownMenuItem><DropdownMenuItem onSelect={() => files.pick()}>Files…</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
           <button className="ormi-narrow-hide" style={iconBtn} title="Mention files or context" onClick={() => openMention()}><AtSign size={15} /></button>
           <button className="ormi-narrow-hide" style={iconBtn} title="Prompt history (Ctrl+R)" onClick={openHistory}><History size={14} /></button>
-          <button className="ormi-narrow-hide" style={{ ...iconBtn, opacity: 0.45, cursor: 'default' }} title="voice (soon)" disabled><Mic size={15} /></button>
+          <button className="ormi-narrow-hide" style={{ ...iconBtn, color: 'var(--text-hint)', cursor: 'default' }} title="voice (soon)" disabled><Mic size={15} /></button>
           <span style={{ flex: 1, minWidth: 4 }} />
           {details?.project !== 'scratch' && details?.branch ? (
             <button
@@ -371,7 +371,7 @@ export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefi
             <div style={{ padding: '4px 6px', color: 'var(--text-hint)', fontSize: 10 }}>{slashAction === 'handoff' ? 'Handoff target' : `Choose ${slashAction}`}</div>
             {slashAction === 'handoff' ? agentOptions.flatMap(agent => agent.transports.map(transportName => <button key={`${agent.vendor}/${transportName}`} onClick={() => { void transport.request('session.handoff', { session, mode: 'rehydrate', to: { vendor: agent.vendor, transport: transportName } }); setSlashAction(undefined); }} style={{ width: '100%', padding: '6px', border: 0, background: 'transparent', color: 'var(--text-secondary)', textAlign: 'left', cursor: 'pointer', font: 'inherit', fontSize: 11 }}>{agent.vendor} · {transportName}</button>)) : slashValues.map(item => <button key={item.value} onClick={() => pickSlashValue(slashAction, item.value)} style={{ width: '100%', padding: '6px', border: 0, background: 'transparent', color: 'var(--text-secondary)', textAlign: 'left', cursor: 'pointer', font: 'inherit', fontSize: 11 }}>{item.label}</button>)}
             <button onClick={() => setSlashAction(undefined)} style={{ ...iconBtn, fontSize: 10 }}>Cancel</button>
-          </> : slashItems.map((item, index) => <button key={`${item.source}-${item.name}`} onMouseDown={event => event.preventDefault()} onClick={() => pickSlash(item.name, item.source)} style={{ width: '100%', display: 'flex', gap: 8, padding: '6px', border: 0, borderRadius: 5, background: slashIndex === index ? 'var(--bg-card)' : 'transparent', color: 'var(--text-secondary)', textAlign: 'left', cursor: 'pointer', font: 'inherit', fontSize: 11 }}>
+          </> : slashItems.map((item, index) => <button key={`${item.source}-${item.name}`} onMouseDown={event => event.preventDefault()} onClick={() => pickSlash(item.name, item.source)} style={{ width: '100%', display: 'flex', gap: 8, padding: '6px', border: 0, borderRadius: 5, background: slashIndex === index ? 'var(--bg-selected)' : 'transparent', color: slashIndex === index ? 'var(--text-active)' : 'var(--text-secondary)', textAlign: 'left', cursor: 'pointer', font: 'inherit', fontSize: 11 }}>
             <span style={{ color: 'var(--text-title)', fontFamily: 'var(--font-mono)' }}>/{item.name}</span><span style={{ color: 'var(--text-hint)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.description}</span>
           </button>)}
         </div> : null}
@@ -383,14 +383,14 @@ export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefi
             else if (event.key === 'Escape') setHistoryOpen(false);
           }} style={{ height: 26, padding: '0 7px', borderRadius: 5, border: '1px solid var(--line-card)', background: 'var(--bg-inset)', color: 'var(--text-active)', font: 'inherit', fontSize: 11, outline: 'none' }} />
           <div style={{ overflowY: 'auto', marginTop: 4 }}>
-            {historyItems.map((item, index) => <button key={`${item.createdAt}-${index}`} onMouseDown={event => event.preventDefault()} onClick={() => selectHistory(item)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '5px 6px', border: 0, borderRadius: 5, background: historySelection === index ? 'var(--bg-card)' : 'transparent', color: 'var(--text-secondary)', font: 'inherit', fontSize: 11, textAlign: 'left', cursor: 'pointer' }}>
+            {historyItems.map((item, index) => <button key={`${item.createdAt}-${index}`} onMouseDown={event => event.preventDefault()} onClick={() => selectHistory(item)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '5px 6px', border: 0, borderRadius: 5, background: historySelection === index ? 'var(--bg-selected)' : 'transparent', color: historySelection === index ? 'var(--text-active)' : 'var(--text-secondary)', font: 'inherit', fontSize: 11, textAlign: 'left', cursor: 'pointer' }}>
               <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.text}</span>
               <span style={{ flexShrink: 0, color: 'var(--text-hint)', fontSize: 9 }}>{new Date(item.createdAt).toLocaleDateString()}</span>
             </button>)}
             {!historyItems.length ? <div style={{ padding: 8, color: 'var(--text-hint)', fontSize: 11 }}>No matching prompts</div> : null}
           </div>
         </div> : null}
-        {dropping ? <div style={{ position: 'absolute', inset: 4, border: '1px dashed var(--text-hint)', borderRadius: 9, background: 'color-mix(in srgb, var(--bg-raised) 88%, transparent)', display: 'grid', placeItems: 'center', color: 'var(--text-secondary)', fontSize: 12, pointerEvents: 'none' }}>Drop to attach</div> : null}
+        {dropping ? <div style={{ position: 'absolute', inset: 4, border: '1px dashed var(--line-card)', borderRadius: 9, background: 'var(--bg-selected)', display: 'grid', placeItems: 'center', color: 'var(--text-label)', fontSize: 12, pointerEvents: 'none' }}>Drop to attach</div> : null}
       </div>
     </div>
   );

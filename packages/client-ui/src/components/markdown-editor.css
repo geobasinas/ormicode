@@ -6,8 +6,8 @@
   --baseBase: var(--bg-main);
   --baseBgSubtle: var(--bg-card);
   --baseBg: var(--bg-chip);
-  --baseBgHover: var(--bg-raised);
-  --baseBgActive: var(--bg-raised);
+  --baseBgHover: var(--bg-hover);
+  --baseBgActive: var(--bg-selected);
   --baseLine: var(--line-subtle);
   --baseBorder: var(--line-card);
   --baseBorderHover: var(--line-card);
@@ -16,16 +16,16 @@
   --baseText: var(--text-label);
   --baseTextContrast: var(--text-title);
   --accentBase: var(--bg-main);
-  --accentBgSubtle: var(--tint-mint);
-  --accentBg: var(--tint-mint);
-  --accentBgHover: var(--tint-mint);
-  --accentBgActive: var(--tint-mint);
-  --accentLine: var(--accent-mint);
-  --accentBorder: var(--accent-mint);
-  --accentBorderHover: var(--accent-mint);
-  --accentSolid: var(--accent-mint);
-  --accentSolidHover: var(--accent-mint);
-  --accentText: var(--accent-mint);
+  --accentBgSubtle: var(--bg-selected);
+  --accentBg: var(--bg-selected);
+  --accentBgHover: var(--bg-hover);
+  --accentBgActive: var(--bg-selected);
+  --accentLine: var(--line-mint);
+  --accentBorder: var(--line-mint);
+  --accentBorderHover: var(--line-mint);
+  --accentSolid: var(--bg-selected);
+  --accentSolidHover: var(--bg-hover);
+  --accentText: var(--text-active);
   --accentTextContrast: var(--text-title);
   --basePageBg: transparent;
   --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
@@ -265,8 +265,8 @@
 }
 
 .ormi-md-content li[class*="listItemChecked"]::before {
-  border-color: var(--accent-mint);
-  background: var(--accent-mint);
+  border-color: var(--line-mint);
+  background: var(--bg-selected);
 }
 
 .ormi-md-content li[class*="listItemChecked"]::after {

@@ -32,7 +32,7 @@ export function HistoryTab({ session, branch }: { session: string; branch: strin
       {log.error ? <Notice tone="red">{log.error}</Notice> : null}
       <div style={scroll}>
         {commits.map(c => (
-          <div key={c.sha} onClick={() => setSel(c.sha)} className={sel === c.sha ? undefined : 'hv'} style={{ display: 'flex', gap: 10, padding: '7px 12px', cursor: 'pointer', borderRadius: 6, background: sel === c.sha ? 'var(--bg-raised)' : 'transparent' }}>
+          <div key={c.sha} onClick={() => setSel(c.sha)} className={sel === c.sha ? undefined : 'hv'} style={{ display: 'flex', gap: 10, padding: '7px 12px', cursor: 'pointer', borderRadius: 6, background: sel === c.sha ? 'var(--bg-selected)' : 'transparent' }}>
             <span style={{ width: 7, height: 7, borderRadius: 4, marginTop: 5, flexShrink: 0, background: c.pushed ? 'var(--text-hint)' : 'var(--accent-mint)' }} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 12, color: 'var(--text-title)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.subject}</div>

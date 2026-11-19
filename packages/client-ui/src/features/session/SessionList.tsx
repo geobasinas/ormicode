@@ -16,9 +16,9 @@ function Row({ s, active, onSelect }: { s: SessionSummary; active?: string; onSe
   const needs = NEEDS_YOU.has(s.state);
   const scratch = s.project === 'scratch';
   return (
-    <button className="hv-sub" onClick={() => onSelect(s.id)} title={stateLabel(s.state)} style={{
+    <button className={selected ? 'hv-sub ormi-selected-row' : 'hv-sub'} onClick={() => onSelect(s.id)} title={stateLabel(s.state)} style={{
       textAlign: 'left', width: '100%', height: 38, padding: '0 8px 0 10px', flexShrink: 0,
-      border: 'none', cursor: 'pointer', font: 'inherit', background: selected ? 'var(--bg-raised)' : 'transparent',
+      border: 'none', cursor: 'pointer', font: 'inherit', background: selected ? 'var(--bg-selected)' : 'transparent',
       borderRadius: 7, display: 'flex', alignItems: 'center', gap: 13,
     }}>
       <span style={{ width: 14, display: 'inline-flex', justifyContent: 'center' }}><StateIcon state={s.state} size={12} /></span>
@@ -28,16 +28,15 @@ function Row({ s, active, onSelect }: { s: SessionSummary; active?: string; onSe
             flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12.5,
             fontWeight: selected || needs ? 600 : 400, color: selected ? 'var(--text-active)' : 'var(--text-label)',
           }}>{s.title || s.id.slice(0, 12)}</span>
-          <span style={{ fontSize: 10.5, color: needs ? 'var(--accent-amber)' : 'var(--text-secondary)', flexShrink: 0 }}>{ago(s.updatedAt ?? 0)}</span>
+          <span style={{ fontSize: 10.5, color: 'var(--text-secondary)', flexShrink: 0 }}>{ago(s.updatedAt ?? 0)}</span>
         </span>
         <span style={{ ...mono, display: 'flex', alignItems: 'center', gap: 4, marginTop: 2, color: 'var(--text-secondary)', overflow: 'hidden', whiteSpace: 'nowrap' }}>
           {scratch || !s.branch ? <span>{scratch ? 'No project' : s.vendor ?? ''}</span>
             : <><GitBranch size={9} style={{ flexShrink: 0 }} /><span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.branch}</span></>}
           {s.worktree ? <span title="own worktree" style={{ border: '1px solid var(--line-card)', borderRadius: 4, padding: '0 3px', fontSize: 9, flexShrink: 0 }}>wt</span> : null}
           <span style={{ flex: 1 }} />
-          {!scratch && s.diff ? (s.diff.added || s.diff.removed ? <span title={`${s.diff.files} files changed`} style={{ flexShrink: 0, display: 'inline-flex', gap: 4 }}>
-            {s.diff.added ? <span style={{ color: 'var(--accent-mint)' }}>+{s.diff.added}</span> : null}
-            {s.diff.removed ? <span style={{ color: 'var(--accent-red)' }}>−{s.diff.removed}</span> : null}</span>
+          {!scratch && s.diff ? (s.diff.added || s.diff.removed ? <span title={`${s.diff.files} files changed`} style={{ flexShrink: 0 }}>
+            {s.diff.files} changed</span>
             : <span style={{ flexShrink: 0 }}>clean</span>) : null}
         </span>
       </span>
@@ -58,7 +57,7 @@ export function SessionList({ active, onSelect, query }: { active?: string; onSe
     }
     for (const g of byProject.values()) g.sort((a, b) => rank(a) - rank(b) || (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
     const latest = (l: SessionSummary[]) => Math.max(...l.map(s => s.updatedAt ?? 0));
-    // Projects first by recency; scratch sessions sit last under "no project" like the mockup.
+    // Projects first by recency; scratch sessions sit last under"no project" like the mockup.
     return [...byProject.entries()].sort((a, b) => Number(a[0] === 'scratch') - Number(b[0] === 'scratch') || latest(b[1]) - latest(a[1]));
   }, [sessions, query]);
 

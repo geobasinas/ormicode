@@ -287,10 +287,9 @@ export function GitChip({ value, onChange, info, project, mode, onModeChange, br
                     else { setManaging(false); chooseMode(key); }
                   }} style={{
                   width: '100%', height: '100%', minWidth: 0, border: 0, borderRadius: 5, padding: '0 5px',
-                  background: (key === 'branches' ? managing : !managing && mode === key) ? 'var(--bg-raised)' : 'transparent',
-                  color: (key === 'branches' ? managing : !managing && mode === key) ? 'var(--text-title)' : 'var(--text-hint)',
+                  background: (key === 'branches' ? managing : !managing && mode === key) ? 'var(--bg-selected)' : 'transparent',
+                  color: disabled ? 'var(--text-hint)' : (key === 'branches' ? managing : !managing && mode === key) ? 'var(--text-active)' : 'var(--text-secondary)',
                   font: 'inherit', fontSize: 11, cursor: disabled ? 'not-allowed' : 'pointer',
-                  opacity: disabled ? 0.5 : 1,
                 }}>{text}</button>
               </span>
             ))}

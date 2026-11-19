@@ -136,7 +136,7 @@ export function GitBranchManagement({ info, project, onProjectAction, onSelect }
       {(['all', 'local', 'remote', 'merged', 'stale'] as const).map(item => (
         <button key={item} type="button" aria-pressed={filter === item} onClick={() => setFilter(item)} style={{
           border: '1px solid var(--line-card)', borderRadius: 12, padding: '3px 7px',
-          background: filter === item ? 'var(--bg-card)' : 'transparent',
+          background: filter === item ? 'var(--bg-selected)' : 'transparent',
           color: filter === item ? 'var(--text-title)' : 'var(--text-hint)', font: 'inherit', fontSize: 10, cursor: 'pointer',
         }}>{item === 'stale' ? 'Stale' : `${item[0]!.toUpperCase()}${item.slice(1)}`}</button>
       ))}
@@ -211,7 +211,7 @@ export function GitBranchManagement({ info, project, onProjectAction, onSelect }
             </label> : null}
             {deleteError ? <div style={{ ...quiet, color: 'var(--accent-red)' }}>{deleteError}</div> : null}
             <button type="button" disabled={deleteConfirm !== deleting || (!deleteForce && !info.local.find(item => item.name === deleting)?.merged)}
-              onClick={() => void saveDelete()} style={{ ...buttonStyle, color: 'var(--accent-red)' }}>Delete branch</button>
+              onClick={() => void saveDelete()} style={{ ...buttonStyle, borderColor: 'var(--line-red)', background: 'var(--tint-red)', color: 'var(--accent-red)' }}>Delete branch</button>
           </div> : null}
         </div>;
       })}

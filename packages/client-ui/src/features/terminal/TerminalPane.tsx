@@ -16,8 +16,8 @@ export function TerminalPane({ session }: { session: string }) {
           return (
             <span key={t.terminal} onClick={() => setActive(t.terminal)} className={on ? undefined : 'hv'} style={{
               display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 8px', borderRadius: 6, cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap',
-              fontFamily: 'var(--font-mono)', fontSize: 11, background: on ? 'var(--bg-raised)' : 'transparent',
-              color: on ? 'var(--text-active)' : 'var(--text-hint)',
+              fontFamily: 'var(--font-mono)', fontSize: 11, background: on ? 'var(--bg-selected)' : 'transparent',
+              color: on ? 'var(--text-active)' : 'var(--text-secondary)',
             }}>
               <SquareTerminal size={12} />{t.shell}
               <X size={11} style={{ color: 'var(--text-hint)' }} onClick={e => { e.stopPropagation(); close(t.terminal); }} />
@@ -26,8 +26,8 @@ export function TerminalPane({ session }: { session: string }) {
         })}
         <button title="New terminal" className="hv" style={iconBtn} onClick={() => void open()}><Plus size={14} /></button>
         <span style={{ flex: 1 }} />
-        <button title="Splits — not supported (tabs only)" style={{ ...iconBtn, opacity: 0.45, cursor: 'default' }}><Columns2 size={13} /></button>
-        <button title="Maximize — soon" style={{ ...iconBtn, opacity: 0.45, cursor: 'default' }}><Maximize2 size={13} /></button>
+        <button disabled title="Splits — not supported (tabs only)" style={{ ...iconBtn, color: 'var(--text-hint)', cursor: 'default' }}><Columns2 size={13} /></button>
+        <button disabled title="Maximize — soon" style={{ ...iconBtn, color: 'var(--text-hint)', cursor: 'default' }}><Maximize2 size={13} /></button>
       </div>
       <div style={{ position: 'relative', flex: 1, minHeight: 0, background: 'var(--bg-inset)', border: '1px solid var(--line-card)', borderRadius: 10, padding: 10, overflow: 'hidden' }}>
         <div style={{ position: 'absolute', inset: 10 }}>

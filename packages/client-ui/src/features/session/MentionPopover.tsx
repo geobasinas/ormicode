@@ -63,7 +63,7 @@ export function MentionPopover({
     const path = item.context.path;
     if (!path) {
       const Icon = item.context.kind === 'diff' ? GitBranch : item.context.kind === 'terminal' ? Terminal : FileText;
-      return <button key={`${item.context.kind}-${item.label}`} onMouseDown={event => event.preventDefault()} onClick={() => onPick(item)} style={{ width: '100%', height: 28, display: 'flex', alignItems: 'center', gap: 8, border: 0, borderRadius: 5, background: index === selectedIndex ? 'var(--bg-card)' : 'transparent', color: 'var(--text-secondary)', textAlign: 'left', padding: '0 7px', fontSize: 11, cursor: 'pointer' }}>
+      return <button key={`${item.context.kind}-${item.label}`} onMouseDown={event => event.preventDefault()} onClick={() => onPick(item)} style={{ width: '100%', height: 28, display: 'flex', alignItems: 'center', gap: 8, border: 0, borderRadius: 5, background: index === selectedIndex ? 'var(--bg-selected)' : 'transparent', color: index === selectedIndex ? 'var(--text-active)' : 'var(--text-secondary)', textAlign: 'left', padding: '0 7px', fontSize: 11, cursor: 'pointer' }}>
         <Icon size={13} style={{ flexShrink: 0, color: 'var(--text-hint)' }} />
         <span>{item.label}</span>
         <span style={{ marginLeft: 'auto', color: 'var(--text-hint)', fontSize: 10 }}>{item.hint}</span>
@@ -72,7 +72,7 @@ export function MentionPopover({
     const folder = item.context.kind === 'folder';
     const name = path.split('/').at(-1) || path;
     const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
-    return <button key={`${item.context.kind}-${item.label}`} onMouseDown={event => event.preventDefault()} onClick={() => onPick(item)} title={path} style={{ width: '100%', height: 28, display: 'flex', alignItems: 'center', gap: 8, border: 0, borderRadius: 5, background: index === selectedIndex ? 'var(--bg-card)' : 'transparent', color: 'var(--text-secondary)', textAlign: 'left', padding: '0 7px', fontSize: 11, cursor: 'pointer', minWidth: 0 }}>
+    return <button key={`${item.context.kind}-${item.label}`} onMouseDown={event => event.preventDefault()} onClick={() => onPick(item)} title={path} style={{ width: '100%', height: 28, display: 'flex', alignItems: 'center', gap: 8, border: 0, borderRadius: 5, background: index === selectedIndex ? 'var(--bg-selected)' : 'transparent', color: index === selectedIndex ? 'var(--text-active)' : 'var(--text-secondary)', textAlign: 'left', padding: '0 7px', fontSize: 11, cursor: 'pointer', minWidth: 0 }}>
       {folder ? <Folder size={13} style={{ flexShrink: 0, color: 'var(--text-hint)' }} /> : <FileText size={13} style={{ flexShrink: 0, color: 'var(--text-hint)' }} />}
       <span style={{ whiteSpace: 'nowrap' }}>{name}{folder ? '/' : ''}</span>
       {parent ? <span title={parent} style={{ marginLeft: 'auto', maxWidth: 112, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', direction: 'rtl', textAlign: 'right', color: 'var(--text-hint)', fontSize: 10 }}>{parent}</span> : null}

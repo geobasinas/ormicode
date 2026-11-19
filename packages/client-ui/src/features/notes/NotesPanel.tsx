@@ -67,10 +67,10 @@ export function NotesPanel({ session }: { session: string }) {
           <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             {confirm ? (
               <button onClick={() => { if (editing.id) remove(editing.id); setDraft(undefined); setOpenId(undefined); setConfirm(false); }}
-                className="hv" style={{ font: 'inherit', fontSize: 11.5, color: 'var(--accent-red)', background: 'none', border: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, height: 26, padding: '0 8px', borderRadius: 7 }}><Trash2 size={12} />Confirm delete</button>
+                className="hv" style={{ font: 'inherit', fontSize: 11.5, color: 'var(--accent-red)', background: 'var(--tint-red)', border: '1px solid var(--line-red)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, height: 26, padding: '0 8px', borderRadius: 7 }}><Trash2 size={12} />Confirm delete</button>
             ) : (
               <button onClick={() => setConfirm(true)} disabled={!editing.id}
-                className={editing.id ? 'hv' : undefined} style={{ font: 'inherit', fontSize: 11.5, color: 'var(--text-hint)', background: 'none', border: 'none', cursor: editing.id ? 'pointer' : 'default', opacity: editing.id ? 1 : 0.45, display: 'inline-flex', alignItems: 'center', gap: 6, height: 26, padding: '0 8px', borderRadius: 7 }}><Trash2 size={12} />Delete</button>
+                className={editing.id ? 'hv' : undefined} style={{ font: 'inherit', fontSize: 11.5, color: 'var(--text-hint)', background: 'none', border: 'none', cursor: editing.id ? 'pointer' : 'default', display: 'inline-flex', alignItems: 'center', gap: 6, height: 26, padding: '0 8px', borderRadius: 7 }}><Trash2 size={12} />Delete</button>
             )}
           </div>
         </div>

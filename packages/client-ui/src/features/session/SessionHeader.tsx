@@ -142,7 +142,7 @@ export function SessionHeader({ session, details, onOpen, onHandoff }: { session
             {deleteError ? <div role="alert" style={{ color: 'var(--accent-red)', fontSize: 11, marginBottom: 6 }}>{deleteError}</div> : null}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
               <button disabled={deleting} onClick={() => setConfirmDelete(false)} style={smallButton}>Cancel</button>
-              <button disabled={deleting} onClick={() => void deleteScratch()} style={{ ...smallButton, color: 'var(--accent-red)' }}>{deleting ? 'Deleting…' : 'Delete'}</button>
+              <button disabled={deleting} onClick={() => void deleteScratch()} style={{ ...smallButton, borderColor: 'var(--line-red)', background: 'var(--tint-red)', color: 'var(--accent-red)' }}>{deleting ? 'Deleting…' : 'Delete'}</button>
             </div>
           </div> : null}
           {canStop ? <DropdownMenuItem variant="destructive" onClick={() => act('session.abort')}>Stop session</DropdownMenuItem> : null}

@@ -60,7 +60,7 @@ export function LayoutSettings({ safeMode, onSafeMode }: { safeMode: boolean; on
         const region = layout.regions[id] ?? { order: index };
         const widgets = region.widgets ?? ['recent', 'needs'];
         return <div key={id}>
-          <Row title={regions[id]!} hint={id === 'approval' ? "Approvals can't be hidden" : undefined}>
+          <Row title={regions[id]!} hint={id === 'approval' ?"Approvals can't be hidden" : undefined}>
             <div style={controlsGrid}>
               {id === 'approval' ? <span /> : <LabeledSwitch label="Visible" checked={region.visible !== false} onChange={() => update(id, { visible: region.visible === false })} />}
               <LabeledSwitch label="Collapsed" checked={region.collapsed === true} onChange={() => update(id, { collapsed: region.collapsed !== true })} />
@@ -131,7 +131,7 @@ const group = { marginTop: 18 };
 const caption = { marginBottom: 7, fontSize: 10, fontWeight: 500, letterSpacing: 1, color: 'var(--text-label)' };
 const card = { overflow: 'hidden', border: '1px solid var(--line-card)', borderRadius: 9, background: 'var(--bg-card)' };
 const knob = { width: 13, height: 13, borderRadius: 99, background: 'var(--bg-main)' };
-const switchStyle = (on: boolean) => ({ width: 30, height: 17, padding: 2, border: 0, borderRadius: 99, background: on ? 'var(--accent-mint)' : 'var(--bg-raised)', display: 'flex', justifyContent: on ? 'flex-end' : 'flex-start', cursor: 'pointer' });
+const switchStyle = (on: boolean) => ({ width: 30, height: 17, padding: 2, border: 0, borderRadius: 99, background: on ? 'var(--bg-selected)' : 'var(--bg-raised)', display: 'flex', justifyContent: on ? 'flex-end' : 'flex-start', cursor: 'pointer' });
 const orderButton = { ...control, width: 26, padding: 0, cursor: 'pointer' };
 const actionButton = { ...control, cursor: 'pointer' };
 const controlsGrid = { display: 'grid', gridTemplateColumns: '60px 76px 26px 26px 58px', gap: 4, alignItems: 'center', justifyItems: 'start' };

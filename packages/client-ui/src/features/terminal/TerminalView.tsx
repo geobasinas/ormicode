@@ -14,9 +14,9 @@ function tokenTheme() {
     cursor: css('--text-title'), cursorAccent: css('--bg-inset'), selectionBackground: css('--bg-raised'),
     black: css('--bg-raised'), brightBlack: css('--text-hint'),
     red, brightRed: red, green, brightGreen: green, yellow, brightYellow: yellow,
-    blue: css('--ansi-blue'), brightBlue: css('--ansi-bright-blue'),
-    magenta: css('--ansi-magenta'), brightMagenta: css('--ansi-bright-magenta'),
-    cyan: css('--ansi-cyan'), brightCyan: css('--ansi-bright-cyan'),
+    blue: css('--text-secondary'), brightBlue: css('--text-label'),
+    magenta: css('--text-secondary'), brightMagenta: css('--text-label'),
+    cyan: css('--text-secondary'), brightCyan: css('--text-label'),
     white: css('--text-label'), brightWhite: css('--text-title'),
   };
 }

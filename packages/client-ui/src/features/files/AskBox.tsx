@@ -1,4 +1,4 @@
-/** "Ask about this file": a prompt box under the viewer that starts a new
+/**"Ask about this file": a prompt box under the viewer that starts a new
  *  session in the same project with the path and selected lines as context. */
 import { useRef, useState } from 'react';
 import { ArrowUp, X, MessageSquarePlus } from 'lucide-react';

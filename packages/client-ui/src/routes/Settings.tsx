@@ -71,7 +71,7 @@ function Switch({ on, onChange, disabled }: { on: boolean; onChange?: (v: boolea
   return (
     <button role="switch" aria-checked={on} disabled={disabled} onClick={() => onChange?.(!on)} style={{
       width: 30, height: 17, borderRadius: 999, border: 'none', padding: 2, flexShrink: 0, cursor: disabled ? 'default' : 'pointer',
-      background: on ? 'var(--accent-mint)' : 'var(--bg-raised)', opacity: disabled ? 0.5 : 1, display: 'flex', justifyContent: on ? 'flex-end' : 'flex-start',
+      background: on ? 'var(--bg-selected)' : 'var(--bg-raised)', display: 'flex', justifyContent: on ? 'flex-end' : 'flex-start',
     }}><span style={{ width: 13, height: 13, borderRadius: 999, background: on ? 'var(--bg-main)' : 'var(--text-hint)' }} /></button>
   );
 }
@@ -313,7 +313,7 @@ export function SettingsView({ prefs, onPrefs, connection }: { prefs: Prefs; onP
               <button key={it.id} className="hv-sub" onClick={() => setSection(it.id)} style={{
                 display: 'flex', alignItems: 'center', gap: 9, width: '100%', height: 29, padding: '0 9px', border: 'none', borderRadius: 7,
                 font: 'inherit', fontSize: 13, cursor: 'pointer', textAlign: 'left',
-                background: section === it.id ? 'var(--bg-raised)' : 'transparent', color: section === it.id ? 'var(--text-active)' : 'var(--text-label)',
+                background: section === it.id ? 'var(--bg-selected)' : 'transparent', color: section === it.id ? 'var(--text-active)' : 'var(--text-label)',
               }}><it.icon size={14} style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />{it.label}</button>
             ))}
           </div>

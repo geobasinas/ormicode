@@ -58,7 +58,7 @@ export function PrTab({ session, pr, error, reload }: { session: string; pr: Pr 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <Header title="Pull request" count={`#${pr.number}`}>
-        <span style={{ fontSize: 10.5, padding: '1px 8px', borderRadius: 10, background: pr.state === 'open' ? 'var(--tint-mint)' : 'var(--bg-chip)', color: pr.state === 'open' ? 'var(--accent-mint)' : 'var(--text-hint)', textTransform: 'capitalize' }}>{pr.state}</span>
+        <span style={{ fontSize: 10.5, padding: '1px 8px', borderRadius: 10, background: 'var(--bg-chip)', color: 'var(--text-secondary)', textTransform: 'capitalize' }}>{pr.state}</span>
         <IconBtn title="Open on GitHub" onClick={() => window.open(pr.url)}><ExternalLink size={13} /></IconBtn>
       </Header>
       <div style={{ ...scroll, padding: '0 12px', display: 'flex', flexDirection: 'column', gap: 10 }}>

@@ -21,18 +21,18 @@ export function GitPane({ session }: { session: string }) {
     { id: 'changes', label: 'Changes', icon: GitCompareArrows, count: diff.data ? String(diff.data.files.length) : undefined },
     { id: 'history', label: 'History', icon: History },
     { id: 'branches', label: 'Branches', icon: GitBranch, count: branches.data ? String(branches.data.local.length) : undefined },
-    { id: 'pr', label: 'PR', icon: GitPullRequest, count: pr.data?.pr ? `#${pr.data.pr.number}` : undefined, mint: true },
+    { id: 'pr', label: 'PR', icon: GitPullRequest, count: pr.data?.pr ? `#${pr.data.pr.number}` : undefined },
     { id: 'stash', label: 'Stash', icon: Archive },
   ];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div className="ormi-tabs" style={{ display: 'flex', height: 38, boxSizing: 'border-box', borderBottom: '1px solid var(--line-subtle)', padding: '0 4px', flexShrink: 0, overflowX: 'auto' }}>
-        {TABS.map(({ id, label, icon: Icon, count, mint }) => (
+        {TABS.map(({ id, label, icon: Icon, count }) => (
           <button key={id} onClick={() => setTab(id)} style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 8px', height: 37, flexShrink: 0, border: 'none', borderRadius: 6, background: tab === id ? 'var(--bg-raised)' : 'transparent', cursor: 'pointer', font: 'inherit', fontSize: 11.5, whiteSpace: 'nowrap',
-            color: tab === id ? 'var(--text-active)' : 'var(--text-hint)', fontWeight: tab === id ? 500 : 400,
-            borderBottom: tab === id ? '1.5px solid var(--accent-mint)' : '1.5px solid transparent',
-          }}><Icon size={12} className="ormi-pane-narrow-hide" />{label}{count ? <span className={id === 'pr' ? undefined : 'ormi-pane-narrow-hide'} style={{ display: 'inline-flex' }}><Count mint={mint && id === 'pr'}>{count}</Count></span> : null}</button>
+            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 8px', height: 37, flexShrink: 0, border: 'none', borderRadius: 6, background: tab === id ? 'var(--bg-selected)' : 'transparent', cursor: 'pointer', font: 'inherit', fontSize: 11.5, whiteSpace: 'nowrap',
+            color: tab === id ? 'var(--text-active)' : 'var(--text-secondary)', fontWeight: tab === id ? 500 : 400,
+            borderBottom: '1.5px solid transparent',
+          }}><Icon size={12} className="ormi-pane-narrow-hide" />{label}{count ? <span className={id === 'pr' ? undefined : 'ormi-pane-narrow-hide'} style={{ display: 'inline-flex' }}><Count>{count}</Count></span> : null}</button>
         ))}
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>

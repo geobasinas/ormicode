@@ -153,12 +153,12 @@ export function FilesPane({ session, onOpenSession }: { session: string; onOpenS
                 onDoubleClick={() => isDir && go(e.path)} className={on ? undefined : 'hv-row'} style={{
                   position: 'absolute', top: 0, left: 6, right: 6, height: ROW, transform: `translateY(${item.start}px)`,
                   display: 'flex', alignItems: 'center', gap: 6, padding: `0 6px 0 ${6 + depth * 14}px`, borderRadius: 6, cursor: 'pointer',
-                  background: on ? 'var(--bg-raised)' : 'transparent', fontSize: 12, opacity: e.git === 'ignored' ? 0.5 : 1,
+                  background: on ? 'var(--bg-selected)' : 'transparent', fontSize: 12,
                 }}>
                 <span style={{ width: 12, display: 'inline-flex', color: 'var(--text-hint)', flexShrink: 0 }}>{isDir ? (expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />) : null}</span>
                 <Icon size={13} style={{ color: isDir ? 'var(--text-secondary)' : 'var(--text-hint)', flexShrink: 0 }} />
                 <span style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ color, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: e.git === 'deleted' ? 'line-through' : undefined }}>{e.name}</span>
+                  <span style={{ color: e.git === 'ignored' ? 'var(--text-hint)' : color, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textDecoration: e.git === 'deleted' ? 'line-through' : undefined }}>{e.name}</span>
                   {e.git && GIT_LETTER[e.git] ? <span style={{ ...mono, fontSize: 9.5, color, flexShrink: 0 }}>{GIT_LETTER[e.git]}</span> : null}
                 </span>
                 <span className="ormi-pane-narrow-hide" style={{ width: cols.date, fontSize: 10.5, color: 'var(--text-hint)', whiteSpace: 'nowrap', flexShrink: 0 }}>{e.mtime ? formatDate(e.mtime) : ''}</span>
