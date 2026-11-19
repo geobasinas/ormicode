@@ -53,6 +53,15 @@ test('response contracts reject missing fields and unknown methods', () => {
   assert.deepEqual(parseResponseBody('session.teleport', {}), { success: false, error: 'protocol.unknown_method' });
 });
 
+test('preview relay requests and paged responses are bounded and typed', () => {
+  const request = { session, port: 41001, method: 'POST', path: '/submit', headers: { 'content-type': 'text/plain' }, body: 'aGVsbG8=' };
+  assert.equal(parseRequestBody('preview.fetch', request).success, true);
+  assert.equal(parseRequestBody('preview.fetch', { ...request, port: 40000 }).success, true);
+  assert.equal(parseRequestBody('preview.fetchMore', { handle: 'opaque-handle' }).success, true);
+  assert.equal(parseResponseBody('preview.fetch', { status: 200, headers: {}, body: 'AA==', size: 1, more: 'opaque-handle' }).success, true);
+  assert.equal(parseResponseBody('preview.fetchMore', { body: 'AA==' }).success, true);
+});
+
 test('conversation rewind events and checkpoint restore responses have explicit shapes', () => {
   assert.equal(parseEventBody({ kind: 'conversation_rewound', to: 12, checkpoint: 'abc123' }).success, true);
   assert.equal(parseResponseBody('checkpoint.restore', { restored: true, id: 'abc123', mode: 'conversation' }).success, true);

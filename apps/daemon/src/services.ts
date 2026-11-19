@@ -10,6 +10,7 @@ import { killTreePid } from './proctree.ts';
 import { allocateSessionPorts } from './session-ports.ts';
 import { environmentForSession } from './session-env.ts';
 import { PreviewProxy } from './preview-proxy.ts';
+import { PreviewFetchPages } from './preview-fetch.ts';
 import type { PreviewConsoleEntry } from './preview-inspector.ts';
 
 const serviceSchema = z.object({
@@ -77,6 +78,7 @@ export class Services {
   private readonly sessions = new Map<string, Map<string, Runtime>>();
   private readonly db: Store;
   private readonly proxy: PreviewProxy;
+  private readonly fetchPages = new PreviewFetchPages();
   private readonly record: (session: string, kind: string, payload: Record<string, unknown>) => void;
   private readonly home: string;
   constructor(
@@ -191,6 +193,26 @@ export class Services {
 
   previewEntries(session: string, ids: string[]): PreviewConsoleEntry[] {
     return this.proxy.consoleEntries(session, ids);
+  }
+
+  async previewFetch(client: string, session: string, port: number, method: string, path: string,
+    headers: Record<string, string>, body: Buffer) {
+    if (!getSession(this.db, session)) throw new ServiceError('session.not_found', session);
+    try { return this.fetchPages.first(client, await this.proxy.fetch(session, port, method, path, headers, body)); }
+    catch (error) {
+      if (error && typeof error === 'object' && 'code' in error && typeof error.code === 'string')
+        throw new ServiceError(error.code, error instanceof Error ? error.message : String(error));
+      throw error;
+    }
+  }
+
+  previewFetchMore(client: string, handle: string) {
+    try { return this.fetchPages.next(client, handle); }
+    catch (error) {
+      if (error && typeof error === 'object' && 'code' in error && typeof error.code === 'string')
+        throw new ServiceError(error.code, error instanceof Error ? error.message : String(error));
+      throw error;
+    }
   }
 
   async start(session: string, name: string): Promise<ServiceView> {
@@ -336,6 +358,7 @@ export class Services {
   }
 
   async shutdown(): Promise<void> {
+    this.fetchPages.close();
     await Promise.all([...this.sessions.keys()].map(session => this.stopSession(session)));
   }
 }

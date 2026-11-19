@@ -19,6 +19,11 @@ export const serviceRequests = {
   'service.restart': z.object({ session: sessionIdSchema, service: nonEmpty }),
   'service.logs': z.object({ session: sessionIdSchema, service: nonEmpty, after: z.optional(cursorSchema) }),
   'preview.url': z.object({ session: sessionIdSchema, port: count, path: z.optional(z.string()) }),
+  'preview.fetch': z.object({
+    session: sessionIdSchema, port: count, method: z.string().check(z.regex(/^[A-Za-z]{1,16}$/)),
+    path: nonEmpty, headers: z.record(z.string(), z.string()), body: z.optional(z.string().check(z.maxLength(14 * 1024 * 1024))),
+  }),
+  'preview.fetchMore': z.object({ handle: nonEmpty }),
   'preview.console': z.object({ session: sessionIdSchema, after: z.optional(cursorSchema), limit: z.optional(count.check(z.gte(1), z.lte(500))) }),
   'preview.consoleClear': z.object({ session: sessionIdSchema }),
 } as const;
@@ -47,7 +52,10 @@ export const browserRequests = {
   'browser.snapshot': z.object({ session: sessionIdSchema }),
   'browser.screenshot': z.object({ session: sessionIdSchema, fullPage: z.optional(z.boolean()), selector: z.optional(nonEmpty) }),
   'browser.close': z.object({ session: sessionIdSchema }),
-  'browser.artifact': z.object({ session: sessionIdSchema, id: z.string().check(z.regex(/^bl_[0-7][0-9A-HJKMNP-TV-Z]{25}$/)) }),
+  'browser.artifact': z.object({
+    session: sessionIdSchema, id: z.string().check(z.regex(/^bl_[0-7][0-9A-HJKMNP-TV-Z]{25}$/)),
+    offset: z.optional(count), length: z.optional(count.check(z.gte(1), z.lte(512 * 1024))),
+  }),
   'browser.diff': z.object({
     session: sessionIdSchema,
     a: z.string().check(z.regex(/^bl_[0-7][0-9A-HJKMNP-TV-Z]{25}$/)),
@@ -70,7 +78,7 @@ export const browserResponses = {
   'browser.snapshot': browserActionResponse,
   'browser.screenshot': browserActionResponse,
   'browser.close': browserActionResponse,
-  'browser.artifact': z.object({ mime: nonEmpty, data: nonEmpty }),
+  'browser.artifact': z.object({ mime: nonEmpty, data: z.string(), size: count, offset: count, more: z.optional(z.boolean()) }),
   'browser.diff': z.object({ artifact: nonEmpty, changed: count, total: count, percent: z.number(), width: count, height: count }),
 } as const;
 
@@ -85,6 +93,11 @@ export const serviceResponses = {
   'service.restart': z.object({ service: serviceView }),
   'service.logs': z.object({ lines: z.array(z.object({ text: z.string(), stream: z.enum(['stdout', 'stderr']) })), next: count, truncated: z.boolean() }),
   'preview.url': z.object({ url: nonEmpty }),
+  'preview.fetch': z.object({
+    status: count, headers: z.record(z.string(), z.union([z.string(), z.array(z.string())])),
+    body: z.string(), size: count, more: z.optional(nonEmpty),
+  }),
+  'preview.fetchMore': z.object({ body: z.string(), more: z.optional(nonEmpty) }),
   'preview.console': z.object({ entries: z.array(previewConsoleEntry), next: count, dropped: count }),
   'preview.consoleClear': z.object({ cleared: z.literal(true) }),
 } as const;

@@ -7,7 +7,7 @@
  * (~/.ormicode/desktop/remote.json + safeStorage token), fall back to
  * the relay WebSocket. Pairing goes through `ormi:pair` IPC.
  */
-import { app, BrowserWindow, dialog, ipcMain, safeStorage, screen, session as electronSession, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, net, safeStorage, screen, session as electronSession, shell } from 'electron';
 import { isAbsolute, join } from 'node:path';
 import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, statSync } from 'node:fs';
 import * as daemonSocket from '@ormicode/daemon/socket';
@@ -51,8 +51,79 @@ interface RemoteFile { relayUrl: string; account: string; device: string; name: 
 type AnyLink = Link | WsLink;
 
 let link: AnyLink | undefined;
+let linkIsRemote = false;
 let win: BrowserWindow | undefined;
 let encryption = false;
+const previewSessions = new Map<string, Set<string>>();
+const previewHandlers = new Set<string>();
+const previewHost = /^([a-z0-9]+)-(\d+)\.localhost$/;
+
+function rememberPreview(session: string, value: unknown): void {
+  if (typeof value !== 'string') return;
+  try {
+    const match = previewHost.exec(new URL(value).hostname);
+    if (!match) return;
+    const sessions = previewSessions.get(match[1]!) ?? new Set<string>();
+    sessions.add(session);
+    previewSessions.set(match[1]!, sessions);
+  } catch { /* Ignore malformed preview URLs. */ }
+}
+
+function installPreviewProtocol(partition: string): void {
+  if (previewHandlers.has(partition)) return;
+  previewHandlers.add(partition);
+  void electronSession.fromPartition(partition).protocol.handle('http', async request => {
+    if (!linkIsRemote || !link) return net.fetch(request);
+    let parsed: URL;
+    try { parsed = new URL(request.url); } catch { return new Response('Invalid preview URL', { status: 400 }); }
+    const match = previewHost.exec(parsed.hostname);
+    const sessions = match ? previewSessions.get(match[1]!) : undefined;
+    if (!match || !sessions || sessions.size !== 1) return new Response('Preview host is not registered', { status: 403 });
+    const session = [...sessions][0]!;
+    const activeLink = link;
+    const port = Number(match[2]);
+    let body = '';
+    if (request.method !== 'GET' && request.method !== 'HEAD') {
+      const chunks: Uint8Array[] = [];
+      let total = 0;
+      const reader = request.body?.getReader();
+      if (reader) for (;;) {
+        const part = await reader.read();
+        if (part.done) break;
+        total += part.value.length;
+        if (total > 10 * 1024 * 1024) { await reader.cancel(); return new Response('Preview request body too large', { status: 413 }); }
+        chunks.push(part.value);
+      }
+      const all = new Uint8Array(total);
+      let offset = 0;
+      for (const chunk of chunks) { all.set(chunk, offset); offset += chunk.length; }
+      let binary = '';
+      for (let index = 0; index < all.length; index += 0x8000) binary += String.fromCharCode(...all.subarray(index, index + 0x8000));
+      body = btoa(binary);
+    }
+    const headers = Object.fromEntries(request.headers.entries());
+    const first = await activeLink!.request('preview.fetch', {
+      session, port, method: request.method, path: `${parsed.pathname}${parsed.search}`, headers, ...(body ? { body } : {}),
+    });
+    if (first.type !== 'res') return new Response(first.type === 'err' ? first.message : 'Preview unavailable', { status: first.type === 'err' && first.code === 'preview.too_large' ? 413 : 502 });
+    const result = first.body as { status: number; headers: Record<string, string | string[]>; body: string; more?: string };
+    const responseHeaders = new Headers();
+    for (const [name, value] of Object.entries(result.headers)) for (const item of Array.isArray(value) ? value : [value]) responseHeaders.append(name, item);
+    let current: { body: string; more?: string } | undefined = { body: result.body, more: result.more };
+    const stream = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        if (!current) { controller.close(); return; }
+        const bytes = Uint8Array.from(atob(current.body), char => char.charCodeAt(0));
+        if (bytes.length) controller.enqueue(bytes);
+        if (!current.more) { current = undefined; controller.close(); return; }
+        const next = await activeLink!.request('preview.fetchMore', { handle: current.more });
+        if (!next || next.type !== 'res') { controller.error(new Error('Preview response stream ended.')); return; }
+        current = next.body as { body: string; more?: string };
+      },
+    });
+    return new Response([204, 304].includes(result.status) ? null : stream, { status: result.status, headers: responseHeaders });
+  });
+}
 
 const send = (channel: string, payload: unknown) => { if (!win?.isDestroyed()) win?.webContents.send(channel, payload); };
 const state = (s: string) => send('ormi:state', s);
@@ -82,24 +153,25 @@ function checkedPath(value: unknown): string {
   return value;
 }
 
-function attachLink(l: AnyLink): void {
+function attachLink(l: AnyLink, remote: boolean): void {
   link = l;
+  linkIsRemote = remote;
   state('online');
   l.onFrame = frame => send('ormi:event', frame);
-  l.onClose = () => { state('offline'); setTimeout(() => void connectDaemon(), 5_000); };
+  l.onClose = () => { linkIsRemote = false; state('offline'); setTimeout(() => void connectDaemon(), 5_000); };
 }
 
 async function connectDaemon(): Promise<void> {
   state('connecting');
   try {
-    attachLink(await daemonSocket.connect(socketPath(), { v: 1, type: 'hello', role: 'client', proto: 1, device: 'desktop' }));
+    attachLink(await daemonSocket.connect(socketPath(), { v: 1, type: 'hello', role: 'client', proto: 1, device: 'desktop' }), false);
     return;
   } catch { /* no local daemon — try the relay */ }
   const remote = loadRemoteFile();
   const token = readToken();
   if (!remote || !token) { state(remote ? 'unpaired' : 'offline'); setTimeout(() => void connectDaemon(), 15_000); return; }
   try {
-    attachLink(await connectRemote({ ...remote, token }, m => send('ormi:relayError', m)));
+    attachLink(await connectRemote({ ...remote, token }, m => send('ormi:relayError', m)), true);
   } catch {
     state('offline');
     setTimeout(() => void connectDaemon(), 15_000);
@@ -174,6 +246,7 @@ function createWindow(): void {
       allowedSource = source.protocol === 'http:' && (source.hostname.endsWith('.localhost') || source.hostname === '127.0.0.1');
     } catch { /* rejected below */ }
     if (!allowedSource || !previewPartition.test(params.partition ?? '')) { event.preventDefault(); return; }
+    installPreviewProtocol(params.partition!);
     delete preferences.preload;
     preferences.nodeIntegration = false;
     preferences.contextIsolation = true;
@@ -205,13 +278,15 @@ app.whenReady().then(async () => {
       if (!allowed) event.preventDefault();
     });
   });
-  const ss = safeStorage as unknown as { isAsyncEncryptionAvailable?: () => Promise<boolean>; isEncryptionAvailable?: () => boolean };
-  encryption = typeof ss.isAsyncEncryptionAvailable === 'function'
-    ? await ss.isAsyncEncryptionAvailable().catch(() => false)
-    : (ss.isEncryptionAvailable?.() ?? false);
+  encryption = safeStorage.isEncryptionAvailable();
   ipcMain.handle('ormi:request', async (_e, method: string, body?: Record<string, unknown>) => {
     if (!link) return { v: 1, type: 'err', id: 'local', code: 'daemon.offline', message: 'no daemon connection' } satisfies Partial<Frame>;
-    try { return await link.request(method, body ?? {}); }
+    try {
+      const response = await link.request(method, body ?? {});
+      if (method === 'preview.url' && response.type === 'res' && typeof body?.session === 'string')
+        rememberPreview(body.session, (response.body as { url?: unknown }).url);
+      return response;
+    }
     catch (e) { return { v: 1, type: 'err', id: 'local', code: 'daemon.error', message: String(e) } satisfies Partial<Frame>; }
   });
   // Opening a file hands it to its default app; never hand over something that would run.
@@ -275,7 +350,7 @@ app.whenReady().then(async () => {
     link?.close();
     void connectDaemon();
   });
-  ipcMain.on('ormi:remote:get', e => { e.returnValue = loadRemoteFile() ?? null; });
+  ipcMain.on('ormi:remote:get', e => { const remote = loadRemoteFile(); e.returnValue = remote ? { ...remote, active: linkIsRemote } : null; });
   ipcMain.on('ormi:storageBackend', e => {
     // getSelectedStorageBackend is newer; fall back to the availability probe.
     const b = safeStorage as unknown as { getSelectedStorageBackend?: () => string };

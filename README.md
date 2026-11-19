@@ -1894,7 +1894,9 @@ The daemon methods for this pane are built. The UI can use the status, history, 
 
 **Your running app is part of the context.**
 
-**Embedded preview (default):** a tab next to the session showing the dev server, proxied through the hub with an authenticated URL, so it works on the phone too. Proxies HTTP and websockets (live reload works).
+**Embedded preview (default):** a tab next to the session showing the dev server, proxied through the hub with an authenticated URL, so it works on the phone too. Local preview proxies HTTP and websockets (live reload works).
+
+**Relay status:** Desktop preview works over the relay without HMR; web preview needs a dedicated preview origin (see Open questions).
 
 Services are declared in `.ormi/services.yaml` (no port guessing):
 ```yaml
@@ -3398,7 +3400,7 @@ Then:
 
 Big decisions waiting for the owner. Add one as `Q<n>: question — options — your pick — where (section)`, then keep working on whatever doesn't depend on it. Once it's answered, write the answer into the right section and delete the item.
 
-**Open:** none.
+**Open:** Q1: What dedicated preview origin should web previews use? — wildcard subdomain or path-based origin — use a dedicated wildcard origin — Browser preview.
 
 # Lessons from similar projects
 

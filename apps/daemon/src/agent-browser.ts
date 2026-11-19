@@ -12,6 +12,7 @@ import { BrowserDiff, type BrowserDiffResult } from './browser-diff.ts';
 
 const UNAVAILABLE = 'No browser found. Run `ormi browser install` or set ORMICODE_BROWSER.';
 const ARTIFACT_CAP = 4 * 1024 * 1024;
+const ARTIFACT_PAGE = 512 * 1024;
 const IDLE_MS = 10 * 60_000;
 const devices = {
   phone: { width: 390, height: 844 },
@@ -261,13 +262,16 @@ export class AgentBrowser {
     return { ...await this.describe(session), artifact: id, jpeg: jpeg.toString('base64') };
   }
 
-  artifact(session: string, id: string): { mime: string; data: string } {
+  artifact(session: string, id: string, offset = 0, length = ARTIFACT_PAGE): { mime: string; data: string; size: number; offset: number; more?: boolean } {
     if (!idSchema('bl').safeParse(id).success) throw new BrowserError('browser.not_found', 'Artifact not found.');
     const target = join(this.dataRoot, 'sessions', session, 'browser', `${id}.png`);
     let size = 0;
     try { size = statSync(target).size; } catch { throw new BrowserError('browser.not_found', 'Artifact not found.'); }
     if (size > ARTIFACT_CAP) throw new BrowserError('browser.action_failed', 'Artifact exceeds the 4 MiB limit.');
-    return { mime: 'image/png', data: readFileSync(target).toString('base64') };
+    if (!Number.isInteger(offset) || offset < 0 || offset > size || !Number.isInteger(length) || length < 1 || length > ARTIFACT_PAGE)
+      throw new BrowserError('browser.action_failed', 'Invalid artifact page range.');
+    const data = readFileSync(target).subarray(offset, offset + length);
+    return { mime: 'image/png', data: data.toString('base64'), size, offset, ...(offset + data.length < size ? { more: true } : {}) };
   }
 
   diff(session: string, a: string, b: string): BrowserDiffResult {

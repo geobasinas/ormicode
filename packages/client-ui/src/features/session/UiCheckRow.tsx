@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ChevronDown, ChevronRight, Globe } from 'lucide-react';
 import { usePlatform } from '../../lib/platform.ts';
 import type { TranscriptEvent } from './useTranscript.ts';
+import { fetchArtifact } from './fetchArtifact.ts';
 
 type UiCheckEntry = {
   level: 'error' | 'warn'; kind: string; message: string; request?: string; status?: number; frames: string[];
@@ -21,11 +22,8 @@ export function UiCheckRow({ event, session }: { event: TranscriptEvent; session
   useEffect(() => {
     if (!artifact) return;
     let alive = true;
-    void transport.request('browser.artifact', { session, id: artifact }).then(result => {
-      if (alive && result.type === 'res') {
-        const response = result.body as { mime: string; data: string };
-        setSrc(`data:${response.mime};base64,${response.data}`);
-      }
+    void fetchArtifact(transport, session, artifact).then(result => {
+      if (alive) setSrc(`data:${result.mime};base64,${result.data}`);
     }).catch(() => undefined);
     return () => { alive = false; };
   }, [artifact, session, transport]);

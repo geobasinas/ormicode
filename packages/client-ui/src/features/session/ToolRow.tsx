@@ -11,6 +11,7 @@ import { CheckpointCompareDialog } from './CheckpointCompareDialog.tsx';
 import { requestOpenFile } from '../../lib/openFile.ts';
 import { Markdown } from './Markdown.tsx';
 import { feedback } from '../../lib/feedback.ts';
+import { fetchArtifact } from './fetchArtifact.ts';
 
 const mono = { fontFamily: 'var(--font-mono)' };
 const hint = { color: 'var(--text-hint)' };
@@ -87,18 +88,12 @@ export function CheckpointMark({ session, cp, screenshot = '', previous, screens
   useEffect(() => {
     if (!open || !screenshot) return;
     let alive = true;
-    void transport.request('browser.artifact', { session, id: screenshot }).then(r => {
-      if (alive && r.type === 'res') {
-        const source = `data:${String((r.body as { mime: string }).mime)};base64,${String((r.body as { data: string }).data)}`;
-        setPreview(source);
-      }
-    });
-    if (previous?.artifact) void transport.request('browser.artifact', { session, id: previous.artifact }).then(r => {
-      if (alive && r.type === 'res') {
-        const source = `data:${String((r.body as { mime: string }).mime)};base64,${String((r.body as { data: string }).data)}`;
-        setPreviousPreview(source);
-      }
-    });
+    void fetchArtifact(transport, session, screenshot).then(image => {
+      if (alive) setPreview(`data:${image.mime};base64,${image.data}`);
+    }).catch(() => undefined);
+    if (previous?.artifact) void fetchArtifact(transport, session, previous.artifact).then(image => {
+      if (alive) setPreviousPreview(`data:${image.mime};base64,${image.data}`);
+    }).catch(() => undefined);
     return () => { alive = false; };
   }, [open, previous?.artifact, previous?.id, screenshot, id, session, transport]);
   useEffect(() => {

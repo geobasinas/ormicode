@@ -3,6 +3,7 @@ import { ChevronDown, X } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '../../components/ui/dropdown-menu.tsx';
 import { usePlatform } from '../../lib/platform.ts';
 import type { CheckpointScreenshotChoice } from './checkpoint-preview.ts';
+import { fetchArtifact } from './fetchArtifact.ts';
 
 type Mode = 'side-by-side' | 'slider' | 'diff';
 type DiffResult = { artifact: string; changed: number; total: number; percent: number; width: number; height: number; src: string };
@@ -41,9 +42,8 @@ export function CheckpointCompareDialog({ open, onClose, session, choices, initi
       const choice = choices.find(item => item.id === id);
       if (!choice || requested.current.has(id)) continue;
       requested.current.add(id);
-      void transport.request('browser.artifact', { session, id: choice.artifact }).then(result => {
-        const body = result.type === 'res' ? result.body as { mime: string; data: string } : undefined;
-        setImages(current => ({ ...current, [id]: body ? `data:${body.mime};base64,${body.data}` : '' }));
+      void fetchArtifact(transport, session, choice.artifact).then(image => {
+        setImages(current => ({ ...current, [id]: `data:${image.mime};base64,${image.data}` }));
         setLoaded(true);
       }).catch(() => {
         setImages(current => ({ ...current, [id]: '' }));
@@ -64,10 +64,8 @@ export function CheckpointCompareDialog({ open, onClose, session, choices, initi
     void transport.request('browser.diff', { session, a: first.artifact, b: second.artifact }).then(async result => {
       if (result.type === 'err') throw new Error(String(result.message ?? result.code));
       const body = result.body as Omit<DiffResult, 'src'>;
-      const artifact = await transport.request('browser.artifact', { session, id: body.artifact });
-      if (artifact.type === 'err') throw new Error(String(artifact.message ?? artifact.code));
+      const image = await fetchArtifact(transport, session, body.artifact);
       if (alive) {
-        const image = artifact.body as { mime: string; data: string };
         setDiff({ ...body, src: `data:${image.mime};base64,${image.data}` });
       }
     }).catch(cause => {

@@ -12,6 +12,9 @@ test('browser requests and responses are contract-checked', () => {
   assert.equal(parseRequestBody('browser.open', { session, port: 41001, device: 'phone' }).success, true);
   assert.equal(parseRequestBody('browser.click', { session, selector: 'role=button[name="Save"]' }).success, true);
   assert.equal(parseRequestBody('browser.artifact', { session, id: artifact }).success, true);
+  assert.equal(parseRequestBody('browser.artifact', { session, id: artifact, offset: 524288, length: 524288 }).success, true);
+  assert.equal(parseRequestBody('browser.artifact', { session, id: artifact, length: 524289 }).success, false);
+  assert.equal(parseResponseBody('browser.artifact', { mime: 'image/png', data: 'AA==', size: 1, offset: 0 }).success, true);
   assert.equal(parseRequestBody('browser.artifact', { session, id: '../store.db' }).success, false);
   assert.equal(parseRequestBody('browser.diff', { session, a: artifact, b: newId('bl') }).success, true);
   assert.equal(parseRequestBody('browser.diff', { session, a: artifact, b: '../store.db' }).success, false);

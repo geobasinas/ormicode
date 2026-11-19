@@ -62,7 +62,8 @@ export function BrowserPane({ session }: { session: string }) {
   const inspector = useBrowserInspector(session, webview, current, Boolean(readyId && webviewReady));
   const previewConsole = usePreviewConsole(session);
   const partition = `${keepSignins ? 'persist:' : ''}ormi-preview-${projectId}`;
-  const remote = platform.kind !== 'desktop' || (desktop?.remote() !== null && desktop?.remote() !== undefined);
+  const remote = platform.kind !== 'desktop';
+  const relayRemote = Boolean(desktop?.remote()?.active);
   const currentService = listed?.services.find(service => service.port === current?.port);
   useEffect(() => { previewConsole.setOpen(drawerTab === 'console'); }, [drawerTab, previewConsole.setOpen]);
 
@@ -342,6 +343,7 @@ export function BrowserPane({ session }: { session: string }) {
         setKeepSignins(value); localStorage.setItem(`ormi.browser.signins.${projectId}`, String(value));
       }} onClearBrowsingData={clearBrowsingData} onOverlayOpenChange={setOverlaysOpen}
     /> : null}
+    {relayRemote ? <div role="status" style={{ padding: '5px 10px', borderBottom: '1px solid var(--line-subtle)', background: 'var(--bg-raised)', color: 'var(--text-hint)', fontSize: 10.5 }}>Live reload isn't available over the relay; use Reload.</div> : null}
     {inspector.hint && !remote ? <div role="status" style={{ padding: '5px 10px', borderBottom: '1px solid var(--line-subtle)', background: 'var(--bg-raised)', color: 'var(--text-hint)', fontSize: 10.5 }}>{inspector.hint}</div> : null}
     {remote ? <main style={{ flex: 1, minHeight: 0, display: 'grid', placeItems: 'center', background: 'var(--bg-inset)' }}><RemotePreview /></main>
       : <main ref={paneRef} style={{

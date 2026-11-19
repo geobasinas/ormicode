@@ -2,7 +2,7 @@ import { previewLabel } from './preview-proxy.ts';
 import { BrowserError, type AgentBrowser } from './agent-browser.ts';
 import type { Client, DispatchCtx } from './dispatch.ts';
 
-interface BrowserServices {
+export interface BrowserServices {
   ports: { base: number; count: number };
   proxy: { port: number };
   services: { state: string; port: number; portals: { path: string }[] }[];
@@ -19,7 +19,7 @@ function allowedPorts(session: string, listed: BrowserServices) {
   });
 }
 
-function existingPreviewPorts(listed: BrowserServices): Set<number> {
+export function existingPreviewPorts(listed: BrowserServices): Set<number> {
   return new Set([...listed.services.map(service => service.port), ...listed.detected.map(item => item.port)]);
 }
 
@@ -146,7 +146,11 @@ export async function browserMethod(ctx: DispatchCtx, client: Client, id: string
     return;
   }
   if (method === 'browser.artifact') {
-    try { return client.link.reply(id, browser.artifact(session, String(body.id))); }
+    try {
+      const offset = typeof body.offset === 'number' ? body.offset : 0;
+      const length = typeof body.length === 'number' ? body.length : undefined;
+      return client.link.reply(id, browser.artifact(session, String(body.id), offset, length));
+    }
     catch (error) { return client.link.replyError(id, error instanceof BrowserError ? error.code : 'browser.not_found', message(error)); }
   }
   return client.link.replyError(id, 'protocol.unimplemented', method);

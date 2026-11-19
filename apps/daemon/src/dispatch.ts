@@ -168,6 +168,8 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
       case 'service.restart':
       case 'service.logs':
       case 'preview.url':
+      case 'preview.fetch':
+      case 'preview.fetchMore':
       case 'preview.console':
       case 'preview.consoleClear':
         return await serviceMethod(ctx, client, id, method, body);
