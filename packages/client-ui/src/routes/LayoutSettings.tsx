@@ -58,24 +58,37 @@ export function LayoutSettings({ safeMode, onSafeMode }: { safeMode: boolean; on
       <div style={caption}>REGIONS</div>
       <div style={card}>{ordered.map((id, index) => {
         const region = layout.regions[id] ?? { order: index };
-        return <Row key={id} title={regions[id]!} hint={id === 'approval' ? "Approvals can't be hidden" : undefined}>
-          {id === 'approval' ? <span style={hintStyle}>Always shown</span> : <button role="switch" aria-checked={region.visible !== false} onClick={() => update(id, { visible: region.visible === false })} style={switchStyle(region.visible !== false)}><span style={knob} /></button>}
-          {id !== 'approval' ? <button role="switch" aria-label={`Collapse ${regions[id]}`} aria-checked={region.collapsed === true} onClick={() => update(id, { collapsed: region.collapsed !== true })} style={switchStyle(region.collapsed === true)}><span style={knob} /></button> : null}
-          <button aria-label={`Move ${regions[id]} up`} disabled={index === 0} onClick={() => update(id, { order: region.order - 1 })} style={orderButton}>↑</button>
-          <button aria-label={`Move ${regions[id]} down`} disabled={index === REGION_IDS.length - 1} onClick={() => update(id, { order: region.order + 1 })} style={orderButton}>↓</button>
-          {region.size !== undefined ? <input aria-label={`${regions[id]} size`} type="number" min={id === 'approval' ? 48 : 80} value={region.size} onChange={event => update(id, { size: Number(event.target.value) })} style={{ ...control, width: 66 }} /> : null}
-          {id === 'now.widgets' ? <span style={{ display: 'inline-flex', gap: 3 }}>{(region.widgets ?? ['recent', 'needs']).map((widget, widgetIndex, widgets) =>
-            <span key={widget} style={{ display: 'inline-flex', gap: 2 }}>
-              <button aria-label={`Move ${widget === 'recent' ? 'Recent sessions' : 'Needs you'} up`} disabled={widgetIndex === 0} onClick={() => update(id, { widgets: swap(widgets, widgetIndex, widgetIndex - 1) })} style={orderButton}>↑</button>
-              <button aria-label={`Move ${widget === 'recent' ? 'Recent sessions' : 'Needs you'} down`} disabled={widgetIndex === widgets.length - 1} onClick={() => update(id, { widgets: swap(widgets, widgetIndex, widgetIndex + 1) })} style={orderButton}>↓</button>
-            </span>)}</span> : null}
-        </Row>;
+        const widgets = region.widgets ?? ['recent', 'needs'];
+        return <div key={id}>
+          <Row title={regions[id]!} hint={id === 'approval' ? "Approvals can't be hidden" : undefined}>
+            <div style={controlsGrid}>
+              {id === 'approval' ? <span /> : <LabeledSwitch label="Visible" checked={region.visible !== false} onChange={() => update(id, { visible: region.visible === false })} />}
+              <LabeledSwitch label="Collapsed" checked={region.collapsed === true} onChange={() => update(id, { collapsed: region.collapsed !== true })} />
+              <button aria-label={`Move ${regions[id]} up`} title={index === 0 ? 'Already first' : undefined} disabled={index === 0} onClick={() => update(id, { order: region.order - 1 })} style={orderButton}>↑</button>
+              <button aria-label={`Move ${regions[id]} down`} title={index === REGION_IDS.length - 1 ? 'Already last' : undefined} disabled={index === REGION_IDS.length - 1} onClick={() => update(id, { order: region.order + 1 })} style={orderButton}>↓</button>
+              {region.size !== undefined ? <span style={sizeCell}>
+                <input aria-label={`${regions[id]} size`} type="number" min={id === 'approval' ? 48 : 80} value={region.size} onChange={event => update(id, { size: Number(event.target.value) })} style={{ ...control, width: 46, padding: '0 4px' }} />
+                <span>px</span>
+              </span> : <span />}
+            </div>
+          </Row>
+          {id === 'now.widgets' ? <div style={widgetList} aria-label="Home widget order">
+            {widgets.map((widget, widgetIndex) => <div key={widget} style={widgetRow}>
+              <span>{widget === 'recent' ? 'Recent sessions' : 'Needs you'}</span>
+              <span style={{ display: 'inline-flex', gap: 3 }}>
+                <button aria-label={`Move ${widget === 'recent' ? 'Recent sessions' : 'Needs you'} up`} title={widgetIndex === 0 ? 'Already first' : undefined} disabled={widgetIndex === 0} onClick={() => update(id, { widgets: swap(widgets, widgetIndex, widgetIndex - 1) })} style={orderButton}>↑</button>
+                <button aria-label={`Move ${widget === 'recent' ? 'Recent sessions' : 'Needs you'} down`} title={widgetIndex === widgets.length - 1 ? 'Already last' : undefined} disabled={widgetIndex === widgets.length - 1} onClick={() => update(id, { widgets: swap(widgets, widgetIndex, widgetIndex + 1) })} style={orderButton}>↓</button>
+              </span>
+            </div>)}
+          </div> : null}
+        </div>;
       })}</div>
     </section>
     <section style={group}>
       <div style={caption}>HISTORY</div>
       <div style={card}>
-        {history.map((entry, index) => <Row key={`${entry.timestamp}-${index}`} title={new Date(entry.timestamp).toLocaleString()} hint={`Source: ${entry.source}`}>
+        {history.map((entry, index) => <Row key={`${entry.timestamp}-${index}`} title={relativeTime(entry.timestamp)} tooltip={new Date(entry.timestamp).toLocaleString()}>
+          <span style={sourceTag}>{entry.source}</span>
           <button style={actionButton} onClick={() => { const value = revertLayout(history, index); if (value) save(value); }}>Revert to this</button>
         </Row>)}
         {!history.length ? <Row title="No layout changes yet" /> : null}
@@ -90,10 +103,28 @@ function swap<T>(values: T[], from: number, to: number): T[] {
   const next = [...values]; [next[from], next[to]] = [next[to]!, next[from]!]; return next;
 }
 
-function Row({ title, hint, children }: { title: string; hint?: string; children?: React.ReactNode }) {
+function Row({ title, hint, tooltip, children }: { title: string; hint?: string; tooltip?: string; children?: React.ReactNode }) {
   return <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 44, padding: '7px 12px', borderTop: '1px solid var(--line-card)' }}>
-    <div style={{ flex: 1, minWidth: 0, fontSize: 12, color: 'var(--text-title)' }}>{title}{hint ? <div style={{ marginTop: 2, fontSize: 10, color: 'var(--text-hint)' }}>{hint}</div> : null}</div>{children}
+    <div title={tooltip} style={{ flex: 1, minWidth: 0, fontSize: 12, color: 'var(--text-title)' }}>{title}{hint ? <div style={{ marginTop: 2, fontSize: 10, color: 'var(--text-hint)' }}>{hint}</div> : null}</div>{children}
   </div>;
+}
+
+function LabeledSwitch({ label, checked, onChange }: { label: string; checked: boolean; onChange(): void }) {
+  return <div role="group" aria-label={label} style={switchCell}>
+    <span>{label}</span>
+    <button type="button" role="switch" aria-label={label} aria-checked={checked} onClick={onChange} style={switchStyle(checked)}><span style={knob} /></button>
+  </div>;
+}
+
+function relativeTime(timestamp: number): string {
+  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hr ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? '' : 's'} ago`;
 }
 
 const group = { marginTop: 18 };
@@ -103,4 +134,9 @@ const knob = { width: 13, height: 13, borderRadius: 99, background: 'var(--bg-ma
 const switchStyle = (on: boolean) => ({ width: 30, height: 17, padding: 2, border: 0, borderRadius: 99, background: on ? 'var(--accent-mint)' : 'var(--bg-raised)', display: 'flex', justifyContent: on ? 'flex-end' : 'flex-start', cursor: 'pointer' });
 const orderButton = { ...control, width: 26, padding: 0, cursor: 'pointer' };
 const actionButton = { ...control, cursor: 'pointer' };
-const hintStyle = { fontSize: 10, color: 'var(--text-hint)' };
+const controlsGrid = { display: 'grid', gridTemplateColumns: '60px 76px 26px 26px 58px', gap: 4, alignItems: 'center', justifyItems: 'start' };
+const switchCell = { width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'space-between', gap: 4, fontSize: 9, color: 'var(--text-hint)', cursor: 'pointer' };
+const sizeCell = { display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, color: 'var(--text-hint)' };
+const widgetList = { padding: '0 12px 8px', borderTop: '1px solid var(--line-card)' };
+const widgetRow = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: 32, fontSize: 11, color: 'var(--text-secondary)' };
+const sourceTag = { padding: '2px 6px', borderRadius: 99, background: 'var(--bg-inset)', color: 'var(--text-hint)', fontSize: 9, lineHeight: 1.4 };

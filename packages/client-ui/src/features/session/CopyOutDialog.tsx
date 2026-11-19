@@ -3,6 +3,7 @@ import { FileText, Folder, X } from 'lucide-react';
 import { usePlatform } from '../../lib/platform.ts';
 import { loadPrefs, rememberProject } from '../../routes/Settings.tsx';
 import type { Entry } from '../files/types.ts';
+import { feedback } from '../../lib/feedback.ts';
 
 export function CopyOutDialog({ session, onClose, initialPaths = [] }: { session: string; onClose(): void; initialPaths?: string[] }) {
   const { transport, desktop } = usePlatform();
@@ -34,12 +35,24 @@ export function CopyOutDialog({ session, onClose, initialPaths = [] }: { session
     setBusy(true); setError(''); setConflict(false);
     try {
       const result = await transport.request('session.copyOut', { session, paths: selected, project, ...(dest.trim() ? { dest: dest.trim() } : {}), ...(overwrite ? { overwrite: true } : {}) });
-      if (result.type === 'res') { rememberProject(project); onClose(); }
+      if (result.type === 'res') {
+        rememberProject(project);
+        const copied = (result.body as { copied?: unknown[] }).copied ?? [];
+        feedback.success(`Copied ${copied.length} file${copied.length === 1 ? '' : 's'} to project`, desktop?.openPath ? {
+          label: 'Open', onClick: () => { void desktop.openPath(project); },
+        } : undefined);
+        onClose();
+      }
       else {
-        setError(`${result.code}: ${result.message}`);
+        const message = String(result.message);
+        setError(message);
+        feedback.error(message);
         if (result.code === 'copy_out.conflict') setConflict(true);
       }
-    } catch (cause) { setError(String(cause)); }
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      setError(message); feedback.error(message);
+    }
     finally { setBusy(false); }
   };
 

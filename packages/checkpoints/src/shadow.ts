@@ -41,12 +41,12 @@ export class ShadowRepo {
   }
 
   /** Commit the worktree if it changed since the last checkpoint; null = no change. */
-  async snapshot(worktree: string, seq: number, tool: string, ts = Date.now()): Promise<Checkpoint | null> {
+  async snapshot(worktree: string, seq: number, tool: string, ts = Date.now(), force = false): Promise<Checkpoint | null> {
     await this.init();
     await this.git(worktree, ['add', '-A', '--', '.']);
     const tree = (await this.git(worktree, ['write-tree'])).trim();
     const last = await this.ref('refs/ormi/head');
-    if (last && (await this.git(worktree, ['rev-parse', `${last}^{tree}`])).trim() === tree) return null;
+    if (!force && last && (await this.git(worktree, ['rev-parse', `${last}^{tree}`])).trim() === tree) return null;
     const secs = Math.floor(ts / 1000);
     // Parentless commits: pruning a ref frees its objects (no chain keeps them alive).
     const id = (await this.git(worktree, ['commit-tree', tree, '-m', `checkpoint ${this.session} seq=${seq} tool=${tool}`],

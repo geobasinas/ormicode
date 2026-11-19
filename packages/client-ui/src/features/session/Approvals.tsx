@@ -1,7 +1,7 @@
 /** Pending approvals and questions, docked above the composer in the same
  * quiet single-line style as tool rows. Never hidden; every answer goes
  * through session.decide / session.answer with the agent's own option ids. */
-import { useState, type ReactNode } from 'react';
+import { useState, type KeyboardEvent, type ReactNode } from 'react';
 import { ShieldQuestion, ShieldAlert, CircleHelp, ChevronRight, ChevronDown, Loader2, Check } from 'lucide-react';
 import { usePlatform } from '../../lib/platform.ts';
 import { shape, Detail } from './ToolRow.tsx';
@@ -60,14 +60,29 @@ function ApprovalLine({ session, req, events }: { session: string; req: Transcri
   const sub = subject(req, events);
   const s = sub ? shape(sub.name, sub.input) : undefined;
   const firstAllow = options.findIndex(o => !isReject(o));
+  const firstDeny = options.find(o => isReject(o));
   const decide = async (o: Option) => {
+    if (busy) return;
     setBusy(o.id); setError(undefined);
-    const r = await transport.request('session.decide', { session, request: b.request, option: o.id });
-    if (r.type === 'err') { setBusy(undefined); setError(String((r as { message?: string }).message ?? r.code)); }
+    try {
+      const r = await transport.request('session.decide', { session, request: b.request, option: o.id });
+      if (r.type === 'err') { setBusy(undefined); setError(String((r as { message?: string }).message ?? r.code)); }
+    } catch (cause) {
+      setBusy(undefined); setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  };
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget || busy) return;
+    const key = event.key.toLowerCase();
+    if ((key === 'a' || event.key === 'Enter') && firstAllow >= 0) {
+      event.preventDefault(); void decide(options[firstAllow]!);
+    } else if ((key === 'd' || event.key === 'Escape') && firstDeny) {
+      event.preventDefault(); void decide(firstDeny);
+    }
   };
   const Icon = destructive ? ShieldAlert : ShieldQuestion;
   return (
-    <div>
+    <div tabIndex={0} role="group" aria-label={handoff ? 'Handoff approval' : 'Tool approval'} onKeyDown={onKeyDown}>
       <Line open={open} onToggle={sub ? () => setOpen(v => !v) : undefined}
         icon={<Icon size={12} style={{ color: destructive ? 'var(--accent-red)' : 'var(--accent-amber)', flexShrink: 0 }} />}
         actions={<>
@@ -98,11 +113,15 @@ function QuestionLine({ session, req }: { session: string; req: TranscriptEvent 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const send = async (answers: Record<string, string[]>) => {
-    if (questions.some(q => !answers[q.question]?.length)) return;
+    if (busy || questions.some(q => !answers[q.question]?.length)) return;
     setBusy(true); setError(undefined);
     const body = Object.fromEntries(questions.map(q => [q.question, answers[q.question]!.join(', ')]));
-    const r = await transport.request('session.answer', { session, request: req.body.request, answers: body });
-    if (r.type === 'err') { setBusy(false); setError(String((r as { message?: string }).message ?? r.code)); }
+    try {
+      const r = await transport.request('session.answer', { session, request: req.body.request, answers: body });
+      if (r.type === 'err') { setBusy(false); setError(String((r as { message?: string }).message ?? r.code)); }
+    } catch (cause) {
+      setBusy(false); setError(cause instanceof Error ? cause.message : String(cause));
+    }
   };
   const pick = (q: Question, label: string) => {
     const cur = picked[q.question] ?? [];
@@ -114,13 +133,24 @@ function QuestionLine({ session, req }: { session: string; req: TranscriptEvent 
   return (
     <div>
       {questions.map((q, i) => (
-        <Line key={q.question} icon={<CircleHelp size={12} style={{ color: 'var(--accent-amber)', flexShrink: 0 }} />}
+        <div key={q.question} tabIndex={0} role="group" aria-label={`Question: ${q.question}`} onKeyDown={event => {
+          if (event.target !== event.currentTarget || busy) return;
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            if (multi && questions.every(question => picked[question.question]?.length)) void send(picked);
+            else if (q.options[0]) pick(q, q.options[0].label);
+          } else if (event.key === 'Escape') {
+            setPicked(current => ({ ...current, [q.question]: [] }));
+          }
+        }}>
+        <Line icon={<CircleHelp size={12} style={{ color: 'var(--accent-amber)', flexShrink: 0 }} />}
           actions={<>
             {q.options.map(o => <Choice key={o.label} label={o.label} title={o.description} busy={busy} picked={(picked[q.question] ?? []).includes(o.label)} onClick={() => pick(q, o.label)} />)}
             {multi && i === questions.length - 1 ? <Choice label="Send" primary busy={busy} onClick={() => void send(picked)} /> : null}
           </>}>
           <span style={{ color: 'var(--text-secondary)', fontWeight: 500, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={q.question}>{q.question}</span>
         </Line>
+        </div>
       ))}
       {error ? <div style={{ fontSize: 11.5, color: 'var(--accent-red)', padding: '0 0 2px 19px' }}>{error}</div> : null}
     </div>

@@ -8,6 +8,7 @@ import {
 } from '../../components/ui/dropdown-menu.tsx';
 import type { SessionDetails } from './useSession.ts';
 import { CopyOutDialog } from './CopyOutDialog.tsx';
+import { feedback } from '../../lib/feedback.ts';
 
 
 export function SessionHeader({ session, details, onOpen, onHandoff }: { session: string; details: SessionDetails | undefined; onOpen?: (session: string) => void; onHandoff?(): void }) {
@@ -31,18 +32,29 @@ export function SessionHeader({ session, details, onOpen, onHandoff }: { session
   const canStop = ['running', 'starting', 'retrying', 'awaiting_approval', 'awaiting_input', 'paused_rate_limited'].includes(state);
   const act = (m: string) => void transport.request(m, { session });
   const rename = async () => {
-    const result = await transport.request('session.rename', { session, title: title.trim() });
-    if (result.type === 'res') setRenaming(false);
+    try {
+      const result = await transport.request('session.rename', { session, title: title.trim() });
+      if (result.type === 'res') { setRenaming(false); feedback.success('Session renamed'); }
+      else feedback.error(String(result.message));
+    } catch (error) { feedback.error(error instanceof Error ? error.message : String(error)); }
   };
   const exportTranscript = async () => {
-    const result = await transport.request('session.export', { session, format: 'markdown' });
-    if (result.type !== 'res') return;
-    const text = String(result.body.text ?? '');
-    const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `${(details?.title || 'session').replace(/[^\w.-]+/g, '-')}.md`; a.click();
-    URL.revokeObjectURL(url);
+    try {
+      const result = await transport.request('session.export', { session, format: 'markdown' });
+      if (result.type !== 'res') { feedback.error(String(result.message)); return; }
+      const text = String(result.body.text ?? '');
+      const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `${(details?.title || 'session').replace(/[^\w.-]+/g, '-')}.md`; a.click();
+      URL.revokeObjectURL(url);
+      feedback.success('Transcript saved');
+    } catch (error) { feedback.error(error instanceof Error ? error.message : String(error)); }
+  };
+  const copyPath = async () => {
+    if (!details?.cwd) return;
+    try { await navigator.clipboard.writeText(details.cwd); feedback.success('Path copied'); }
+    catch (error) { feedback.error(error instanceof Error ? error.message : String(error)); }
   };
   const forkLatest = async () => {
     const listed = await transport.request('checkpoint.list', { session });
@@ -74,7 +86,7 @@ export function SessionHeader({ session, details, onOpen, onHandoff }: { session
             }} style={{ width: 180, minWidth: 0, height: 26, padding: '0 7px', border: '1px solid var(--line-card)', borderRadius: 5, background: 'var(--bg-inset)', color: 'var(--text-active)', font: 'inherit', fontSize: 12 }} />
             <button onClick={() => void rename()} style={{ border: 0, background: 'var(--bg-raised)', color: 'var(--text-active)', borderRadius: 5, padding: '0 7px', cursor: 'pointer' }}>Save</button>
           </div> : null}
-          {details?.cwd ? <DropdownMenuItem onClick={() => void navigator.clipboard.writeText(details.cwd!)}>Copy path</DropdownMenuItem> : null}
+          {details?.cwd ? <DropdownMenuItem onClick={() => void copyPath()}>Copy path</DropdownMenuItem> : null}
           {details?.cwd && desktop ? <DropdownMenuItem onClick={() => void desktop.openPath(details.cwd!)}>Open worktree folder</DropdownMenuItem> : null}
           {details?.project === 'scratch' ? <DropdownMenuItem onSelect={() => setCopying(true)}>Copy to project…</DropdownMenuItem> : null}
           <DropdownMenuItem onClick={() => void exportTranscript()}>Export transcript as Markdown</DropdownMenuItem>

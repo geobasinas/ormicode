@@ -163,20 +163,25 @@ test('a non-resumable session under the all policy gets a recap injected as cont
   process.env.ORMICODE_RESUME_POLICY = 'all';
   const daemon2 = await startDaemon({ socketPath: '127.0.0.1:0', storePath });
   delete process.env.ORMICODE_RESUME_POLICY;
-  const deadline2 = Date.now() + 15_000;
-  const journal = () => replay(daemon2.db, session).map(r => ({ kind: r.kind, text: JSON.parse(r.payload).text }));
-  const recapDone = () => { const rows = journal(); const i = rows.findIndex(r => r.kind === 'handoff_brief'); return i >= 0 && rows.slice(i + 1).some(r => r.kind === 'turn_end'); };
-  while (Date.now() < deadline2 && !recapDone())
-    await new Promise(r => setTimeout(r, 25));
-  const rows = journal();
-  const briefIdx = rows.findIndex(r => r.kind === 'handoff_brief');
-  assert.ok(briefIdx >= 0, 'handoff_brief journaled');
-  assert.ok(rows[briefIdx].text.includes('fake/sdk'), 'brief describes the session');
-  const after = rows.slice(briefIdx + 1);
-  assert.ok(after.some(r => r.kind === 'turn_end'), 'recap prompt completed a turn');
-  assert.ok(after.some(r => r.kind === 'text' && String(r.text).includes('Context recap')), 'recap text reached the agent');
-  await daemon2.close();
-  rmSync(dir, { recursive: true, force: true });
+  try {
+    const deadline2 = Date.now() + 15_000;
+    const journal = () => replay(daemon2.db, session).map(r => ({ kind: r.kind, text: JSON.parse(r.payload).text }));
+    const recapDone = () => { const rows = journal(); const i = rows.findIndex(r => r.kind === 'handoff_brief'); return i >= 0 && rows.slice(i + 1).some(r => r.kind === 'turn_end'); };
+    while (Date.now() < deadline2 && !recapDone())
+      await new Promise(r => setTimeout(r, 25));
+    const rows = journal();
+    const briefIdx = rows.findIndex(r => r.kind === 'handoff_brief');
+    assert.ok(briefIdx >= 0, 'handoff_brief journaled');
+    for (const heading of ['Goal:', 'Done so far:', 'Files changed:', 'Decisions:', 'Open questions:', 'Commands run:', 'Current diff:', 'Next step:'])
+      assert.ok(rows[briefIdx].text.includes(heading), `brief includes ${heading}`);
+    assert.ok(rows[briefIdx].text.includes('Goal: hi'), 'brief preserves the original goal');
+    const after = rows.slice(briefIdx + 1);
+    assert.ok(after.some(r => r.kind === 'turn_end'), 'recap prompt completed a turn');
+    assert.ok(after.some(r => r.kind === 'text' && String(r.text).includes('Context recap')), 'recap text reached the agent');
+  } finally {
+    await daemon2.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('hello device identity drives ack cursors per device', async () => {

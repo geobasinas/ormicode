@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { ChevronDown, Loader2, Search, X } from 'lucide-react';
 import { BranchActionMenu, type BranchMenuAction } from './BranchActionMenu.tsx';
 import { branchNameIssue, type BranchInfo, type RepoInfo } from './GitWorkspacePopover.tsx';
+import { feedback } from '../../lib/feedback.ts';
 
 type ProjectMethod = 'project.pull' | 'project.renameBranch' | 'project.deleteBranch';
 type ActionResult = { updated?: boolean; from?: string; to?: string };
@@ -84,7 +85,8 @@ export function GitBranchManagement({ info, project, onProjectAction, onSelect }
       const count = branch.behind || (response.updated ? 1 : 0);
       setResults(current => ({ ...current, [branch.name]: response.updated
         ? `Updated ${count} commit${count === 1 ? '' : 's'}` : 'Already up to date' }));
-    } catch (error) { setResults(current => ({ ...current, [branch.name]: String(error) })); }
+      feedback.success(response.updated ? `Pulled ${branch.name}` : `${branch.name} is up to date`);
+    } catch (error) { const message = error instanceof Error ? error.message : String(error); setResults(current => ({ ...current, [branch.name]: message })); feedback.error(message); }
     finally { setPulling(undefined); }
   };
   const saveRename = async () => {
@@ -92,16 +94,18 @@ export function GitBranchManagement({ info, project, onProjectAction, onSelect }
     try {
       await onProjectAction('project.renameBranch', { project, from: editing, to: renameName });
       setResults(current => ({ ...current, [editing]: `Renamed to ${renameName}` }));
+      feedback.success(`Branch renamed to ${renameName}`);
       setEditing(undefined);
-    } catch (error) { setRenameError(String(error)); }
+    } catch (error) { const message = error instanceof Error ? error.message : String(error); setRenameError(message); feedback.error(message); }
   };
   const saveDelete = async () => {
     if (!deleting || deleteConfirm !== deleting || (!deleteForce && !info.local.find(branch => branch.name === deleting)?.merged)) return;
     try {
       await onProjectAction('project.deleteBranch', { project, name: deleting, confirm: deleteConfirm, ...(deleteForce ? { force: true } : {}) });
       setResults(current => ({ ...current, [deleting]: 'Deleted' }));
+      feedback.success(`Deleted branch ${deleting}`);
       setDeleting(undefined);
-    } catch (error) { setDeleteError(String(error)); }
+    } catch (error) { const message = error instanceof Error ? error.message : String(error); setDeleteError(message); feedback.error(message); }
   };
   const toggleCleanup = () => {
     if (!cleanupOpen) setCleanupNames(cleanupBranches.map(branch => branch.name));
@@ -109,13 +113,22 @@ export function GitBranchManagement({ info, project, onProjectAction, onSelect }
   };
   const cleanUp = async () => {
     setCleanupRunning(true);
+    let deleted = 0;
+    let firstError = '';
     for (const name of cleanupNames) {
       try {
         await onProjectAction('project.deleteBranch', { project, name, confirm: name });
         setResults(current => ({ ...current, [name]: 'Deleted' }));
-      } catch (error) { setResults(current => ({ ...current, [name]: `Failed: ${String(error)}` })); }
+        deleted += 1;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        firstError ||= message;
+        setResults(current => ({ ...current, [name]: `Failed: ${message}` }));
+      }
     }
     setCleanupRunning(false);
+    if (deleted) feedback.success(`Cleaned up ${deleted} branch${deleted === 1 ? '' : 'es'}`);
+    if (firstError) feedback.error(firstError);
   };
 
   return <div style={{ display: 'flex', flexDirection: 'column', gap: 7, minHeight: 0 }}>

@@ -5,6 +5,7 @@ import { compactTokens } from '../../lib/format.ts';
 import { AgentChip } from './pickers.tsx';
 import { useModels } from './useModels.ts';
 import type { SessionDetails } from './useSession.ts';
+import { feedback } from '../../lib/feedback.ts';
 
 type Mode = 'in_place' | 'rehydrate' | 'fork';
 
@@ -79,15 +80,20 @@ export function HandoffDialog({ session, details, open, onClose, onOpenSession }
   const submit = async () => {
     if (estimate?.confirmRequired && !confirming) { setConfirming(true); return; }
     setBusy(true); setError('');
-    const res = await transport.request('session.handoff', {
-      session, to: { vendor: vendor || undefined, transport: via || undefined, model: model || undefined, effort: effort || undefined, branch: mode === 'fork' ? branch : undefined },
-      mode, brief, ...(confirming ? { confirmed: true } : {}),
-    });
-    setBusy(false);
-    if (res.type === 'err') { setError(String(res.message ?? res.code)); return; }
-    const body = res.body as { session?: unknown };
-    onClose();
-    if (typeof body.session === 'string' && body.session !== session) onOpenSession?.(body.session);
+    try {
+      const res = await transport.request('session.handoff', {
+        session, to: { vendor: vendor || undefined, transport: via || undefined, model: model || undefined, effort: effort || undefined, branch: mode === 'fork' ? branch : undefined },
+        mode, brief, ...(confirming ? { confirmed: true } : {}),
+      });
+      if (res.type === 'err') { setError(String(res.message ?? res.code)); feedback.error(String(res.message ?? res.code)); return; }
+      const body = res.body as { session?: unknown };
+      feedback.success('Handoff started');
+      onClose();
+      if (typeof body.session === 'string' && body.session !== session) onOpenSession?.(body.session);
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      setError(message); feedback.error(message);
+    } finally { setBusy(false); }
   };
   const usd = estimate?.usd;
   const briefTokens = estimate?.briefTokens ?? Math.ceil(brief.length / 4);

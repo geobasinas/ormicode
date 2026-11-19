@@ -7,7 +7,8 @@ import { spawn } from 'node:child_process';
 import { startDaemon, connect } from '../src/index.ts';
 import { newId } from '@ormicode/protocol';
 import { getSession, createSession } from '@ormicode/session-store';
-import { replay } from '@ormicode/journal';
+import { append, replay } from '@ormicode/journal';
+import { handoffBrief } from '../src/handoff.ts';
 import { fileURLToPath } from 'node:url';
 
 const boot = async () => {
@@ -34,7 +35,7 @@ test('rehydrate handoff links parent, marks old session handed off, brief reache
   assert.notEqual(child, s1);
   assert.equal(getSession(daemon.db, child)?.parent, s1);
   assert.equal(getSession(daemon.db, s1)?.handed_off, 1);
-  assert.ok(r.body.brief.includes(s1));
+  assert.match(r.body.brief, /^Goal:/);
   await daemon.close();
 });
 
@@ -59,7 +60,7 @@ test('handoff brief and estimate report context, changed files and unknown-price
   const session = (await startFake(client)).body.session;
   const brief = await client.request('session.handoffBrief', { session });
   assert.equal(brief.type, 'res');
-  assert.ok(brief.body.brief.includes(session));
+  assert.match(brief.body.brief, /^Goal:/);
   const estimate = await client.request('session.handoffEstimate', {
     session, to: { model: 'unknown-model' }, mode: 'rehydrate',
   });
@@ -71,6 +72,36 @@ test('handoff brief and estimate report context, changed files and unknown-price
   });
   assert.equal(inPlace.body.usd, 0);
   assert.equal(inPlace.body.confirmRequired, false);
+  await daemon.close();
+});
+
+test('handoff brief uses task headings, summarizes work and excludes lifecycle internals', async () => {
+  const { daemon, client } = await boot();
+  const session = (await startFake(client)).body.session;
+  const add = (kind, fields = {}) => append(daemon.db, session, { kind, payload: { kind, ...fields } });
+  add('prompt', { text: 'Add a timeout to the API client.' });
+  add('turn_start');
+  add('text', { text: 'I kept the existing retry policy and added a bounded timeout.' });
+  add('file_edit', { path: 'src/client.ts', size: 12, checkpoint: null });
+  add('tool_call', { callId: 'call_test', name: 'Bash', input: { command: 'pnpm test' } });
+  add('tool_result', { callId: 'call_test', status: 'completed', output: 'Tests passed: 12' });
+  add('question_request', { request: 'req_question', questions: [{ question: 'Should the timeout be configurable?' }] });
+  add('usage', { input: 1200, output: 340 });
+  add('state', { state: 'running', reason: 'agent working' });
+  const uptoSeq = replay(daemon.db, session).at(-1).seq;
+  add('text', { text: 'This later update must not appear in the bounded recap.' });
+
+  const brief = handoffBrief(daemon.db, session, 12, uptoSeq);
+  for (const heading of ['Goal:', 'Done so far:', 'Files changed:', 'Decisions:', 'Open questions:', 'Commands run:', 'Current diff:', 'Next step:'])
+    assert.ok(brief.includes(heading), `missing ${heading}`);
+  assert.match(brief, /Goal: Add a timeout to the API client\./);
+  assert.match(brief, /src\/client\.ts — edited/);
+  assert.match(brief, /pnpm test → completed: Tests passed: 12/);
+  assert.match(brief, /Should the timeout be configurable\?/);
+  assert.doesNotMatch(brief, new RegExp(session));
+  assert.doesNotMatch(brief, /turn_start|usage|state running|native fake-native|tmp\/ormi/);
+  assert.doesNotMatch(brief, /This later update/);
+  assert.ok(brief.length <= 8000);
   await daemon.close();
 });
 

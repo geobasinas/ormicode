@@ -16,6 +16,7 @@ import { OPEN_FILE } from '../lib/openFile.ts';
 import { SettingsView, loadPrefs, type Prefs } from './Settings.tsx';
 import { SessionHeader } from '../features/session/SessionHeader.tsx';
 import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels';
+import { Toaster } from '../components/ui/sonner.tsx';
 
 const MAX_TABS = 8;
 const drag = { WebkitAppRegion: 'drag' } as const;
@@ -288,6 +289,7 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
           <Rail route={route} rail={rail} onRail={setRail} />
         </div>
       </div>
+      <Toaster position="bottom-center" duration={3000} visibleToasts={1} closeButton={false} />
     </PlatformContext.Provider>
   );
 }

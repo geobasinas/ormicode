@@ -8,6 +8,7 @@ import { usePlatform } from '../../lib/platform.ts';
 import type { TranscriptEvent } from './useTranscript.ts';
 import { requestOpenFile } from '../../lib/openFile.ts';
 import { Markdown } from './Markdown.tsx';
+import { feedback } from '../../lib/feedback.ts';
 
 const mono = { fontFamily: 'var(--font-mono)' };
 const hint = { color: 'var(--text-hint)' };
@@ -99,6 +100,16 @@ export function CheckpointMark({ session, cp, inline, busy, onOpenSession }: {
     setLoading(false);
     if (r.type === 'err') { setError(String(r.message ?? r.code)); return; }
     setConfirm(undefined); setNote(mode === 'files' ? 'Files restored' : 'Conversation rewound');
+    const undoId = (r.body as { undoId?: unknown }).undoId;
+    feedback.success(mode === 'files' ? 'Files restored' : 'Conversation rewound', typeof undoId === 'string' ? {
+      label: 'Undo', onClick: () => { void undoRestore(undoId); },
+    } : undefined);
+  };
+  const undoRestore = async (undoId: string) => {
+    const result = await transport.request('checkpoint.restore', { session, id: undoId, mode: 'files' });
+    if (result.type === 'err') { feedback.error(result.message); return; }
+    setNote('Restore undone');
+    feedback.success('Restore undone');
   };
   const fork = async () => {
     setLoading(true); setError('');

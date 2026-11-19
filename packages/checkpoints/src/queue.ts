@@ -43,6 +43,16 @@ export class Checkpoints {
     });
   }
 
+  restoreWithUndo(session: string, worktree: string, seq: number, checkpoint: Checkpoint): Promise<Checkpoint | null> {
+    return this.run(session, async () => {
+      const repo = this.repo(session);
+      const before = await repo.snapshot(worktree, seq, 'before-restore', Date.now(), true);
+      if (before) await this.prune(repo);
+      await repo.restore(worktree, checkpoint);
+      return before;
+    });
+  }
+
   /** Returns the remaining size in bytes when one checkpoint alone is over maxBytes. */
   private async prune(repo: ShadowRepo): Promise<number | undefined> {
     const keep = repo.pinned();

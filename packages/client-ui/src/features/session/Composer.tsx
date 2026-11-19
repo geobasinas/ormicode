@@ -11,6 +11,7 @@ import { useComposerDraft } from './useComposerDraft.ts';
 import { MentionPopover, type MentionItem } from './MentionPopover.tsx';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../components/ui/dropdown-menu.tsx';
 import type { PromptContext } from '@ormicode/protocol';
+import { feedback } from '../../lib/feedback.ts';
 
 const LIVE = new Set(['running', 'starting', 'retrying']);
 type QueuedItem = { id: string; text: string; createdAt: number; images?: number; error?: string };
@@ -134,7 +135,10 @@ export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefi
         setError('Steering is unavailable; queued instead.');
       }
       const queued = await transport.request('session.queue.add', { session, text: t, images, attachments, context }).catch(() => undefined);
-      if (queued?.type === 'err' || !queued) { setError(queued?.type === 'err' ? queued.message : 'Queue failed'); return; }
+      if (queued?.type === 'err' || !queued) {
+        const message = queued?.type === 'err' ? queued.message : 'Queue failed';
+        setError(message); feedback.error(message); return;
+      }
       await refreshQueue();
     } else if (!await call('session.prompt', { text: t, images, attachments, context })) return;
     setContext([]);
@@ -147,7 +151,7 @@ export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefi
   const sendQueuedNow = async (item: QueuedItem) => {
     const res = await transport.request('session.steer', { session, text: item.text });
     if (res.type === 'res') await removeQueued(item.id);
-    else setError(String(res.message));
+    else { setError(String(res.message)); feedback.error(String(res.message)); }
   };
   const updateQueued = async (item: QueuedItem) => {
     await transport.request('session.queue.update', { session, id: item.id, text: editText.trim() || item.text });
