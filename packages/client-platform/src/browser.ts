@@ -8,10 +8,12 @@ import type { ClientPlatform, ProtocolTransport, TokenStore } from './platform.t
 export interface WebPlatformOptions { relay: string; account: string }
 
 export function browserPlatform(_opts: WebPlatformOptions): ClientPlatform {
+  const listeners = new Set<(frame: import('@ormicode/protocol').Frame) => void>();
   const transport: ProtocolTransport = {
     request: () => Promise.reject(new Error('web platform not implemented yet')),
     subscribe: () => { throw new Error('web platform not implemented yet'); },
     unsubscribe: () => undefined,
+    subscribeEvents: listener => { listeners.add(listener); return () => { listeners.delete(listener); }; },
     onEvent: undefined, onState: undefined,
   };
   const tokens: TokenStore = {

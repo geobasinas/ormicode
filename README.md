@@ -2012,6 +2012,8 @@ services:
 
 **Built-in server implementation status:** `apps/daemon/src/mcp.ts` + `mcp-serve.ts` implement the `ormi` stdio MCP server (newline-delimited JSON-RPC: `initialize`, `ping`, `tools/list`, `tools/call`). The daemon injects it into every worker via `StartSpec.mcpServers` (`worker-main.ts` builds `{command: node, args: [mcp-serve.ts], env: {ORMICODE_SOCKET, ORMI_SESSION}}` when `ORMICODE_MCP=1`, which `supervisor.ts` sets on every spawn). Shipping tools: `ormi_sessions`, `ormi_start`, `ormi_message`, `ormi_wait`, `ormi_handoff`, `ormi_notes` — the ownership rule is enforced by checking `session.parent` before message/wait, and `session.start` accepts `parent` for the same reason. `ormi_publish`, `ormi_ask_user` and the team tools wait on [Artifacts](#artifacts)/[Teams](#teams) (both *later*). `StartSpec.mcpServers` is honored by `agent-claude-sdk` (`mcpServers` option), `agent-claude-cli` (`--mcp-config` file), and generic/vendor ACP (`session/new|load|resume` via each package's own `acpMcpServers` in `src/options.ts`); adapters without an MCP channel ignore the field.
 
+The built-in server also ships `ormi_design_list`, `ormi_design_get`, `ormi_design_create`, `ormi_design_update`, `ormi_design_history` and `ormi_design_restore` for the [Design workspace](#design-use). They always derive the session from `ORMI_SESSION`; a caller cannot route a design tool to another session. Updates and restores use the same revision-checked operations as the canvas and CLI.
+
 ## Review
 
 > **Status:** later · **Needs:** [Git rules](#git-rules), [Checkpoints](#checkpoints)
@@ -2289,21 +2291,26 @@ CLI is for you and scripts; the built-in MCP server is for models. Both use the 
 
 ## Design use
 
-> **Status:** later · **Needs:** [Themes](#themes), [Browser preview](#browser-preview)
+> **Status:** implemented on `design-workspace` · **Needs:** [Themes](#themes), [Browser preview](#browser-preview)
 
-**The agent designs as well as codes — layout, type, colour — then implements it.** This is a feature for *your* projects.
+**A repository-backed canvas where people and Ormicode agents arrange frames and edit rendered screen elements.** Design is its own top-level workspace beside Home. Choose a project/session to list the boards in that session's working directory; worktrees stay separate. The full-width canvas has its own composer and links to the associated sessions. The Design rail icon is a shortcut that carries the current session into this workspace.
 
-- **Design tab** next to Now, Sessions and Teams, listing design sessions and their canvases. A design session is a normal session with a design folder. Ships after themes and the preview.
-- **Where designs live:** `designs/<slug>/` in the repo, versioned with the code. The agent can commit a design or leave it uncommitted until you decide.
-- **Directions:** as many as the prompt asks ("three takes" → three). Vague brief → one, and the agent asks once before making variants. Each direction has its own name, render and checkpoint.
-- **Canvas:** every direction rendered side by side at the same width with tokens applied. Pick one to make it the working design, or compare. Not an editor. Annotations reach the agent with the element attached (like the [browser preview](#browser-preview)).
-- **Output:** rendered HTML or JSX using the repo's real theme tokens — no flat images, no free-form hex.
-- **Fidelity:** mid by default (real spacing, type, colour; placeholder content). High only if asked.
-- **Implementing:** the same agent continues into code by default ([handoff](#handoff) available).
-- **Assets:** HTML and SVG first. Photos and illustrations from the web, chosen and attributed by the agent, never AI-generated. Downloaded into the design folder with source URL and licence recorded.
-- **Every design renders at desktop and phone widths.**
-- **Accessibility:** contrast and tap-target size checked on every render; failures shown first.
-- **Done** = you approve it. A checkpoint per iteration so earlier directions can be restored.
+- **Storage:** `designs/<slug>/workspace.json` in the session's canonical working directory (including worktrees). Boards contain versioned documents, stable frame ids, geometry, HTML/CSS, working direction, comments and up to 20 revision restore points. Board writes are atomic and size/count bounded; malformed, oversized and symlinked board files are rejected.
+- **Canvas:** choose or create a board; add desktop, phone or blank frames; select, drag, resize, duplicate, rename and delete frames; pan, zoom and fit; choose a working direction. The inspector edits selected leaf text and allowlisted style values, and can add text, button and container elements. HTML/CSS source editing is available for importing agent output.
+- **HTML boundary:** HTML is data, never JSX execution. DOMPurify removes scripts, event handlers, forms, navigation and embedding. The preview is an opaque sandboxed iframe with a hash-authorized fixed bridge and restrictive CSP. Initial support is inline markup/styles and embedded data images/fonts; external asset loads, arbitrary scripts and JSX compilation are unsupported.
+- **Feedback:** comments can be resolved/reopened or removed. “Add to chat” explicitly prefills the session composer with board/frame/element context; feedback is never sent automatically.
+- **Concurrency:** all mutations and restore requests require `expectedRevision`. A stale write returns `design.conflict`; clients do not retry automatically. Successful writes emit `design_changed` to sessions sharing the canonical working directory. Reload/reconcile after a conflict.
+- **CLI:** `ormi design list|get|create|update|history|restore`. `ormi design update <session> <slug> <revision> -` reads operation JSON from stdin (or use a file); the update is the same CAS mutation API used by the canvas.
+- **Built-in MCP:** `ormi_design_list/get/create/update/history/restore` operate only on the current agent's own session. `ormi_design_get` returns the actual frame HTML, feedback and revision; agents mutate through `ormi_design_update` with the current revision.
+- **Later:** vector pen tools, prototypes/interactions, multiplayer presence, external asset importing/attribution, image editing and richer accessibility analysis. Boards remain ordinary repository data; commit or leave them uncommitted as you choose.
+
+**Example:** create `home` with `ormi design create "$SESSION" home "Home screen"`, then put this operation array in `operations.json` and run `ormi design update "$SESSION" home 1 operations.json` (or pipe it to the same command with `-`). The equivalent MCP call is `ormi_design_update` with `{ "slug": "home", "expectedRevision": 1, "operations": [...] }`; no session argument is accepted for routing.
+
+```json
+[{"type":"frame.add","name":"Phone","x":0,"y":0,"width":390,"height":844,"html":"<main><h1>Hello</h1><p>Select text to edit it.</p></main>","styles":"main { padding: 24px; color: var(--text-title); background: var(--bg-main); }"}]
+```
+
+**Ordering and errors:** request schemas are checked before session lookup, then the session cwd is resolved, stored data is validated, and CAS is checked before applying an operation. Synchronous read/check/atomic-replace runs in one daemon event-loop turn; events and the response follow a successful save. CLI requests use the normal 30-second request timeout; MCP uses 120 seconds. Read-only calls may be retried, but mutations must not be retried after a lost response: read the current document and reconcile. Errors are `session.not_found`, `design.not_found`, `design.conflict`, `design.invalid`, `design.outside`, `design.too_large` and `design.failed`; schema failures use `protocol.invalid_frame`. The current document is capped at 96 KiB, storage at 224 KiB, with 24 frames and 100 feedback comments. Source HTML is sanitized on render/save; source CSS is subject to the iframe CSP, and inspector CSS values use a small property/value allowlist. Pan with the empty canvas or scroll; Ctrl/Meta+wheel zooms; frame headers and resize handles also support arrow keys.
 
 ## Voice
 
@@ -3294,6 +3301,8 @@ There are no per-package root scripts and no `lint:js`-style variants. A script 
 **Schemas:** Before implementing a method, define request and response schemas, errors, authorization, timeout, ordering and retry behavior. Include worked examples for start, prompt, subscribe, approval and reconnect. A response can be lost after success: side-effecting methods need an idempotency key with defined scope, retention, replay result and conflicting-body error, or must explicitly reject automatic retries. `packages/protocol` has a zod schema for every method and event body. The schema is the definition and this section is the index. No schema = not implemented. Bodies that don't parse are refused before reaching the daemon.
 
 **Current protocol foundation:** envelope and ID validation, a UTF-8 JSON frame parser with a 256 KB cap, core session request/response schemas, and initial agent and lifecycle event schemas live in the isolated protocol package. The registered schemas are listed in `packages/protocol/src/methods.ts` and `packages/protocol/src/events.ts`. This does not implement daemon methods. An envelope passing validation is not sufficient: the receiver also validates the body against its registered method or event schema. Unregistered methods and event kinds return `protocol.unknown_method` and `protocol.unknown_event` respectively. Many later-feature method and event schemas, replay behavior and transport integration still need implementation. No method is exposed to a client until its complete request, response and error semantics are defined.
+
+**Design workspace protocol index:** `packages/protocol/src/design.ts` defines bounded document, operation and history schemas. `design.list/get/create/update/history/restore` are registered in `methods.ts`; `design_changed` is registered in `events.ts`. `design.update` and `design.restore` require the exact current `expectedRevision`; conflict responses are not retried. Restore creates a new, monotonic revision. Daemon methods resolve the session's working directory and authorize through the ordinary session protocol; built-in MCP tools inject only their own session id. The CLI and shared canvas call the same methods. Boards are atomically stored in `designs/<slug>/workspace.json`; request/document/storage limits remain below the 256 KB wire cap.
 
 For these initial contracts, the client must not automatically retry a side-effecting session operation after a lost response: the action may already have succeeded. Read-only lookups may be retried. A subscription is scoped to its connection; reconnect using `session.subscribe` with the last processed per-session cursor. The daemon must define an idempotency strategy before it offers automatic retries of side-effecting methods.
 

@@ -11,6 +11,7 @@ import { NotesPanel } from '../features/notes/NotesPanel.tsx';
 import { TerminalPane } from '../features/terminal/TerminalPane.tsx';
 import { GitPane } from '../features/git/GitPane.tsx';
 import { BrowserPane } from '../features/browser/BrowserPane.tsx';
+import { DesignWorkspace } from '../features/design/DesignWorkspace.tsx';
 import type { RailPane } from './App.tsx';
 import { History } from 'lucide-react';
 import { compactTokens, formatUsd, projectName } from '../lib/format.ts';
@@ -32,9 +33,11 @@ export function SessionView({ session, rail = 'none', onRail, onOpen, handoffOpe
   const { transport } = usePlatform();
   const [cost, setCost] = useState<SessionCost>();
   const [editedPrompt, setEditedPrompt] = useState<string>();
+  const [expandedDesign, setExpandedDesign] = useState(false);
   const notesLayout = useDefaultLayout({ id: 'ormi.session.notes', storage: globalThis.localStorage });
   const browserLayout = useDefaultLayout({ id: 'ormi.session.browser', storage: globalThis.localStorage });
-  const railLayout = rail === 'browser' ? browserLayout : notesLayout;
+  const designLayout = useDefaultLayout({ id: 'ormi.session.design', storage: globalThis.localStorage });
+  const railLayout = rail === 'browser' ? browserLayout : rail === 'design' ? designLayout : notesLayout;
   const onNotesLayoutChanged: typeof notesLayout.onLayoutChanged = (panelLayout, meta) => {
     railLayout.onLayoutChanged(panelLayout, meta);
     if (!meta.isUserInteraction || typeof panelLayout.notes !== 'number') return;
@@ -46,6 +49,7 @@ export function SessionView({ session, rail = 'none', onRail, onOpen, handoffOpe
     });
   };
   useEffect(() => { if (scratch && rail === 'git') onRail?.('none'); }, [scratch, rail, onRail]);
+  useEffect(() => { if (rail !== 'design') setExpandedDesign(false); }, [rail, session]);
   const approvalsAtTop = (layout?.regions.approval?.order ?? 0) > 0;
   useEffect(() => {
     if (!details) return;
@@ -59,6 +63,11 @@ export function SessionView({ session, rail = 'none', onRail, onOpen, handoffOpe
   const costTitle = cost
     ? `Input ${cost.input.toLocaleString('en-US')} · Output ${cost.output.toLocaleString('en-US')} · Cache read ${cost.cacheRead.toLocaleString('en-US')} · Cache write ${cost.cacheWrite.toLocaleString('en-US')} · ${cost.turns} turns · model ${cost.model ?? '—'} · prices ${cost.priceVersion ?? '—'}${cost.source === 'estimate' ? ' (estimate)' : ''}`
     : '';
+  const composer = <div data-session-composer style={{ minHeight: layout?.regions.composer?.size ?? 0 }}>
+    <Composer session={session} details={details} onGit={scratch ? undefined : onRail ? () => onRail('git') : undefined}
+      onOpenRail={onRail ? pane => onRail(pane) : undefined} onHandoff={() => onHandoffChange?.(true)}
+      prefill={editedPrompt} onPrefillApplied={() => setEditedPrompt(undefined)} />
+  </div>;
   const chat = (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0, overflow: 'hidden' }}>
       {details ? <div style={{ display: 'flex', justifyContent: 'center', flexShrink: 0 }}>
@@ -70,24 +79,21 @@ export function SessionView({ session, rail = 'none', onRail, onOpen, handoffOpe
       {approvalsAtTop ? <Approvals session={session} pending={approvals} events={events} /> : null}
       <Transcript events={events} session={session} scratch={scratch} busy={Boolean(details && ['starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying', 'paused_rate_limited'].includes(details.state))} onHandoff={() => onHandoffChange?.(true)} onOpenSession={onOpen} onEditPrompt={setEditedPrompt} />
       {!approvalsAtTop ? <Approvals session={session} pending={approvals} events={events} /> : null}
-      <div data-session-composer style={{ minHeight: layout?.regions.composer?.size ?? 0 }}>
-      <Composer session={session} details={details} onGit={scratch ? undefined : onRail ? () => onRail('git') : undefined}
-        onOpenRail={onRail ? pane => onRail(pane) : undefined} onHandoff={() => onHandoffChange?.(true)}
-        prefill={editedPrompt} onPrefillApplied={() => setEditedPrompt(undefined)} />
-      </div>
+      {!expandedDesign ? composer : null}
       <HandoffDialog session={session} details={details} open={handoffOpen}
         onClose={() => onHandoffChange?.(false)} onOpenSession={onOpen} />
     </div>
   );
+  if (rail === 'design' && expandedDesign) return <DesignWorkspace session={session} expanded onExpandedChange={setExpandedDesign} composerSlot={composer} />;
   if (rail === 'none' || (scratch && rail === 'git')) return <div style={{ height: '100%', background: 'var(--bg-main)' }}>{chat}</div>;
   return (
-    <Group id={rail === 'browser' ? 'ormi.session.browser' : 'ormi.session.notes'} orientation="horizontal" defaultLayout={railLayout.defaultLayout} onLayoutChanged={onNotesLayoutChanged} style={{ height: '100%', background: 'var(--bg-main)' }}>
+    <Group id={rail === 'browser' ? 'ormi.session.browser' : rail === 'design' ? 'ormi.session.design' : 'ormi.session.notes'} orientation="horizontal" defaultLayout={railLayout.defaultLayout} onLayoutChanged={onNotesLayoutChanged} style={{ height: '100%', background: 'var(--bg-main)' }}>
       <Panel id="chat" minSize={440}>{chat}</Panel>
       <Separator className="ormi-handle ormi-handle-line" />
       <Panel id="notes" defaultSize={layout?.source === 'user' && layout.regions.rightRail?.size
-        ? layout.regions.rightRail.size : rail === 'browser' ? '50' : '42'} minSize={rail === 'browser' ? 400 : 340} maxSize="65">
+        ? layout.regions.rightRail.size : rail === 'browser' ? '50' : rail === 'design' ? '60' : '42'} minSize={rail === 'browser' ? 400 : rail === 'design' ? 500 : 340} maxSize={rail === 'design' ? '75' : '65'}>
         <div className="ormi-pane" style={{ height: '100%', background: 'var(--bg-main)', minWidth: 0, overflow: 'hidden' }}>
-          {rail === 'notes' ? <NotesPanel session={session} /> : rail === 'git' ? <GitPane session={session} /> : rail === 'files' ? <FilesPane session={session} onOpenSession={onOpen} /> : rail === 'browser' ? <BrowserPane session={session} /> : <TerminalPane session={session} />}
+          {rail === 'notes' ? <NotesPanel session={session} /> : rail === 'git' ? <GitPane session={session} /> : rail === 'files' ? <FilesPane session={session} onOpenSession={onOpen} /> : rail === 'browser' ? <BrowserPane session={session} /> : rail === 'design' ? <DesignWorkspace session={session} onExpandedChange={setExpandedDesign} /> : <TerminalPane session={session} />}
         </div>
       </Panel>
     </Group>

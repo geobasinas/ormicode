@@ -7,11 +7,12 @@ import { PlatformContext } from '../lib/platform.ts';
 import { applyTheme, themeByName } from '../lib/theme.ts';
 import { defaultLayout, applyLayout, validateLayout } from '../lib/layout.ts';
 import type { LayoutDescriptor } from '../lib/layout.ts';
-import { PanelLeft, Minus, Square, X, Search, SquarePen, Settings, GitBranch, FolderOpen, SquareTerminal, NotebookPen, Globe, type LucideIcon } from 'lucide-react';
+import { PanelLeft, Minus, Square, X, Search, SquarePen, Settings, GitBranch, FolderOpen, SquareTerminal, NotebookPen, Globe, Palette, type LucideIcon } from 'lucide-react';
 import { SessionList } from '../features/session/SessionList.tsx';
 import { useSession } from '../features/session/useSession.ts';
 import { Now } from './Now.tsx';
 import { SessionView } from './SessionView.tsx';
+import { DesignPage } from './DesignPage.tsx';
 import { OPEN_FILE } from '../lib/openFile.ts';
 import { SettingsView, loadPrefs, type Prefs } from './Settings.tsx';
 import { SessionHeader } from '../features/session/SessionHeader.tsx';
@@ -41,7 +42,7 @@ function Titlebar({ platform }: { platform: ClientPlatform }) {
   );
 }
 
-const PAGES: Record<string, string> = { now: 'Home', settings: 'Settings' };
+const PAGES: Record<string, string> = { now: 'Home', settings: 'Settings', design: 'Design' };
 
 function Tab({ id, n, active, onSelect, onClose }: { id: string; n?: number; active: boolean; onSelect: () => void; onClose?: () => void }) {
   const details = useSession(PAGES[id] ? undefined : id);
@@ -82,13 +83,14 @@ const RAIL_ICONS: { id: string; icon: LucideIcon; label: string; soon?: boolean 
   { id: 'terminal', icon: SquareTerminal, label: 'terminal' },
   { id: 'notes', icon: NotebookPen, label: 'notes' },
   { id: 'browser', icon: Globe, label: 'browser' },
+  { id: 'design', icon: Palette, label: 'design' },
 ];
 
-export type RailPane = 'none' | 'notes' | 'git' | 'terminal' | 'files' | 'browser';
-const PANES: string[] = ['notes', 'git', 'terminal', 'files', 'browser'];
+export type RailPane = 'none' | 'notes' | 'git' | 'terminal' | 'files' | 'browser' | 'design';
+const PANES: string[] = ['notes', 'git', 'terminal', 'files', 'browser', 'design'];
 
-function Rail({ route, rail, onRail }: { route: string; rail: RailPane; onRail: (r: RailPane) => void }) {
-  const isSession = route !== 'now';
+function Rail({ route, rail, onRail, onDesign }: { route: string; rail: RailPane; onRail: (r: RailPane) => void; onDesign(): void }) {
+  const isSession = !PAGES[route];
   const details = useSession(isSession && route !== 'settings' ? route : undefined);
   return (
     <div style={{
@@ -96,11 +98,11 @@ function Rail({ route, rail, onRail }: { route: string; rail: RailPane; onRail: 
       padding: '12px 0 0', gap: 4, background: 'var(--bg-window)', alignSelf: 'flex-start',
     }}>
       {RAIL_ICONS.filter(item => !(details?.project === 'scratch' && item.id === 'git')).map(({ id, icon: Icon, label, soon }) => {
-        const enabled = PANES.includes(id) ? isSession : !soon;
-        const active = id === rail;
+        const enabled = id === 'design' || (PANES.includes(id) ? isSession : !soon);
+        const active = id === 'design' ? route === 'design' : isSession && id === rail;
         return (
           <button key={id} className={enabled && !active ? 'hv' : undefined} title={enabled ? label : `${label} — soon`} aria-disabled={!enabled}
-            onClick={() => enabled && PANES.includes(id) && onRail(rail === id ? 'none' : id as RailPane)}
+            onClick={() => id === 'design' ? onDesign() : enabled && PANES.includes(id) && onRail(rail === id ? 'none' : id as RailPane)}
             style={{
               width: 32, height: 32, border: 'none', borderRadius: 8, cursor: enabled ? 'pointer' : 'default',
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
@@ -127,6 +129,7 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
   });
   const [tabs, setTabs] = useState<string[]>([]);
   const [route, setRoute] = useState<string>('now');
+  const [designSession, setDesignSession] = useState<string>();
   const [toastBottomOffset, setToastBottomOffset] = useState(16);
   const [state, setState] = useState<string>('connecting');
   const [query, setQuery] = useState('');
@@ -225,6 +228,8 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
     window.dispatchEvent(new CustomEvent('ormi-layout-change', { detail: descriptor }));
   };
   const open = (id: string) => {
+    if (!PAGES[id]) setDesignSession(id);
+    if (id === 'design') { if (!PAGES[route]) setDesignSession(route); setRoute(id); return; }
     setTabs(ts => ts.includes(id) ? ts : [...ts.slice(-(MAX_TABS - 1)), id]);
     setRoute(id);
   };
@@ -297,6 +302,7 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
           <main style={{ height: '100%', boxSizing: 'border-box', minWidth: 0, display: 'flex', flexDirection: 'column', padding: '12px 0 18px 12px' }}>
             <div style={{ display: 'flex', gap: 10, flexShrink: 0, position: 'relative', zIndex: 1, marginBottom: -1 }}>
               <Tab id="now" active={route === 'now'} onSelect={() => setRoute('now')} />
+              <Tab id="design" active={route === 'design'} onSelect={() => open('design')} />
               {tabs.map((t, i) => <Tab key={t} id={t} n={PAGES[t] ? undefined : tabs.filter(x => !PAGES[x]).indexOf(t) + 1} active={route === t} onSelect={() => setRoute(t)} onClose={() => close(t)} />)}
               <span style={{ flex: 1 }} />
               {!PAGES[route] ? <div style={{ ...noDrag, minWidth: 0, display: 'flex' }}><ActiveHeader key={route} session={route} onOpen={open} onHandoff={() => setHandoffOpen(true)} /></div> : null}
@@ -307,13 +313,14 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
             }}>
               {route === 'now' ? <Now onOpen={open} state={state} layout={resolved} />
                 : route === 'settings' ? <SettingsView prefs={prefs} onPrefs={setPrefs} connection={state} />
+                : route === 'design' ? <DesignPage initialSession={designSession} onSessionChange={setDesignSession} onOpen={open} />
                 : <SessionView key={route} session={route} rail={rail} onRail={setRail} onOpen={open} handoffOpen={handoffOpen} onHandoffChange={setHandoffOpen} layout={resolved}
                   onLayoutChange={descriptor => window.dispatchEvent(new CustomEvent('ormi-layout-change', { detail: descriptor }))} />}
             </div>
           </main>
           </Panel>
         </Group>
-          <Rail route={route} rail={rail} onRail={setRail} />
+          <Rail route={route} rail={rail} onRail={setRail} onDesign={() => open('design')} />
         </div>
       </div>
       <Toaster className="toaster group ormi-toast-toaster" position="bottom-center" duration={3000} visibleToasts={1} closeButton={false}

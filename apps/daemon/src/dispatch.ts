@@ -33,6 +33,7 @@ import { costMethod } from './cost-methods.ts';
 import { gitMethod, projectBranches, projectFetch } from './git-methods.ts';
 import { projectBranchMethod } from './project-branch-methods.ts';
 import { fileMethod } from './file-methods.ts';
+import { designMethod } from './design-methods.ts';
 import { projectSearchFiles } from './project-search.ts';
 import { queueMethod } from './queue-methods.ts';
 import { composerMethod } from './composer-methods.ts';
@@ -364,6 +365,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         return client.link.reply(id, { revoked: true, relaySynced: relay?.connected() ?? false });
       }
       default:
+        if (method.startsWith('design.')) return designMethod(ctx, client, id, method, body);
         if (method === 'session.handoffEstimate' || method === 'session.handoffBrief')
           return await handoffMethod(ctx, client, id, method, body);
         if (method === 'session.draft.get' || method === 'session.draft.set' || method === 'session.commands' || method === 'prompts.history')

@@ -30,6 +30,7 @@ export function usage(code: number): never {
   ormi preview url <session> <port> [path]        get an authenticated local preview URL
   ormi preview console <session> [--after n]       read preview console and network errors
   ormi file ls [path] | cat <path> | search <query> [--content] [--regex] | blame <path> | history <path> --session <id>
+  ormi design list|get|create|update|history|restore ...  (update reads operations JSON from a file or stdin with -)
   ormi run <vendor> [--transport t] [agent args]   start a session and attach (Ctrl+] detaches)
   ormi attach <id>                                reattach a running session
   ormi relay register --account <a> [--relay <url>] [--secret <s>]   register this hub
