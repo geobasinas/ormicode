@@ -31,6 +31,11 @@ export function fitView(rects: Rect[], width: number, height: number, padding = 
   return { scale, x: (width - (right - left) * scale) / 2 - left * scale, y: (height - (bottom - top) * scale) / 2 - top * scale };
 }
 
+export function fitCanvas(rects: Rect[], width: number, height: number): View {
+  // Leave an extra strip below the artboards for the toolbar and dimension labels.
+  return fitView(rects, width, height - 42);
+}
+
 export function resizeRect(rect: Rect, dx: number, dy: number): Rect {
   return { ...rect, width: Math.round(Math.max(80, Math.min(4096, rect.width + dx))), height: Math.round(Math.max(80, Math.min(4096, rect.height + dy))) };
 }
@@ -54,7 +59,7 @@ export function validateBridgeMessage(value: unknown, channel: string): value is
   const message = value as Record<string, unknown>;
   if (message.channel !== channel || typeof message.type !== 'string') return false;
   if (message.type === 'selected') {
-    if (Object.keys(message).some(key => !['channel', 'type', 'id', 'tag', 'leaf', 'text', 'styles'].includes(key)) || typeof message.id !== 'string' || !/^n[0-9]{1,10}$/.test(message.id) || typeof message.tag !== 'string' || !/^[a-z0-9]{1,20}$/.test(message.tag) || typeof message.leaf !== 'boolean' || typeof message.text !== 'string' || message.text.length > 500 || !message.styles || typeof message.styles !== 'object' || Array.isArray(message.styles)) return false;
+    if (Object.keys(message).some(key => !['channel', 'type', 'id', 'path', 'tag', 'leaf', 'text', 'styles'].includes(key)) || typeof message.id !== 'string' || !/^n[0-9]{1,10}$/.test(message.id) || typeof message.path !== 'string' || (message.path !== '' && !/^\d{1,5}(?:\.\d{1,5}){0,23}$/.test(message.path)) || typeof message.tag !== 'string' || !/^[a-z0-9]{1,20}$/.test(message.tag) || typeof message.leaf !== 'boolean' || typeof message.text !== 'string' || message.text.length > 500 || !message.styles || typeof message.styles !== 'object' || Array.isArray(message.styles)) return false;
     const styles = message.styles as Record<string, unknown>;
     return Object.keys(styles).length <= EDITABLE_PROPERTIES.length && Object.entries(styles).every(([key, style]) => (EDITABLE_PROPERTIES as readonly string[]).includes(key) && typeof style === 'string' && style.length <= 120);
   }

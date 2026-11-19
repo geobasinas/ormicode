@@ -26,12 +26,15 @@ const MAX_TABS = 8;
 const drag = { WebkitAppRegion: 'drag' } as const;
 const noDrag = { WebkitAppRegion: 'no-drag' } as const;
 
-function Titlebar({ platform, workspace, onWorkspaceChange }: { platform: ClientPlatform; workspace: Workspace; onWorkspaceChange(workspace: Workspace): void }) {
+function Titlebar({ platform, workspace, onWorkspaceChange, sidebarOpen, onSidebarToggle }: {
+  platform: ClientPlatform; workspace: Workspace; onWorkspaceChange(workspace: Workspace): void; sidebarOpen: boolean; onSidebarToggle(): void;
+}) {
   const d = platform.desktop;
   const btn = { ...noDrag, width: 46, height: 40, font: 'inherit', fontSize: 13, border: 'none', cursor: 'default', background: 'transparent', color: 'var(--text-secondary)' };
   return (
     <div style={{ ...drag, height: 40, display: 'flex', alignItems: 'center', paddingLeft: 14, background: 'var(--bg-window)', flexShrink: 0 }}>
-      <PanelLeft size={15} style={{ ...noDrag, color: 'var(--text-secondary)' }} />
+      <button type="button" className="hv" title="Toggle sidebar" aria-label="Toggle sidebar" aria-expanded={sidebarOpen} onClick={onSidebarToggle}
+        style={{ ...noDrag, display: 'grid', placeItems: 'center', padding: 4, borderRadius: 5, marginLeft: -4, marginRight: -4, color: 'var(--text-secondary)' }}><PanelLeft size={15} /></button>
       <WorkspaceSwitcher workspace={workspace} onChange={onWorkspaceChange} />
       <span style={{ flex: 1 }} />
       {d ? (
@@ -89,7 +92,7 @@ const RAIL_ICONS: { id: string; icon: LucideIcon; label: string; soon?: boolean 
   { id: 'design', icon: PenTool, label: 'design' },
 ];
 
-export type RailPane = 'none' | 'notes' | 'git' | 'terminal' | 'files' | 'browser' | 'design';
+export type RailPane = 'none' | 'notes' | 'git' | 'terminal' | 'files' | 'browser';
 const PANES: string[] = ['notes', 'git', 'terminal', 'files', 'browser', 'design'];
 
 function Rail({ route, rail, onRail, onDesign }: { route: string; rail: RailPane; onRail: (r: RailPane) => void; onDesign(): void }) {
@@ -133,6 +136,8 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
   const [tabs, setTabs] = useState<string[]>([]);
   const [route, setRoute] = useState<string>('now');
   const [designSession, setDesignSession] = useState<string>();
+  const [designSidebarOpen, setDesignSidebarOpen] = useState(() => !window.matchMedia('(max-width: 850px)').matches);
+  const [codeSidebarOverride, setCodeSidebarOverride] = useState<boolean>();
   const lastCodeRoute = useRef('now');
   useEffect(() => { if (route !== 'design' && route !== 'settings') lastCodeRoute.current = route; }, [route]);
   const [toastBottomOffset, setToastBottomOffset] = useState(16);
@@ -203,6 +208,7 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!e.ctrlKey && !e.metaKey) return;
+      if (route === 'design' && e.key !== ',') return;
       if (e.key === 'k' || e.key === 'K') { e.preventDefault(); searchRef.current?.focus(); }
       if (e.key === 'n' || e.key === 'N') { e.preventDefault(); setRoute('now'); }
       if (e.key === '1') { e.preventDefault(); setRoute('now'); }
@@ -210,13 +216,15 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [searchRef]);
+  }, [searchRef, route]);
   useEffect(() => {
     platform.transport.onState = setState;
     platform.transport.onState?.(state);
   }, [platform]);
 
   const sidebar = resolved.regions.sidebar;
+  const codeSidebarOpen = codeSidebarOverride ?? (sidebar?.visible !== false && sidebar?.collapsed !== true);
+  const inDesign = route === 'design';
   const openRef = useRef((id: string) => { void id; });
   const shellLayout = useDefaultLayout({ id: 'ormi.shell', storage: globalThis.localStorage });
   const onShellLayoutChanged: typeof shellLayout.onLayoutChanged = (panelLayout, meta) => {
@@ -248,10 +256,11 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
   return (
     <PlatformContext.Provider value={platform}>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-window)', color: 'var(--text-label)', fontFamily: 'var(--font-ui)', fontSize: 14, borderRadius: 14, overflow: 'hidden' }}>
-        <Titlebar platform={platform} workspace={route === 'design' ? 'design' : 'code'} onWorkspaceChange={workspace => workspace === 'design' ? open('design') : setRoute(codeWorkspaceRoute(lastCodeRoute.current, tabs))} />
-        <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+        <Titlebar platform={platform} workspace={inDesign ? 'design' : 'code'} onWorkspaceChange={workspace => workspace === 'design' ? open('design') : setRoute(codeWorkspaceRoute(lastCodeRoute.current, tabs))}
+          sidebarOpen={inDesign ? designSidebarOpen : codeSidebarOpen} onSidebarToggle={() => inDesign ? setDesignSidebarOpen(value => !value) : setCodeSidebarOverride(!codeSidebarOpen)} />
+        {inDesign ? <DesignPage initialSession={designSession} onSessionChange={setDesignSession} onOpen={open} sidebarOpen={designSidebarOpen} onShowSidebar={() => setDesignSidebarOpen(true)} /> : <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         <Group id="ormi.shell" orientation="horizontal" defaultLayout={shellLayout.defaultLayout} onLayoutChanged={onShellLayoutChanged} style={{ flex: 1, minWidth: 0 }}>
-          {sidebar?.visible !== false && sidebar?.collapsed !== true ? <>
+          {codeSidebarOpen ? <>
             <Panel id="sidebar" defaultSize={sidebar?.size ?? 268} minSize={220} maxSize={420}>
             <aside style={{
               width: '100%', height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column',
@@ -317,7 +326,6 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
             }}>
               {route === 'now' ? <Now onOpen={open} state={state} layout={resolved} />
                 : route === 'settings' ? <SettingsView prefs={prefs} onPrefs={setPrefs} connection={state} />
-                : route === 'design' ? <DesignPage initialSession={designSession} onSessionChange={setDesignSession} onOpen={open} />
                 : <SessionView key={route} session={route} rail={rail} onRail={setRail} onOpen={open} handoffOpen={handoffOpen} onHandoffChange={setHandoffOpen} layout={resolved}
                   onLayoutChange={descriptor => window.dispatchEvent(new CustomEvent('ormi-layout-change', { detail: descriptor }))} />}
             </div>
@@ -325,7 +333,7 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
           </Panel>
         </Group>
           <Rail route={route} rail={rail} onRail={setRail} onDesign={() => open('design')} />
-        </div>
+        </div>}
       </div>
       <Toaster className="toaster group ormi-toast-toaster" position="bottom-center" duration={3000} visibleToasts={1} closeButton={false}
         offset={{ top: 16, right: 16, bottom: toastBottomOffset, left: 16 }}

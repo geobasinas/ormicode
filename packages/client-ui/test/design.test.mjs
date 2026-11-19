@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { Script } from 'node:vm';
 import { JSDOM } from 'jsdom';
 import { BRIDGE_HASH, BRIDGE_SCRIPT, BRIDGE_SRC_DOC } from '../src/features/design/bridge.ts';
-import { fitView, reconcileFrameSelection, resizeRect, validateBridgeMessage, validateStyleEdit, zoomAt } from '../src/features/design/design-model.ts';
+import { fitCanvas, fitView, reconcileFrameSelection, resizeRect, validateBridgeMessage, validateStyleEdit, zoomAt } from '../src/features/design/design-model.ts';
 
 test('canvas transforms, resize bounds and style/bridge allowlists', () => {
   assert.deepEqual(fitView([], 900, 700), { x: 0, y: 0, scale: 1 });
@@ -14,13 +14,17 @@ test('canvas transforms, resize bounds and style/bridge allowlists', () => {
   assert.equal(reconcileFrameSelection([], 'deleted'), '');
   assert.equal(zoomAt({ x: 0, y: 0, scale: 1 }, { x: 100, y: 50 }, 2).scale, 2);
   assert.ok(fitView([{ x: 0, y: 0, width: 1440, height: 900 }], 900, 700).scale < 1);
+  const fitted = fitCanvas([{ x: 0, y: 0, width: 390, height: 844 }], 1600, 900);
+  assert.ok(fitted.y + 844 * fitted.scale <= 900 - 70, 'artboard stays above the floating controls and its caption');
   assert.equal(resizeRect({ x: 0, y: 0, width: 100, height: 100 }, -500, 500).width, 80);
   assert.equal(resizeRect({ x: 0, y: 0, width: 100, height: 100 }, 5000, 0).width, 4096);
   assert.equal(validateStyleEdit('color', 'var(--accent-mint)'), true);
   assert.equal(validateStyleEdit('backgroundImage', 'url(https://example.invalid)'), false);
   assert.equal(validateStyleEdit('color', 'red;display:none'), false);
-  assert.equal(validateBridgeMessage({ channel: 'abc', type: 'selected', id: 'n1', tag: 'p', leaf: true, text: 'Hi', styles: { color: 'red' } }, 'abc'), true);
-  assert.equal(validateBridgeMessage({ channel: 'abc', type: 'selected', id: 'n1', tag: 'p', leaf: true, text: 'Hi', styles: { color: 'red' }, extra: true }, 'abc'), false);
+  const selection = { channel: 'abc', type: 'selected', id: 'n1', path: '0.2', tag: 'p', leaf: true, text: 'Hi', styles: { color: 'red' } };
+  assert.equal(validateBridgeMessage(selection, 'abc'), true);
+  assert.equal(validateBridgeMessage({ ...selection, path: '0.__proto__' }, 'abc'), false);
+  assert.equal(validateBridgeMessage({ ...selection, extra: true }, 'abc'), false);
   assert.equal(validateBridgeMessage({ channel: 'wrong', type: 'serialized', html: '' }, 'abc'), false);
 });
 
@@ -53,7 +57,14 @@ test('trusted bridge edits only leaf text, validates commands and omits runtime 
   const selected = () => sent.findLast(message => message.type === 'selected');
   try {
     command({ type: 'init', html: '<section><p>Hello</p><span>World</span></section>', styles: '' });
-    window.document.querySelector('p').click();
+    command({ type: 'selectPath', path: '0.1' }, 'https://wrong.invalid');
+    assert.equal(selected(), undefined);
+    command({ type: 'selectPath', path: '0.10000.0' });
+    command({ type: 'selectPath', path: '0.__proto__' });
+    assert.equal(selected(), undefined);
+    command({ type: 'selectPath', path: '0.0' });
+    assert.equal(selected().path, '0.0');
+    assert.equal(selected().text, 'Hello');
     assert.equal(selected().leaf, true);
     command({ type: 'editText', id: selected().id, text: 'Rejected', extra: true });
     command({ type: 'editText', id: selected().id, text: 'Rejected' }, 'https://wrong.invalid');
@@ -66,6 +77,7 @@ test('trusted bridge edits only leaf text, validates commands and omits runtime 
     assert.equal(window.document.querySelector('p').style.color, 'var(--accent-mint)');
     window.document.querySelector('section').click();
     assert.equal(selected().leaf, false);
+    assert.equal(selected().path, '0');
     command({ type: 'editText', id: selected().id, text: 'Would destroy children' });
     assert.ok(window.document.querySelector('section p'));
     command({ type: 'addElement', kind: 'button' });

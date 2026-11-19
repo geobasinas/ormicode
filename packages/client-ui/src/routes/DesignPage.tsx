@@ -1,17 +1,19 @@
 import { useEffect, useState } from 'react';
+import { ArrowUpRight, GitBranch, PanelsTopLeft, Workflow } from 'lucide-react';
 import { DesignWorkspace } from '../features/design/DesignWorkspace.tsx';
 import { Composer } from '../features/session/Composer.tsx';
 import type { SessionDetails } from '../features/session/useSession.ts';
 import { usePlatform } from '../lib/platform.ts';
 import { projectName } from '../lib/format.ts';
 
-export function DesignPage({ initialSession, onSessionChange, onOpen }: {
-  initialSession?: string; onSessionChange(session: string): void; onOpen(session: string): void;
+export function DesignPage({ initialSession, onSessionChange, onOpen, sidebarOpen, onShowSidebar }: {
+  initialSession?: string; onSessionChange(session: string): void; onOpen(session: string): void; sidebarOpen: boolean; onShowSidebar(): void;
 }) {
   const { transport } = usePlatform();
   const [sessions, setSessions] = useState<SessionDetails[]>([]);
   const [selected, setSelected] = useState(initialSession ?? '');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
   useEffect(() => { if (initialSession) setSelected(initialSession); }, [initialSession]);
   useEffect(() => {
     let alive = true;
@@ -28,6 +30,7 @@ export function DesignPage({ initialSession, onSessionChange, onOpen }: {
         setSessions(next); setError('');
         setSelected(current => next.some(item => item.id === current) ? current : next[0]?.id ?? '');
       } catch (reason) { if (alive && token === generation) setError(String(reason)); }
+      finally { if (alive && token === generation) setLoading(false); }
     };
     void refresh();
     const unsubscribe = transport.subscribeEvents(frame => { if (frame.type === 'idx') void refresh(); });
@@ -39,22 +42,35 @@ export function DesignPage({ initialSession, onSessionChange, onOpen }: {
     return () => transport.unsubscribe(selected);
   }, [transport, selected]);
   const details = sessions.find(item => item.id === selected);
-  const linked = details ? sessions.filter(item => item.cwd === details.cwd) : [];
-  const button = { border: '1px solid var(--line-divider)', borderRadius: 6, background: 'var(--bg-card)', color: 'var(--text-label)', padding: '5px 8px', cursor: 'pointer', font: 'inherit' };
-  return <section aria-label="Design workspace" style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column', color: 'var(--text-title)', fontSize: 12 }}>
-    <header style={{ padding: '10px 12px', borderBottom: '1px solid var(--line-divider)', display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-      <strong>Design workspace</strong>
-      <label>Project / session <select aria-label="Design project and session" value={selected} onChange={event => { setSelected(event.target.value); onSessionChange(event.target.value); }} style={{ ...button, maxWidth: 440 }}>
-        {!sessions.length ? <option value="">Choose a project session</option> : null}
-        {sessions.map(item => <option key={item.id} value={item.id}>{projectName(item.project)} · {item.branch ?? 'current workspace'} · {item.title ?? item.id}</option>)}
-      </select></label>
-      {details ? <button style={button} onClick={() => onOpen(selected)}>Open session chat</button> : null}
-      {details ? <div style={{ width: '100%', color: 'var(--text-secondary)', overflowWrap: 'anywhere' }}>Board storage: {details.cwd}/designs/ · Associated sessions: {linked.map(item => <button key={item.id} style={{ ...button, marginRight: 4 }} onClick={() => onOpen(item.id)}>{item.title ?? item.id}</button>)}</div> : null}
-    </header>
-    {error ? <p role="alert" style={{ padding: 12, color: 'var(--accent-red)' }}>{error}</p> : null}
-    {details ? <>
-      <div style={{ flex: 1, minHeight: 0 }}><DesignWorkspace key={selected} session={selected} /></div>
-      <div style={{ flexShrink: 0, borderTop: '1px solid var(--line-divider)' }}><Composer key={selected} session={selected} details={details} /></div>
-    </> : <div style={{ padding: 32, margin: 'auto', maxWidth: 520 }}><h2>Design in a project workspace</h2><p>Start or open a project session first, then choose it here. Its working directory determines which repository-backed boards are listed. Worktrees stay separate, and feedback is sent only when you submit the linked session's composer.</p></div>}
-  </section>;
+  if (!details) return <main aria-label="Design workspace" className="design-no-session">
+    <div className="design-empty">
+      <div className="design-empty-icon"><PanelsTopLeft size={24} /></div>
+      <h1>{loading ? 'Loading project sessions…' : 'Open a project to start designing'}</h1>
+      {error ? <p role="alert">{error}</p> : null}
+      {!loading ? <><p>Design boards are saved in the working tree of a Code session.</p>
+        <button type="button" className="design-button primary" onClick={() => onOpen('now')}>Go to Code <ArrowUpRight size={14} /></button></> : null}
+    </div>
+  </main>;
+
+  const sameWorkspace = sessions.filter(item => item.cwd === details.cwd);
+  const otherWorkspaces = sessions.filter(item => item.cwd !== details.cwd);
+  const sessionChoice = (item: SessionDetails) => <option key={item.id} value={item.id}>
+    {item.title ?? item.id} · {projectName(item.project)}{item.branch ? ` · ${item.branch}` : ''}
+  </option>;
+
+  return <DesignWorkspace key={selected} session={selected} sidebarOpen={sidebarOpen} onShowSidebar={onShowSidebar}
+    project={projectName(details.project)} workspacePath={details.cwd ?? details.project} sessionError={error} agentSlot={
+      <div className="design-agent">
+        <div className="design-section-heading"><Workflow size={13} /> <span>Linked session</span>
+          <button type="button" className="design-icon-button" aria-label="Open session chat" title="Open session chat" onClick={() => onOpen(selected)}><ArrowUpRight size={15} /></button>
+        </div>
+        <select aria-label="Design project and session" className="design-input design-session-select" title={details.title ?? selected} value={selected}
+          onChange={event => { setSelected(event.target.value); onSessionChange(event.target.value); }}>
+          <optgroup label="This working tree">{sameWorkspace.map(sessionChoice)}</optgroup>
+          {otherWorkspaces.length ? <optgroup label="Other working trees">{otherWorkspaces.map(sessionChoice)}</optgroup> : null}
+        </select>
+        <div className="design-branch" title={details.cwd}><GitBranch size={12} /> <span>{details.branch ?? details.cwd}</span></div>
+        <Composer session={selected} details={details} compact />
+      </div>
+    } />;
 }
