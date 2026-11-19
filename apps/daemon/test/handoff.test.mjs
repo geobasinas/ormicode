@@ -61,6 +61,8 @@ test('handoff brief and estimate report context, changed files and unknown-price
   const brief = await client.request('session.handoffBrief', { session });
   assert.equal(brief.type, 'res');
   assert.match(brief.body.brief, /^Goal:/);
+  assert.match(brief.body.brief, /^Next step: Continue from the last prompt\.$/m);
+  assert.doesNotMatch(brief.body.brief, /None recorded|^Done so far:|^Files changed:|^Decisions:|^Open questions:|^Commands run:|^Current diff:/m);
   const estimate = await client.request('session.handoffEstimate', {
     session, to: { model: 'unknown-model' }, mode: 'rehydrate',
   });
@@ -92,7 +94,7 @@ test('handoff brief uses task headings, summarizes work and excludes lifecycle i
   add('text', { text: 'This later update must not appear in the bounded recap.' });
 
   const brief = handoffBrief(daemon.db, session, 12, uptoSeq);
-  for (const heading of ['Goal:', 'Done so far:', 'Files changed:', 'Decisions:', 'Open questions:', 'Commands run:', 'Current diff:', 'Next step:'])
+  for (const heading of ['Goal:', 'Done so far:', 'Files changed:', 'Open questions:', 'Commands run:', 'Current diff:', 'Next step:'])
     assert.ok(brief.includes(heading), `missing ${heading}`);
   assert.match(brief, /Goal: Add a timeout to the API client\./);
   assert.match(brief, /src\/client\.ts — edited/);

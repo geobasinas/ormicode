@@ -16,6 +16,16 @@ const dur = (ms: number | null) => ms == null ? '' : ms < 60_000 ? `${Math.round
 function Create({ session, reload }: { session: string; reload: () => Promise<void> }) {
   const act = useGitAction(session);
   const [title, setTitle] = useState(''); const [body, setBody] = useState(''); const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const create = async () => {
+    if (busy || !title.trim()) return;
+    setBusy(true); setErr(null);
+    try {
+      const result = await act('git.pr', { title, body });
+      setErr(result.error ?? null);
+      if (!result.error) await reload();
+    } finally { setBusy(false); }
+  };
   const field = { width: '100%', background: 'var(--bg-inset)', border: '1px solid var(--line-card)', borderRadius: 7, color: 'var(--text-label)', font: 'inherit', fontSize: 12, padding: '7px 10px', outline: 'none' } as const;
   return (
     <div style={{ padding: '0 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -23,7 +33,7 @@ function Create({ session, reload }: { session: string; reload: () => Promise<vo
       <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Title" style={field} />
       <textarea value={body} onChange={e => setBody(e.target.value)} placeholder="Description" rows={5} style={{ ...field, resize: 'vertical' }} />
       {err ? <Notice tone="red">{err}</Notice> : null}
-      <div><Btn primary disabled={!title.trim()} onClick={() => void act('git.pr', { title, body }).then(r => { setErr(r.error ?? null); if (!r.error) void reload(); })}><GitPullRequest size={12} />Create pull request</Btn></div>
+      <div><Btn primary disabled={!title.trim() || busy} onClick={() => void create()}><GitPullRequest size={12} />{busy ? 'Creating…' : 'Create pull request'}</Btn></div>
     </div>
   );
 }
@@ -31,6 +41,16 @@ function Create({ session, reload }: { session: string; reload: () => Promise<vo
 export function PrTab({ session, pr, error, reload }: { session: string; pr: Pr | null | undefined; error: string | null; reload: () => Promise<void> }) {
   const act = useGitAction(session);
   const [msg, setMsg] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const merge = async () => {
+    if (busy) return;
+    setBusy(true); setMsg(null);
+    try {
+      const result = await act('git.prMerge', { method: 'squash' });
+      setMsg(result.error ?? 'Merged');
+      await reload();
+    } finally { setBusy(false); }
+  };
   if (error) return <div><Header title="Pull request" /><Notice tone="amber">{error}</Notice></div>;
   if (pr === undefined) return <div><Header title="Pull request" /><Notice>Loading…</Notice></div>;
   if (pr === null) return <div><Header title="Pull request" /><Create session={session} reload={reload} /></div>;
@@ -67,7 +87,7 @@ export function PrTab({ session, pr, error, reload }: { session: string; pr: Pr 
       <Footer>
         <Btn disabled title="soon">Close</Btn><span style={{ flex: 1 }} />
         {pending ? <span style={{ fontSize: 10.5, color: 'var(--accent-amber)', display: 'inline-flex', gap: 4, alignItems: 'center' }}><TriangleAlert size={11} />Waiting on checks</span> : null}
-        <Btn primary disabled={pr.state !== 'open'} onClick={() => void act('git.prMerge', { method: 'squash' }).then(r => { setMsg(r.error ?? 'Merged'); void reload(); })}><GitMerge size={12} />Squash and merge</Btn>
+        <Btn primary disabled={pr.state !== 'open' || busy} onClick={() => void merge()}><GitMerge size={12} />{busy ? 'Merging…' : 'Squash and merge'}</Btn>
       </Footer>
     </div>
   );

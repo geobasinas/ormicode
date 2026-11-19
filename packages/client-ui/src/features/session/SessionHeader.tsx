@@ -17,8 +17,13 @@ export function SessionHeader({ session, details, onOpen, onHandoff }: { session
   const [machine, setMachine] = useState('local');
   const [renaming, setRenaming] = useState(false);
   const [title, setTitle] = useState(details?.title ?? '');
+  const [renameError, setRenameError] = useState('');
+  const [renameBusy, setRenameBusy] = useState(false);
+  const [forking, setForking] = useState(false);
   const [copying, setCopying] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   useEffect(() => {
     try {
       const r = desktop?.remote?.();
@@ -32,11 +37,16 @@ export function SessionHeader({ session, details, onOpen, onHandoff }: { session
   const canStop = ['running', 'starting', 'retrying', 'awaiting_approval', 'awaiting_input', 'paused_rate_limited'].includes(state);
   const act = (m: string) => void transport.request(m, { session });
   const rename = async () => {
+    if (renameBusy) return;
+    setRenameBusy(true); setRenameError('');
     try {
       const result = await transport.request('session.rename', { session, title: title.trim() });
       if (result.type === 'res') { setRenaming(false); feedback.success('Session renamed'); }
-      else feedback.error(String(result.message));
-    } catch (error) { feedback.error(error instanceof Error ? error.message : String(error)); }
+      else { setRenameError(String(result.message ?? result.code)); feedback.error(String(result.message ?? result.code)); }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setRenameError(message); feedback.error(message);
+    } finally { setRenameBusy(false); }
   };
   const exportTranscript = async () => {
     try {
@@ -57,12 +67,35 @@ export function SessionHeader({ session, details, onOpen, onHandoff }: { session
     catch (error) { feedback.error(error instanceof Error ? error.message : String(error)); }
   };
   const forkLatest = async () => {
-    const listed = await transport.request('checkpoint.list', { session });
-    if (listed.type !== 'res') return;
-    const checkpoint = (listed.body.checkpoints as { id: string }[] | undefined)?.[0];
-    if (!checkpoint) return;
-    const fork = await transport.request('checkpoint.fork', { session, id: checkpoint.id });
-    if (fork.type === 'res' && typeof fork.body.session === 'string') onOpen?.(fork.body.session);
+    if (forking) return;
+    setForking(true);
+    try {
+      const listed = await transport.request('checkpoint.list', { session });
+      if (listed.type !== 'res') { feedback.error(String(listed.message ?? listed.code)); return; }
+      const checkpoint = (listed.body.checkpoints as { id: string }[] | undefined)?.[0];
+      if (!checkpoint) { feedback.info('No checkpoint to fork from yet'); return; }
+      const fork = await transport.request('checkpoint.fork', { session, id: checkpoint.id });
+      if (fork.type === 'res' && typeof fork.body.session === 'string') onOpen?.(fork.body.session);
+      else feedback.error(String(fork.message ?? fork.code));
+    } catch (error) { feedback.error(error instanceof Error ? error.message : String(error)); }
+    finally { setForking(false); }
+  };
+  const deleteScratch = async () => {
+    if (deleting) return;
+    setDeleting(true); setDeleteError('');
+    try {
+      const result = await transport.request('session.delete', { session });
+      if (result.type === 'res') {
+        setConfirmDelete(false);
+        feedback.success('Scratch session deleted');
+      } else {
+        setDeleteError(String(result.message ?? result.code));
+        feedback.error(String(result.message ?? result.code));
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setDeleteError(message); feedback.error(message);
+    } finally { setDeleting(false); }
   };
 
   return <>
@@ -83,14 +116,15 @@ export function SessionHeader({ session, details, onOpen, onHandoff }: { session
             <input autoFocus value={title} onChange={event => setTitle(event.target.value)} onKeyDown={event => {
               if (event.key === 'Enter') { event.preventDefault(); void rename(); }
               if (event.key === 'Escape') setRenaming(false);
-            }} style={{ width: 180, minWidth: 0, height: 26, padding: '0 7px', border: '1px solid var(--line-card)', borderRadius: 5, background: 'var(--bg-inset)', color: 'var(--text-active)', font: 'inherit', fontSize: 12 }} />
-            <button onClick={() => void rename()} style={{ border: 0, background: 'var(--bg-raised)', color: 'var(--text-active)', borderRadius: 5, padding: '0 7px', cursor: 'pointer' }}>Save</button>
+            }} disabled={renameBusy} style={{ width: 180, minWidth: 0, height: 26, padding: '0 7px', border: '1px solid var(--line-card)', borderRadius: 5, background: 'var(--bg-inset)', color: 'var(--text-active)', font: 'inherit', fontSize: 12 }} />
+            <button disabled={renameBusy || !title.trim()} onClick={() => void rename()} style={{ border: 0, background: 'var(--bg-raised)', color: 'var(--text-active)', borderRadius: 5, padding: '0 7px', cursor: 'pointer' }}>{renameBusy ? 'Saving…' : 'Save'}</button>
           </div> : null}
+          {renameError && renaming ? <div role="alert" style={{ padding: '0 8px 5px', width: 240, color: 'var(--accent-red)', fontSize: 11 }}>{renameError}</div> : null}
           {details?.cwd ? <DropdownMenuItem onClick={() => void copyPath()}>Copy path</DropdownMenuItem> : null}
           {details?.cwd && desktop ? <DropdownMenuItem onClick={() => void desktop.openPath(details.cwd!)}>Open worktree folder</DropdownMenuItem> : null}
           {details?.project === 'scratch' ? <DropdownMenuItem onSelect={() => setCopying(true)}>Copy to project…</DropdownMenuItem> : null}
           <DropdownMenuItem onClick={() => void exportTranscript()}>Export transcript as Markdown</DropdownMenuItem>
-          {details?.project !== 'scratch' ? <DropdownMenuItem onClick={() => void forkLatest()}>Fork from latest checkpoint</DropdownMenuItem> : null}
+          {details?.project !== 'scratch' ? <DropdownMenuItem disabled={forking} onClick={() => void forkLatest()}>{forking ? 'Forking…' : 'Fork from latest checkpoint'}</DropdownMenuItem> : null}
           <DropdownMenuItem onClick={onHandoff}>Hand off…</DropdownMenuItem>
           {canPause ? <DropdownMenuItem onClick={() => act('session.pause')}>Pause session</DropdownMenuItem> : null}
           {canResume ? <DropdownMenuItem onClick={() => act('session.resume')}>Resume session</DropdownMenuItem> : null}
@@ -105,9 +139,10 @@ export function SessionHeader({ session, details, onOpen, onHandoff }: { session
             <div style={{ fontSize: 11, color: 'var(--accent-amber)', marginBottom: 7 }}>
               Deletes the scratch folder and {details.scratchFiles ?? 0} files
             </div>
+            {deleteError ? <div role="alert" style={{ color: 'var(--accent-red)', fontSize: 11, marginBottom: 6 }}>{deleteError}</div> : null}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
-              <button onClick={() => setConfirmDelete(false)} style={smallButton}>Cancel</button>
-              <button onClick={() => { setConfirmDelete(false); void act('session.delete'); }} style={{ ...smallButton, color: 'var(--accent-red)' }}>Delete</button>
+              <button disabled={deleting} onClick={() => setConfirmDelete(false)} style={smallButton}>Cancel</button>
+              <button disabled={deleting} onClick={() => void deleteScratch()} style={{ ...smallButton, color: 'var(--accent-red)' }}>{deleting ? 'Deleting…' : 'Delete'}</button>
             </div>
           </div> : null}
           {canStop ? <DropdownMenuItem variant="destructive" onClick={() => act('session.abort')}>Stop session</DropdownMenuItem> : null}

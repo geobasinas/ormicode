@@ -37,7 +37,7 @@ function compactLines(values: string[], cap: number): string {
     if (size + line.length + 1 > cap) break;
     picked.push(line); size += line.length + 1;
   }
-  return picked.length ? picked.join('\n') : '- None recorded.';
+  return picked.join('\n');
 }
 
 function commandOf(call: Body): string | undefined {
@@ -115,21 +115,19 @@ export function handoffBrief(db: Store, session: string, tail = 12, uptoSeq?: nu
   const commandSection = compactLines(unique(commands).slice(-6), SECTION_CAPS.commands);
 
   const plan = bodies.filter(item => item.event.kind === 'plan').map(item => text(item.body.text)).filter(Boolean).at(-1);
-  const nextStep = clip(plan ? plan.split('\n').filter(Boolean).at(-1) ?? plan : 'Continue the goal above; inspect the current diff before making further changes.', SECTION_CAPS.next);
+  const nextStep = clip(plan ? plan.split('\n').filter(Boolean).at(-1) ?? plan : 'Continue from the last prompt.', SECTION_CAPS.next);
   const diff = files.length
     ? `${files.length} edited path${files.length === 1 ? '' : 's'} recorded: ${files.slice(-12).join(', ')}`
-    : 'No file edits recorded yet.';
+    : '';
 
-  const sections = [
-    section('Goal', goal),
-    section('Done so far', done),
-    section('Files changed', fileSection),
-    section('Decisions', decisionSection),
-    section('Open questions', questionSection),
-    section('Commands run', commandSection),
-    section('Current diff', clip(diff, SECTION_CAPS.diff)),
-    section('Next step', nextStep),
-  ];
+  const sections = [section('Goal', goal)];
+  if (done) sections.push(section('Done so far', done));
+  if (fileSection) sections.push(section('Files changed', fileSection));
+  if (decisionSection) sections.push(section('Decisions', decisionSection));
+  if (questionSection) sections.push(section('Open questions', questionSection));
+  if (commandSection) sections.push(section('Commands run', commandSection));
+  if (diff) sections.push(section('Current diff', clip(diff, SECTION_CAPS.diff)));
+  sections.push(section('Next step', nextStep));
   let brief = sections.join('\n\n');
   if (brief.length > BRIEF_CAP) brief = `${brief.slice(0, BRIEF_CAP - 1).trimEnd()}…`;
   return brief;

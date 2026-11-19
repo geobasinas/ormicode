@@ -1,13 +1,14 @@
 /** Open file: viewer (syntax highlighted, huge-file guard), diff against
  *  HEAD, blame, history, plain-text editing (daemon checkpoints first) and
  *  "Ask about this" for a selection. */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, GitCompareArrows, UserRound, History, Pencil, Check, X, ExternalLink, MessageSquarePlus, FileWarning, Loader2 } from 'lucide-react';
 import { useFileRequest } from './useFiles.ts';
 import { CodeView } from './CodeView.tsx';
 import { AskBox } from './AskBox.tsx';
 import { type FileData, type Blame, type FileCommit, type GitMark, GIT_COLOR, GIT_LETTER, baseName, dirName, formatSize, formatDate } from './types.ts';
 import { ago } from '../../lib/format.ts';
+import { useModalFocus } from '../../lib/useModalFocus.ts';
 
 const mono = { fontFamily: 'var(--font-mono)' } as const;
 
@@ -42,9 +43,20 @@ export function FileView({ session, path, line, initialDiff, git, isGit, onBack:
   const [saving, setSaving] = useState(false);
   const [sel, setSel] = useState<{ from: number; to: number; text: string } | null>(null);
   const [asking, setAsking] = useState(false);
+  const [discardAction, setDiscardAction] = useState<(() => void) | null>(null);
+  const discardDialog = useRef<HTMLElement>(null);
+  useModalFocus(Boolean(discardAction), discardDialog, () => setDiscardAction(null));
 
   const dirty = editing && draft !== undefined && draft !== data?.content;
-  const guard = (fn: () => void) => () => { if (!dirty || window.confirm('Discard your unsaved changes?')) fn(); };
+  const guard = (fn: () => void) => () => {
+    if (!dirty) fn();
+    else setDiscardAction(() => fn);
+  };
+  const discard = () => {
+    const action = discardAction;
+    setDiscardAction(null); setEditing(false); setDraft(undefined);
+    action?.();
+  };
   const onBack = guard(leave);
   const load = useCallback(async () => {
     const r = await request<FileData>('file.read', { path, ...(at ? { ref: at.sha } : {}), ...(force ? { force: true } : {}) });
@@ -152,6 +164,21 @@ export function FileView({ session, path, line, initialDiff, git, isGit, onBack:
           </div>
         </div> : null}
       </div>
+      {discardAction ? <div role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setDiscardAction(null); }} style={{
+        position: 'fixed', inset: 0, zIndex: 90, display: 'grid', placeItems: 'center', padding: 20, background: 'rgba(0,0,0,.42)',
+      }}>
+        <section ref={discardDialog} role="dialog" aria-modal="true" aria-label="Discard unsaved changes" style={{
+          width: 'min(360px, 100%)', padding: 20, borderRadius: 12, background: 'var(--bg-card)', border: '1px solid var(--line-card)',
+          color: 'var(--text-active)', boxShadow: '0 16px 48px rgba(0,0,0,.3)',
+        }}>
+          <div style={{ fontSize: 14, fontWeight: 600 }}>Discard unsaved changes?</div>
+          <div style={{ marginTop: 7, fontSize: 11.5, color: 'var(--text-secondary)' }}>Your edits to {baseName(path)} will be lost.</div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+            <button onClick={() => setDiscardAction(null)} style={btn}>Keep editing</button>
+            <button onClick={discard} style={{ ...btn, background: 'var(--text-title)', color: 'var(--bg-main)', fontWeight: 600 }}>Discard changes</button>
+          </div>
+        </section>
+      </div> : null}
     </div>
   );
 }

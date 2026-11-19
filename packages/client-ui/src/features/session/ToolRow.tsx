@@ -76,6 +76,7 @@ export function CheckpointMark({ session, cp, inline, busy, onOpenSession }: {
   const [branch, setBranch] = useState('');
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
+  const [undoing, setUndoing] = useState(false);
   const id = String(cp.body.id ?? '');
   useEffect(() => {
     if (!open) return;
@@ -87,38 +88,52 @@ export function CheckpointMark({ session, cp, inline, busy, onOpenSession }: {
     });
   }, [open, transport, session]);
   const loadDiff = async () => {
+    if (loading) return;
     setLoading(true); setError('');
-    const r = await transport.request('checkpoint.diff', { session, from: id });
-    setLoading(false);
-    if (r.type === 'err') { setError(String(r.message ?? r.code)); return; }
-    const patch = String((r.body as { patch?: unknown }).patch ?? '');
-    setDiff(diffFiles(patch));
+    try {
+      const r = await transport.request('checkpoint.diff', { session, from: id });
+      if (r.type === 'err') { setError(String(r.message ?? r.code)); return; }
+      const patch = String((r.body as { patch?: unknown }).patch ?? '');
+      setDiff(diffFiles(patch));
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { setLoading(false); }
   };
   const restore = async (mode: 'files' | 'conversation') => {
+    if (loading || busy) return;
     setLoading(true); setError('');
-    const r = await transport.request('checkpoint.restore', { session, id, mode });
-    setLoading(false);
-    if (r.type === 'err') { setError(String(r.message ?? r.code)); return; }
-    setConfirm(undefined); setNote(mode === 'files' ? 'Files restored' : 'Conversation rewound');
-    const undoId = (r.body as { undoId?: unknown }).undoId;
-    feedback.success(mode === 'files' ? 'Files restored' : 'Conversation rewound', typeof undoId === 'string' ? {
-      label: 'Undo', onClick: () => { void undoRestore(undoId); },
-    } : undefined);
+    try {
+      const r = await transport.request('checkpoint.restore', { session, id, mode });
+      if (r.type === 'err') { setError(String(r.message ?? r.code)); return; }
+      setConfirm(undefined); setNote(mode === 'files' ? 'Files restored' : 'Conversation rewound');
+      const undoId = (r.body as { undoId?: unknown }).undoId;
+      feedback.success(mode === 'files' ? 'Files restored' : 'Conversation rewound', typeof undoId === 'string' ? {
+        label: 'Undo', onClick: () => { void undoRestore(undoId); },
+      } : undefined);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { setLoading(false); }
   };
   const undoRestore = async (undoId: string) => {
-    const result = await transport.request('checkpoint.restore', { session, id: undoId, mode: 'files' });
-    if (result.type === 'err') { feedback.error(result.message); return; }
-    setNote('Restore undone');
-    feedback.success('Restore undone');
+    if (undoing) return;
+    setUndoing(true);
+    try {
+      const result = await transport.request('checkpoint.restore', { session, id: undoId, mode: 'files' });
+      if (result.type === 'err') { feedback.error(result.message); return; }
+      setNote('Restore undone');
+      feedback.success('Restore undone');
+    } catch (cause) { feedback.error(cause instanceof Error ? cause.message : String(cause)); }
+    finally { setUndoing(false); }
   };
   const fork = async () => {
+    if (loading || busy) return;
     setLoading(true); setError('');
-    const r = await transport.request('checkpoint.fork', { session, id, branch });
-    setLoading(false);
-    if (r.type === 'err') { setError(String(r.message ?? r.code)); return; }
-    const child = (r.body as { session?: unknown }).session;
-    if (typeof child === 'string') onOpenSession?.(child);
-    setOpen(false);
+    try {
+      const r = await transport.request('checkpoint.fork', { session, id, branch });
+      if (r.type === 'err') { setError(String(r.message ?? r.code)); return; }
+      const child = (r.body as { session?: unknown }).session;
+      if (typeof child === 'string') onOpenSession?.(child);
+      setOpen(false);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { setLoading(false); }
   };
   const tool = String(cp.body.tool ?? 'checkpoint');
   const when = new Date(cp.ts ?? Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });

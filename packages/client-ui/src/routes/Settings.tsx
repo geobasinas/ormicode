@@ -152,32 +152,49 @@ function SecretItem({ item, project, available, changed }: { item: ListedSecret;
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
   const save = async () => {
-    const secret = value; setValue('');
-    const r = await transport.request('secret.set', { name: item.name, value: secret, ...(project ? { project } : {}) }).catch(() => undefined);
-    setEditing(false);
-    if (r?.type === 'res') changed();
+    if (busy || !value) return;
+    setBusy(true); setError('');
+    try {
+      const r = await transport.request('secret.set', { name: item.name, value, ...(project ? { project } : {}) });
+      if (r.type === 'res') { setEditing(false); setValue(''); changed(); }
+      else setError(`${r.code}: ${r.message}`);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { setBusy(false); }
   };
   const remove = async () => {
-    const r = await transport.request('secret.delete', { name: item.name, ...(project ? { project } : {}) }).catch(() => undefined);
-    setDeleting(false);
-    if (r?.type === 'res') changed();
+    if (busy) return;
+    setBusy(true); setError('');
+    try {
+      const r = await transport.request('secret.delete', { name: item.name, ...(project ? { project } : {}) });
+      if (r.type === 'res') { setDeleting(false); changed(); }
+      else setError(`${r.code}: ${r.message}`);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { setBusy(false); }
   };
-  return <Row title={item.name} monoTitle hint={`${item.scope === 'project' ? 'Project' : 'Machine'} secret${item.declared ? ' · declared' : ''}`}>
+  return <>
+  <Row title={item.name} monoTitle hint={`${item.scope === 'project' ? 'Project' : 'Machine'} secret${item.declared ? ' · declared' : ''}`}>
     {item.missing ? <span style={{ color: 'var(--accent-amber)', fontSize: 11 }}>missing</span> : null}
     {editing ? <>
-      <input aria-label={`Set ${item.name}`} autoComplete="new-password" type="password" value={value} onChange={e => setValue(e.target.value)} disabled={!available} style={{ ...ctl, width: 150 }} />
-      <button style={secretButton} disabled={!available || !value} onClick={() => void save()}>Save</button>
-      <button style={secretButton} onClick={() => { setEditing(false); setValue(''); }}>Cancel</button>
+      <input aria-label={`Set ${item.name}`} autoFocus autoComplete="new-password" type="password" value={value} onChange={e => setValue(e.target.value)} onKeyDown={e => {
+        if (e.key === 'Enter') { e.preventDefault(); void save(); }
+        if (e.key === 'Escape') { setEditing(false); setValue(''); setError(''); }
+      }} disabled={!available || busy} style={{ ...ctl, width: 150 }} />
+      <button style={secretButton} disabled={!available || !value || busy} onClick={() => void save()}>{busy ? 'Saving…' : 'Save'}</button>
+      <button style={secretButton} disabled={busy} onClick={() => { setEditing(false); setValue(''); setError(''); }}>Cancel</button>
     </> : deleting ? <>
       <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Delete {item.name}?</span>
-      <button style={secretButton} disabled={!available} onClick={() => void remove()}>Delete</button>
-      <button style={secretButton} onClick={() => setDeleting(false)}>Cancel</button>
+      <button style={secretButton} disabled={!available || busy} onClick={() => void remove()}>{busy ? 'Deleting…' : 'Delete'}</button>
+      <button style={secretButton} disabled={busy} onClick={() => { setDeleting(false); setError(''); }}>Cancel</button>
     </> : <>
-      <button style={secretButton} disabled={!available} onClick={() => setEditing(true)}>Set</button>
-      <button style={secretButton} disabled={!available} onClick={() => setDeleting(true)}>Delete</button>
+      <button style={secretButton} disabled={!available} onClick={() => { setEditing(true); setError(''); }}>Set</button>
+      <button style={secretButton} disabled={!available} onClick={() => { setDeleting(true); setError(''); }}>Delete</button>
     </>}
-  </Row>;
+  </Row>
+  {error ? <div role="alert" style={{ padding: '0 14px 7px', fontSize: 11, color: 'var(--accent-red)' }}>{error}</div> : null}
+  </>;
 }
 
 function Secrets() {
@@ -189,6 +206,8 @@ function Secrets() {
   const [refresh, setRefresh] = useState(0);
   const [name, setName] = useState('');
   const [value, setValue] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const projects = [...new Set(sessions.map(s => s.project))].sort();
   const changed = () => setRefresh(n => n + 1);
   useEffect(() => {
@@ -201,9 +220,14 @@ function Secrets() {
     return () => { alive = false; };
   }, [transport, project, refresh]);
   const save = async () => {
-    const secret = value; setValue('');
-    const r = await transport.request('secret.set', { name, value: secret, ...(project ? { project } : {}) }).catch(() => undefined);
-    if (r?.type === 'res') { setName(''); changed(); }
+    if (saving || !secretName.test(name) || !value) return;
+    setSaving(true); setSaveError('');
+    try {
+      const r = await transport.request('secret.set', { name, value, ...(project ? { project } : {}) });
+      if (r.type === 'res') { setName(''); setValue(''); changed(); }
+      else setSaveError(`${r.code}: ${r.message}`);
+    } catch (cause) { setSaveError(cause instanceof Error ? cause.message : String(cause)); }
+    finally { setSaving(false); }
   };
   const available = list?.available ?? false;
   return <>
@@ -220,10 +244,11 @@ function Secrets() {
       {list && !list.available ? <Row title="Keyring unavailable" hint={list.message ?? 'No keyring backend is available.'} /> : null}
       {list?.secrets.map(item => <SecretItem key={`${item.scope}:${item.name}`} item={item} project={project} available={available} changed={changed} />)}
       <Row title="Add secret">
-        <input aria-label="Secret name" autoComplete="off" value={name} onChange={e => setName(e.target.value)} disabled={!available} placeholder="UPPER_SNAKE_CASE" style={{ ...ctl, width: 140, fontFamily: 'var(--font-mono)' }} />
-        <input aria-label="Secret value" type="password" autoComplete="new-password" value={value} onChange={e => setValue(e.target.value)} disabled={!available} style={{ ...ctl, width: 150 }} />
-        <button style={secretButton} disabled={!available || !secretName.test(name) || !value} onClick={() => void save()}>Save</button>
+        <input aria-label="Secret name" autoComplete="off" value={name} onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); (e.currentTarget.nextElementSibling as HTMLInputElement | null)?.focus(); } }} disabled={!available || saving} placeholder="UPPER_SNAKE_CASE" style={{ ...ctl, width: 140, fontFamily: 'var(--font-mono)' }} />
+        <input aria-label="Secret value" type="password" autoComplete="new-password" value={value} onChange={e => setValue(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void save(); } if (e.key === 'Escape') { setName(''); setValue(''); setSaveError(''); } }} disabled={!available || saving} style={{ ...ctl, width: 150 }} />
+        <button style={secretButton} disabled={!available || !secretName.test(name) || !value || saving} onClick={() => void save()}>{saving ? 'Saving…' : 'Save'}</button>
       </Row>
+      {saveError ? <div role="alert" style={{ padding: '0 14px 7px', fontSize: 11, color: 'var(--accent-red)' }}>{saveError}</div> : null}
     </Group>
   </>;
 }

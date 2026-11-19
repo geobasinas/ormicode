@@ -172,8 +172,9 @@ test('a non-resumable session under the all policy gets a recap injected as cont
     const rows = journal();
     const briefIdx = rows.findIndex(r => r.kind === 'handoff_brief');
     assert.ok(briefIdx >= 0, 'handoff_brief journaled');
-    for (const heading of ['Goal:', 'Done so far:', 'Files changed:', 'Decisions:', 'Open questions:', 'Commands run:', 'Current diff:', 'Next step:'])
-      assert.ok(rows[briefIdx].text.includes(heading), `brief includes ${heading}`);
+    assert.match(rows[briefIdx].text, /^Goal: hi$/m);
+    assert.match(rows[briefIdx].text, /^Next step:/m);
+    assert.doesNotMatch(rows[briefIdx].text, /None recorded/);
     assert.ok(rows[briefIdx].text.includes('Goal: hi'), 'brief preserves the original goal');
     const after = rows.slice(briefIdx + 1);
     assert.ok(after.some(r => r.kind === 'turn_end'), 'recap prompt completed a turn');

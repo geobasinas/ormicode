@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertCircle, ChevronDown, ChevronRight } from 'lucide-react';
+import { AlertCircle, ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
 import { usePlatform } from '../../lib/platform.ts';
 import { compactTokens } from '../../lib/format.ts';
 import { AgentChip } from './pickers.tsx';
 import { useModels } from './useModels.ts';
 import type { SessionDetails } from './useSession.ts';
 import { feedback } from '../../lib/feedback.ts';
+import { useModalFocus } from '../../lib/useModalFocus.ts';
 
 type Mode = 'in_place' | 'rehydrate' | 'fork';
 
@@ -22,6 +23,7 @@ export function HandoffDialog({ session, details, open, onClose, onOpenSession }
   const [branch, setBranch] = useState('handoff');
   const [brief, setBrief] = useState('');
   const [defaultBrief, setDefaultBrief] = useState('');
+  const [briefFocused, setBriefFocused] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [estimate, setEstimate] = useState<{ briefTokens: number; contextTokens: number; filesChanged: number; usd: number | null; confirmUsd: number; confirmRequired: boolean }>();
   const [estimateError, setEstimateError] = useState('');
@@ -30,7 +32,9 @@ export function HandoffDialog({ session, details, open, onClose, onOpenSession }
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [agents, setAgents] = useState<{ vendor: string; transports: string[] }[]>([]);
+  const dialog = useRef<HTMLElement>(null);
   const modelList = useModels(vendor || undefined, via || undefined);
+  useModalFocus(open, dialog, onClose);
   useEffect(() => {
     if (!open) return;
     setVendor(details?.vendor ?? '');
@@ -108,7 +112,9 @@ export function HandoffDialog({ session, details, open, onClose, onOpenSession }
   return <div role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }} style={{
     position: 'fixed', inset: 0, zIndex: 80, background: 'rgba(0,0,0,.42)', display: 'grid', placeItems: 'center', padding: 20,
   }}>
-    <section role="dialog" aria-modal="true" aria-label="Hand off session" style={{
+    <section ref={dialog} role="dialog" aria-modal="true" aria-label="Hand off session" onKeyDown={event => {
+      if (event.key === 'Enter' && event.target instanceof HTMLInputElement) { event.preventDefault(); void submit(); }
+    }} style={{
       width: 'min(440px, 100%)', maxHeight: '85vh', overflow: 'auto', background: 'var(--bg-card)',
       border: '1px solid var(--line-card)', borderRadius: 12, padding: 24, color: 'var(--text-active)', boxShadow: '0 16px 48px rgba(0,0,0,.3)',
     }}>
@@ -155,11 +161,11 @@ export function HandoffDialog({ session, details, open, onClose, onOpenSession }
             font: 'inherit', fontSize: 11, cursor: 'pointer',
           }}>Reset</button> : null}
         </div>
-        {expanded ? <textarea aria-label="Handoff brief" value={brief} onChange={e => setBrief(e.target.value)} rows={8} style={{
+        {expanded ? <textarea aria-label="Handoff brief" value={brief} onChange={e => setBrief(e.target.value)} onFocus={() => setBriefFocused(true)} onBlur={() => setBriefFocused(false)} rows={8} style={{
           display: 'block', width: '100%', boxSizing: 'border-box', minHeight: 144, maxHeight: 288, marginTop: 6,
-          padding: '8px 10px', border: '1px solid var(--line-card)', borderRadius: 7, background: 'var(--bg-inset)',
+          padding: '8px 10px', border: `1px solid ${briefFocused ? 'var(--text-active)' : 'var(--line-card)'}`, borderRadius: 7, background: 'var(--bg-inset)',
           color: 'var(--text-active)', fontFamily: 'var(--font-mono)', fontSize: 11.5, lineHeight: 1.5,
-          resize: 'vertical', overflow: 'auto', outline: 'none',
+          resize: 'vertical', overflow: 'auto', outline: 'none', boxShadow: briefFocused ? '0 0 0 2px color-mix(in srgb, var(--text-active) 16%, transparent)' : 'none',
         }} /> : null}
       </div>
       <div style={{
@@ -170,7 +176,9 @@ export function HandoffDialog({ session, details, open, onClose, onOpenSession }
         <span style={{ color: 'var(--text-hint)' }}>·</span>
         <span style={{ flex: 1, minWidth: 0, textAlign: 'center' }}>{estimate?.filesChanged ?? 0} file{estimate?.filesChanged === 1 ? '' : 's'}</span>
         <span style={{ color: 'var(--text-hint)' }}>·</span>
-        <span style={{ flex: 1, minWidth: 0, textAlign: 'right' }}>{estimate ? (usd == null ? 'cost unknown' : `~$${usd.toFixed(2)}`) : 'estimating…'}</span>
+        <span style={{ flex: 1, minWidth: 0, textAlign: 'right', display: 'inline-flex', justifyContent: 'flex-end', alignItems: 'center', gap: 4 }}>
+          {estimate ? (usd == null ? 'cost unknown' : `~$${usd.toFixed(2)}`) : <><Loader2 size={11} className="animate-spin" />estimating…</>}
+        </span>
       </div>
       {estimate?.confirmRequired ? <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 8, fontSize: 11, color: 'var(--accent-amber)' }}>
         <AlertCircle size={12} />Above the ${estimate.confirmUsd.toFixed(2)} confirmation limit
@@ -178,7 +186,7 @@ export function HandoffDialog({ session, details, open, onClose, onOpenSession }
       {estimateError ? <div style={{ marginTop: 8, color: 'var(--accent-red)', fontSize: 11 }}>{estimateError}</div> : null}
       {error ? <div style={{ marginTop: 8, color: 'var(--accent-red)', fontSize: 12 }}>{error}</div> : null}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 12 }}>
-        <button onClick={onClose} style={segmentStyle}>Cancel</button>
+        <button disabled={busy} onClick={onClose} style={segmentStyle}>Cancel</button>
         <button disabled={busy || !vendor || !estimate} onClick={() => void submit()} style={{ ...segmentStyle, background: 'var(--text-title)', color: 'var(--bg-main)', fontWeight: 600 }}>{busy ? 'Handing off…' : primaryLabel}</button>
       </div>
     </section>

@@ -16,13 +16,22 @@ export function ChangesTab({ session, diff, reloadDiff }: { session: string; dif
   const [title, setTitle] = useState(''); const [body, setBody] = useState('');
   const [amend, setAmend] = useState(false);
   const [msg, setMsg] = useState<{ text: string; tone: 'red' | 'hint' } | null>(null);
+  const [busy, setBusy] = useState(false);
   const st = status.data; const files = diff?.files ?? [];
   const unstaged = st?.files.filter(f => f.unstaged || !f.staged).length ?? 0;
   const refresh = async () => { await Promise.all([status.reload(), reloadDiff()]); };
   const run = async (method: string, b: Record<string, unknown> = {}, ok?: string) => {
-    const r = await act(method, b); setMsg(r.error ? { text: r.error, tone: 'red' } : ok ? { text: ok, tone: 'hint' } : null); await refresh(); return !r.error;
+    if (busy) return false;
+    setBusy(true);
+    try {
+      const r = await act(method, b);
+      setMsg(r.error ? { text: r.error, tone: 'red' } : ok ? { text: ok, tone: 'hint' } : null);
+      await refresh();
+      return !r.error;
+    } finally { setBusy(false); }
   };
   const commit = async (push: boolean) => {
+    if (busy) return;
     const message = body.trim() ? `${title.trim()}\n\n${body.trim()}` : title.trim();
     if (!(await run('git.commit', { message, amend }, 'Committed'))) return;
     setTitle(''); setBody(''); setAmend(false);
@@ -50,7 +59,7 @@ export function ChangesTab({ session, diff, reloadDiff }: { session: string; dif
           <span style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>{st?.staged.files ?? 0} files staged</span>
           <Stat added={st?.staged.added ?? 0} removed={st?.staged.removed ?? 0} />
           <span style={{ flex: 1 }} />
-          {unstaged ? <Btn onClick={() => void run('git.stage')}>Stage all ({unstaged})</Btn> : null}
+          {unstaged ? <Btn disabled={busy} onClick={() => void run('git.stage')}>Stage all ({unstaged})</Btn> : null}
           <Btn disabled title="Needs the utility model — soon"><Sparkles size={12} />Generate</Btn>
         </div>
         <div style={{ ...card, padding: '8px 10px' }}>
@@ -72,10 +81,10 @@ export function ChangesTab({ session, diff, reloadDiff }: { session: string; dif
         {msg ? <div style={{ fontSize: 11, color: msg.tone === 'red' ? 'var(--accent-red)' : 'var(--text-hint)', paddingBottom: 6 }}>{msg.text}</div> : null}
       </div>
       <Footer>
-        <IconBtn title="Unstage all" onClick={() => void run('git.unstage')} disabled={!st?.staged.files}><Undo2 size={14} /></IconBtn>
+        <IconBtn title={busy ? 'Git action in progress' : 'Unstage all'} onClick={() => void run('git.unstage')} disabled={busy || !st?.staged.files}><Undo2 size={14} /></IconBtn>
         <span style={{ flex: 1 }} />
-        <Btn disabled={!canCommit} onClick={() => void commit(false)}>Commit <span className="ormi-pane-narrow-hide" style={{ ...hint, fontSize: 10 }}>Ctrl ↵</span></Btn>
-        <Btn primary disabled={!canCommit} onClick={() => void commit(true)}>Commit and push<ChevronDown size={12} /></Btn>
+        <Btn disabled={!canCommit || busy} title={!title.trim() ? 'Enter a commit message' : !canCommit ? 'Stage changes before committing' : busy ? 'Git action in progress' : undefined} onClick={() => void commit(false)}>{busy ? 'Working…' : <>Commit <span className="ormi-pane-narrow-hide" style={{ ...hint, fontSize: 10 }}>Ctrl ↵</span></>}</Btn>
+        <Btn primary disabled={!canCommit || busy} title={!title.trim() ? 'Enter a commit message' : !canCommit ? 'Stage changes before committing' : busy ? 'Git action in progress' : undefined} onClick={() => void commit(true)}>{busy ? 'Working…' : <>Commit and push<ChevronDown size={12} /></>}</Btn>
       </Footer>
     </div>
   );

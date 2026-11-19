@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
-import { FileText, Folder, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { FileText, Folder, Loader2, X } from 'lucide-react';
 import { usePlatform } from '../../lib/platform.ts';
 import { loadPrefs, rememberProject } from '../../routes/Settings.tsx';
 import type { Entry } from '../files/types.ts';
 import { feedback } from '../../lib/feedback.ts';
+import { useModalFocus } from '../../lib/useModalFocus.ts';
 
 export function CopyOutDialog({ session, onClose, initialPaths = [] }: { session: string; onClose(): void; initialPaths?: string[] }) {
   const { transport, desktop } = usePlatform();
@@ -11,17 +12,24 @@ export function CopyOutDialog({ session, onClose, initialPaths = [] }: { session
   const [project, setProject] = useState(projects[0] ?? '');
   const [dest, setDest] = useState('');
   const [entries, setEntries] = useState<Entry[]>([]);
+  const [listing, setListing] = useState(true);
+  const [listError, setListError] = useState('');
   const [selected, setSelected] = useState<string[]>(initialPaths);
   const [overwrite, setOverwrite] = useState(false);
   const [conflict, setConflict] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const dialog = useRef<HTMLElement>(null);
+  useModalFocus(true, dialog, onClose);
 
   useEffect(() => {
     let alive = true;
     void transport.request('file.list', { session, path: '' }).then(result => {
-      if (alive && result.type === 'res') setEntries((result.body as { entries?: Entry[] }).entries ?? []);
-    }).catch(() => undefined);
+      if (!alive) return;
+      if (result.type === 'res') setEntries((result.body as { entries?: Entry[] }).entries ?? []);
+      else setListError(String(result.message ?? result.code));
+    }).catch(cause => { if (alive) setListError(cause instanceof Error ? cause.message : String(cause)); })
+      .finally(() => { if (alive) setListing(false); });
     return () => { alive = false; };
   }, [session, transport]);
 
@@ -59,7 +67,9 @@ export function CopyOutDialog({ session, onClose, initialPaths = [] }: { session
   return <div role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }} style={{
     position: 'fixed', inset: 0, zIndex: 90, display: 'grid', placeItems: 'center', padding: 20, background: 'rgba(0,0,0,.42)',
   }}>
-    <section role="dialog" aria-modal="true" aria-label="Copy to project" style={{
+    <section ref={dialog} role="dialog" aria-modal="true" aria-label="Copy to project" onKeyDown={event => {
+      if (event.key === 'Enter' && event.target instanceof HTMLInputElement) { event.preventDefault(); void copy(); }
+    }} style={{
       width: 'min(440px, 100%)', maxHeight: '85vh', overflow: 'auto', padding: 24, borderRadius: 12,
       background: 'var(--bg-card)', border: '1px solid var(--line-card)', color: 'var(--text-active)', boxShadow: '0 16px 48px rgba(0,0,0,.3)',
     }}>
@@ -81,11 +91,13 @@ export function CopyOutDialog({ session, onClose, initialPaths = [] }: { session
       </label>
       <div style={{ marginBottom: 5, fontSize: 11, color: 'var(--text-secondary)' }}>Files and folders</div>
       <div style={{ maxHeight: 220, overflow: 'auto', border: '1px solid var(--line-card)', borderRadius: 7, padding: 4 }}>
-        {entries.length ? entries.map(entry => <label key={entry.path} style={{ display: 'flex', gap: 8, alignItems: 'center', minHeight: 28, padding: '0 6px', fontSize: 11.5, color: 'var(--text-label)' }}>
+        {listError ? <div role="alert" style={{ padding: 8, fontSize: 11, color: 'var(--accent-red)' }}>{listError}</div>
+          : listing ? <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: 8, fontSize: 11, color: 'var(--text-hint)' }}><Loader2 size={12} className="animate-spin" />Loading files…</div>
+          : entries.length ? entries.map(entry => <label key={entry.path} style={{ display: 'flex', gap: 8, alignItems: 'center', minHeight: 28, padding: '0 6px', fontSize: 11.5, color: 'var(--text-label)' }}>
           <input type="checkbox" checked={selected.includes(entry.path)} onChange={() => toggle(entry.path)} />
           {entry.kind === 'dir' ? <Folder size={13} /> : <FileText size={13} />}
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.name}</span>
-        </label>) : <div style={{ padding: 8, fontSize: 11, color: 'var(--text-hint)' }}>No files found</div>}
+        </label>) : <div style={{ padding: 8, fontSize: 11, color: 'var(--text-hint)' }}>No files yet — add a file in Scratch first.</div>}
       </div>
       {conflict ? <label style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 10, color: 'var(--accent-amber)', fontSize: 11 }}>
         <input type="checkbox" checked={overwrite} onChange={event => setOverwrite(event.target.checked)} />Overwrite existing files
@@ -93,7 +105,7 @@ export function CopyOutDialog({ session, onClose, initialPaths = [] }: { session
       {error ? <div role="alert" style={{ marginTop: 8, color: conflict ? 'var(--accent-amber)' : 'var(--accent-red)', fontSize: 11 }}>{error}</div> : null}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 12 }}>
         <button onClick={onClose} style={button}>Cancel</button>
-        <button disabled={busy || !selected.length || !project} onClick={() => void copy()} style={{ ...button, background: 'var(--text-title)', color: 'var(--bg-main)' }}>{busy ? 'Copying…' : 'Copy files'}</button>
+        <button disabled={busy || !selected.length || !project} title={!project ? 'Choose a destination project' : !selected.length ? 'Select files or folders to copy' : undefined} onClick={() => void copy()} style={{ ...button, background: 'var(--text-title)', color: 'var(--bg-main)' }}>{busy ? 'Copying…' : 'Copy files'}</button>
       </div>
     </section>
   </div>;
