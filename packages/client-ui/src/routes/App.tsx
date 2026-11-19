@@ -7,7 +7,7 @@ import { PlatformContext } from '../lib/platform.ts';
 import { applyTheme, themeByName } from '../lib/theme.ts';
 import { defaultLayout, applyLayout, validateLayout } from '../lib/layout.ts';
 import type { LayoutDescriptor } from '../lib/layout.ts';
-import { PanelLeft, Minus, Square, X, Search, SquarePen, Settings, GitBranch, FolderOpen, SquareTerminal, NotebookPen, Globe, Palette, type LucideIcon } from 'lucide-react';
+import { PanelLeft, Minus, Square, X, Search, SquarePen, Settings, GitBranch, FolderOpen, SquareTerminal, NotebookPen, Globe, PenTool, type LucideIcon } from 'lucide-react';
 import { SessionList } from '../features/session/SessionList.tsx';
 import { useSession } from '../features/session/useSession.ts';
 import { Now } from './Now.tsx';
@@ -19,17 +19,20 @@ import { SessionHeader } from '../features/session/SessionHeader.tsx';
 import { NEEDS_YOU } from '../features/session/state.tsx';
 import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels';
 import { Toaster } from '../components/ui/sonner.tsx';
+import { WorkspaceSwitcher, type Workspace } from './WorkspaceSwitcher.tsx';
+import { codeWorkspaceRoute } from '../lib/workspace-route.ts';
 
 const MAX_TABS = 8;
 const drag = { WebkitAppRegion: 'drag' } as const;
 const noDrag = { WebkitAppRegion: 'no-drag' } as const;
 
-function Titlebar({ platform }: { platform: ClientPlatform }) {
+function Titlebar({ platform, workspace, onWorkspaceChange }: { platform: ClientPlatform; workspace: Workspace; onWorkspaceChange(workspace: Workspace): void }) {
   const d = platform.desktop;
   const btn = { ...noDrag, width: 46, height: 40, font: 'inherit', fontSize: 13, border: 'none', cursor: 'default', background: 'transparent', color: 'var(--text-secondary)' };
   return (
     <div style={{ ...drag, height: 40, display: 'flex', alignItems: 'center', paddingLeft: 14, background: 'var(--bg-window)', flexShrink: 0 }}>
       <PanelLeft size={15} style={{ ...noDrag, color: 'var(--text-secondary)' }} />
+      <WorkspaceSwitcher workspace={workspace} onChange={onWorkspaceChange} />
       <span style={{ flex: 1 }} />
       {d ? (
         <span style={{ display: 'flex' }}>
@@ -83,7 +86,7 @@ const RAIL_ICONS: { id: string; icon: LucideIcon; label: string; soon?: boolean 
   { id: 'terminal', icon: SquareTerminal, label: 'terminal' },
   { id: 'notes', icon: NotebookPen, label: 'notes' },
   { id: 'browser', icon: Globe, label: 'browser' },
-  { id: 'design', icon: Palette, label: 'design' },
+  { id: 'design', icon: PenTool, label: 'design' },
 ];
 
 export type RailPane = 'none' | 'notes' | 'git' | 'terminal' | 'files' | 'browser' | 'design';
@@ -130,6 +133,8 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
   const [tabs, setTabs] = useState<string[]>([]);
   const [route, setRoute] = useState<string>('now');
   const [designSession, setDesignSession] = useState<string>();
+  const lastCodeRoute = useRef('now');
+  useEffect(() => { if (route !== 'design' && route !== 'settings') lastCodeRoute.current = route; }, [route]);
   const [toastBottomOffset, setToastBottomOffset] = useState(16);
   const [state, setState] = useState<string>('connecting');
   const [query, setQuery] = useState('');
@@ -243,7 +248,7 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
   return (
     <PlatformContext.Provider value={platform}>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-window)', color: 'var(--text-label)', fontFamily: 'var(--font-ui)', fontSize: 14, borderRadius: 14, overflow: 'hidden' }}>
-        <Titlebar platform={platform} />
+        <Titlebar platform={platform} workspace={route === 'design' ? 'design' : 'code'} onWorkspaceChange={workspace => workspace === 'design' ? open('design') : setRoute(codeWorkspaceRoute(lastCodeRoute.current, tabs))} />
         <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         <Group id="ormi.shell" orientation="horizontal" defaultLayout={shellLayout.defaultLayout} onLayoutChanged={onShellLayoutChanged} style={{ flex: 1, minWidth: 0 }}>
           {sidebar?.visible !== false && sidebar?.collapsed !== true ? <>
@@ -302,7 +307,6 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
           <main style={{ height: '100%', boxSizing: 'border-box', minWidth: 0, display: 'flex', flexDirection: 'column', padding: '12px 0 18px 12px' }}>
             <div style={{ display: 'flex', gap: 10, flexShrink: 0, position: 'relative', zIndex: 1, marginBottom: -1 }}>
               <Tab id="now" active={route === 'now'} onSelect={() => setRoute('now')} />
-              <Tab id="design" active={route === 'design'} onSelect={() => open('design')} />
               {tabs.map((t, i) => <Tab key={t} id={t} n={PAGES[t] ? undefined : tabs.filter(x => !PAGES[x]).indexOf(t) + 1} active={route === t} onSelect={() => setRoute(t)} onClose={() => close(t)} />)}
               <span style={{ flex: 1 }} />
               {!PAGES[route] ? <div style={{ ...noDrag, minWidth: 0, display: 'flex' }}><ActiveHeader key={route} session={route} onOpen={open} onHandoff={() => setHandoffOpen(true)} /></div> : null}
