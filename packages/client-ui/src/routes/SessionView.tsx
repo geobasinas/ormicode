@@ -19,6 +19,7 @@ import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panel
 import { usePlatform } from '../lib/platform.ts';
 import { HandoffDialog } from '../features/session/HandoffDialog.tsx';
 import type { LayoutDescriptor } from '../lib/layout.ts';
+import { TeamPanel } from '../features/session/TeamPanel.tsx';
 
 interface SessionCost {
   input: number; output: number; cacheRead: number; cacheWrite: number; turns: number;
@@ -67,6 +68,7 @@ export function SessionView({ session, rail = 'none', onRail, onOpen, handoffOpe
           {cost && tokens > 0 ? <span title={costTitle}> · {compactTokens(tokens)} tokens{cost.usd !== null ? ` · ${cost.source === 'estimate' ? '~' : ''}${formatUsd(cost.usd)}` : ''}</span> : null}
         </div>
       </div> : null}
+      <TeamPanel details={details} onOpen={onOpen} />
       {approvalsAtTop ? <Approvals session={session} pending={approvals} events={events} /> : null}
       <Transcript events={events} session={session} scratch={scratch} busy={Boolean(details && ['starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying', 'paused_rate_limited'].includes(details.state))} onHandoff={() => onHandoffChange?.(true)} onOpenSession={onOpen} onEditPrompt={setEditedPrompt} />
       {!approvalsAtTop ? <Approvals session={session} pending={approvals} events={events} /> : null}

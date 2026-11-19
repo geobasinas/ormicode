@@ -1,6 +1,7 @@
 import type { Frame, PromptAttachment, PromptContext } from '@ormicode/protocol';
 import type { UserInteractions } from './user-interactions.ts';
 import { resumeSession } from './team-resume.ts';
+import { sessionTeamView } from './session-team-view.ts';
 import { parseRequestBody, newId } from '@ormicode/protocol';
 import {
   getSession, listSessions, setState, setTitle, listNotes, setNote, deleteNote, archiveSession, releaseSessionPorts,
@@ -157,7 +158,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
           return {
             id: s.id, title: s.title, state: ctx.teamLifecycle.state(s), parentless: Boolean(s.parentless), project: s.project, vendor: s.vendor,
             transport: s.transport, updatedAt: s.updated_at, branch: s.branch,
-            worktree: Boolean(s.worktree),
+            worktree: Boolean(s.worktree), ...sessionTeamView(db, s), delegatedApproval: ctx.teamApprovals.waiting(s.id),
             ...(base === undefined ? {} : { ports: { base, count: SESSION_PORT_COUNT } }),
             ...(s.base_commit && !s.archived ? { diff: diffStats.get(s.cwd, s.base_commit) } : {}),
           };
@@ -217,7 +218,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
           transport: s.transport, updatedAt: s.updated_at, branch: s.branch, worktree: Boolean(s.worktree),
           ...(base === undefined ? {} : { ports: { base, count: SESSION_PORT_COUNT } }),
           model: s.model, effort: s.effort, mode: s.mode,
-          nativeId: s.native_id, acpVersion: s.acp_version, parent: s.parent,
+          nativeId: s.native_id, acpVersion: s.acp_version, ...sessionTeamView(db, s), teamApprovals: ctx.teamApprovals.forParent(s.id),
         });
       }
       case 'session.copyOut': return copyOutMethod(ctx, client, id, body);
@@ -337,7 +338,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         const session = String(body.session);
         client.subscriptions.add(session);
         for (const row of replay(db, session, Number(body.after ?? 0))) {
-          client.link.send(JSON.parse(JSON.stringify({ v: 1, type: 'evt', session, seq: row.seq, ts: row.ts, body: JSON.parse(row.payload) })));
+          client.link.send(JSON.parse(JSON.stringify({ v: 1, type: 'evt', session, seq: row.seq, ts: row.ts, body: { kind: row.kind, ...JSON.parse(row.payload) } })));
         }
         return client.link.reply(id, { subscribed: true });
       }

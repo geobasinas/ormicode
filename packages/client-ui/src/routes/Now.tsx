@@ -87,12 +87,12 @@ export function Now({ onOpen, state, layout }: { onOpen: (session: string) => vo
   for (const entry of digest) {
     if (entry.rank === 'silent') continue;
     const s = sessionsById.get(entry.session);
-    if (!s || listed.has(s.id)) continue;
+    if (!s || s.delegatedApproval || listed.has(s.id)) continue;
     rows.push({ s, entry }); listed.add(s.id);
   }
   for (const s of sessions) {
     if (rows.length >= 5) break;
-    if (LIVE.has(s.state) && !listed.has(s.id)) { rows.push({ s }); listed.add(s.id); }
+    if (LIVE.has(s.state) && !s.delegatedApproval && !listed.has(s.id)) { rows.push({ s }); listed.add(s.id); }
   }
   const recent = [...sessions].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)).slice(0, 4);
   const right = rows.slice(0, 5);

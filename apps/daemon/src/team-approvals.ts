@@ -45,6 +45,12 @@ export class TeamApprovals {
     return walk(payload);
   }
   waiting(session: string): boolean { return [...this.pending.values()].some(p => p.session === session); }
+  forParent(parent: string): Payload[] {
+    return [...this.pending.values()].filter(p => p.parent === parent && !p.decision).map(p => ({
+      session: p.session, request: p.payload.request, tool: p.payload.tool ?? 'Tool', input: p.payload.input,
+      options: p.options.map(o => ({ id: o.id, label: o.label })),
+    }));
+  }
   event(session: string, kind: string, payload: Payload): [string, Payload] {
     const ctx = this.context(), id = key(session, payload.request), pending = this.pending.get(id);
     if (['approval_decision', 'interaction_expired'].includes(kind)) {

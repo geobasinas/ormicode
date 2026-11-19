@@ -10,6 +10,8 @@ export interface SessionDetails {
   model?: string | null; effort?: string | null; mode?: string | null; nativeId?: string | null;
   modes?: { id: string; name: string }[];
   parent?: string | null;
+  team?: string | null; parentless?: boolean; tokens?: number;
+  teamApprovals?: { session: string; request: string; tool: string; input?: unknown; options: { id: string; label: string }[] }[];
 }
 
 export function useSession(session: string | undefined): SessionDetails | undefined {
@@ -18,6 +20,7 @@ export function useSession(session: string | undefined): SessionDetails | undefi
 
   useEffect(() => {
     if (!session) return;
+    setDetails(undefined);
     let alive = true;
     const refresh = async () => {
       try {
@@ -29,9 +32,10 @@ export function useSession(session: string | undefined): SessionDetails | undefi
     const prev = transport.onEvent;
     transport.onEvent = frame => {
       prev?.(frame);
-      if (frame.type === 'evt' && frame.session === session) void refresh();
+      if (frame.type === 'idx' || frame.type === 'evt' && frame.session === session) void refresh();
     };
-    return () => { alive = false; transport.onEvent = prev; };
+    const timer = setInterval(refresh, 10_000);
+    return () => { alive = false; clearInterval(timer); transport.onEvent = prev; };
   }, [transport, session]);
   return details;
 }

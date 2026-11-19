@@ -392,5 +392,5 @@ export function Transcript({ events, session, onHandoff, onOpenSession, onEditPr
     for (const e of visibleEvents) if (e.kind === 'checkpoint' && resultSeqs.has(Number(e.body.seq))) { cpAfter.set(Number(e.body.seq), e); attached.add(e.seq); }
     return { session, results, calls, cpAfter, attached, children, hiddenCount, showHidden, toggleHidden: () => setShowHidden(value => !value), events, screenshots, onHandoff, onOpenSession, onEditPrompt, busy, scratch };
   }, [visibleEvents, events, session, hiddenCount, showHidden, onHandoff, onOpenSession, onEditPrompt, busy, scratch]);
-  return <TranscriptScroller count={events.length}>{renderEvents(visibleEvents, ctx)}</TranscriptScroller>;
+  return <TranscriptScroller session={session} count={events.length}>{renderEvents(visibleEvents, ctx)}</TranscriptScroller>;
 }
