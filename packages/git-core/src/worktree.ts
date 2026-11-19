@@ -6,7 +6,7 @@ import { parseWorktrees, sanitize, type WorktreeEntry } from './worktree-common.
 export type WorkspaceChoice =
   | { kind: 'current' }
   | { kind: 'branch'; branch: string }
-  | { kind: 'worktree'; branch: string; name?: string; includeDirty?: boolean }
+  | { kind: 'worktree'; branch: string; name?: string; includeDirty?: boolean; skipInclude?: boolean; skipSetup?: boolean }
   | { kind: 'existing'; path: string };
 export type WorkspaceStepName = 'fetch' | 'create' | 'copy_dirty' | 'include' | 'setup';
 export interface WorkspaceStep {

@@ -53,7 +53,7 @@ export async function resolveWorkspace(
       return { err: 'workspace.failed', detail: 'copy_dirty: uncommitted changes can only be included from the current branch' };
     return createWorkspaceWorktree(
       project, ws.branch, workspaceName ?? ws.name ?? ws.branch ?? sessionId.slice(-8),
-      ws.name, Boolean(ws.includeDirty), branch,
+      ws.name, Boolean(ws.includeDirty), branch, Boolean(ws.skipInclude), Boolean(ws.skipSetup),
     );
   }
 

@@ -37,7 +37,7 @@ function remoteName(ref: string, remotes: string[]): string | undefined {
 
 export async function createWorkspaceWorktree(
   project: string, baseRef: string, slugInput: string, explicitName: string | undefined,
-  includeDirty: boolean, mainBranch: string | null,
+  includeDirty: boolean, mainBranch: string | null, skipInclude = false, skipSetup = false,
 ): Promise<ResolvedWorkspace | WorkspaceErr> {
   const steps: WorkspaceStep[] = [];
   const remotes = (await maybeGit(project, 'remote') ?? '').split(/\r?\n/).filter(Boolean);
@@ -91,13 +91,20 @@ export async function createWorkspaceWorktree(
     }
   } else steps.push({ step: 'copy_dirty', status: 'skipped', detail: 'uncommitted changes were not requested' });
 
-  try { steps.push(await includeIgnored(project, dir)); }
-  catch (error) {
-    await cleanupWorktree(project, dir, branch, true);
-    return { err: 'workspace.failed', detail: `include: ${error instanceof Error ? error.message : String(error)}` };
+  if (skipInclude) steps.push({ step: 'include', status: 'skipped', detail: 'copying ignored files was disabled' });
+  else {
+    try { steps.push(await includeIgnored(project, dir)); }
+    catch (error) {
+      await cleanupWorktree(project, dir, branch, true);
+      return { err: 'workspace.failed', detail: `include: ${error instanceof Error ? error.message : String(error)}` };
+    }
   }
 
   const setup = join(project, '.ormi', 'setup');
+  if (skipSetup) {
+    steps.push({ step: 'setup', status: 'skipped', detail: 'setup script was disabled' });
+    return { cwd: dir, worktree: dir, branch, baseBranch: baseRef, baseCommit: commit, steps };
+  }
   try {
     await access(setup);
   } catch (error) {

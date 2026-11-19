@@ -45,6 +45,7 @@ const workspaceSchema = z.union([
   z.object({ kind: z.literal('branch'), branch: nonEmpty }),
   z.object({
     kind: z.literal('worktree'), branch: nonEmpty, name: z.optional(nonEmpty), includeDirty: z.optional(z.boolean()),
+    skipInclude: z.optional(z.boolean()), skipSetup: z.optional(z.boolean()),
   }),
   z.object({ kind: z.literal('existing'), path: nonEmpty }),
   // No project folder: the session gets ~/.ormicode/scratch/<id> as its cwd.
@@ -272,8 +273,9 @@ export const responseBodies = {
   'git.branches': branchInfo,
   'project.branches': z.object({
     isRepo: z.boolean(), detached: z.boolean(), dirty: count, busyBranches: z.array(nonEmpty),
+    hasWorktreeInclude: z.boolean(), hasSetup: z.boolean(), fetchedAt: z.nullable(timestampSchema),
     defaultBranch: z.nullable(nonEmpty),
-    worktrees: z.array(z.object({ path: nonEmpty, branch: z.nullable(z.string()), session: z.nullable(nonEmpty), state: z.nullable(z.string()) })),
+    worktrees: z.array(z.object({ path: nonEmpty, branch: z.nullable(z.string()), session: z.nullable(nonEmpty), state: z.nullable(z.string()), dirty: count })),
     ...branchInfo.shape,
   }),
   'project.fetch': z.object({ ok: z.boolean(), error: z.optional(z.string()) }),

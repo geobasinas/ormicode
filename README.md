@@ -465,8 +465,8 @@ States with several causes carry a `reason` (e.g. `interrupted`: `host_restart`,
 - A new worktree may start from a local or remote branch (for example, `origin/main`). Remote bases are fetched first; if fetch fails, the cached ref is used with a warning. The branch name can be supplied explicitly or generated as `ormi/<slug>`.
 - Dirty changes are never copied unless you ask with `includeDirty`; that option is allowed only when the worktree base is the main checkout's current branch. Tracked changes are applied unstaged, and untracked non-ignored files are copied, leaving the main checkout unchanged.
 - An `existing` choice starts in a registered linked worktree of this project, but not the main checkout or a worktree leased by another live session.
-- If `.worktreeinclude` exists, matching Git-ignore patterns opt ignored files into copying (files over 50 MB are skipped). Use this deliberately: it can include local configuration such as `.env`.
-- If `.ormi/setup` exists, it runs in the new worktree before the agent starts, with `ORMI_ROOT_PATH` and `ORMI_WORKTREE_PATH`. It has a ten-minute timeout; failure removes the new worktree and prevents the agent from starting.
+- If `.worktreeinclude` exists, matching Git-ignore patterns opt ignored files into copying (files over 50 MB are skipped); copying is on by default in the composer and can be disabled per worktree. Use this deliberately: it can include local configuration such as `.env`.
+- If `.ormi/setup` exists, it runs in the new worktree before the agent starts, with `ORMI_ROOT_PATH` and `ORMI_WORKTREE_PATH`; it can be disabled per worktree. It has a ten-minute timeout; failure removes the new worktree and prevents the agent from starting.
 - Each preparation stage is journaled as `workspace_step` (`fetch`, `create`, `copy_dirty`, `include`, `setup`). If creation fails, leave existing files untouched and do not start the agent.
 - If the current branch is busy with another live session, a unique worktree and branch are reserved automatically at the recorded commit; this automatic path never copies dirty changes.
 

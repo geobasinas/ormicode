@@ -136,11 +136,16 @@ test('project.branches reports dirty, busy and detached state and empty non-repo
     assert.equal(initial.body.dirty, 0);
     assert.deepEqual(initial.body.busyBranches, ['main']);
     assert.equal(initial.body.defaultBranch, 'origin/main');
+    assert.equal(initial.body.hasWorktreeInclude, false);
+    assert.equal(initial.body.hasSetup, false);
+    assert.ok(initial.body.fetchedAt === null || typeof initial.body.fetchedAt === 'number');
     assert.deepEqual(initial.body.worktrees, []);
     assert.ok(initial.body.remote.some(branch => branch.name === 'origin/main'));
     assert.ok(initial.body.remote.every(branch => branch.name.includes('/') && !branch.name.endsWith('/HEAD')));
     const fetched = await client.request('project.fetch', { project: dir });
     assert.deepEqual(fetched.body, { ok: true });
+    const afterFetch = await client.request('project.branches', { project: dir });
+    assert.equal(typeof afterFetch.body.fetchedAt, 'number');
 
     writeFileSync(join(dir, 'f.txt'), 'changed\n');
     writeFileSync(join(dir, 'untracked.txt'), 'untracked\n');
@@ -157,7 +162,11 @@ test('project.branches reports dirty, busy and detached state and empty non-repo
       isRepo: other.body.isRepo, detached: other.body.detached, dirty: other.body.dirty,
       busyBranches: other.body.busyBranches, current: other.body.current, local: other.body.local, remote: other.body.remote,
       defaultBranch: other.body.defaultBranch, worktrees: other.body.worktrees,
-    }, { isRepo: false, detached: false, dirty: 0, busyBranches: [], current: null, local: [], remote: [], defaultBranch: null, worktrees: [] });
+      hasWorktreeInclude: other.body.hasWorktreeInclude, hasSetup: other.body.hasSetup, fetchedAt: other.body.fetchedAt,
+    }, {
+      isRepo: false, detached: false, dirty: 0, busyBranches: [], current: null, local: [], remote: [],
+      defaultBranch: null, worktrees: [], hasWorktreeInclude: false, hasSetup: false, fetchedAt: null,
+    });
   } finally {
     await daemon.close();
     client.close();
@@ -174,6 +183,7 @@ test('session.start journals worktree preparation before spawn and existing busy
   const setup = process.platform === 'win32' ? '@echo setup complete\n' : 'printf "setup line one\\nsetup line two\\n"\n';
   const setupPath = join(dir, '.ormi', process.platform === 'win32' ? 'setup.cmd' : 'setup');
   writeFileSync(setupPath, setup);
+  writeFileSync(join(dir, '.worktreeinclude'), '.env\n');
   const { daemon, client } = await boot(storeDir);
   try {
     const started = await start(client, dir, { kind: 'worktree', branch: 'main', name: 'ormi/prepared' });
@@ -187,11 +197,15 @@ test('session.start journals worktree preparation before spawn and existing busy
     assert.equal(steps.at(-1).status, 'ok');
     assert.match(steps.at(-1).output, /setup line one|setup complete/);
 
+    writeFileSync(join(row.worktree, 'dirty.txt'), 'uncommitted\n');
     const branches = await client.request('project.branches', { project: dir });
     const listed = branches.body.worktrees.find(worktree => worktree.path === row.worktree);
     assert.equal(listed.session, row.id);
     assert.equal(listed.branch, row.branch);
     assert.ok(listed.state);
+    assert.equal(listed.dirty, 1);
+    assert.equal(branches.body.hasWorktreeInclude, true);
+    assert.equal(branches.body.hasSetup, true);
 
     const conflict = await start(client, dir, { kind: 'existing', path: row.worktree });
     assert.equal(conflict.type, 'err');

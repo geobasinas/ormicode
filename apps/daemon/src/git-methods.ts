@@ -1,4 +1,6 @@
-import { resolve } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { statSync } from 'node:fs';
+import { isAbsolute, resolve } from 'node:path';
 import { getSession, listSessions, setBranch } from '@ormicode/session-store';
 import { busyBranches } from './branch-busy.ts';
 import {
@@ -98,17 +100,25 @@ export function projectBranches(ctx: DispatchCtx, client: Client, id: string, bo
   if (project === 'scratch' || !isGitRepo(project)) {
     return client.link.reply(id, {
       isRepo: false, current: null, local: [], remote: [], detached: false, dirty: 0, busyBranches: [],
-      defaultBranch: null, worktrees: [],
+      defaultBranch: null, worktrees: [], hasWorktreeInclude: false, hasSetup: false, fetchedAt: null,
     });
   }
   const info = branches(project);
   const remote = info.remote.filter(branch => branch.name.includes('/') && !branch.name.endsWith('/HEAD'));
   const local = info.local
-    .sort((a, b) => Number(b.current) - Number(a.current) || b.ts - a.ts || a.name.localeCompare(b.name))
-    .slice(0, 50);
+    .sort((a, b) => Number(b.current) - Number(a.current) || b.ts - a.ts || a.name.localeCompare(b.name));
   const canonical = (path: string) => {
     const normalized = resolve(path);
     return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+  };
+  const fetchedAt = (() => {
+    try {
+      const gitPath = execFileSync('git', ['-C', project, 'rev-parse', '--git-path', 'FETCH_HEAD'], { encoding: 'utf8' }).trim();
+      return Math.floor(statSync(isAbsolute(gitPath) ? gitPath : resolve(project, gitPath)).mtimeMs);
+    } catch { return null; }
+  })();
+  const isFile = (path: string) => {
+    try { return statSync(path).isFile(); } catch { return false; }
   };
   const sessions = listSessions(ctx.db);
   const worktreeRows = listWorktrees(project)
@@ -117,12 +127,17 @@ export function projectBranches(ctx: DispatchCtx, client: Client, id: string, bo
       const session = sessions.find(row =>
         (row.worktree && canonical(row.worktree) === canonical(worktree.path))
         || canonical(row.cwd) === canonical(worktree.path));
-      return { path: worktree.path, branch: worktree.branch, session: session?.id ?? null, state: session?.state ?? null };
+      let dirty = 0;
+      try { dirty = status(worktree.path, null).files.length; } catch { /* unavailable worktree */ }
+      return { path: worktree.path, branch: worktree.branch, session: session?.id ?? null, state: session?.state ?? null, dirty };
     });
   return client.link.reply(id, {
     isRepo: true, ...info, local, remote, detached: info.current === null,
     dirty: status(project, null).files.length, busyBranches: busyBranches(ctx.db, project),
     defaultBranch: defaultBranch(project), worktrees: worktreeRows,
+    hasWorktreeInclude: isFile(resolve(project, '.worktreeinclude')),
+    hasSetup: isFile(resolve(project, '.ormi', 'setup')),
+    fetchedAt,
   });
 }
 

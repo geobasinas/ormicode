@@ -112,3 +112,23 @@ test('includeDirty is rejected unless the worktree base is the main checkout bra
     assert.match(result.detail ?? '', /copy_dirty/);
   } finally { repo.cleanup(); }
 });
+
+test('skipInclude and skipSetup journal skipped steps and omit both operations', async () => {
+  const repo = fixture();
+  try {
+    writeFileSync(join(repo.cwd, '.gitignore'), '.env\n');
+    writeFileSync(join(repo.cwd, '.worktreeinclude'), '.env\n');
+    writeFileSync(join(repo.cwd, '.env'), 'local secret\n');
+    mkdirSync(join(repo.cwd, '.ormi'), { recursive: true });
+    writeFileSync(join(repo.cwd, '.ormi', 'setup'), 'printf ran > setup-ran\n');
+
+    const result = await resolve(repo, {
+      kind: 'worktree', branch: 'main', name: 'ormi/skipped-preparation', skipInclude: true, skipSetup: true,
+    });
+    assert.ok(!('err' in result), JSON.stringify(result));
+    assert.equal(existsSync(join(result.cwd, '.env')), false);
+    assert.equal(existsSync(join(result.cwd, 'setup-ran')), false);
+    assert.equal(result.steps?.find(step => step.step === 'include')?.status, 'skipped');
+    assert.equal(result.steps?.find(step => step.step === 'setup')?.status, 'skipped');
+  } finally { repo.cleanup(); }
+});

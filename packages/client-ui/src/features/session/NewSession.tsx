@@ -1,12 +1,12 @@
 /** New-session composer card: prompt + project/machine/agent chips → session.start.
  *  Enter sends, Shift+Enter newline; the textarea grows with the prompt. */
 import { useEffect, useRef, useState } from 'react';
-import { Plus, AtSign, Mic, ArrowUp, ChevronDown, Folder, Laptop, GitBranch, Loader2 } from 'lucide-react';
+import { Plus, AtSign, Mic, ArrowUp, ChevronDown, Folder, Laptop, Loader2 } from 'lucide-react';
 import { newId } from '@ormicode/protocol';
 import { usePlatform } from '../../lib/platform.ts';
 import { VENDORS, loadPrefs, rememberProject } from '../../routes/Settings.tsx';
 import { useImages, ImageStrip, ProjectChip, iconBtn } from './composer-parts.tsx';
-import { AgentChip, GitChip, type RepoInfo, type WorkspaceChoice, type WorkspaceMode } from './pickers.tsx';
+import { AgentChip, GitChip, branchNameIssue, type RepoInfo, type WorkspaceChoice, type WorkspaceMode } from './pickers.tsx';
 import { useModels } from './useModels.ts';
 
 const chip = {
@@ -16,7 +16,10 @@ const chip = {
 };
 const workspaceModeKey = (project: string) => `ormi.workspaceMode:${project}`;
 function savedWorkspaceMode(project: string): WorkspaceMode {
-  try { return globalThis.localStorage?.getItem(workspaceModeKey(project)) === 'worktree' ? 'worktree' : 'local'; } catch { return 'local'; }
+  try {
+    const saved = globalThis.localStorage?.getItem(workspaceModeKey(project));
+    return saved === 'worktree' || saved === 'branch' ? saved : 'local';
+  } catch { return 'local'; }
 }
 function rememberWorkspaceMode(project: string, mode: WorkspaceMode) {
   try { globalThis.localStorage?.setItem(workspaceModeKey(project), mode); } catch { /* private mode */ }
@@ -96,6 +99,7 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
       if (b.detached || currentBusy) rememberWorkspaceMode(project, nextMode);
       const base = currentBusy ? b.current : b.defaultBranch ?? b.current ?? b.local[0]?.name;
       if (nextMode === 'worktree' && base) setWorkspace({ kind: 'worktree', branch: base, name: branchName });
+      else if (nextMode === 'branch') setWorkspace({ kind: 'branch', branch: branchName });
     }).catch(() => { if (alive) setRepoLoading(false); });
     return () => { alive = false; };
   }, [transport, project]);
@@ -113,6 +117,7 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
   const refreshRepo = async () => {
     const path = projectRef.current;
     if (path === 'scratch') return;
+    setRepoLoading(true);
     try {
       const r = await transport.request('project.branches', { project: path });
       if (projectRef.current !== path || r.type !== 'res') return;
@@ -120,27 +125,31 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
       setRepo(b.isRepo ? b : null);
       const currentBusy = Boolean(b.current && b.busyBranches.includes(b.current));
       if (b.isRepo && ((b.detached && workspace.kind === 'current')
-        || (currentBusy && workspaceMode === 'local' && workspace.kind === 'current'))) {
+        || (currentBusy && workspaceMode !== 'worktree' && (workspace.kind === 'current' || workspace.kind === 'branch')))) {
         setWorkspaceMode('worktree');
         rememberWorkspaceMode(path, 'worktree');
         const base = currentBusy ? b.current : b.defaultBranch ?? b.local[0]?.name;
         if (base) setWorkspace({ kind: 'worktree', branch: base, name: branchName });
       }
     } catch { /* unavailable until the next menu open */ }
+    finally { if (projectRef.current === path) setRepoLoading(false); }
   };
   const transports = agents.find(a => a.vendor === vendor)?.transports ?? ['cli'];
   const chosen = via && transports.includes(via) ? via : transports[0]!;
   const modelList = useModels(vendor, agentsLoaded ? chosen : undefined);
   const detachedBlocked = Boolean(repo?.detached && workspace.kind === 'current');
+  const branchNameInvalid = Boolean(repo && (workspace.kind === 'branch' || workspace.kind === 'worktree') && branchNameIssue(branchName, repo));
   const currentBusy = Boolean(repo?.current && repo.busyBranches.includes(repo.current));
   const busyHint = repo && currentBusy && workspaceMode === 'worktree' && workspace.kind === 'worktree' && workspace.branch === repo.current
     ? `${repo.current} is in use by another session — starting in a new worktree` : undefined;
   const preparingWorktree = busy && workspace.kind === 'worktree';
   const chooseMode = (next: WorkspaceMode) => {
     if (next === 'local' && (repo?.detached || currentBusy)) return;
+    if (next === 'branch' && currentBusy) return;
     setWorkspaceMode(next);
     rememberWorkspaceMode(project, next);
     if (next === 'local') setWorkspace({ kind: 'current' });
+    else if (next === 'branch') setWorkspace({ kind: 'branch', branch: branchName });
     else {
       const base = repo?.defaultBranch ?? repo?.current ?? repo?.local[0]?.name;
       if (base) setWorkspace({ kind: 'worktree', branch: base, name: branchName });
@@ -157,6 +166,17 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
       setWorkspaceMode('worktree');
       rememberWorkspaceMode(project, 'worktree');
       setWorkspace(choice.kind === 'worktree' ? { ...choice, name: branchName } : choice);
+    } else if (choice.kind === 'branch') {
+      if (currentBusy) {
+        setWorkspaceMode('worktree');
+        rememberWorkspaceMode(project, 'worktree');
+        const base = repo?.current ?? repo?.defaultBranch ?? repo?.local[0]?.name;
+        if (base) setWorkspace({ kind: 'worktree', branch: base, name: branchName });
+        return;
+      }
+      setWorkspaceMode('branch');
+      rememberWorkspaceMode(project, 'branch');
+      setWorkspace(choice);
     } else {
       setWorkspaceMode('local');
       rememberWorkspaceMode(project, 'local');
@@ -165,9 +185,12 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
   };
   const fetchRepo = async () => {
     setError(undefined);
-    const fetched = await transport.request('project.fetch', { project }).catch(() => undefined);
-    if (fetched?.type === 'res' && (fetched.body as { ok: boolean }).ok) await refreshRepo();
-    else setError(fetched?.type === 'res' ? (fetched.body as { error?: string }).error ?? 'Git fetch failed' : 'Git fetch failed');
+    setRepoLoading(true);
+    try {
+      const fetched = await transport.request('project.fetch', { project }).catch(() => undefined);
+      if (fetched?.type === 'res' && (fetched.body as { ok: boolean }).ok) await refreshRepo();
+      else setError(fetched?.type === 'res' ? (fetched.body as { error?: string }).error ?? 'Git fetch failed' : 'Git fetch failed');
+    } finally { setRepoLoading(false); }
   };
 
   const grow = () => {
@@ -177,14 +200,15 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
 
   const send = async () => {
     const t = text.trim();
-    if (!t || busy || repoLoading || detachedBlocked) return;
+    if (!t || busy || repoLoading || detachedBlocked || branchNameInvalid) return;
     setBusy(true); setError(undefined);
     try {
       const res = await transport.request('session.start', {
         machine: newId('m'), project, vendor, transport: chosen,
         model, effort, mode: 'default',
         workspace: project === 'scratch' ? { kind: 'scratch' }
-          : workspace.kind === 'worktree' ? { ...workspace, name: branchName.trim() || branchNameFor(t, branchPrefix) } : workspace,
+          : workspace.kind === 'worktree' ? { ...workspace, name: branchName.trim() || branchNameFor(t, branchPrefix) }
+            : workspace.kind === 'branch' ? { ...workspace, branch: branchName.trim() || branchNameFor(t, branchPrefix) } : workspace,
       });
       if (res.type === 'err') { setError(workspaceError(res.code, res.message)); setBusy(false); return; }
       const session = (res.body as { session: string }).session;
@@ -231,7 +255,7 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
             if (picked) { setProject(picked); rememberProject(picked); setProjects(loadPrefs().projects ?? []); }
             return picked;
           }} />
-        {repo ? <GitChip title="choose a local branch or worktree" icon={<GitBranch size={12} style={{ color: repo.detached ? 'var(--accent-amber)' : 'var(--text-hint)' }} />}
+        {repo ? <GitChip title="choose a local branch or worktree" project={project}
           value={workspace} onChange={chooseWorkspace} info={repo} mode={workspaceMode} onModeChange={chooseMode}
           branchName={branchName} onBranchNameChange={name => {
             branchNameEdited.current = true; setBranchName(name);
@@ -245,9 +269,9 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
           model={model} models={modelList.models} onModel={setModel}
           effort={effort} onEffort={setEffort}
           loading={modelList.loading} refresh={modelList.refresh} />
-        <button onClick={() => void send()} disabled={!text.trim() || busy || detachedBlocked || repoLoading} title={detachedBlocked ? 'HEAD is detached — pick a new branch or a worktree' : repoLoading ? 'Loading Git branches…' : 'start session'} style={{
+        <button onClick={() => void send()} disabled={!text.trim() || busy || detachedBlocked || repoLoading || branchNameInvalid} title={detachedBlocked ? 'HEAD is detached — pick a new branch or a worktree' : repoLoading ? 'Loading Git branches…' : branchNameInvalid ? 'Enter a valid new branch name' : 'start session'} style={{
           width: 26, height: 26, borderRadius: '50%', border: 'none', cursor: 'pointer', marginLeft: 2,
-          background: 'var(--text-active)', color: 'var(--text-onAccent)', opacity: text.trim() && !detachedBlocked && !repoLoading ? 1 : 0.5,
+          background: 'var(--text-active)', color: 'var(--text-onAccent)', opacity: text.trim() && !detachedBlocked && !repoLoading && !branchNameInvalid ? 1 : 0.5,
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
         }}>{preparingWorktree ? <Loader2 size={14} className="animate-spin" /> : <ArrowUp size={15} strokeWidth={2.5} />}</button>
       </div>
