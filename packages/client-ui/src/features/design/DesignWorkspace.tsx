@@ -4,20 +4,20 @@ import { pushToComposer } from '../../lib/composer-inbox.ts';
 import { usePlatform } from '../../lib/platform.ts';
 import type { DesignDocument, DesignFrame, DesignOperation, DesignHistorySummary } from '@ormicode/protocol';
 import { DesignFramePreview, type ElementSelection } from './DesignFramePreview.tsx';
-import { DesignCanvas, type CanvasTool, type DragKind } from './DesignCanvas.tsx';
+import { DesignCanvas, type CanvasTool } from './DesignCanvas.tsx';
 import { DesignInspector, type InspectorTab } from './DesignInspector.tsx';
 import { DesignLayers } from './DesignLayers.tsx';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '../../components/ui/dropdown-menu.tsx';
 import { sanitizeMarkup } from './sanitize.ts';
-import { fitCanvas, reconcileFrameSelection, resizeRect, validateStyleEdit, zoomAt, type Rect, type View } from './design-model.ts';
+import { clampPosition, fitCanvas, reconcileFrameSelection, resizeRect, zoomAt, type Rect, type View } from './design-model.ts';
+import { validateStyleEdit } from './design-style.ts';
+import { useDesignDrag } from './useDesignDrag.ts';
 
 type BoardSummary = { slug: string; name: string; revision: number; frames: number };
 type Result = { document: DesignDocument; history: DesignHistorySummary[] };
-type Drag = { kind: DragKind; id: string; startX: number; startY: number; initial: Rect; preview: Rect };
 type Props = { session: string; project: string; workspacePath: string; sessionError: string; sidebarOpen: boolean; onShowSidebar(): void; agentSlot: ReactNode };
 
 const startHtml = '<main style="min-height:100%;padding:32px;font-family:Inter,system-ui,sans-serif;color:var(--text-title);background:var(--bg-main)"><h1>Start designing</h1><p>Select this text to edit it, or add an element from the toolbar.</p></main>';
-const clampPosition = (value: number) => Math.max(-100000, Math.min(100000, value));
 
 export function DesignWorkspace({ session, project, workspacePath, sessionError, sidebarOpen, onShowSidebar, agentSlot }: Props) {
   const { transport } = usePlatform();
@@ -30,7 +30,6 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
   const [tab, setTab] = useState<InspectorTab>('inspect');
   const [inspectorOpen, setInspectorOpen] = useState(() => !window.matchMedia('(max-width: 850px)').matches);
   const [tool, setTool] = useState<CanvasTool>('select');
-  const [panning, setPanning] = useState(false);
   const [selectionRequest, setSelectionRequest] = useState<{ frameId: string; path: string }>();
   const [sourceHtml, setSourceHtml] = useState('');
   const [sourceStyles, setSourceStyles] = useState('');
@@ -45,7 +44,6 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
   const [remoteRevision, setRemoteRevision] = useState<number | null>(null);
   const [view, setView] = useState<View>({ x: 0, y: 0, scale: 1 });
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
-  const [dragPreview, setDragPreview] = useState<Rect | null>(null);
   const board = useRef<DesignDocument | null>(null);
   const selectedFrameRef = useRef('');
   selectedFrameRef.current = selectedFrame;
@@ -56,7 +54,6 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
   const canvas = useRef<HTMLDivElement>(null);
   const fittedSlug = useRef('');
   const bridge: MutableRefObject<(type: string, body?: Record<string, unknown>) => void> = useRef(() => undefined);
-  const drag = useRef<Drag | null>(null);
 
   const setCurrent = useCallback((next: Result) => {
     board.current = next.document;
@@ -168,7 +165,6 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
 
   const activeFrame = document?.frames.find(frame => frame.id === selectedFrame);
   const previewFrame = activeFrame && sourceDirty ? { ...activeFrame, html: sourceHtml, styles: sourceStyles } : activeFrame;
-  const frameRect = (frame: DesignFrame): Rect => dragPreview && drag.current?.id === frame.id ? dragPreview : frame;
   const updateSource = (field: 'html' | 'styles', value: string) => {
     if (value.length > (field === 'html' ? 24576 : 16384)) { setError(`${field} exceeds its size limit.`); return; }
     if (field === 'html') setSourceHtml(value); else setSourceStyles(value);
@@ -206,37 +202,12 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
     });
   };
 
-  const startPan = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0 && event.button !== 1) return;
-    if (tool !== 'pan' && event.button !== 1 && event.target !== canvas.current) return;
-    event.preventDefault();
-    const initial = { x: view.x, y: view.y, width: 0, height: 0 };
-    drag.current = { kind: 'move', id: '', startX: event.clientX, startY: event.clientY, initial, preview: initial };
-    event.currentTarget.setPointerCapture(event.pointerId);
-    setPanning(true);
-  };
-  const startDrag = (event: React.PointerEvent, kind: DragKind, frame: DesignFrame) => {
-    if (event.button !== 0 || tool === 'pan' || savingRef.current || !chooseFrame(frame.id)) return;
-    event.preventDefault(); event.stopPropagation();
-    const initial = { x: frame.x, y: frame.y, width: frame.width, height: frame.height };
-    drag.current = { kind, id: frame.id, startX: event.clientX, startY: event.clientY, initial, preview: initial };
-    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-  };
-  const moveDrag = (event: React.PointerEvent) => {
-    const active = drag.current; if (!active) return;
-    const dx = (event.clientX - active.startX) / view.scale; const dy = (event.clientY - active.startY) / view.scale;
-    if (!active.id) { setView(current => ({ ...current, x: active.initial.x + event.clientX - active.startX, y: active.initial.y + event.clientY - active.startY })); return; }
-    active.preview = active.kind === 'resize' ? resizeRect(active.initial, dx, dy) : { ...active.initial, x: clampPosition(active.initial.x + dx), y: clampPosition(active.initial.y + dy) };
-    setDragPreview(active.preview);
-  };
-  const cancelDrag = () => { drag.current = null; setDragPreview(null); setPanning(false); };
-  const endDrag = () => {
-    const active = drag.current; if (!active) return;
-    cancelDrag();
-    if (!active.id || active.initial === active.preview) return;
-    const patch = active.kind === 'resize' ? { width: Math.round(active.preview.width), height: Math.round(active.preview.height) } : { x: Math.round(active.preview.x), y: Math.round(active.preview.y) };
-    void mutate([{ type: 'frame.update', frameId: active.id, patch }]);
-  };
+  const drag = useDesignDrag({ board, view, setView, panTool: tool === 'pan', chooseFrame,
+    canDrag: () => !savingRef.current,
+    onCommit: operation => void mutate([operation]),
+    onConflict: () => setError('The board changed during the drag. Try again.'),
+  });
+  const frameRect = (frame: DesignFrame): Rect => drag.preview?.id === frame.id ? drag.preview.rect : frame;
 
   useEffect(() => {
     const element = canvas.current; if (!element) return;
@@ -330,14 +301,14 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
         <button type="submit" className="design-button primary" disabled={loading || saving || !newName.trim()}>Create board</button>
         <button type="button" className="design-icon-button" aria-label="Cancel creation" onClick={() => setCreateOpen(false)}><X size={15} /></button>
       </form> : null}
-      <DesignCanvas canvas={canvas} frames={frames} selectedFrame={selectedFrame} view={view} tool={tool} panning={panning} onTool={setTool}
-        frameRect={frameRect} onDrag={startDrag} onPointerDown={startPan} onPointerMove={moveDrag} onPointerUp={endDrag}
-        onPointerCancel={cancelDrag} onWheel={handleWheel}
+      <DesignCanvas canvas={canvas} frames={frames} selectedFrame={selectedFrame} view={view} tool={tool} panning={drag.panning} onTool={setTool}
+        frameRect={frameRect} guides={drag.preview?.guides} onDrag={drag.startDrag} onPointerDown={drag.startPan} onPointerMove={drag.move} onPointerUp={drag.end}
+        onPointerCancel={drag.cancel} onWheel={handleWheel}
         onNudge={(frame, kind, dx, dy) => {
           const rect = resizeRect(frame, dx, dy);
           const patch = kind === 'resize' ? { width: rect.width, height: rect.height } : { x: clampPosition(frame.x + dx), y: clampPosition(frame.y + dy) };
           void mutate([{ type: 'frame.update', frameId: frame.id, patch }]);
-        }} onZoom={zoom} onFit={() => fit()}
+        }} onZoom={zoom} onFit={() => fit()} onFitSelection={activeFrame ? () => fit([activeFrame]) : undefined}
         preview={frame => <DesignFramePreview frame={previewFrame?.id === frame.id ? previewFrame : frame} active={frame.id === selectedFrame} bridge={bridge}
           selectionRequest={selectionRequest?.frameId === frame.id ? selectionRequest : undefined}
           onReset={() => { if (selectedFrameRef.current === frame.id) setSelectedElement(null); }}

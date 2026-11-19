@@ -1,7 +1,7 @@
 import { Code2, Copy, History, MessageSquare, MousePointer2, PanelsTopLeft, SlidersHorizontal, Star, Trash2 } from 'lucide-react';
 import type { DesignDocument, DesignFrame, DesignHistorySummary, DesignOperation } from '@ormicode/protocol';
 import type { ElementSelection } from './DesignFramePreview.tsx';
-import { COLOR_CHOICES } from './design-model.ts';
+import { DesignElementStyles } from './DesignElementStyles.tsx';
 
 const tabs = [
   { id: 'inspect', label: 'Design', icon: SlidersHorizontal },
@@ -37,13 +37,6 @@ type Props = {
   saving: boolean;
 };
 
-const elementGroups = [
-  { name: 'Appearance', fields: [['color', 'Text color'], ['backgroundColor', 'Fill'], ['borderRadius', 'Radius']] },
-  { name: 'Typography', fields: [['fontSize', 'Size'], ['fontWeight', 'Weight']] },
-  { name: 'Layout', fields: [['display', 'Display'], ['flexDirection', 'Direction'], ['alignItems', 'Align'], ['justifyContent', 'Justify']] },
-  { name: 'Spacing', fields: [['padding', 'Padding'], ['margin', 'Margin'], ['gap', 'Gap']] },
-] as const;
-
 const geometry = [
   { key: 'x', label: 'X', min: -100000, max: 100000 },
   { key: 'y', label: 'Y', min: -100000, max: 100000 },
@@ -67,24 +60,12 @@ export function DesignInspector(props: Props) {
           <div><strong>{element ? element.text.trim().slice(0, 46) || element.tag : frame.name}</strong><small>{element ? '<' + element.tag + '> · ' + frame.name : (frame.width < 600 ? 'Mobile frame' : 'Frame')}</small></div>
         </header>
         {element ? <>
-          <datalist id="design-style-colors">{COLOR_CHOICES.map(value => <option key={value} value={value} />)}</datalist>
           {element.leaf ? <section className="design-properties">
             <h3>Content</h3>
             <textarea aria-label="Selected element text" className="design-input" rows={3} value={element.text} onChange={event => props.onElementText(event.target.value.slice(0, 500))} />
             <button className="design-button" type="button" disabled={locked} onClick={props.onSaveText}>Apply text</button>
           </section> : null}
-          {elementGroups.map(group => <section key={group.name} className="design-properties">
-            <h3>{group.name}</h3>
-            <div className="design-field-grid">
-              {group.fields.map(([property, label]) => <label className="design-property" key={element.id + ':' + property}>
-                <span>{label}</span>
-                <input className="design-input" aria-label={'Selected element ' + property} placeholder="Auto"
-                  list={property === 'color' || property === 'backgroundColor' ? 'design-style-colors' : undefined} disabled={sourceDirty}
-                  defaultValue={element.styles[property] ?? ''} onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur(); }}
-                  onBlur={event => { const value = event.target.value.trim(); if (value && value !== (element.styles[property] ?? '')) props.onStyle(property, value); }} />
-              </label>)}
-            </div>
-          </section>)}
+          <DesignElementStyles element={element} disabled={locked} onStyle={props.onStyle} />
         </> : <>
           <section className="design-properties">
             <h3>Frame</h3>

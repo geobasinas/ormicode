@@ -5,7 +5,9 @@ import { sanitizeMarkup } from './sanitize.ts';
 import { validateBridgeMessage } from './design-model.ts';
 
 export interface ElementSelection {
-  id: string; path: string; tag: string; leaf: boolean; text: string; styles: Record<string, string>;
+  id: string; path: string; tag: string; leaf: boolean; text: string;
+  styles: Record<string, string>;
+  computed: Record<string, string>;
 }
 
 const TOKENS = ['--bg-main', '--bg-window', '--bg-card', '--bg-raised', '--bg-inset', '--bg-selected', '--text-title', '--text-active', '--text-label', '--text-secondary', '--accent-mint', '--accent-amber', '--accent-red', '--line-divider', '--line-card'];
@@ -36,7 +38,7 @@ export function DesignFramePreview({ frame, active, onSelect, onMarkup, onReset,
       if (!validateBridgeMessage(event.data, channel.current)) return;
       if (event.data.type === 'selected') callbacks.current.onSelect({
         id: String(event.data.id), path: String(event.data.path), tag: String(event.data.tag), leaf: Boolean(event.data.leaf), text: String(event.data.text),
-        styles: event.data.styles as Record<string, string>,
+        styles: event.data.styles as Record<string, string>, computed: event.data.computed as Record<string, string>,
       });
       if (event.data.type === 'serialized') {
         const html = sanitizeMarkup(String(event.data.html));
