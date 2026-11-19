@@ -126,10 +126,36 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
   });
   const [tabs, setTabs] = useState<string[]>([]);
   const [route, setRoute] = useState<string>('now');
+  const [toastBottomOffset, setToastBottomOffset] = useState(16);
   const [state, setState] = useState<string>('connecting');
   const [query, setQuery] = useState('');
   const [rail, setRail] = useState<RailPane>(() => storedLayout.regions.rightRail?.collapsed === false ? 'files' : 'none');
   const [handoffOpen, setHandoffOpen] = useState(false);
+  useLayoutEffect(() => {
+    if (PAGES[route]) {
+      setToastBottomOffset(16);
+      return;
+    }
+    const composer = document.querySelector<HTMLElement>('[data-session-composer]');
+    if (!composer) {
+      setToastBottomOffset(16);
+      return;
+    }
+    const update = () => {
+      const desired = window.innerHeight - composer.getBoundingClientRect().top + 8;
+      const maximum = Math.max(16, window.innerHeight - 64);
+      setToastBottomOffset(Math.min(Math.max(16, desired), maximum));
+    };
+    const observer = new ResizeObserver(update);
+    observer.observe(composer);
+    if (composer.parentElement) observer.observe(composer.parentElement);
+    window.addEventListener('resize', update);
+    update();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, [route]);
   useEffect(() => {
     const on = () => setRail('files');
     window.addEventListener(OPEN_FILE, on);
@@ -289,7 +315,9 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
           <Rail route={route} rail={rail} onRail={setRail} />
         </div>
       </div>
-      <Toaster position="bottom-center" duration={3000} visibleToasts={1} closeButton={false} />
+      <Toaster className="toaster group ormi-toast-toaster" position="bottom-center" duration={3000} visibleToasts={1} closeButton={false}
+        offset={{ top: 16, right: 16, bottom: toastBottomOffset, left: 16 }}
+        mobileOffset={{ top: 16, right: 16, bottom: toastBottomOffset, left: 16 }} />
     </PlatformContext.Provider>
   );
 }

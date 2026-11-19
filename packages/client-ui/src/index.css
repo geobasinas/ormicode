@@ -140,6 +140,10 @@ button:focus-visible { outline: 1px solid var(--line-card); outline-offset: -1px
 .ormi-hover-reveal { opacity: 0; transition: opacity 0.12s ease; }
 .ormi-hover-zone:hover .ormi-hover-reveal, .ormi-hover-reveal:focus-visible, .ormi-hover-reveal[data-state="open"], .ormi-hover-reveal[aria-expanded="true"] { opacity: 1; }
 .ormi-tool-line:hover, .ormi-tool-line:hover span { color: var(--text-label) !important; }
+.ormi-toast-action { background: transparent !important; color: var(--accent-mint) !important; font-weight: 600 !important; transition: background-color 120ms, color 120ms; }
+.ormi-toast-action:hover { background: var(--bg-inset) !important; color: var(--text-title) !important; }
+.ormi-toast-action:focus-visible { outline: 2px solid var(--accent-mint); outline-offset: 2px; }
+.ormi-toast-toaster [data-sonner-toast] { transition: opacity 120ms, height 400ms, box-shadow 200ms; }
 
 /* Native controls restyled to match the app (no browser-default checkboxes/selects). */
 .ormi-check { appearance: none; width: 13px; height: 13px; margin: 0; border-radius: 4px; border: 1px solid var(--text-hint); background: transparent; cursor: pointer; display: inline-grid; place-content: center; flex-shrink: 0; }

@@ -67,7 +67,7 @@ export function SessionView({ session, rail = 'none', onRail, onOpen, handoffOpe
       {approvalsAtTop ? <Approvals session={session} pending={approvals} events={events} /> : null}
       <Transcript events={events} session={session} scratch={scratch} busy={Boolean(details && ['starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying', 'paused_rate_limited'].includes(details.state))} onHandoff={() => onHandoffChange?.(true)} onOpenSession={onOpen} onEditPrompt={setEditedPrompt} />
       {!approvalsAtTop ? <Approvals session={session} pending={approvals} events={events} /> : null}
-      <div style={{ minHeight: layout?.regions.composer?.size ?? 0 }}>
+      <div data-session-composer style={{ minHeight: layout?.regions.composer?.size ?? 0 }}>
       <Composer session={session} details={details} onGit={scratch ? undefined : onRail ? () => onRail('git') : undefined}
         onOpenRail={onRail ? pane => onRail(pane) : undefined} onHandoff={() => onHandoffChange?.(true)}
         prefill={editedPrompt} onPrefillApplied={() => setEditedPrompt(undefined)} />
