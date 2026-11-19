@@ -5,7 +5,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { Pencil, CircleAlert, RotateCw, Pause, ChevronRight, History, CircleCheck, MessageCircle, Clock3, Search, Cpu, Gauge } from 'lucide-react';
 import { ToolRow, ThinkingRow, CheckpointMark } from './ToolRow.tsx';
 import type { TranscriptEvent } from './useTranscript.ts';
-import { checkpointPreview } from './checkpoint-preview.ts';
+import { checkpointPreview, checkpointScreenshots, type CheckpointScreenshotChoice } from './checkpoint-preview.ts';
 import { Markdown } from './Markdown.tsx';
 import { TranscriptScroller } from './TranscriptScroller.tsx';
 import { ChangedFilesCard } from './ChangedFilesCard.tsx';
@@ -25,7 +25,7 @@ function eventLine(icon: ReactNode, text: string, color = 'var(--text-hint)') {
 interface Ctx {
   session: string; results: Map<string, TranscriptEvent>; cpAfter: Map<number, TranscriptEvent>;
   calls: Set<string>; attached: Set<number>; children: Map<string, TranscriptEvent[]>;
-  hiddenCount: number; showHidden: boolean; toggleHidden(): void; events: TranscriptEvent[]; scratch: boolean;
+  hiddenCount: number; showHidden: boolean; toggleHidden(): void; events: TranscriptEvent[]; screenshots: CheckpointScreenshotChoice[]; scratch: boolean;
   onHandoff?: () => void; onOpenSession?: (session: string) => void; onEditPrompt?: (text: string) => void; busy?: boolean;
 }
 
@@ -48,7 +48,7 @@ function toolRow(event: TranscriptEvent, ctx: Ctx) {
       && (index === 0 || children[index - 1]?.kind !== child.kind)).length;
   return <ToolRow
     call={event} result={ctx.results.get(callId)}
-    checkpoint={checkpoint} screenshot={previews?.screenshot} previous={previews?.previous}
+    checkpoint={checkpoint} screenshot={previews?.screenshot} previous={previews?.previous} screenshots={ctx.screenshots}
     session={ctx.session} childCount={childCount} childRunning={childRunning} nested={nested.length ? nested : undefined}
     busy={ctx.busy} onOpenSession={ctx.onOpenSession} hideCheckpoint={ctx.scratch}
   />;
@@ -129,7 +129,7 @@ function line(e: TranscriptEvent, ctx: Ctx): ReactNode {
         const previews = checkpointPreview(ctx.events, e);
         return <div className="ormi-hover-zone" style={{ position: 'relative', height: 14 }}>
           <span style={{ position: 'absolute', right: -26, top: -4, width: 22, display: 'inline-flex', justifyContent: 'center' }}><CheckpointMark session={ctx.session} cp={e}
-            screenshot={previews.screenshot} previous={previews.previous}
+            screenshot={previews.screenshot} previous={previews.previous} screenshots={ctx.screenshots}
             busy={ctx.busy} onOpenSession={ctx.onOpenSession} /></span>
         </div>;
       }
@@ -381,6 +381,7 @@ export function Transcript({ events, session, onHandoff, onOpenSession, onEditPr
   const ctx = useMemo<Ctx>(() => {
     const results = new Map<string, TranscriptEvent>(); const calls = new Set<string>(); const cpAfter = new Map<number, TranscriptEvent>(); const attached = new Set<number>();
     const children = new Map<string, TranscriptEvent[]>();
+    const screenshots = checkpointScreenshots(visibleEvents);
     for (const e of visibleEvents) {
       if (e.kind === 'tool_call') calls.add(String(e.body.callId));
       else if (e.kind === 'tool_result') results.set(String(e.body.callId), e);
@@ -389,7 +390,7 @@ export function Transcript({ events, session, onHandoff, onOpenSession, onEditPr
     }
     const resultSeqs = new Set([...results.values()].filter(r => calls.has(String(r.body.callId))).map(r => r.seq));
     for (const e of visibleEvents) if (e.kind === 'checkpoint' && resultSeqs.has(Number(e.body.seq))) { cpAfter.set(Number(e.body.seq), e); attached.add(e.seq); }
-    return { session, results, calls, cpAfter, attached, children, hiddenCount, showHidden, toggleHidden: () => setShowHidden(value => !value), events, onHandoff, onOpenSession, onEditPrompt, busy, scratch };
+    return { session, results, calls, cpAfter, attached, children, hiddenCount, showHidden, toggleHidden: () => setShowHidden(value => !value), events, screenshots, onHandoff, onOpenSession, onEditPrompt, busy, scratch };
   }, [visibleEvents, events, session, hiddenCount, showHidden, onHandoff, onOpenSession, onEditPrompt, busy, scratch]);
   return <TranscriptScroller count={events.length}>{renderEvents(visibleEvents, ctx)}</TranscriptScroller>;
 }

@@ -4,8 +4,10 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Pencil, Wrench, SquareTerminal, FileText, Search, Globe, ListChecks, Sparkles, Loader2, ChevronRight, ChevronDown, History, Brain } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/popover.tsx';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '../../components/ui/dropdown-menu.tsx';
 import { usePlatform } from '../../lib/platform.ts';
 import type { TranscriptEvent } from './useTranscript.ts';
+import { screenshotsPixelIdentical, type CheckpointScreenshotChoice } from './checkpoint-preview.ts';
 import { requestOpenFile } from '../../lib/openFile.ts';
 import { Markdown } from './Markdown.tsx';
 import { feedback } from '../../lib/feedback.ts';
@@ -65,8 +67,32 @@ function diffFiles(patch: string): DiffFile[] {
   return [...files.values()];
 }
 
-export function CheckpointMark({ session, cp, screenshot = '', previous, inline, busy, onOpenSession }: {
-  session: string; cp: TranscriptEvent; screenshot?: string; previous?: { id: string; artifact: string }; inline?: boolean; busy?: boolean; onOpenSession?(session: string): void;
+function CheckpointPicker({ side, value, options, onChange }: {
+  side: 'Left' | 'Right'; value: string; options: CheckpointScreenshotChoice[]; onChange(value: string): void;
+}) {
+  const selected = options.find(option => option.id === value);
+  return <DropdownMenu>
+    <DropdownMenuTrigger asChild>
+      <button type="button" aria-label={`${side} checkpoint`} title={selected?.label} style={{
+        ...textInput, width: '100%', height: 30, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, textAlign: 'left',
+      }}>
+        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selected?.label ?? 'Choose screenshot'}</span>
+        <ChevronDown size={12} style={{ flexShrink: 0 }} />
+      </button>
+    </DropdownMenuTrigger>
+    <DropdownMenuContent align="start" style={{ width: 360, maxWidth: '90vw', maxHeight: 260 }}>
+      <DropdownMenuLabel>Screenshot checkpoints</DropdownMenuLabel>
+      <DropdownMenuRadioGroup value={value} onValueChange={onChange}>
+        {options.map(option => <DropdownMenuRadioItem key={option.id} value={option.id} title={option.label} className="text-xs">
+          <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{option.label}</span>
+        </DropdownMenuRadioItem>)}
+      </DropdownMenuRadioGroup>
+    </DropdownMenuContent>
+  </DropdownMenu>;
+}
+
+export function CheckpointMark({ session, cp, screenshot = '', previous, screenshots, inline, busy, onOpenSession }: {
+  session: string; cp: TranscriptEvent; screenshot?: string; previous?: { id: string; artifact: string }; screenshots?: CheckpointScreenshotChoice[]; inline?: boolean; busy?: boolean; onOpenSession?(session: string): void;
 }) {
   const { transport } = usePlatform();
   const [open, setOpen] = useState(false);
@@ -80,7 +106,10 @@ export function CheckpointMark({ session, cp, screenshot = '', previous, inline,
   const [compare, setCompare] = useState(false);
   const [preview, setPreview] = useState('');
   const [previousPreview, setPreviousPreview] = useState('');
+  const [comparisonImages, setComparisonImages] = useState<Record<string, string>>({});
+  const [noVisualChange, setNoVisualChange] = useState(false);
   const id = String(cp.body.id ?? '');
+  const screenshotChoices = screenshots ?? [];
   const [leftChoice, setLeftChoice] = useState(id);
   const [rightChoice, setRightChoice] = useState(previous?.id ?? '');
   const compareRef = useRef<HTMLDivElement>(null);
@@ -90,13 +119,53 @@ export function CheckpointMark({ session, cp, screenshot = '', previous, inline,
     if (!open || !screenshot) return;
     let alive = true;
     void transport.request('browser.artifact', { session, id: screenshot }).then(r => {
-      if (alive && r.type === 'res') setPreview(`data:${String((r.body as { mime: string }).mime)};base64,${String((r.body as { data: string }).data)}`);
+      if (alive && r.type === 'res') {
+        const source = `data:${String((r.body as { mime: string }).mime)};base64,${String((r.body as { data: string }).data)}`;
+        setPreview(source);
+        setComparisonImages(images => ({ ...images, [id]: source }));
+      }
     });
     if (previous?.artifact) void transport.request('browser.artifact', { session, id: previous.artifact }).then(r => {
-      if (alive && r.type === 'res') setPreviousPreview(`data:${String((r.body as { mime: string }).mime)};base64,${String((r.body as { data: string }).data)}`);
+      if (alive && r.type === 'res') {
+        const source = `data:${String((r.body as { mime: string }).mime)};base64,${String((r.body as { data: string }).data)}`;
+        setPreviousPreview(source);
+        setComparisonImages(images => ({ ...images, [previous.id]: source }));
+      }
     });
     return () => { alive = false; };
-  }, [open, previous?.artifact, screenshot, session, transport]);
+  }, [open, previous?.artifact, previous?.id, screenshot, id, session, transport]);
+  const imageFor = (choice: string) => comparisonImages[choice]
+    ?? (choice === id ? preview : choice === previous?.id ? previousPreview : '');
+  const leftImage = imageFor(leftChoice);
+  const rightImage = imageFor(rightChoice);
+  useEffect(() => {
+    if (!compare) return;
+    let alive = true;
+    for (const choice of new Set([leftChoice, rightChoice])) {
+      if (!choice || imageFor(choice) || Object.hasOwn(comparisonImages, choice)) continue;
+      const option = screenshotChoices.find(item => item.id === choice);
+      if (!option) continue;
+      void transport.request('browser.artifact', { session, id: option.artifact }).then(result => {
+        if (!alive) return;
+        const source = result.type === 'res'
+          ? `data:${String((result.body as { mime: string }).mime)};base64,${String((result.body as { data: string }).data)}`
+          : '';
+        setComparisonImages(images => ({ ...images, [choice]: source }));
+      }).catch(() => {
+        if (alive) setComparisonImages(images => ({ ...images, [choice]: '' }));
+      });
+    }
+    return () => { alive = false; };
+  }, [compare, leftChoice, rightChoice, screenshotChoices, comparisonImages, session, transport, preview, previousPreview, id, previous?.id]);
+  useEffect(() => {
+    if (!compare || !leftImage || !rightImage) { setNoVisualChange(false); return; }
+    let alive = true;
+    setNoVisualChange(false);
+    void screenshotsPixelIdentical(leftImage, rightImage)
+      .then(equal => { if (alive) setNoVisualChange(equal); })
+      .catch(() => { if (alive) setNoVisualChange(false); });
+    return () => { alive = false; };
+  }, [compare, leftImage, rightImage]);
   useEffect(() => {
     if (!open) return;
     void transport.request('session.get', { session }).then(result => {
@@ -204,19 +273,22 @@ export function CheckpointMark({ session, cp, screenshot = '', previous, inline,
         style={{ position: 'fixed', inset: 0, zIndex: 1000, background: '#000a', display: 'grid', placeItems: 'center', padding: 24 }}>
         <div style={{ width: 'min(1100px, 94vw)', maxHeight: '90vh', overflow: 'auto', background: 'var(--bg-raised)', color: 'var(--text-active)', border: '1px solid var(--line-card)', borderRadius: 10, padding: 14 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}><strong>Compare checkpoints</strong><button type="button" onClick={() => setCompare(false)} style={textButton}>Close</button></div>
+          {noVisualChange ? <div style={{ color: 'var(--text-hint)', fontSize: 11, marginBottom: 8 }}>No visual change</div> : null}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            {[leftChoice, rightChoice].map((choice, index) => {
-              const items = [{ id, image: preview }, { id: previous?.id ?? '', image: previousPreview }];
-              const item = items.find(value => value.id === choice) ?? items[index]!;
-              const select = index === 0 ? setLeftChoice : setRightChoice;
-              return <div key={index} style={{ display: 'grid', gap: 6 }}>
-                <select aria-label={index === 0 ? 'Left checkpoint' : 'Right checkpoint'} value={item.id} onChange={event => select(event.target.value)} style={{ ...textInput, width: '100%' }}>
-                  {items.filter(value => value.id).map(value => <option key={value.id} value={value.id}>{value.id.slice(0, 7)}</option>)}
-                </select>
-                <img alt="Checkpoint comparison" src={item.image} style={{ width: '100%', aspectRatio: '16 / 10', objectFit: 'contain', background: 'var(--bg-inset)' }} />
+            {([
+              { side: 'Left' as const, choice: leftChoice, select: setLeftChoice, image: leftImage },
+              { side: 'Right' as const, choice: rightChoice, select: setRightChoice, image: rightImage },
+            ]).map(({ side, choice, select, image }) => {
+              const item = screenshotChoices.find(value => value.id === choice);
+              return <div key={side} style={{ display: 'grid', gap: 6 }}>
+                <CheckpointPicker side={side} value={choice} options={screenshotChoices} onChange={select} />
+                <div style={{ width: '100%', height: 260, display: 'grid', placeItems: 'center', background: 'var(--bg-inset)', borderRadius: 5 }}>
+                  {image ? <img alt="Checkpoint comparison" src={image} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                    : <span style={{ color: 'var(--text-hint)', fontSize: 11 }}>Loading screenshot…</span>}
+                </div>
                 <div style={{ display: 'flex', gap: 5 }}>
-                  <button type="button" disabled={busy || loading} onClick={() => void restore('files', item.id)} style={actionButton}>Restore</button>
-                  <button type="button" disabled={loading} onClick={() => void fork(item.id)} style={actionButton}>Fork</button>
+                  <button type="button" disabled={busy || loading || !item} onClick={() => item && void restore('files', item.id)} style={actionButton}>Restore</button>
+                  <button type="button" disabled={loading || !item} onClick={() => item && void fork(item.id)} style={actionButton}>Fork</button>
                 </div>
               </div>;
             })}
@@ -254,8 +326,8 @@ export function Detail({ name, input, raw }: { name: string; input: Record<strin
   return <><div style={{ ...hint, marginBottom: 4 }}>{name}</div>{pretty(raw)}</>;
 }
 
-export function ToolRow({ call, result, checkpoint, screenshot, previous, session, childCount = 0, childRunning, nested, hideCheckpoint }: {
-  call: TranscriptEvent; result?: TranscriptEvent; checkpoint?: TranscriptEvent; screenshot?: string; previous?: { id: string; artifact: string }; session: string;
+export function ToolRow({ call, result, checkpoint, screenshot, previous, screenshots, session, childCount = 0, childRunning, nested, hideCheckpoint }: {
+  call: TranscriptEvent; result?: TranscriptEvent; checkpoint?: TranscriptEvent; screenshot?: string; previous?: { id: string; artifact: string }; screenshots?: CheckpointScreenshotChoice[]; session: string;
   childCount?: number; childRunning?: boolean; nested?: ReactNode; busy?: boolean; onOpenSession?(session: string): void; hideCheckpoint?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -284,7 +356,7 @@ export function ToolRow({ call, result, checkpoint, screenshot, previous, sessio
           {open ? <ChevronDown size={11} style={{ ...hint, flexShrink: 0 }} /> : <ChevronRight size={11} className="ormi-hover-reveal" style={{ ...hint, flexShrink: 0 }} />}
           <span style={{ flex: 1 }} />
         </div>
-        {checkpoint && !hideCheckpoint ? <span style={{ position: 'absolute', right: -26, top: -1, width: 22, display: 'inline-flex', justifyContent: 'center' }}><CheckpointMark session={session} cp={checkpoint} screenshot={screenshot} previous={previous} inline /></span> : null}
+        {checkpoint && !hideCheckpoint ? <span style={{ position: 'absolute', right: -26, top: -1, width: 22, display: 'inline-flex', justifyContent: 'center' }}><CheckpointMark session={session} cp={checkpoint} screenshot={screenshot} previous={previous} screenshots={screenshots} inline /></span> : null}
       </div>
       {open ? <div style={{ margin: '2px 0 6px 19px', padding: '6px 9px', borderRadius: 6, background: 'var(--bg-inset)', ...mono, fontSize: 11, color: 'var(--text-label)', maxHeight: 280, overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
         <Detail name={String(call.body.name)} input={input} raw={call.body.input} />
