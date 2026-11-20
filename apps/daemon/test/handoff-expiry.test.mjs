@@ -18,12 +18,13 @@ function fixture(t, route, state = 'idle') {
   if (route !== 'user') {
     const team = newId('t'); createTeam(db, { id: team, parent, project: 'p' }); setSessionTeam(db, session, team);
   }
-  const replies = [], ctx = { db, handoffsInTurn: new Map(), prices: { table: () => EMPTY },
+  const replies = [], drains = [], ctx = { db, handoffsInTurn: new Map(), prices: { table: () => EMPTY },
+    drainQueue: async s => { drains.push({ session: s, state: getSession(db, s).state }); return true; },
     spawnWorker: () => assert.fail('expired handoff must not spawn'),
     record(s, kind, payload) {
       [kind, payload] = ctx.teamApprovals.event(s, kind, payload);
       append(db, s, { kind, payload });
-      const state = kind === 'state' ? payload.state : stateFor[kind];
+      const state = kind === 'state' ? payload.state : kind === 'approval_decision' && payload.approvalKind === 'handoff' ? undefined : stateFor[kind];
       if (state) setState(db, s, state);
     },
   };
@@ -32,7 +33,7 @@ function fixture(t, route, state = 'idle') {
   const client = { link: { reply: (id, body) => replies.push(body), replyError: (id, code) => replies.push({ code }) } };
   t.after(() => { expireHandoffApprovals(ctx); db.close(); });
   t.mock.timers.enable({ apis: ['setTimeout'] });
-  return { db, session, parent, ctx, client, replies };
+  return { db, session, parent, ctx, client, replies, drains };
 }
 
 for (const route of ['user', 'parent', 'escalated']) test(`${route}-routed handoffs expire at ten minutes and reject late approval`, async t => {
@@ -54,6 +55,40 @@ for (const route of ['user', 'parent', 'escalated']) test(`${route}-routed hando
   assert.equal(replay(db, session).filter(e => e.kind === 'interaction_expired').length, 1);
 });
 
+for (const route of ['user', 'parent', 'escalated']) for (const active of [false, true]) for (const other of ['none', 'user', 'delegated']) {
+  if (route === 'user' && other === 'delegated') continue;
+  test(`${route} denial derives ${active ? 'active' : 'idle'} activity with ${other} other approvals`, async t => {
+    const { db, session, parent, ctx, client, drains } = fixture(t, route, 'running');
+    const pending = handoffRequest(ctx, client, 'handoff', { session, to: {}, mode: 'rehydrate', agentApproval: true });
+    const request = JSON.parse(replay(db, session).find(e => e.kind.endsWith('approval_request')).payload).request;
+    if (!active) ctx.record(session, 'turn_end', {});
+    if (route === 'escalated') ctx.teamApprovals.escalate(client, 'escalate', { actor: parent, session, request });
+    if (other !== 'none') ctx.record(session, 'approval_request', { request: newId('req'), userOnly: other === 'user', options: [{ id: 'allow', label: 'Allow once' }] });
+    if (route === 'parent') await ctx.teamApprovals.approve(client, 'deny', { actor: parent, session, request, option: 'deny', reason: 'routine' });
+    else await ctx.teamApprovals.userDecision(client, 'deny', { session, request, option: 'deny' });
+    await pending;
+    const expected = other !== 'none' ? 'awaiting_approval' : active ? 'running' : 'idle';
+    assert.equal(getSession(db, session).state, expected);
+    assert.deepEqual(drains, [{ session, state: expected }]);
+    assert.equal(resolveHandoffApproval(ctx, session, request, 'approve'), false);
+  });
+}
+
+test('approved handoff failure restores current activity instead of the request-time snapshot', async t => {
+  const { db, session, ctx, client, replies, drains } = fixture(t, 'user', 'running');
+  ctx.spawnWorker = () => {};
+  ctx.ensureWorker = async () => { ctx.record(session, 'turn_end', {}); throw new Error('replacement failed'); };
+  ctx.stopWorker = async () => {};
+  ctx.services = { stopSession: async () => {} };
+  const pending = handoffRequest(ctx, client, 'handoff', { session, to: {}, mode: 'rehydrate', agentApproval: true });
+  const request = JSON.parse(replay(db, session).find(e => e.kind === 'approval_request').payload).request;
+  assert.equal(resolveHandoffApproval(ctx, session, request, 'approve'), true);
+  await pending;
+  assert.equal(replies.at(-1).code, 'handoff.failed');
+  assert.equal(getSession(db, session).state, 'idle');
+  assert.deepEqual(drains, [{ session, state: 'idle' }]);
+});
+
 for (const route of ['user', 'parent', 'escalated']) for (const remaining of ['user', 'delegated', 'decided', 'expired', 'none']) {
   if (remaining === 'delegated' && route === 'user') continue;
   test(`${route} handoff timeout preserves outstanding ${remaining} approval state`, async t => {
@@ -71,7 +106,7 @@ for (const route of ['user', 'parent', 'escalated']) for (const remaining of ['u
     if (remaining === 'user') assert.equal(beforeExpiry, 'awaiting_approval');
     t.mock.timers.tick(600_000); await pending;
     const waiting = remaining === 'user' || remaining === 'delegated';
-    assert.equal(getSession(db, session).state, waiting ? beforeExpiry : 'running');
+    assert.equal(getSession(db, session).state, waiting ? 'awaiting_approval' : 'running');
     assert.equal(ctx.teamApprovals.waiting(session), remaining === 'delegated');
     assert.equal(replay(db, session).filter(e => e.kind === 'interaction_expired' && JSON.parse(e.payload).request === request).length, 1);
     assert.equal(resolveHandoffApproval(ctx, session, request, 'approve'), false);
