@@ -16,6 +16,7 @@ import type { PromptContext } from '@ormicode/protocol';
 import { BrowserActionRow } from './BrowserActionRow.tsx';
 import { UiCheckRow } from './UiCheckRow.tsx';
 import { TranscriptContextDetails } from './TranscriptContextDetails.tsx';
+import { collapseResumeMarkers } from './resume-markers.ts';
 
 const mono = { fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap' as const, wordBreak: 'break-word' as const };
 const small = { fontSize: 12 };
@@ -126,7 +127,7 @@ function line(e: TranscriptEvent, ctx: Ctx): ReactNode {
         Continued from {String(b.parentTitle ?? b.parent)} ← <button type="button" onClick={() => ctx.onOpenSession?.(String(b.parent))} style={linkButton}>open</button>
       </div>;
     case 'resumed':
-      return <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--accent-mint)', ...small }}><RotateCw size={12} /> resumed</div>;
+      return <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-hint)', ...small }}><RotateCw size={12} /> resumed</div>;
     case 'interrupted':
       return <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--accent-amber)', ...small }}><Pause size={12} /> interrupted{typeof b.reason === 'string' ? ` — ${b.reason}` : ''}</div>;
     case 'checkpoint':
@@ -286,6 +287,7 @@ function durationLabel(start: number, end: number) {
 }
 
 function renderEvents(events: TranscriptEvent[], ctx: Ctx, includeChildren = false): ReactNode[] {
+  events = collapseResumeMarkers(events);
   const rows: ReactNode[] = [];
   let turnStart: number | undefined;
   let turnStartIndex: number | undefined;

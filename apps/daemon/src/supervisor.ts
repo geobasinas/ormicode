@@ -37,6 +37,7 @@ import { UiCheckFollowupGuard } from './ui-check.ts';
 import { finishTurnCheckpoints, recordToolCheckpoint, startTurnCheckpoints } from './turn-checkpoints.ts';
 import { runSessionHook } from './workspace-hooks.ts';
 import { stateFor } from './supervisor-state.ts';
+import { shouldRecordResume } from './resume-marker.ts';
 const WORKER_MAIN = join(dirname(fileURLToPath(import.meta.url)), 'worker-main.ts');
 const startedAt = Date.now();
 interface Worker { proc: ChildProcess; session: string; pid: number | undefined; ready: boolean }
@@ -164,7 +165,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
         if (w) {
           w.ready = true; w.pid = Number(body.pid) || w.pid; setWorkerPid(db, session, w.pid ?? null); setState(db, session, 'idle'); armIdle(session, 'idle'); enforcePool();
           dispatchCtx.teamLifecycle.available(session);
-          if (resuming.delete(session)) record(session, 'resumed', {});
+          if (resuming.delete(session) && shouldRecordResume(db, session)) record(session, 'resumed', {});
           const uptoSeq = recapPending.get(session);
           if (uptoSeq !== undefined) {
             recapPending.delete(session);
