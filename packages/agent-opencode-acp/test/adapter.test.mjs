@@ -48,5 +48,22 @@ test('ACP forwards an explicit denial through the live RPC flow', async () => {
   }
   assert.equal(events.at(-1).kind, 'turn_end');
   assert.ok(events.some(event => event.kind === 'approval_decision' && event.option === 'deny'));
+  assert.ok(events.some(event => event.kind === 'text' && event.text.includes('write blocked')));
+ } finally { await adapter.dispose(handle); }
+});
+
+test('ACP forwards Allow once without granting a permanent allow rule', async () => {
+ const adapter = new OpenCodeAcpAdapter({ spawn: fake });
+ const handle = await adapter.start({ cwd: process.cwd() });
+ try {
+  const stream = adapter.events(handle); const events = [];
+  await adapter.prompt(handle, { text: 'approval-allow' });
+  for await (const event of stream) {
+   events.push(event);
+   if (event.kind === 'approval_request') await adapter.approve(handle, event.request, 'allow');
+   if (event.kind === 'error' || event.kind === 'interrupted') assert.fail(JSON.stringify(event));
+   if (event.kind === 'turn_end') break;
+  }
+  assert.ok(events.some(event => event.kind === 'text' && event.text.includes('write applied')));
  } finally { await adapter.dispose(handle); }
 });
