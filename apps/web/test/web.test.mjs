@@ -248,6 +248,7 @@ test('static assets have exact CSP, cache, and security headers', async t => {
   assert.equal(response.status(), 200);
   const csp = `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src ${relayOrigin} ${relayOrigin.replace(/^http/, 'ws')}; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; object-src 'none'`;
   assert.equal(response.headers()['content-security-policy'], csp);
+  assert.equal(await page.locator('meta[http-equiv="Content-Security-Policy" i]').count(), 0);
   assert.equal(response.headers()['x-content-type-options'], 'nosniff');
   assert.equal(response.headers()['referrer-policy'], 'no-referrer');
   assert.equal(response.headers()['cache-control'], 'no-cache');
