@@ -129,7 +129,7 @@ for (const anotherApproval of [false, true]) test(`handoff escalated after turn_
 
 for (const route of ['parent', 'escalated']) for (const other of ['none', 'user', 'delegated']) test(`urgent wake ignores ${route} handoff but respects ${other} other approvals`, async t => {
   const { db, session, parent, ctx, client, drains } = fixture(t, route, 'running');
-  ctx.teamLifecycle = { preserveHandoffs: async (_session, action) => action() };
+  ctx.teamLifecycle = { duringUrgentDelivery: async (_session, action) => action() };
   ctx.toWorker = async () => assert.fail('an idle worker must not be aborted');
   const pending = handoffRequest(ctx, client, 'handoff', { session, to: {}, mode: 'rehydrate', agentApproval: true });
   const request = JSON.parse(replay(db, session).find(e => e.kind === 'team_approval_request').payload).request;
@@ -148,7 +148,7 @@ for (const route of ['parent', 'escalated']) for (const other of ['none', 'user'
 
 test('failed urgent interruption leaves its escalated handoff pending without waking the busy child', async t => {
   const { db, session, parent, ctx, client, drains } = fixture(t, 'escalated', 'running');
-  ctx.teamLifecycle = { preserveHandoffs: async (_session, action) => action() };
+  ctx.teamLifecycle = { duringUrgentDelivery: async (_session, action) => action() };
   ctx.toWorker = async () => ({ type: 'err', code: 'agent.unsupported' });
   const pending = handoffRequest(ctx, client, 'handoff', { session, to: {}, mode: 'rehydrate', agentApproval: true });
   const request = JSON.parse(replay(db, session).find(e => e.kind === 'team_approval_request').payload).request;

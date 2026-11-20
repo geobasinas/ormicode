@@ -23,7 +23,7 @@ export async function interrupt(ctx: DispatchCtx, session: string, options: { ti
   };
   if (cancelHandoffs) { await abort(); expireHandoffApprovals(ctx, session, 'cancelled'); }
   else {
-    await ctx.teamLifecycle.preserveHandoffs(session, abort);
+    await ctx.teamLifecycle.duringUrgentDelivery(session, abort);
     restoreHandoffState(ctx, session, { allowHandoffs: true });
   }
 }

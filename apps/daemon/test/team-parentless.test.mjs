@@ -138,7 +138,7 @@ test('parent failure is exposed in team tree/status and a new parent turn clears
   assert.deepEqual(events(daemon.db, child, 'team_parent_changed').map(e => e.parentless), [true, false]);
 });
 
-test('cancelling a child closes unanswered user-routed messages and completion waits return interrupted', async t => {
+for (const stop of ['cancel', 'terminal interruption']) test(`${stop} closes unanswered user-routed messages and completion waits return interrupted`, async t => {
   const { daemon, req, parent, spawn } = await fixture(t);
   const child = await spawn();
   await req('worker.state', { session: parent, state: 'failed', reason: 'parent unavailable' });
@@ -146,7 +146,10 @@ test('cancelling a child closes unanswered user-routed messages and completion w
   assert.equal(sent.type, 'res');
   const question = events(daemon.db, child, 'question_request').at(-1);
   assert.equal((await req('team.status', { actor: parent, session: child })).body.state, 'awaiting_input');
-  assert.equal((await req('team.cancel', { actor: parent, session: child })).type, 'res');
+  const stopped = stop === 'cancel'
+    ? await req('team.cancel', { actor: parent, session: child })
+    : await req('worker.state', { session: child, state: 'interrupted', reason: 'terminal stop' });
+  assert.equal(stopped.type, 'res');
   assert.equal(getSession(daemon.db, child).state, 'interrupted');
   assert.equal((await req('team.status', { actor: parent, session: child })).body.state, 'interrupted');
   assert.equal((await req('session.get', { session: child })).body.state, 'interrupted');
@@ -159,4 +162,30 @@ test('cancelling a child closes unanswered user-routed messages and completion w
   assert.notEqual((await req('session.digest', { since: 0 })).body.entries.find(e => e.session === child)?.wants?.kind, 'question');
   assert.equal((await req('session.answer', { session: child, request: question.request, answers: { reply: 'Too late' } })).code, 'session.already_decided');
   assert.deepEqual(listQueuedPrompts(daemon.db, child), []);
+});
+
+test('urgent delivery after parent reattachment preserves unanswered user-routed questions', async t => {
+  const { daemon, req, parent, spawn } = await fixture(t);
+  await req('session.resume', { session: parent });
+  const child = await spawn();
+  await req('worker.state', { session: parent, state: 'failed', reason: 'parent unavailable' });
+  await req('team.message', { actor: child, to: parent, text: 'Please review my finding' });
+  const question = events(daemon.db, child, 'question_request').at(-1);
+  await req('session.prompt', { session: parent, text: 'reattach' });
+  await eventually(() => getSession(daemon.db, child).parentless === 0);
+  assert.equal((await req('team.status', { actor: parent, session: child })).body.state, 'awaiting_input');
+  const turns = events(daemon.db, child, 'turn_start').length;
+  const urgent = await req('team.message', { actor: parent, to: child, text: 'Urgent context, keep my question open', urgent: true });
+  assert.equal(urgent.type, 'res', JSON.stringify(urgent));
+  await eventually(() => events(daemon.db, child, 'turn_start').length > turns);
+  assert.ok(events(daemon.db, child, 'interrupted').length);
+  assert.ok(events(daemon.db, child, 'prompt').some(p => p.text.includes('Urgent context, keep my question open')));
+  assert.equal(unreadTeamMessages(daemon.db, child).some(m => m.id === urgent.body.id), false);
+  assert.equal(events(daemon.db, child, 'interaction_expired').some(e => e.request === question.request), false);
+  assert.equal((await req('session.get', { session: child })).body.state, 'awaiting_input');
+  assert.equal((await req('session.digest', { since: 0 })).body.entries.find(e => e.session === child).wants.kind, 'question');
+  const answer = { session: child, request: question.request, answers: { reply: 'Keep investigating' } };
+  assert.equal((await req('session.answer', answer)).type, 'res');
+  assert.equal((await req('session.answer', answer)).code, 'session.already_decided');
+  assert.ok(listQueuedPrompts(daemon.db, child).some(p => p.text.includes('Keep investigating')));
 });

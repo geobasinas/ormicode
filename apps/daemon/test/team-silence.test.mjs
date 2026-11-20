@@ -80,13 +80,13 @@ test('urgent interruption preserves handoffs only for intentional interruption e
   const { child, lifecycle, ctx } = fixture(t);
   const preserved = [];
   ctx.teamApprovals.unavailable = (session, preserve) => { assert.equal(session, child); preserved.push(preserve); };
-  await lifecycle.preserveHandoffs(child, async () => {
+  await lifecycle.duringUrgentDelivery(child, async () => {
     lifecycle.event(child, 'interrupted', {});
     lifecycle.event(child, 'state', { state: 'interrupted' });
     lifecycle.event(child, 'error', { message: 'actual failure' });
   });
   lifecycle.event(child, 'interrupted', {});
-  await assert.rejects(lifecycle.preserveHandoffs(child, async () => { throw new Error('abort failed'); }), /abort failed/);
+  await assert.rejects(lifecycle.duringUrgentDelivery(child, async () => { throw new Error('abort failed'); }), /abort failed/);
   lifecycle.event(child, 'interrupted', {});
   assert.deepEqual(preserved, [true, true, false, false, false]);
 });
