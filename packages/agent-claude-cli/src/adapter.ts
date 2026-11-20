@@ -29,14 +29,18 @@ export function checkClaudeVersion(output: string): { supported: boolean; versio
   return { supported, version, reason: supported ? 'CLI detected; authentication not checked' : 'Claude Code 2.1.259 or newer is required for unattended permissions' };
 }
 
-/** Print-mode CLI adapter. Approval forwarding is experimental and opt-in. */
+/** Print-mode CLI adapter. Write and shell prompts are forwarded to the session owner unless the bridge is explicitly disabled. */
 export class ClaudeCliAdapter implements AgentAdapter {
   readonly id = 'claude';
   readonly transport = 'cli' as const;
-  readonly capabilities = { ...NO_CAPABILITIES, resume: true };
+  readonly capabilities: AgentAdapter['capabilities'];
   private readonly sessions = new Map<Handle, Session>();
-  private readonly options: { executable?: string; spawn?: Spawn; readVersion?: () => Promise<string>; approvalBridge?: boolean; onNativeId?: (handle: Handle, id: string) => void };
-  constructor(options: { executable?: string; spawn?: Spawn; readVersion?: () => Promise<string>; approvalBridge?: boolean; onNativeId?: (handle: Handle, id: string) => void } = {}) { this.options = options; }
+  private readonly options: { executable?: string; spawn?: Spawn; readVersion?: () => Promise<string>; approvalBridge: boolean; onNativeId?: (handle: Handle, id: string) => void };
+  constructor(options: { executable?: string; spawn?: Spawn; readVersion?: () => Promise<string>; approvalBridge?: boolean; onNativeId?: (handle: Handle, id: string) => void } = {}) {
+    this.options = { ...options, approvalBridge: options.approvalBridge !== false };
+    // `dontAsk` and `--permission-prompts none` auto-deny anything that would prompt. Interactive sessions ask instead.
+    this.capabilities = { ...NO_CAPABILITIES, resume: true, approvals: this.options.approvalBridge };
+  }
   async detect() {
     try {
       const stdout = this.options.readVersion ? await this.options.readVersion() : (await execFileAsync(this.options.executable ?? 'claude', ['--version'], { timeout: 5000, maxBuffer: 4096, windowsHide: true, shell: false })).stdout;
@@ -76,7 +80,8 @@ export class ClaudeCliAdapter implements AgentAdapter {
     let child: ChildProcessWithoutNullStreams | undefined;
     let bridge: Awaited<ReturnType<typeof startPermissionBridge>> | undefined;
     try {
-      const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages', '--permission-prompts', this.options.approvalBridge ? 'host' : 'none', '--permission-mode', session.spec.mode ?? 'default'];
+      const mode = session.spec.mode ?? 'default';
+      const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages', '--permission-prompts', this.options.approvalBridge ? 'host' : 'none', '--permission-mode', mode];
       const mcpServers: Record<string, unknown> = {};
       if (session.spec.mcpServers)
         for (const [name, s] of Object.entries(session.spec.mcpServers))
@@ -152,8 +157,13 @@ export class ClaudeCliAdapter implements AgentAdapter {
         catch { session.queue.close(); }
       }
     } finally {
-      if (bridge) {
-        try { await bridge.close(); }
+      // The turn is idle before bridge teardown so a follow-up prompt is not stuck behind cleanup.
+      const closing = bridge;
+      session.broker = undefined;
+      session.process = undefined; session.active = false;
+      if (!session.nativeId) session.needsResumeId = true;
+      if (closing) {
+        try { await closing.close(); }
         catch {
           resultStatus = undefined;
           session.needsResumeId = true;
@@ -163,9 +173,6 @@ export class ClaudeCliAdapter implements AgentAdapter {
           }
         }
       }
-      session.broker = undefined;
-      session.process = undefined; session.active = false;
-      if (!session.nativeId) session.needsResumeId = true;
       if (resultStatus && !session.disposed) { try { session.queue.push([{ kind: 'turn_end' }]); } catch { session.queue.close(); } }
     }
   }

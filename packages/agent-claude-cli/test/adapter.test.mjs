@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ClaudeCliAdapter } from '../src/index.ts';
 
@@ -30,8 +34,10 @@ test('CLI runs a turn using stdin and resumes the native session', async () => {
   const first = await collect(stream);
   assert.deepEqual(first.map((e) => e.kind), ['turn_start', 'agent_version', 'text', 'usage', 'turn_end']);
   assert.equal(first[2].text, 'first prompt');
-  assert.ok(calls[0].includes('--permission-prompts'));
-  assert.ok(calls[0].includes('none'));
+  assert.equal(calls[0][calls[0].indexOf('--permission-prompts') + 1], 'host');
+  assert.match(calls[0][calls[0].indexOf('--permission-prompt-tool') + 1], /^mcp__ormicode_/);
+  assert.equal(calls[0].includes('dontAsk'), false);
+  assert.equal(adapter.capabilities.approvals, true);
   assert.equal(calls[0].includes('first prompt'), false);
   await adapter.prompt(handle, { text: 'second prompt' });
   await collect(stream);
@@ -186,6 +192,56 @@ test('opt-in bridge does not place its token in CLI arguments', async () => {
   assert.equal(capturedArgs[capturedArgs.indexOf('--permission-prompts') + 1], 'host');
   assert.match(capturedArgs[capturedArgs.indexOf('--permission-prompt-tool') + 1], /^mcp__ormicode_[0-9a-hjkmnp-tv-z]{26}__approve$/);
   await adapter.dispose(handle);
+});
+
+test('an explicit opt-out still denies prompts instead of asking', async () => {
+  const calls = [];
+  const adapter = new ClaudeCliAdapter({ approvalBridge: false, spawn: (_command, args, options) => {
+    calls.push(args);
+    return spawn(process.execPath, [fixture], options);
+  } });
+  assert.equal(adapter.capabilities.approvals, false);
+  const handle = await adapter.start({ cwd });
+  const stream = adapter.events(handle)[Symbol.asyncIterator]();
+  await adapter.prompt(handle, { text: 'hello' });
+  await collect(stream);
+  assert.equal(calls[0][calls[0].indexOf('--permission-prompts') + 1], 'none');
+  assert.equal(calls[0].includes('--permission-prompt-tool'), false);
+  await adapter.dispose(handle);
+});
+
+test('a file write shows Allow and Deny, then creates the file after Allow', async () => {
+  const bridgeFixture = fileURLToPath(new URL('./fixtures/bridge-fixture.mjs', import.meta.url));
+  const target = join(tmpdir(), `ormi-claude-write-${randomUUID()}`);
+  let captured;
+  const adapter = new ClaudeCliAdapter({ spawn: (_command, args, options) => {
+    captured = args;
+    return spawn(process.execPath, [bridgeFixture, ...args], { ...options, env: { ...options.env, ORMICODE_FIXTURE_WRITE: target } });
+  } });
+  const handle = await adapter.start({ cwd });
+  const stream = adapter.events(handle)[Symbol.asyncIterator]();
+  await adapter.prompt(handle, { text: 'create marker.txt' });
+  try {
+    for (;;) {
+      const { value: event, done } = await stream.next();
+      if (done) throw new Error('stream closed');
+      if (event.kind === 'approval_request') {
+        assert.equal(event.tool, 'Write');
+        assert.deepEqual(event.options, [{ id: 'allow', label: 'Allow' }, { id: 'deny', label: 'Deny' }]);
+        assert.equal(existsSync(target), false);
+        await adapter.approve(handle, event.request, 'allow');
+      }
+      if (event.kind === 'interrupted') throw new Error(event.reason);
+      if (event.kind === 'turn_end') break;
+    }
+    assert.equal(readFileSync(target, 'utf8'), 'safe');
+    assert.equal(captured[captured.indexOf('--permission-prompts') + 1], 'host');
+    assert.equal(captured[captured.indexOf('--permission-mode') + 1], 'default');
+    assert.equal(captured.includes('dontAsk'), false);
+  } finally {
+    rmSync(target, { force: true });
+    await adapter.dispose(handle);
+  }
 });
 
 test('CLI approval bridge forwards and returns both decisions end to end', async () => {
