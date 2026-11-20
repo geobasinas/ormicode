@@ -17,6 +17,7 @@ import { BrowserActionRow } from './BrowserActionRow.tsx';
 import { UiCheckRow } from './UiCheckRow.tsx';
 import { TranscriptContextDetails } from './TranscriptContextDetails.tsx';
 import { collapseResumeMarkers } from './resume-markers.ts';
+import { transcriptToolResults } from './tool-results.ts';
 
 const mono = { fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap' as const, wordBreak: 'break-word' as const };
 const small = { fontSize: 12 };
@@ -381,12 +382,11 @@ export function Transcript({ events, session, onHandoff, onOpenSession, onEditPr
   const hiddenCount = rewind ? events.filter(event => event.seq > rewindTo && event.seq < rewind.seq).length : 0;
   const visibleEvents = rewind && !showHidden ? events.filter(event => event.seq <= rewindTo || event.seq >= rewind.seq) : events;
   const ctx = useMemo<Ctx>(() => {
-    const results = new Map<string, TranscriptEvent>(); const calls = new Set<string>(); const cpAfter = new Map<number, TranscriptEvent>(); const attached = new Set<number>();
+    const results = transcriptToolResults(visibleEvents); const calls = new Set<string>(); const cpAfter = new Map<number, TranscriptEvent>(); const attached = new Set<number>();
     const children = new Map<string, TranscriptEvent[]>();
     const screenshots = checkpointScreenshots(visibleEvents);
     for (const e of visibleEvents) {
       if (e.kind === 'tool_call') calls.add(String(e.body.callId));
-      else if (e.kind === 'tool_result') results.set(String(e.body.callId), e);
       const parent = parentOf(e);
       if (parent) children.set(parent, [...(children.get(parent) ?? []), e]);
     }

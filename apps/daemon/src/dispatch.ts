@@ -3,6 +3,7 @@ import type { UserInteractions } from './user-interactions.ts';
 import { resumeSession } from './team-resume.ts';
 import { sessionTeamView } from './session-team-view.ts';
 import { sessionStatus } from './session-status.ts';
+import { abortSession } from './abort-session.ts';
 import {
   getSession, listSessions, setState, setTitle, listNotes, setNote, deleteNote, archiveSession, releaseSessionPorts,
   getPendingPromptData, deletePendingPromptData, getSessionPorts, listDevices, renameDevice, revokeDevice, type Store,
@@ -79,11 +80,11 @@ export interface DispatchCtx {
   resetUiCheckFollowups(session: string): void;
   spawnWorker(session: string): void;
   ensureWorker(session: string, timeoutMs?: number): Promise<void>;
-  stopWorker(session: string): Promise<void>;
+  stopWorker(session: string, force?: boolean): Promise<void>;
   setRecapPending(session: string, uptoSeq: number): void;
   toWorker(session: string, method: string, body: Record<string, unknown>): Promise<Frame | undefined>;
   sendPrompt(session: string, text: string, images?: unknown[], opts?: { journal?: boolean; context?: PromptContext[]; attachments?: PromptAttachment[] }): Promise<boolean>;
-  drainQueue(session: string, afterTurnEnd?: boolean): Promise<boolean>;
+  drainQueue(session: string, afterTurnEnd?: boolean, siblingsOnly?: boolean): Promise<boolean>;
   pairing: Pairing;
   relay(): RelayClient | undefined;
   checkpoints: Checkpoints;
@@ -335,8 +336,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         return client.link.reply(id, { accepted: true, queued: false });
       }
       case 'session.abort': {
-        const res = await ctx.toWorker(String(body.session), 'worker.abort', {});
-        return res?.type === 'res' ? client.link.reply(id, { interrupted: true }) : client.link.replyError(id, 'agent.unsupported', 'abort');
+        return await abortSession(ctx, String(body.session)) ? client.link.reply(id, { interrupted: true }) : client.link.replyError(id, 'agent.unsupported', 'no active turn');
       }
       case 'session.subscribe': {
         const session = String(body.session);

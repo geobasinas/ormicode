@@ -38,9 +38,11 @@ import { finishTurnCheckpoints, recordToolCheckpoint, startTurnCheckpoints } fro
 import { runSessionHook } from './workspace-hooks.ts';
 import { stateFor } from './supervisor-state.ts';
 import { shouldRecordResume } from './resume-marker.ts';
+import { closeInterruptedTools } from './interrupted-tools.ts';
+import { stopWorkerProcess } from './stop-worker.ts';
 const WORKER_MAIN = join(dirname(fileURLToPath(import.meta.url)), 'worker-main.ts');
 const startedAt = Date.now();
-interface Worker { proc: ChildProcess; session: string; pid: number | undefined; ready: boolean }
+interface Worker { proc: ChildProcess; session: string; pid: number | undefined; ready: boolean; stopping?: boolean }
 type HeldPrompt = { text: string; images?: unknown[]; context?: PromptContext[]; attachments?: PromptAttachment[]; actor?: 'auto' };
 export interface DaemonOptions { socketPath?: string; storePath?: string; mcpCredentials?: McpCredentials }
 export async function startDaemon(opts: DaemonOptions = {}) {
@@ -86,6 +88,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   };
   const record = (session: string, kind: string, payload: Record<string, unknown>, ts?: number, origin?: string) => {
     if (closing) return;
+    if (kind === 'interrupted') closeInterruptedTools(db, session, record);
     dispatchCtx?.teamLifecycle.event(session, kind, payload);
     [kind, payload] = dispatchCtx?.teamApprovals.event(session, kind, payload) ?? [kind, payload];
     const { seq, frame } = append(db, session, { kind, payload: { kind, ...secrets.redact(session, mcpCredentials.redact(payload)) }, ...(ts ? { ts } : {}), ...(origin ? { origin } : {}) });
@@ -140,7 +143,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
       workers.delete(session);
       setWorkerPid(db, session, null);
       const current = getSession(db, session);
-      if (current && ['starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying'].includes(current.state)) {
+      if (!worker.stopping && current && ['starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying'].includes(current.state)) {
         record(session, 'interrupted', { reason: code === 0 ? 'stream_ended' : 'worker_crash' });
       }
       // A resume candidate whose worker died before ready leaves a recap so the
@@ -193,6 +196,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
           return answer({ seq: 0 });
         }
         if (kind === 'turn_start') startTurnCheckpoints(session, services, turnCheckpoints, handoffsInTurn);
+        if (kind === 'interrupted') closeInterruptedTools(db, session, record);
         let payload = secrets.redact(session, mcpCredentials.redact(body.payload as Record<string, unknown>));
         [kind, payload] = dispatchCtx.teamApprovals.event(session, kind, payload);
         const { seq } = append(db, session, { kind, payload: { kind, ...payload }, ts: Number(body.ts) || Date.now() });
@@ -243,15 +247,13 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     record(session, 'evicted', { reason, idleMs: 0 });
     setState(db, session, 'idle', reason);
   };
-  const stopWorker = async (session: string) => {
+  const stopWorker = async (session: string, force = false) => {
+    if (force) retries.cancel(session);
     mcpCredentials.revoke(session); dispatchCtx.teamLifecycle.unavailable(session);
     const w = workers.get(session);
     if (!w) return;
-    const link = workerLinks.get(session);
-    if (link) {
-      try { await link.request('worker.evict', { session }, 10_000); }
-      catch { killTree(w.proc); }
-    } else killTree(w.proc);
+    w.stopping = true;
+    await stopWorkerProcess(w.proc, workerLinks.get(session), session, force);
     workers.delete(session);
     setWorkerPid(db, session, null);
   };
