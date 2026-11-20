@@ -130,7 +130,8 @@ function installPreviewProtocol(partition: string): void {
 }
 
 const send = (channel: string, payload: unknown) => { if (!win?.isDestroyed()) win?.webContents.send(channel, payload); };
-const state = (s: string) => send('ormi:state', s);
+let currentState = 'connecting';
+const state = (s: string) => { currentState = s; send('ormi:state', s); };
 
 function loadRemoteFile(): RemoteFile | undefined {
   try {
@@ -260,6 +261,7 @@ app.whenReady().then(async () => {
     installBrowserNavigation(contents);
   });
   encryption = safeStorage.isEncryptionAvailable();
+  ipcMain.handle('ormi:state:get', () => currentState);
   ipcMain.handle('ormi:request', async (_e, method: string, body?: Record<string, unknown>) => {
     if (!link) return { v: 1, type: 'err', id: 'local', code: 'daemon.offline', message: 'no daemon connection' } satisfies Partial<Frame>;
     try {

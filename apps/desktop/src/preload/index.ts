@@ -5,6 +5,7 @@
  */
 import { contextBridge, ipcRenderer } from 'electron';
 import type { Frame } from '@ormicode/protocol';
+import { subscribeState } from './state.ts';
 
 export interface RemoteInfo { relayUrl: string; account: string; device: string; name: string; active?: boolean }
 
@@ -14,7 +15,9 @@ const bridge = {
   subscribe: (session: string, after?: number) => ipcRenderer.send('ormi:subscribe', session, after),
   unsubscribe: (session: string) => ipcRenderer.send('ormi:unsubscribe', session),
   onEvent: (cb: (frame: Frame) => void) => ipcRenderer.on('ormi:event', (_e, frame: Frame) => cb(frame)),
-  onState: (cb: (state: string) => void) => ipcRenderer.on('ormi:state', (_e, state: string) => cb(state)),
+  onState: (cb: (state: string) => void) => subscribeState(cb,
+    listener => { ipcRenderer.on('ormi:state', (_e, state: string) => listener(state)); },
+    () => ipcRenderer.invoke('ormi:state:get')),
   onRelayError: (cb: (msg: string) => void) => ipcRenderer.on('ormi:relayError', (_e, msg: string) => cb(msg)),
   tokenGet: (): Promise<string | undefined> => ipcRenderer.invoke('ormi:token:get'),
   tokenSet: (token: string): Promise<void> => ipcRenderer.invoke('ormi:token:set', token),
