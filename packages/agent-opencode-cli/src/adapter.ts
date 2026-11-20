@@ -16,7 +16,7 @@ const execFileAsync = promisify(execFile);
 const limit = 1024 * 1024;
 const MIME_EXT: Record<string, string> = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif' };
 
-/** One `opencode run` process per turn on a private standalone server. Headless permission requests cannot be answered. */
+/** One `opencode run --format json` process per turn. Resume with `--session`. Headless permission requests cannot be answered. */
 export class OpenCodeCliAdapter implements AgentAdapter {
   readonly id = 'opencode';
   readonly transport = 'cli' as const;
@@ -78,14 +78,17 @@ export class OpenCodeCliAdapter implements AgentAdapter {
     try {
       if (session.disposed) return;
       if (session.interrupted) { session.queue.push([{ kind: 'interrupted', reason: 'user_abort' }]); return; }
-      const args = ['run', '--format', 'json', '--standalone'];
+      // Flags from `opencode run --help` (1.19.x). `--standalone` and a bare `--` make yargs print help and exit 1.
+      const args = ['run', '--format', 'json'];
       if (session.nativeId) args.push('--session', session.nativeId);
-      if (session.model) args.push('--model', session.effort ? `${session.model}#${session.effort}` : session.model);
+      if (session.model) args.push('--model', session.model);
+      if (session.effort) args.push('--variant', session.effort);
       if (session.mode) args.push('--agent', session.mode);
       const images = session.pendingImages ?? [];
       session.pendingImages = [];
       for (const image of images) args.push('--file', image);
-      args.push('--', text);
+      if (text.startsWith('-')) args.push('--');
+      args.push(text);
       child = (this.options.spawn ?? spawn)(this.options.executable ?? 'opencode', args, { cwd: session.spec.cwd, windowsHide: true, shell: false });
       session.process = child; child.stdin.end();
       attachRawLog(child, session.log, this.options.executable ?? 'opencode', session.spec.cwd);
@@ -143,7 +146,7 @@ export class OpenCodeCliAdapter implements AgentAdapter {
     const session = this.get(handle); session.model = model;
     session.queue.push([{ kind: 'model_changed', model }]);
   }
-  /** Stored and passed as the model#variant suffix on the next turn. */
+  /** Stored and passed as `--variant` on the next turn. */
   async setEffort(handle: Handle, effort: string): Promise<void> {
     const session = this.get(handle); session.effort = effort;
     session.queue.push([{ kind: 'effort_changed', effort }]);

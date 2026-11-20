@@ -12,13 +12,32 @@ async function run(adapter, handle, text) {
   return events;
 }
 test('CLI streams text and usage, stores native ID, and resumes via a new process', async () => {
-  let id; const adapter = new OpenCodeCliAdapter({ spawn: fake, onNativeId: (_, value) => { id = value; } });
+  const seen = [];
+  let id; const adapter = new OpenCodeCliAdapter({ spawn: (cmd, args, options) => { seen.push(args); return fake(cmd, args, options); }, onNativeId: (_, value) => { id = value; } });
   const handle = await adapter.start({ cwd: process.cwd() });
   const first = await run(adapter, handle, 'hello');
   assert.deepEqual(first.map(event => event.kind), ['turn_start', 'text_delta', 'usage', 'text', 'turn_end']);
   assert.equal(id, 'ses_fake');
+  assert.deepEqual(seen[0].slice(0, 3), ['run', '--format', 'json']);
+  assert.equal(seen[0].includes('--standalone'), false);
+  assert.equal(seen[0].includes('--session-id'), false);
+  assert.equal(seen[0].includes('--'), false);
+  assert.equal(seen[0].at(-1), 'hello');
   const second = await run(adapter, handle, 'again');
   assert.equal(second.at(-1).kind, 'turn_end');
+  assert.equal(seen[1][seen[1].indexOf('--session') + 1], 'ses_fake');
+  assert.equal(seen[1].at(-1), 'again');
+  await adapter.dispose(handle);
+});
+test('CLI passes model, variant, and agent as documented flags', async () => {
+  let seen; const adapter = new OpenCodeCliAdapter({ spawn: (cmd, args, options) => { seen = args; return fake(cmd, args, options); } });
+  const handle = await adapter.start({ cwd: process.cwd(), model: 'opencode/tidepool', effort: 'high', mode: 'build' });
+  await run(adapter, handle, 'hello');
+  assert.equal(seen[seen.indexOf('--model') + 1], 'opencode/tidepool');
+  assert.equal(seen[seen.indexOf('--variant') + 1], 'high');
+  assert.equal(seen[seen.indexOf('--agent') + 1], 'build');
+  assert.equal(seen.includes('opencode/tidepool#high'), false);
+  assert.equal(seen.includes('--standalone'), false);
   await adapter.dispose(handle);
 });
 test('CLI fails closed on malformed output and requires explicit recovery', async () => {

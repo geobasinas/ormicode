@@ -1,4 +1,9 @@
-const prompt = process.argv.at(-1);
+const args = process.argv.slice(2);
+if (args.includes('--standalone') || args.includes('--session-id')) {
+  console.log('opencode run [message..]');
+  process.exit(1);
+}
+const prompt = args.at(-1);
 const sessionId = process.env.ORMICODE_FIXTURE_SESSION ?? 'ses_fake';
 const line = value => console.log(JSON.stringify({ timestamp: 0, sessionID: sessionId, ...value }));
 if (prompt === 'broken') {
