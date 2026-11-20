@@ -180,6 +180,7 @@ test('urgent delivery after parent reattachment preserves unanswered user-routed
   await eventually(() => events(daemon.db, child, 'turn_start').length > turns);
   assert.ok(events(daemon.db, child, 'interrupted').length);
   assert.ok(events(daemon.db, child, 'prompt').some(p => p.text.includes('Urgent context, keep my question open')));
+  assert.equal(events(daemon.db, child, 'interrupted').at(-1).reason, 'urgent_delivery');
   assert.equal(unreadTeamMessages(daemon.db, child).some(m => m.id === urgent.body.id), false);
   assert.equal(events(daemon.db, child, 'interaction_expired').some(e => e.request === question.request), false);
   assert.equal((await req('session.get', { session: child })).body.state, 'awaiting_input');

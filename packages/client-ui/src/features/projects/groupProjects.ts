@@ -1,6 +1,6 @@
 import type { SessionSummary } from '../session/useSessions.ts';
 import type { ProjectSummary } from './useProjects.ts';
-import { sessionForest } from '../session/team-tree.ts';
+import { needsUser, sessionForest } from '../session/team-tree.ts';
 
 export interface ProjectGroup {
   project: string;
@@ -9,9 +9,8 @@ export interface ProjectGroup {
   addedAt?: number;
 }
 
-const needsYou = new Set(['awaiting_approval', 'awaiting_input', 'interrupted', 'failed', 'paused_rate_limited']);
 const live = new Set(['running', 'starting', 'retrying']);
-const rank = (session: SessionSummary) => needsYou.has(session.state) ? 0 : live.has(session.state) ? 1 : 2;
+const rank = (session: SessionSummary) => needsUser(session) ? 0 : live.has(session.state) ? 1 : 2;
 const projectMatch = (project: ProjectSummary, query: string) => `${project.name} ${project.path}`.toLowerCase().includes(query);
 
 export function groupSessionProjects(sessions: SessionSummary[], projects: ProjectSummary[], query?: string) {

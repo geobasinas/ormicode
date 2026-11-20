@@ -2,8 +2,10 @@
 
 /** Relative age like `now`, `12m`, `3h`, `2d`. */
 export function ago(ts: number, now = Date.now()): string {
-  const s = Math.max(0, Math.floor((now - ts) / 1000));
-  if (s < 45) return 'now';
+  if (!Number.isFinite(ts) || ts <= 0) return '';
+  const milliseconds = ts < 1e12 ? ts * 1000 : ts;
+  const s = Math.max(0, Math.floor((now - milliseconds) / 1000));
+  if (s < 60) return 'now';
   const m = Math.floor(s / 60);
   if (m < 60) return `${m}m`;
   const h = Math.floor(m / 60);
@@ -14,6 +16,7 @@ export function ago(ts: number, now = Date.now()): string {
 /** `12m ago`, or `just now` under a minute. */
 export function agoText(ts: number, now = Date.now()): string {
   const a = ago(ts, now);
+  if (!a) return '';
   return a === 'now' ? 'just now' : `${a} ago`;
 }
 

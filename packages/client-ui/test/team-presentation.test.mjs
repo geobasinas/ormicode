@@ -78,8 +78,22 @@ test('genuine questions remain actionable while workers run, including late-answ
   const question = entry('waiting', { kind: 'question', since: 100 });
   assert.equal(needsAttention(session(), question), true);
   assert.equal(attentionReason(session(), question), 'Question for you');
-  for (const [state, label] of [['awaiting_input', 'Question for you'], ['awaiting_approval', 'Approval needed'], ['paused_rate_limited', 'Rate limited'], ['failed', 'Session failed'], ['interrupted', 'Session interrupted']]) {
+  for (const [state, label] of [['awaiting_input', 'Question for you'], ['awaiting_approval', 'Approval needed']]) {
     assert.equal(needsAttention(session(state)), true); assert.equal(attentionReason(session(state)), label);
   }
-  assert.equal(needsAttention(session(), entry('failed')), true);
+  assert.equal(needsAttention(session(), entry('failed')), false);
+});
+
+test('stopped, failed, idle and rate-limited sessions never enter Needs You through stale digest entries', () => {
+  for (const state of ['interrupted', 'failed', 'idle', 'paused_rate_limited', 'done', 'archived']) {
+    for (const digest of [undefined, entry('failed'), entry('waiting'), entry('waiting', { kind: 'approval' }), entry('waiting', { kind: 'question' })])
+      assert.equal(needsAttention(session(state), digest), false, `${state}: ${JSON.stringify(digest)}`);
+  }
+  assert.equal(attentionReason(session('interrupted')), 'Session stopped');
+  assert.equal(attentionReason(session('failed')), 'Session failed');
+  assert.equal(teamState(session('interrupted')).label, 'Stopped');
+  assert.equal(teamState(session('interrupted')).icon, 'idle');
+  assert.equal(teamState(session('paused_rate_limited')).label, 'Rate limited');
+  assert.equal(teamState(session('failed')).icon, 'failed');
+  assert.equal(needsAttention(session(), entry('waiting', { kind: 'rate_limit' })), false);
 });

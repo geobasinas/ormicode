@@ -22,7 +22,7 @@ function NoticeCard({ title, description, children, icon }: {
 }
 
 export function EmptyPreview({ listed }: { listed: BrowserListed }) {
-  return <NoticeCard title="No preview running" description="Add a service to this session, then start it to open a local preview.">
+  return <NoticeCard title="Browse the web or preview your app" description="Enter a URL or search above. For a local preview, add a service to this session and start it.">
     <div style={{ marginTop: 14, padding: 10, borderRadius: 8, background: 'var(--bg-inset)', border: '1px solid var(--line-card)' }}>
       <pre style={{ margin: 0, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', color: 'var(--text-label)', fontFamily: 'var(--font-mono)', fontSize: 10.5, lineHeight: 1.5 }}>{SERVICES_YAML}</pre>
       <button type="button" className="hv" onClick={() => void navigator.clipboard.writeText(SERVICES_YAML)}

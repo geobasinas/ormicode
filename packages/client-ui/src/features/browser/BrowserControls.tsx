@@ -103,10 +103,10 @@ export function BrowserControls(props: Props) {
       <BrowserIconButton title="Forward" disabled={!props.canForward} onClick={props.onForward}><ChevronRight size={15} /></BrowserIconButton>
       <BrowserIconButton title="Reload" disabled={!props.current} onClick={props.onReload}><RotateCw size={13} /></BrowserIconButton>
       <div style={{ minWidth: toolbarWidth < 480 ? 48 : toolbarWidth < 560 ? 76 : 120, flex: '1 1 120px', height: 28, display: 'flex', alignItems: 'center', gap: 6, padding: '0 8px', border: '1px solid var(--line-divider)', borderRadius: 8, background: 'var(--bg-card)' }}>
-        <LockKeyhole size={12} style={{ color: 'var(--text-hint)', flexShrink: 0 }} />
-        <input aria-label="Preview path" list={`browser-history-${props.current?.port ?? 'none'}`} value={props.address}
+        <Globe size={12} style={{ color: 'var(--text-hint)', flexShrink: 0 }} />
+        <input aria-label="Browser address" list={`browser-history-${props.current?.port ?? 'none'}`} value={props.address}
           onChange={event => props.onAddressChange(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') props.onAddressSubmit(); }}
-          placeholder="Path or URL" style={{ width: '100%', minWidth: 0, border: 0, outline: 0, background: 'transparent', color: 'var(--text-label)', fontFamily: 'var(--font-mono)', fontSize: 12 }} />
+          placeholder="URL or search" style={{ width: '100%', minWidth: 0, border: 0, outline: 0, background: 'transparent', color: 'var(--text-label)', fontFamily: 'var(--font-mono)', fontSize: 12 }} />
         <datalist id={`browser-history-${props.current?.port ?? 'none'}`}>{props.history.map(path => <option key={path} value={path} />)}</datalist>
       </div>
       {!overflow.pick ? <BrowserIconButton title={props.pickActive ? 'Cancel picking' : 'Pick element (Ctrl+Shift+C)'} aria-pressed={props.pickActive} onClick={props.onPick}

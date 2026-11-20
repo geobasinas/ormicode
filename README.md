@@ -450,15 +450,15 @@ If a worker loses the supervisor it stops (no unbounded buffering).
 
 States with several causes carry a `reason` (e.g. `interrupted`: `host_restart`, `resume_failed`, `worker_crash`; `evicted`: idle timeout or full pool), and clients show it.
 
-**Transitions:** Define the source state, resulting state, events and errors for every operation in the protocol schemas. Prompting `idle` or `done` starts a turn; prompting `running` is rejected unless explicitly queued or sent as a supported steer. Archiving hides a session without stopping it. If an adapter cannot interrupt, abort returns `agent.unsupported` and the client says the turn may still be running. Define approval, pause, retry, deletion and simultaneous-request transitions before implementing them.
+**Transitions:** Define the source state, resulting state, events and errors for every operation in the protocol schemas. Prompting `idle` or `done` starts a turn; prompting `running` is rejected unless explicitly queued or sent as a supported steer. Archiving hides a session without stopping it. The supervisor stops active worker process trees even when an adapter lacks cooperative interruption; abort without an active turn returns `agent.unsupported`. Define approval, pause, retry, deletion and simultaneous-request transitions before implementing them.
 
 **Turns**
 - `session.prompt` returns once the worker has the input; follow the turn via `turn_start` … `turn_end` events.
 - **pause** finishes the current tool call and holds new prompts (state doesn't change). **resume** sends held prompts in order; if one fails, it and the rest stay queued.
 - `session.queue.add/list/update/remove/move` stores follow-ups in the session store. Queue changes are journaled as `queue_changed`; when a turn ends idle, the supervisor sends one queued prompt and continues in order. Pause holds queued prompts until resume.
-- `session.draft.get/set` persists per-session composer drafts (the home composer uses the `home` key); clients debounce saves. `prompts.history {project?, query?, limit}` returns distinct recent prompt text, newest first.
+- `session.draft.get/set` persists per-session composer drafts (the home composer uses the `home` key); clients debounce saves. `prompts.history {project?, query?, limit}` searches at most the newest 1,000 prompt events in the requested project (or all projects when omitted), returning distinct text newest first. The composer debounces search by 180 ms and shows at most 50 results; older prompts remain in the journal but are outside this recent-history window.
 - `session.commands` discovers agent slash commands. Claude SDK uses `supportedCommands()`; ACP uses `available_commands_update`; other adapters may return an empty list. App commands run UI actions, while agent commands are sent as prompt text.
-- **abort** requests an immediate stop; if supported, the tool call is marked `interrupted`. If unsupported, return `agent.unsupported` and do not claim it stopped.
+- **abort** immediately kills the active worker's process tree (including SDK tool commands), cancels retries and pending interactions, and journals open tool calls as `interrupted`. The next prompt starts a worker and resumes the native session when supported. Without an active turn it returns `agent.unsupported`.
 - **steer** goes into the running turn if the agent supports it; otherwise it's queued (visibly) for the next turn. Nothing is dropped.
 - **answer** replies to a pending clarifying question with `session.answer {session, request, answers}`. `answers` maps each original question text to the user's answer. The adapter preserves the question's own text and choices; the first valid response wins. A question is not an approval.
 
@@ -495,6 +495,10 @@ States with several causes carry a `reason` (e.g. `interrupted`: `host_restart`,
 - Editable from any client; carried through handoffs and moves.
 
 **Display:** transcript is full while running, summarized when idle (adjustable per session and globally). Sort: carry-over and things waiting on you first, then most recent. Done sessions fade after a day.
+
+Each agent turn starts with a live “Working for …” duration above its visible activity. Completed and interrupted turns show an expandable “Worked for …” row containing the tool calls and thinking, collapsed by default, with the final assistant text below. Historical turns start collapsed too.
+
+**Waiting / Needs You:** only pending user approvals and questions count. Idle, user-stopped, failed (including expired authentication), and rate-limited sessions do not count as waiting; stopped sessions use a muted stopped indicator and failures keep their failed indicator. Stale digest entries cannot promote these sessions back into Needs You. Programmatic urgent-delivery interruptions use `urgent_delivery`, not `user_abort`, so their preserved user questions remain actionable.
 
 **Ending**
 - `done` when the agent finishes with nothing pending. `archived` when you say so or after an inactivity sweep. Archiving never deletes; retention does.
@@ -972,14 +976,14 @@ Optional methods = optional features. No `steer` means the client queues instead
 | Codex | `sandbox_mode` + `approval_policy`, or its auto-review | yes (joins turn) | thread id | yes | yes | yes |
 | OpenCode | permission rules, `ask` | yes (async prompt) | session id | yes | model-dependent | no |
 | pi | none, by design | yes, `steer()` | JSONL session file | yes | yes (thinking level) | no |
-| Grok CLI | `--always-approve`; no prompt path in `-p` | no | `-s`/`-r` | `-m` per run | not documented | no |
+| Grok CLI | `agent stdio` permission requests through Ormicode, never `dontAsk`/auto-approve | no | native ACP session | ACP config | ACP config | no |
 | Grok ACP | permission modes + `session/request_permission` | no | `loadSession` | `configOptions` model | yes (`reasoning_effort`) | no |
 | Vibe CLI | none headless; `--auto-approve` or deny | no | `--resume` | `--model` new sessions | no | yes (`--worktree`) |
 | Vibe ACP | 4 modes + `session/request_permission` | no | `loadSession`, fork | `configOptions` model | no | no |
 
 Agents' own worktree features are always off; the daemon makes one worktree per session.
 
-**Claude SDK:** one streaming-input `query()` per session. `canUseTool` → `approval_request` (allow/deny), `approve` resolves it. `Query.setModel`, `setPermissionMode`, `interrupt` for live changes; effort via `applyFlagSettings`. Partial messages and subagent forwarding on. Resume with the SDK `resume` option. The prompt must be an `AsyncIterable<SDKUserMessage>`, not a string: `setPermissionMode()` and `interrupt()` only work in streaming-input mode. `canUseTool` fires only when a permission prompt would otherwise appear. Hooks and rules run first, `acceptEdits` skips it for edits, and `dontAsk` denies instead of asking. Always pass `permissionMode` explicitly ([permissions](https://code.claude.com/docs/en/agent-sdk/permissions), [TypeScript reference](https://platform.claude.com/docs/en/agent-sdk/typescript)).
+**Claude SDK:** one streaming-input `query()` per turn, resuming the native session on later turns. `canUseTool` → `approval_request` (allow/deny), `approve` resolves it. `Query.setModel`, `setPermissionMode`, `interrupt` support active-query changes; effort is stored for the next turn's `Options.effort` (the adapter does not call `applyFlagSettings`). User Stop is supervisor-owned process-tree termination. Partial messages and subagent forwarding are on. The prompt is an `AsyncIterable<SDKUserMessage>`, not a string, supporting steering within the active query. `canUseTool` fires only when a permission prompt would otherwise appear. Hooks and rules run first, `acceptEdits` skips it for edits, and `dontAsk` denies instead of asking. Always pass `permissionMode` explicitly ([permissions](https://code.claude.com/docs/en/agent-sdk/permissions), [TypeScript reference](https://code.claude.com/docs/en/agent-sdk/typescript)).
 
 **Claude CLI:** one `--input-format stream-json --output-format stream-json` process per session.
 - Prompt = user message on stdin; `turn_end` from the result line; steer = another user message.
@@ -995,18 +999,22 @@ Agents' own worktree features are always off; the daemon makes one worktree per 
 The experimental opt-in bridge binds to loopback, uses a random per-turn bearer token and waits for an explicit approval or answer. It denies pending requests on cancellation or disposal. The token is passed to the Claude process in an environment variable and may be inherited by its child processes; do not treat the bridge as a security boundary against code running as the user. The MCP transport's timeouts can end a long wait; the product's indefinite approval-wait guarantee remains unimplemented. An `interaction_expired` event records a cancelled or disposed pending question or approval.
 
 **Codex**
+After a daemon restart, Retry falls back to the latest journaled prompt, restoring its context and saved attachment files. Old native approval/question requests are all expired with `host_restart`, not silently accepted or replayed against dead processes; a retried turn must request fresh permissions. Historical journals contain image metadata, not image bytes: image prompts require reattaching the images, with an explicit error rather than a silently incomplete retry.
+Usage pricing normalizes SDK date/provider spellings, Claude family/version ordering, and `codex-mini-latest` to the same model in the fetched price table. Claude's reported usage model takes precedence over an unspecified/default session model. Grok ACP records whole-prompt `_meta.usage` from the vendor's response, using `modelUsage` rows when provided, with `cachedReadTokens` and `cacheCreationTokens` separated from inclusive input. It does not invent snake-case aliases, bill context-window occupancy, or mistake last-model-call counters for whole-turn totals. Unknown models remain unpriced; moving aliases such as bare `sonnet` are not guessed.
 **Current Codex implementation status:** `agent-codex-sdk` drives `runStreamed` turns with native thread IDs, resume, staged `local_image` inputs (`images`), and per-turn `outputSchema`/`cyberAccessProgram` via `setOption` - claims: resume, images, configOptions. `agent-codex-cli` is a full `CodexCliAdapter` over `codex app-server`: `thread/start`/`resume` with `approvalPolicy: on-request`, `turn/start` (per-turn `model`/`effort`/`outputSchema`), `turn/steer`, `turn/interrupt`, `model/list`, and server-request routing - `item/commandExecution|fileChange|permissions/requestApproval` become `approval_request` (command requests get `destructive`/`rule` from the shared classifier), `item/tool/requestUserInput` becomes `question_request`, unknown requests fail closed. App-server camelCase items and `thread/tokenUsage/updated` are normalized onto the shared exec-style mapper. Claims: approvals, steer, resume, model, effort, configOptions - all 7/7 on live smoke against codex-cli 0.169.0, including `model/list` (8 models) and native resume. `danger-full-access` stays rejected on both transports; `turn/steer` while idle queues into the next prompt. See the official [Codex SDK](https://developers.openai.com/codex/sdk) and [app-server](https://developers.openai.com/codex/app-server) documentation.
 - **CLI:** app-server JSON-RPC over stdio (`codex app-server`): `initialize`/`initialized`, `thread/start`/`thread/resume`, `turn/start`, `turn/steer`, `turn/interrupt`. Approvals arrive as server requests. Models from `model/list`. Model, effort, sandbox and approval policy go in thread/turn options.
 - The wire format is JSON-RPC 2.0 without the `"jsonrpc"` field. Generate exact types for the installed version with `codex app-server generate-json-schema` and commit them as test fixtures, because the schema changes between Codex versions. Error `-32001` ("Server overloaded") means retry with exponential backoff and jitter ([app-server docs](https://developers.openai.com/codex/app-server)).
-- **SDK:** wraps `@openai/codex-sdk` `thread.runStreamed`. Images and resume by thread id; **no approvals or steer**.
+- **SDK:** wraps `@openai/codex-sdk` `thread.runStreamed`, with images and native resume. Both transports default to `workspace-write` + `on-request`; explicit `read-only` is preserved. SDK exec has no per-tool approval callback, so Ormicode asks for workspace-write access **for the entire turn before running it**; Decline or Stop never starts execution. Use Codex CLI for per-tool approvals. CLI decisions are validated and forwarded as the vendor's exact `accept`/`decline` choices; neither transport enables full access.
 - Policies: `on-request` is interactive (`untrusted` is retired and can break startup). Sandbox: `read-only`, `workspace-write`, `danger-full-access`. `.git`, `.agents`, `.codex`, `.aws` stay read-only; network off by default in `workspace-write`. Windows uses MXC. With `approvals_reviewer = "auto_review"` Codex decides some approvals itself.
 
 **OpenCode**
+OpenCode ACP inherits the caller's environment; Ormicode does not inject V1 `OPENCODE_CONFIG_CONTENT.permission` into V2. Configure V2 `permissions` rules with `effect: "ask"` where owner approval is required. When the agent sends `session/request_permission`, Ormicode returns the exact selected option ID (including rejects). This bridge cannot force a request for a tool the vendor configuration already allows. V2 configuration and vendor execution remain unverified without a local CLI; the earlier forced-ask claim was incorrect.
+The ACP agent picker and session header warn that **OpenCode may write without approval**. Documented operator-managed `opencode.jsonc` rules use `action: "edit"` (covers edit/write/patch) and `action: "shell"`, `resource: "*"`, `effect: "ask"`. Agent/global rules and saved project approvals can still allow actions; Ormicode does not rewrite those shared policy files or advertise an unverified per-session override. See [the source-backed follow-up](designs/agent-audit-opencode.md#follow-up-asking-before-writes-and-shell-commands).
 - **CLI:** `opencode run --format json --standalone` per prompt, `--session` to resume, `--model`, `--agent`. Parses `step_start`, `text`, `tool_use`, `step_finish`. Can't answer approvals or steer.
 - **ACP:** `opencode acp` (protocol v1). Full turns and two config options work (see [ACP](#acp) known agents). It has its own `agent-opencode-acp` package with its own ACP client.
 - **SDK:** use the official v2 HTTP client `@opencode/client` for `opencode serve`; the older `@opencode-ai/sdk` targets v1. The separate `@opencode/sdk` embeds a host and is not the transport used here. The intended adapter prompts with `{text, delivery}`, reads `/api/event` (`session.text`, `session.tool`, `session.usage`, `session.execution`), answers `permission.v2.asked`, steers with `delivery: "steer"`, and resumes by id. Has diffs, abort, fork, revert.
 - `opencode serve` listens on `127.0.0.1:4096` by default. Basic auth comes from `OPENCODE_SERVER_PASSWORD` (user `opencode`). The first SSE event is `server.connected`. Reply routes moved between versions (`/session/:id/permissions/:id` is deprecated), so **read the running server's OpenAPI spec at startup** instead of hard-coding paths ([server docs](https://opencode.ai/docs/server/)).
-- Permissions: rules give `allow`/`ask`/`deny`; answers are `once`, `always`, `reject`. `always` lasts for that OpenCode session only.
+- Permissions: rules give `allow`/`ask`/`deny`; answers are `once`, `always`, `reject`. In V2, `always` saves project-scoped approvals that survive the session; configured denies still win ([permissions](https://opencode.ai/docs/permissions/)).
 
 **Current OpenCode implementation status:** `agent-opencode-sdk` starts an owned loopback server (generated basic-auth password, pinned to 2.2.5) and implements sessions, SSE mapping, `permission.asked` routed to `approve` (`once`/`always`/`reject` verbatim), `interrupt`, `steer` (`delivery: "steer"`), `setModel`/`setMode`/`setEffort` (effort is the model `variant` on `switchModel`), resume and `model.list` - claims: approvals, steer, resume, model, effort, modes. `agent-opencode-cli` runs one `opencode run --format json --standalone` per turn with `--model provider/model#variant`, `--agent`, staged `--file` images and `--session` resume - claims: resume, model, effort, modes, images. `agent-opencode-acp` (`opencode acp`, v1) claims approvals + resume. All three went 7/7 on live smoke against opencode 2.2.5. See the official [v2 client](https://opencode.ai/docs/build/client/) and [API](https://opencode.ai/docs/api/).
 
@@ -1022,7 +1030,7 @@ The experimental opt-in bridge binds to loopback, uses a random per-turn bearer 
 - Permission modes: default ask, `acceptEdits`, `auto`, `dontAsk`, `bypassPermissions`, plus allow/ask/deny rules and hooks. Sandbox profiles `off`, `workspace`, `devbox`, `read-only`, `strict` (child-network blocking Linux-only).
 - **ACP** (`grok agent stdio`): protocol v1, `loadSession`, images, MCP http/sse, session list/resume/close. `session/new` returns models with efforts and `configOptions` for `model` and `reasoning_effort`. Permissions via `session/request_permission`; `_meta.yoloMode` accepted.
 
-**Current Grok implementation status:** `agent-grok-acp` parses `configOptions`/`modes` from `session/new`+`session/load` and applies model/effort via `session/set_config_option` (shared `parseOptions`/`parseModes` from `agent-acp`; effort falls back `thought_level` to `thinking`) - claims: approvals, resume, model, effort, configOptions; Grok advertises `model` and `reasoning_effort`, verified live (set to grok-4.7 + high round-tripped). No modes are advertised, so `modes` stays unclaimed. `agent-grok-cli` runs one headless process per turn (`--permission-mode dontAsk` - interactive approvals cannot be answered), `--model`, `--reasoning-effort`, `--json-schema` via `setOption('outputSchema')`, `grok models` listing - claims: resume, model, effort, configOptions. Both went 7/7 on live smoke against Grok 1.0.77.
+**Current Grok implementation status:** both daemon transports (`grok/cli` and `grok/acp`) now run `grok --no-auto-update agent stdio` through `agent-grok-acp`; CLI is a transport-label wrapper, not the legacy headless `agent-grok-cli`. Permissions forward exact ACP option IDs. `configOptions`/`modes` come from `session/new`+`session/load`; model/effort changes use advertised IDs with `session/set_config_option`, falling back to advertised modes via `session/set_mode`. Missing options are not invented. The older standalone headless package remains available but is not the daemon registry's CLI route. This audit used official docs/source and fixtures: no local Grok CLI or authenticated smoke run was available. See [the source-backed audit](designs/agent-audit-grok.md).
 
 **Vibe** (no SDK)
 - **CLI:** `vibe --prompt`, `--output text|json|streaming`, `--resume`, `--model` (new sessions), `--agent`, `--auto-approve`, `--worktree`, limits, `--output-dir`. Denies approval-needing calls unless auto-approve, so approvals = false.
@@ -1355,14 +1363,14 @@ No approval from the agent = none shown. Before starting a transport without app
 
 **The broker**
 - Named secrets live in the OS keyring on the hub — never in the repo or the store.
-- At process start, the daemon injects the secrets a project declares as environment variables into the worker and its services. Memory only.
+- At worker start, the daemon injects stored machine secrets and that project's stored secrets as environment variables; project values win. Agents and tool subprocesses inherit them. Restart/resume the worker to pick up later changes. Declared service secrets keep their existing declaration-based resolution. Values stay in memory only.
 - Projects declare names, not values:
 ```yaml
 secrets:
   - STRIPE_TEST_KEY
   - DATABASE_URL
 ```
-- Missing secrets are reported before the session starts.
+- Missing declared secrets are reported before the session starts. Declarations are optional for stored worker secrets and remain useful for required names.
 - Secrets are never passed as tool-call arguments.
 
 **Redaction:** transcripts, logs and tool output are scanned for loaded values and replaced with `[redacted:STRIPE_TEST_KEY]`. If one shows up in a tool call, it's replaced and the session gets a warning.
@@ -1389,6 +1397,8 @@ secrets:
 > **Status:** now (orchestration and desktop/client UI implemented) · **Needs:** [Sessions](#sessions), [Approvals](#approvals)
 
 **A session can own child sessions. Together they're a team.** Same session type, plus a parent and a team id.
+
+`team_roster` (`team.tree`) also works before a team exists: it returns `{team: null, parent: <lead session>, children: []}` without creating a team. The first spawn creates the team lazily. Project teams get isolated worktrees; no-project (`scratch`) teammates instead share the lead's existing scratch cwd, without taking its workspace lease. Deleting a teammate never deletes the lead's workspace; deleting the lead keeps the folder while teammates still use it. Copy to project accepts the shared scratch folder too.
 
 **Talking**
 - Mesh: children can message the parent and any sibling; the parent reaches everyone.
@@ -1922,6 +1932,10 @@ The daemon methods for this pane are built. The UI can use the status, history, 
 
 **Embedded preview (default):** a tab next to the session showing the dev server, proxied through the hub with an authenticated URL, so it works on the phone too. Local preview proxies HTTP and websockets (live reload works).
 
+**Desktop web browsing:** the Browser rail address bar works even with no services running. Enter an HTTP(S) URL, a bare domain (`example.com` → `https://example.com/`), or search terms (DuckDuckGo, `https://duckduckgo.com/?q=…`). Back, Forward and Reload operate inside the embedded browser. `/paths`, `?queries` and `#fragments` resolve against the current page; local service ports and portals still use the authenticated preview proxy. Web links and HTTP(S) popup links stay in the pane; Open externally remains available. Browsing uses the project's existing preview partition and Keep sign-ins setting. Public web requests go directly from the desktop, including when connected to a remote hub; local service previews continue through the relay.
+
+Guests are sandboxed with context isolation, web security enabled, no Node integration (including workers/subframes), no preload or nested webviews, and denied device permissions. Addresses, initial embeds, frame navigations, redirects and popup targets are limited to HTTP(S); `file:`, `javascript:`, `data:` and other schemes are blocked. Inspector/console integration remains a local-preview feature; arbitrary sites may not support it. This is a session browser, not an agent permission to browse arbitrary sites.
+
 **Relay status:** Desktop preview works over the relay without HMR; web preview needs a dedicated preview origin (see Open questions).
 
 Services are declared in `.ormi/services.yaml` (no port guessing):
@@ -1955,7 +1969,7 @@ services:
 
 **Security:** preview URLs are token-protected and rotate on service restart. The proxy only serves declared portals. Previews can't reach app IPC or the relay control channel.
 
-**Not:** a general browser or computer use.
+**Not:** a full browser replacement or general computer use. Agent browser tools remain restricted to session previews.
 
 ## GitHub
 
@@ -2095,7 +2109,7 @@ The built-in server also ships `ormi_design_list`, `ormi_design_get`, `ormi_desi
 - File history.
 - Open in external editor.
 
-**Ask about this file:** select lines, press one button, and a new session starts with the path and selection as context plus a prompt box.
+**Ask about this file:** select lines and send a comment with the path and selection as context to the session being viewed (queued if it is busy). Only callers without an active session start a new session in the same project.
 
 **Editing rules**
 - Plain text only. No format-on-save, LSP, refactors or multi-cursor — use your IDE for that.

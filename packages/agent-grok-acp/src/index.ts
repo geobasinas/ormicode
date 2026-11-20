@@ -9,4 +9,5 @@ export function startGrokAcp(options: { cwd?: string; executable?: string; spawn
   return AcpConnection.start({ executable: options.executable ?? 'grok', args: ['--no-auto-update', 'agent', 'stdio'], cwd: options.cwd, spawn: options.spawn, onNotification: options.onNotification });
 }
 export * from './adapter.ts';
+export { GrokInteractiveCliAdapter } from './cli.ts';
 export * from './map.ts';

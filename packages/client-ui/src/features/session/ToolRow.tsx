@@ -280,10 +280,10 @@ export function ThinkingRow({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
   return (
     <div style={{ margin: '3px 0' }}>
-      <div onClick={() => setOpen(o => !o)} className="ormi-tool-line" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: 12, lineHeight: '18px', padding: '2px 0', ...hint }}>
+      <button type="button" aria-expanded={open} onClick={() => setOpen(o => !o)} className="ormi-tool-line" style={{ background: 'none', border: 0, font: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: 12, lineHeight: '18px', padding: '2px 0', ...hint }}>
         <Brain size={12} />Thinking{open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
-      </div>
-      {open ? <div style={{ padding: '2px 0 0 19px' }}><Markdown text={text} muted /></div> : null}
+      </button>
+      {open ? <div style={{ padding: '2px 0 0 19px' }}><Markdown text={text.trim() ? text : 'Thinking text was not provided by the agent.'} muted /></div> : null}
     </div>
   );
 }

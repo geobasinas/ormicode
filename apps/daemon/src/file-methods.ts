@@ -29,6 +29,7 @@ export async function fileMethod(ctx: DispatchCtx, client: Client, id: string, m
         if (busy) return client.link.replyError(id, 'file.busy', 'A session using this workspace is in a turn');
         const content = String(body.content);
         const target = prepareWrite(root, String(body.path), content, typeof body.baseMtime === 'number' ? body.baseMtime : undefined);
+        const saved = writeFile(target, content);
         let checkpoint: string | null = null;
         if (process.env.ORMICODE_CHECKPOINTS !== '0' && existsSync(root) && !root.startsWith(join(ormicodeDir(), 'scratch'))) {
           const result = await ctx.checkpoints.snapshot(session, root, row.last_seq, 'manual edit');
@@ -40,7 +41,6 @@ export async function fileMethod(ctx: DispatchCtx, client: Client, id: string, m
             });
           }
         }
-        const saved = writeFile(target, content);
         ctx.record(session, 'file_edit', { path: saved.path, size: saved.size, checkpoint });
         return client.link.reply(id, { ...saved, checkpoint });
       }

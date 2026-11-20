@@ -1,6 +1,6 @@
 import type { Client, DispatchCtx } from './dispatch.ts';
-import { getDraft, getSession, listSessions, setDraft } from '@ormicode/session-store';
-import { replay } from '@ormicode/journal';
+import { getDraft, getSession, setDraft } from '@ormicode/session-store';
+import { promptHistory } from './prompt-history.ts';
 
 export async function composerMethod(
   ctx: DispatchCtx,
@@ -25,27 +25,7 @@ export async function composerMethod(
   }
   if (method === 'prompts.history') {
     const project = typeof body.project === 'string' ? body.project : undefined;
-    const query = typeof body.query === 'string' ? body.query.trim().toLowerCase() : '';
-    const limit = Number(body.limit ?? 50);
-    const prompts = [...listSessions(ctx.db), ...listSessions(ctx.db, true)]
-      .filter(session => !project || session.project === project)
-      .flatMap(session => replay(ctx.db, session.id)
-        .filter(event => event.kind === 'prompt')
-        .flatMap(event => {
-          const payload = JSON.parse(event.payload) as { text?: unknown };
-          const text = typeof payload.text === 'string' ? payload.text.trim() : '';
-          if (!text || !text.toLowerCase().includes(query)) return [];
-          return [{ text, createdAt: event.ts, session: session.id, project: session.project, seq: event.seq }];
-        }))
-      .sort((a, b) => b.createdAt - a.createdAt || b.seq - a.seq);
-    const seen = new Set<string>();
-    const items = prompts.filter(item => {
-      if (seen.has(item.text)) return false;
-      seen.add(item.text);
-      return true;
-    }).slice(0, limit).map(({ text, createdAt, session, project: path }) => ({
-      text, createdAt, session, project: path,
-    }));
+    const items = promptHistory(ctx.db, { project, query: typeof body.query === 'string' ? body.query : '', limit: Number(body.limit ?? 50) });
     return client.link.reply(id, { items });
   }
 }

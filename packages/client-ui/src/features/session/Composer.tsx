@@ -16,6 +16,7 @@ import { useComposerInbox } from '../../lib/composer-inbox.ts';
 import { useComposerHeight } from './useComposerHeight.ts';
 import { useComposerQueue, type QueuedItem } from './useComposerQueue.ts';
 import { branchLabel } from './team-presentation.ts';
+import { loadPromptHistory } from './prompt-history.ts';
 
 const LIVE = new Set(['running', 'starting', 'retrying']);
 const WAITING = new Set(['awaiting_approval', 'awaiting_input', 'paused_rate_limited']);
@@ -75,16 +76,7 @@ export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefi
   useEffect(() => { setEffortOverride(undefined); }, [session, details?.effort]);
   useEffect(() => { setContext([]); }, [session]);
   useEffect(() => {
-    let active = true;
-    void transport.request('prompts.history', {
-      ...(details?.project ? { project: details.project } : {}),
-      query: historyOpen ? historyQuery : '',
-      limit: 100,
-    }).then(res => {
-      if (active && res.type === 'res')
-        setHistoryItems((res.body as { items: { text: string; createdAt: number }[] }).items);
-    }).catch(() => undefined);
-    return () => { active = false; };
+    return loadPromptHistory(transport, details?.project, historyOpen ? historyQuery : '', setHistoryItems, historyQuery ? 180 : 0);
   }, [transport, details?.project, historyOpen, historyQuery]);
   useEffect(() => {
     if (!slashOpen) return;
@@ -278,6 +270,7 @@ export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefi
         <ImageStrip images={img.images} onRemove={img.remove} />
         {files.files.length ? <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', padding: '2px 0 6px' }}>{files.files.map((file, index) => <span key={`${file.name}-${index}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, maxWidth: 190, fontSize: 10, color: 'var(--text-secondary)', background: 'var(--bg-inset)', borderRadius: 5, padding: '3px 5px' }}><FileText size={11} /><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name} · {Math.ceil(file.size / 1024)} KB</span><button onClick={() => files.remove(index)} style={iconBtn}><X size={10} /></button></span>)}</div> : null}
         <textarea
+          className="ormi-composer-input"
           ref={area}
           value={text}
           onChange={e => {

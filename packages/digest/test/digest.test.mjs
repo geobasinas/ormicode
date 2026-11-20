@@ -37,7 +37,24 @@ test('no events is silent, and ranking puts waiting first and oldest first withi
   const mk = (id, state, updatedAt) => summarize({ id, state, updatedAt }, [ev(1, 'text', { text: 'hi' })], 0, 1000);
   const sorted = rank([silent, mk('p', 'idle', 900), mk('d', 'done', 900), mk('f1', 'failed', 900), mk('f2', 'interrupted', 100),
     summarize({ id: 'r', state: 'paused_rate_limited', updatedAt: 500 }, [ev(1, 'text', { text: 'x' })], 0, 1000)]);
-  assert.deepEqual(sorted.map(e => e.session), ['r', 'f2', 'f1', 'd', 'p', 's_q']);
+  assert.deepEqual(sorted.map(e => e.session), ['f2', 'f1', 'd', 'p', 'r', 's_q']);
+});
+
+test('only pending user interactions rank waiting, never stale requests on stopped, failed, idle or rate-limited sessions', () => {
+  const pending = [ev(1, 'approval_request', { request: 'a' }), ev(2, 'question_request', { request: 'q' })];
+  for (const state of ['idle', 'interrupted', 'failed', 'done', 'archived', 'paused_rate_limited']) {
+    const digest = summarize({ id: state, state, updatedAt: 1 }, pending, 0, 100);
+    assert.notEqual(digest.rank, 'waiting', state);
+    if (state === 'failed') assert.equal(digest.rank, 'failed');
+  }
+  for (const state of ['awaiting_approval', 'awaiting_input', 'running'])
+    assert.equal(summarize({ id: state, state, updatedAt: 1 }, pending, 0, 100).rank, 'waiting');
+  const stopped = summarize({ id: 'stopped', state: 'interrupted', updatedAt: 3 }, [...pending, ev(3, 'interrupted', { reason: 'user_abort' })], 0, 100);
+  assert.equal(stopped.rank, 'progressed'); assert.equal(stopped.wants, null);
+  assert.equal(summarize({ id: 'stopped', state: 'interrupted', reason: 'user_abort', updatedAt: 3 }, pending, 0, 100).rank, 'progressed');
+  assert.equal(summarize({ id: 'failure', state: 'failed', updatedAt: 3 }, [ev(1, 'error', { code: 'auth', message: 'expired' })], 0, 100).rank, 'failed');
+  assert.notEqual(summarize({ id: 'delegated', state: 'awaiting_approval', delegatedApproval: true, updatedAt: 3 }, [ev(1, 'team_approval_request', { request: 'a' })], 0, 100).rank, 'waiting');
+  assert.equal(summarize({ id: 'mixed', state: 'awaiting_approval', delegatedApproval: true, updatedAt: 3 }, pending, 0, 100).rank, 'waiting');
 });
 
 test('terminal lifecycle events do not make a session digest active', () => {

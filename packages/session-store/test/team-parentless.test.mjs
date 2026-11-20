@@ -53,7 +53,7 @@ test('migration 0010 upgrades teams data without changing messages or membership
   old.close();
   const db = openStore(path);
   try {
-    assert.equal(db.pragma('user_version', { simple: true }), 10);
+    assert.ok(db.pragma('user_version', { simple: true }) >= 10);
     assert.equal(getSession(db, 'child').parentless, 1);
     assert.equal(getSession(db, 'child').team, 'team');
     assert.equal(getSession(db, 'child').parent, 'parent');

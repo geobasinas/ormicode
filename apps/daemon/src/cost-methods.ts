@@ -1,6 +1,6 @@
 import { getPinnedPrice, getSession, listSessions, pinPrice, type SessionRow, type Store } from '@ormicode/session-store';
 import { replay } from '@ormicode/journal';
-import { costOf, priceFor, summarize, type CostSummary, type Price, type PriceTable, type Usage } from '@ormicode/pricing';
+import { costOf, normalizeModel, priceFor, summarize, type CostSummary, type Price, type PriceTable, type Usage } from '@ormicode/pricing';
 import type { Client, DispatchCtx } from './dispatch.ts';
 
 interface CostEvent { ts: number; kind: string; payload: Record<string, unknown> }
@@ -11,18 +11,18 @@ function eventsFor(db: Store, session: string): CostEvent[] {
 }
 
 function priceForSession(db: Store, session: SessionRow, events: CostEvent[], table: PriceTable) {
-  if (!session.model) return undefined;
-  const pinned = getPinnedPrice(db, session.id, session.model);
-  if (pinned) return pinned;
-  const price = priceFor(table, session.model);
-  if (!price || !events.some(e => e.kind === 'usage' && typeof e.payload.costUsd !== 'number')) return undefined;
-  pinPrice(db, session.id, session.model, price, table.version ?? 'unversioned');
-  return getPinnedPrice(db, session.id, session.model);
+  const estimated = events.filter(e => e.kind === 'usage' && typeof e.payload.costUsd !== 'number');
+  if (estimated.length) for (const model of new Set([session.model, ...estimated.map(e => e.payload.model)])) {
+    if (typeof model !== 'string' || !model || getPinnedPrice(db, session.id, model)) continue;
+    const price = priceFor(table, model);
+    if (price) pinPrice(db, session.id, model, price, table.version ?? 'unversioned');
+  }
+  return session.model ? getPinnedPrice(db, session.id, session.model) : undefined;
 }
 
 function emptyBucket(): Bucket { return { tokens: 0, usd: null, unpriced: 0, estimate: false }; }
 
-function addUsage(bucket: Bucket, event: CostEvent, price?: Price): void {
+function addUsage(bucket: Bucket, event: CostEvent, price: Price | undefined): void {
   const usage = event.payload as Usage;
   bucket.tokens += (usage.input ?? 0) + (usage.output ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
   if (typeof usage.costUsd === 'number') bucket.usd = (bucket.usd ?? 0) + usage.costUsd;
@@ -45,7 +45,8 @@ function insert<K>(map: Map<K, Bucket>, key: K): Bucket {
 
 function sessionCost(db: Store, session: SessionRow, events: CostEvent[], table: PriceTable): CostSummary {
   const pinned = priceForSession(db, session, events, table);
-  return summarize(events.filter(e => e.kind === 'usage' || e.kind === 'turn_end'), session.model, table, pinned);
+  return summarize(events.filter(e => e.kind === 'usage' || e.kind === 'turn_end'), session.model, table, pinned,
+    model => getPinnedPrice(db, session.id, model));
 }
 
 export async function costMethod(ctx: DispatchCtx, client: Client, id: string, method: string, body: Record<string, unknown>): Promise<void> {
@@ -74,10 +75,13 @@ export async function costMethod(ctx: DispatchCtx, client: Client, id: string, m
     if (!inRange.length) continue;
     const sessionBucket = emptyBucket();
     for (const event of inRange) {
-      addUsage(total, event, price);
-      addUsage(insert(projects, session.project), event, price);
-      addUsage(insert(days, localDate(event.ts)), event, price);
-      addUsage(sessionBucket, event, price);
+      const model = typeof event.payload.model === 'string' ? event.payload.model : session.model;
+      const eventPrice = model && normalizeModel(model) !== normalizeModel(session.model ?? '')
+        ? getPinnedPrice(ctx.db, session.id, model)?.price ?? priceFor(table, model) : price;
+      addUsage(total, event, eventPrice);
+      addUsage(insert(projects, session.project), event, eventPrice);
+      addUsage(insert(days, localDate(event.ts)), event, eventPrice);
+      addUsage(sessionBucket, event, eventPrice);
     }
     sessions.push({ session: session.id, project: session.project, ...sessionBucket });
   }

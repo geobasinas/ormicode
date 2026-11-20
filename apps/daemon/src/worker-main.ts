@@ -28,6 +28,7 @@ const send = async (method: string, body: Record<string, unknown>) => {
 let adapter: AgentAdapter | undefined;
 let handle: Handle | undefined;
 let pumping = false;
+let interruptReason: string | undefined;
 
 const pump = () => {
   if (!adapter || !handle || pumping) return;
@@ -35,6 +36,8 @@ const pump = () => {
   (async () => {
     for await (const event of adapter!.events(handle!)) {
       const { kind, ...rest } = event as { kind: string } & Record<string, unknown>;
+      if (kind === 'interrupted' && rest.reason === 'user_abort' && interruptReason) rest.reason = interruptReason;
+      if (kind === 'interrupted' || kind === 'turn_start') interruptReason = undefined;
       await send('worker.event', { session, kind, payload: rest, ts: Date.now() });
     }
     await send('worker.event', { session, kind: 'interrupted', payload: { reason: 'stream_ended' }, ts: Date.now() });
@@ -78,6 +81,7 @@ link.onFrame = async (frame: Frame) => {
         break;
       case 'worker.abort':
         if (!adapter?.interrupt || !handle) return fail(id, 'agent.unsupported', 'no interrupt');
+        interruptReason = body.preserveHandoffs === true ? 'urgent_delivery' : 'user_abort';
         await adapter.interrupt(handle);
         link.reply(id, { interrupted: true });
         break;

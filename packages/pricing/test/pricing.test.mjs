@@ -43,7 +43,7 @@ test('summarize estimates from the fetched price, prefers reported cost, and nev
 });
 
 test('summarize uses the pinned price and version instead of a changed table', () => {
-  const changed = fromOpenRouter({ data: [{ id: 'anthropic/claude-sonnet-4.6', pricing: { prompt: '0.000009', completion: '0.00003' } }] });
+  const changed = fromOpenRouter({ data: [{ id: 'anthropic/claude-sonnet-4.6', pricing: { prompt: '0.0000015', completion: '0.0000075' } }] });
   const pinned = { price: { input: 3, output: 15 }, version: 'openrouter-original' };
   const result = summarize([{ kind: 'usage', payload: { input: 1_000_000, output: 100_000 } }], 'claude-sonnet-4-6', changed, pinned);
   assert.deepEqual([result.usd, result.priceVersion, result.source], [4.5, 'openrouter-original', 'estimate']);

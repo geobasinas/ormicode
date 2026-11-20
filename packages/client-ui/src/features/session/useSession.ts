@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { usePlatform } from '../../lib/platform.ts';
 
 export interface SessionDetails {
-  id: string; title: string | null; state: string; project: string; cwd?: string;
+  id: string; title: string | null; state: string; lastSeq?: number; project: string; cwd?: string;
   vendor: string; transport: string; updatedAt: number; branch?: string | null;
   worktree?: boolean;
   scratchFiles?: number;

@@ -98,9 +98,10 @@ export class GrokAcpAdapter implements AgentAdapter {
   private async run(session: Session, text: string): Promise<void> {
     let completed = false;
     try {
-      const reason = await session.connection.prompt(session.nativeId, text);
+      let usage: unknown;
+      const reason = await session.connection.prompt(session.nativeId, text, 300_000, value => { usage = value; });
       if (session.disposed) return;
-      session.queue.push(session.mapper!.finish());
+      session.queue.push(session.mapper!.finish(usage));
       if (session.cancelRequested || reason === 'cancelled') {
         session.needsRecovery = true; session.queue.push([{ kind: 'interrupted', reason: 'user_abort' }]);
       } else if (reason === 'end_turn') completed = true;

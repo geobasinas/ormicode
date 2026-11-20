@@ -9,6 +9,7 @@ import {
 import type { SessionDetails } from './useSession.ts';
 import { CopyOutDialog } from './CopyOutDialog.tsx';
 import { feedback } from '../../lib/feedback.ts';
+import { OpenCodePermissionNotice } from './OpenCodePermissionNotice.tsx';
 
 
 export function SessionHeader({ session, details, onOpen, onHandoff }: { session: string; details: SessionDetails | undefined; onOpen?: (session: string) => void; onHandoff?(): void }) {
@@ -103,6 +104,7 @@ export function SessionHeader({ session, details, onOpen, onHandoff }: { session
       display: 'flex', alignItems: 'center', gap: 10, height: 30, minWidth: 0,
       padding: '0 11px 0 var(--space-3)', flexShrink: 1,
     }}>
+      <OpenCodePermissionNotice vendor={details?.vendor} transport={details?.transport} compact />
       <span style={{
         display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, height: 24, boxSizing: 'border-box', flexShrink: 0,
         color: 'var(--text-label)', padding: '0 9px', borderRadius: 6,

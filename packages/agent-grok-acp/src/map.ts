@@ -1,6 +1,7 @@
 import * as z from 'zod/mini';
 import type { AgentEvent } from '@ormicode/protocol';
 import { parseEventBody } from '@ormicode/protocol';
+import { promptUsage } from './usage.ts';
 
 const envelope = z.looseObject({ sessionId: z.string(), update: z.looseObject({ sessionUpdate: z.string() }) });
 const chunk = z.looseObject({ content: z.looseObject({ type: z.string(), text: z.optional(z.string()) }) });
@@ -39,12 +40,13 @@ export class GrokTurnMapper {
     }
     return this.validate(events);
   }
-  finish(): AgentEvent[] {
+  finish(usage?: unknown): AgentEvent[] {
     const events: unknown[] = [];
     if (this.thinking) events.push({ kind: 'thinking', text: this.thinking });
     if (this.text) events.push({ kind: 'text', text: this.text });
     for (const callId of this.calls) events.push({ kind: 'tool_result', callId, status: 'interrupted' });
     this.calls.clear();
+    events.push(...promptUsage(usage));
     return this.validate(events);
   }
   private validate(events: unknown[]): AgentEvent[] {

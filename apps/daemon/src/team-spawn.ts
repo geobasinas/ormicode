@@ -46,8 +46,9 @@ export async function spawnTeamChild(ctx: DispatchCtx, client: Client, id: strin
       model: body.model ?? parent.model ?? 'default', effort: body.effort ?? parent.effort ?? 'default', mode: body.mode ?? parent.mode ?? 'default',
       ...(!body.vendor && parent.agent_command ? { agentCommand: parent.agent_command } : {}),
       ...(!body.vendor && parent.agent_args ? { agentArgs: JSON.parse(parent.agent_args) } : {}),
-      workspace: { kind: 'worktree', branch: parent.branch ?? parent.base_commit ?? 'HEAD', name: `ormi-${newId('s').slice(2)}` }, parent: parent.id, team: team.id,
-    });
+      workspace: parent.project === 'scratch' ? { kind: 'scratch' }
+        : { kind: 'worktree', branch: parent.branch ?? parent.base_commit ?? 'HEAD', name: `ormi-${newId('s').slice(2)}` }, parent: parent.id, team: team.id,
+    }, parent.project === 'scratch' ? parent.cwd : undefined);
     if (!child || failed) { if (!existing) closeTeam(ctx.db, team.id); return; }
     ctx.record(parent.id, 'agent_spawned', { team: team.id, child });
     readBoard(ormicodeDir(), team.id);

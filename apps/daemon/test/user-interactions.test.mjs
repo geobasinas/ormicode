@@ -3,12 +3,14 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { openStore, createSession, getSession, listQueuedPrompts, setState } from '@ormicode/session-store';
+import { openStore, createSession, getSession, listQueuedPrompts, pendingQuestions, setState } from '@ormicode/session-store';
 import { newId } from '@ormicode/protocol';
 import { append, replay } from '@ormicode/journal';
 import { UserInteractions } from '../src/user-interactions.ts';
 import { stateFor } from '../src/supervisor-state.ts';
 import { recoverSessions } from '../src/recovery.ts';
+import { abortSession } from '../src/abort-session.ts';
+import { hasUnansweredUserQuestion } from '../src/late-question.ts';
 
 test('daemon questions time out at ten minutes but accept one late answer, including after restart', async t => {
   const dir = mkdtempSync(join(tmpdir(), 'ormi-user-interactions-')), db = openStore(join(dir, 'db'));
@@ -47,4 +49,38 @@ test('daemon questions time out at ten minutes but accept one late answer, inclu
   assert.equal(replies.at(-1).body.answered, true);
   assert.equal(listQueuedPrompts(db, session).length, 2);
   restarted.close();
+});
+
+for (const expiredBeforeStop of [false, true]) test(`Stop cancels daemon questions and allows a follow-up (already expired: ${expiredBeforeStop})`, async t => {
+  const db = openStore(':memory:'); t.after(() => db.close());
+  createSession(db, { id: 's', machine: 'm', project: 'p', vendor: 'fake', transport: 'cli', cwd: '/repo' });
+  setState(db, 's', 'running');
+  const ctx = { db, drainQueue: async () => true, record(session, kind, payload) {
+    append(db, session, { kind, payload });
+    const state = kind === 'state' ? payload.state : stateFor[kind];
+    if (state) setState(db, session, state);
+  }, stopWorker: async session => ctx.interactions.unavailable(session) };
+  ctx.interactions = new UserInteractions(() => ctx); t.after(() => ctx.interactions.close());
+  const replies = [];
+  const client = { device: 'd', link: { reply: (_id, body) => replies.push(body), replyError: (_id, code) => replies.push({ code }) } };
+  const asking = ctx.interactions.ask(client, 'ask', 's', { question: 'Continue?' });
+  const [request] = pendingQuestions(db, 's');
+  assert.ok(request);
+  if (expiredBeforeStop) { ctx.interactions.unavailable('s'); await asking; }
+  assert.equal(hasUnansweredUserQuestion(db, 's'), true);
+  assert.equal(await abortSession(ctx, 's'), true);
+  await asking;
+  assert.deepEqual(pendingQuestions(db, 's'), []);
+  assert.equal(hasUnansweredUserQuestion(db, 's'), false);
+  assert.equal(getSession(db, 's').state, 'interrupted');
+  const expiry = JSON.parse(replay(db, 's').findLast(e => e.kind === 'interaction_expired').payload);
+  assert.equal(expiry.reason, 'user_abort'); assert.equal(expiry.answerable, false);
+  await ctx.interactions.method(client, 'late', 'session.answer', { session: 's', request, answers: { 'Continue?': 'yes' } });
+  assert.equal(replies.at(-1).code, 'session.already_decided');
+  assert.deepEqual(listQueuedPrompts(db, 's'), []);
+  const next = ctx.interactions.ask(client, 'next', 's', { question: 'Next question?' });
+  assert.equal(pendingQuestions(db, 's').length, 1);
+  ctx.interactions.unavailable('s', 'user_abort'); await next;
+  assert.deepEqual(pendingQuestions(db, 's'), []);
+  assert.equal(await abortSession(ctx, 's'), false);
 });

@@ -44,6 +44,26 @@ const startSession = async (client, vendor = 'fake') => {
   return res.body.session;
 };
 
+test('session.abort kills the worker, interrupts its open tool row and allows a later prompt', async () => {
+  const { daemon, client, cleanup } = await boot({ ORMICODE_FAKE_SCRIPT: 'tool' });
+  try {
+    const session = await startSession(client);
+    assert.equal((await client.request('session.prompt', { session, text: 'hold tool' })).type, 'res');
+    const until = Date.now() + 5000;
+    while (!replay(daemon.db, session).some(e => e.kind === 'tool_call') && Date.now() < until) await new Promise(r => setTimeout(r, 10));
+    assert.ok(replay(daemon.db, session).some(e => e.kind === 'tool_call'));
+    assert.equal((await client.request('session.abort', { session })).type, 'res');
+    assert.equal(getSession(daemon.db, session).worker_pid, null);
+    const rows = replay(daemon.db, session);
+    assert.equal(JSON.parse(rows.find(e => e.kind === 'tool_result').payload).status, 'interrupted');
+    assert.equal(JSON.parse(rows.at(-1).payload).reason, 'user_abort');
+    assert.equal((await client.request('session.retry', { session })).body.accepted, true);
+    assert.equal((await client.request('session.abort', { session })).type, 'res');
+    assert.equal((await client.request('session.prompt', { session, text: 'continue' })).type, 'res');
+    assert.equal((await client.request('session.abort', { session })).type, 'res');
+  } finally { await cleanup(); }
+});
+
 test('session.start rejects missing project paths without creating them', async () => {
   const { client, cleanup } = await boot();
   const missing = join(projectDir, 'missing-project');

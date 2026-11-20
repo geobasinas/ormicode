@@ -3,6 +3,7 @@ import { EventQueue, NO_CAPABILITIES, RawLog, classifyCommand } from '@ormicode/
 import type { AgentAdapter, Handle, ModelList, NativeRef, PromptInput, StartSpec } from '@ormicode/agent-core';
 import type { AgentEvent } from '@ormicode/protocol';
 import { ulid } from 'ulid';
+import * as z from 'zod/mini';
 import { CodexEventMapper } from '@ormicode/agent-codex-sdk';
 import { CodexAppServer } from './app-server.ts';
 
@@ -22,7 +23,7 @@ function translateItem(item: unknown): unknown {
 }
 const APPROVAL_OPTIONS = [{ id: 'accept', label: 'Approve' }, { id: 'acceptForSession', label: 'Approve for session' }, { id: 'decline', label: 'Decline' }, { id: 'cancel', label: 'Cancel turn' }];
 
-interface Pending { resolve: (result: unknown) => void; turnId?: string }
+interface Pending { resolve: (result: unknown) => void; turnId?: string; respond?: (option: string) => unknown; options?: string[] }
 interface Session {
   server: CodexAppServer; queue: EventQueue; log?: RawLog;
   nativeId?: string; turnId?: string; active: boolean; disposed: boolean;
@@ -68,8 +69,8 @@ export class CodexCliAdapter implements AgentAdapter {
     session.server = await this.openServer(session);
     try {
       const id = nativeId
-        ? await session.server.resumeThread({ threadId: nativeId, cwd: spec.cwd, model: spec.model, sandbox: spec.mode ?? 'read-only', approvalPolicy: 'on-request' })
-        : await session.server.startThread({ cwd: spec.cwd, model: spec.model, sandbox: spec.mode ?? 'read-only', approvalPolicy: 'on-request' });
+        ? await session.server.resumeThread({ threadId: nativeId, cwd: spec.cwd, model: spec.model, sandbox: spec.mode ?? 'workspace-write', approvalPolicy: 'on-request' })
+        : await session.server.startThread({ cwd: spec.cwd, model: spec.model, sandbox: spec.mode ?? 'workspace-write', approvalPolicy: 'on-request' });
       session.nativeId = id;
       this.onNativeId?.(handle, id);
     } catch (error) { session.server.close(); throw error; }
@@ -120,13 +121,14 @@ export class CodexCliAdapter implements AgentAdapter {
     const session = this.get(handle);
     const pending = session.approvals.get(requestId);
     if (!pending) throw new Error(`Unknown approval request: ${requestId}`);
+    if (!(pending.options ?? APPROVAL_OPTIONS.map(option => option.id)).includes(optionId)) throw new Error('Unknown approval option');
     session.approvals.delete(requestId);
     if (!session.active || !session.turnId || pending.turnId !== session.turnId) {
       session.queue.push([{ kind: 'interaction_expired', request: requestId, reason: 'turn_ended' }]);
       throw new Error('Approval expired: its turn has ended');
     }
     session.queue.push([{ kind: 'approval_decision', request: requestId, option: optionId }]);
-    pending.resolve({ decision: optionId });
+    pending.resolve(pending.respond ? pending.respond(optionId) : { decision: optionId });
   }
   async answerQuestion(handle: Handle, requestId: string, answers: Record<string, string>): Promise<void> {
     const pending = this.get(handle).questions.get(requestId);
@@ -147,7 +149,7 @@ export class CodexCliAdapter implements AgentAdapter {
         if (entry.turnId !== turnId) continue;
         pending.delete(request);
         session.queue.push([{ kind: 'interaction_expired', request, reason: 'cancelled' }]);
-        entry.resolve(result);
+        entry.resolve(entry.respond ? entry.respond('decline') : result);
       }
     }
   }
@@ -201,9 +203,19 @@ export class CodexCliAdapter implements AgentAdapter {
     }
   }
   private onRequest(session: Session, method: string, params: unknown): Promise<unknown> {
-    const p = params as { turnId?: string; approvalId?: string; itemId?: string; command?: string; reason?: string; questions?: { id: string; question: string; header: string; options?: { label: string; description?: string }[] | null }[] };
+    const p = params as { turnId?: string; approvalId?: string; itemId?: string; command?: string; reason?: string; permissions?: Record<string, unknown>; questions?: { id: string; question: string; header: string; options?: { label: string; description?: string }[] | null }[] };
     const id = `req_${ulid()}`;
-    if (method === 'item/commandExecution/requestApproval' || method === 'item/fileChange/requestApproval' || method === 'item/permissions/requestApproval') {
+    if (method === 'item/permissions/requestApproval') {
+      if (!p.permissions || typeof p.permissions !== 'object' || Array.isArray(p.permissions)) throw new Error('Invalid permissions request');
+      const permissions = Object.fromEntries(Object.entries(p.permissions).filter(([key, value]) => ['network', 'fileSystem'].includes(key) && value != null));
+      const options = APPROVAL_OPTIONS.filter(option => option.id !== 'cancel');
+      session.queue.push([{ kind: 'approval_request', request: id, options, reason: p.reason, target: z.parse(z.json(), p.permissions) }]);
+      return new Promise(resolve => { session.approvals.set(id, {
+        resolve, turnId: p.turnId ?? session.turnId, options: options.map(option => option.id),
+        respond: option => ({ permissions: option === 'accept' || option === 'acceptForSession' ? permissions : {}, scope: option === 'acceptForSession' ? 'session' : 'turn' }),
+      }); });
+    }
+    if (method === 'item/commandExecution/requestApproval' || method === 'item/fileChange/requestApproval') {
       const hit = classifyCommand(String(p.command ?? ''));
       session.queue.push([{ kind: 'approval_request', request: id, options: APPROVAL_OPTIONS, ...(hit ? { destructive: true, rule: hit.rule } : {}) }]);
       return new Promise((resolve) => { session.approvals.set(id, { resolve, turnId: p.turnId ?? session.turnId }); });

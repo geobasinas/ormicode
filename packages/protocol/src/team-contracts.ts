@@ -35,7 +35,7 @@ export const teamResponses = {
   'team.approve': z.object({ decided: z.boolean() }),
   'team.escalate': z.object({ escalated: z.boolean() }),
   'team.spawn': z.object({ team, session }),
-  'team.tree': z.object({ team, parent: session, children: z.array(child) }),
+  'team.tree': z.object({ team: z.nullable(team), parent: session, children: z.array(child) }),
   'team.status': child,
   'team.message': z.object({ id: idSchema('q') }),
   'team.inbox': z.object({ messages: z.array(message) }),

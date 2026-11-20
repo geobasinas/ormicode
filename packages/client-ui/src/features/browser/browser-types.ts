@@ -10,7 +10,7 @@ export type BrowserService = {
   detail?: string;
   portals: Portal[];
 };
-export type BrowserPage = { id: string; title: string; port: number; path: string; url: string };
+export type BrowserPage = { id: string; title: string; port?: number; path: string; url: string };
 export type BrowserListed = {
   config: { found: boolean; path?: string; error?: string };
   services: BrowserService[];

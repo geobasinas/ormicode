@@ -1,5 +1,7 @@
 import { createElement, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { Frame } from '@ormicode/protocol';
+import { isBrowserUrl, normalizeBrowserAddress } from '@ormicode/client-platform';
+import { browserDestination, browserLocation } from './browser-navigation.ts';
 import { usePlatform } from '../../lib/platform.ts';
 import { useSession } from '../session/useSession.ts';
 import { BrowserControls } from './BrowserControls.tsx';
@@ -29,7 +31,7 @@ export function BrowserPane({ session }: { session: string }) {
   const projectId = projectHash(project);
   const pagesKey = `ormi.browser.tabs.${session}`;
   const historyKey = `ormi.browser.history.${projectId}`;
-  const [pages, setPages] = useState<BrowserPage[]>(() => readJson(pagesKey, []));
+  const [pages, setPages] = useState<BrowserPage[]>(() => readJson<BrowserPage[]>(pagesKey, []).filter(page => isBrowserUrl(page.url)));
   const [history, setHistory] = useState<string[]>(() => readJson(historyKey, []));
   const [active, setActive] = useState(0);
   const [listed, setListed] = useState<BrowserListed>();
@@ -99,6 +101,13 @@ export function BrowserPane({ session }: { session: string }) {
     setCanBack(false); setCanForward(false); setReadyId(''); setWebviewReady(false);
     setLoading(Boolean(current));
     if (!current) return;
+    if (current.port === undefined) {
+      try {
+        const url = normalizeBrowserAddress(current.path);
+        setPages(previous => previous.map(page => page.id === current.id ? { ...page, url } : page)); setReadyId(current.id);
+      } catch (error) { setActionError(String(error)); setLoading(false); }
+      return;
+    }
     let alive = true;
     void transport.request('preview.url', { session, port: current.port, path: current.path }).then(response => {
       if (!alive || response.type !== 'res') return;
@@ -129,21 +138,20 @@ export function BrowserPane({ session }: { session: string }) {
     const view = webview.current;
     if (!view || !current || readyId !== current.id) { if (!current) setLoading(false); return; }
     const navigate = (event: any) => {
-      const url = new URL(event.url); const path = `${url.pathname}${url.search}${url.hash}`;
+      if (!isBrowserUrl(event.url)) return;
+      const { path, port } = browserLocation(event.url, current);
       setAddress(path); setCanBack(view.canGoBack()); setCanForward(view.canGoForward());
-      setPages(previous => previous.map((page, index) => index === active ? { ...page, path } : page));
+      setPages(previous => previous.map((page, index) => index === active ? { ...page, path, port } : page));
       setHistory(previous => [path, ...previous.filter(item => item !== path)].slice(0, 50));
     };
-    const navigateInPage = (event: any) => {
-      const url = new URL(event.url); const path = `${url.pathname}${url.search}${url.hash}`;
-      setAddress(path); setCanBack(view.canGoBack()); setCanForward(view.canGoForward());
-      setPages(previous => previous.map((page, index) => index === active ? { ...page, path } : page));
-    };
+    const navigateInPage = navigate;
     const titleUpdated = (event: any) => setPages(previous => previous.map((page, index) => index === active ? { ...page, title: event.title } : page));
-    const started = () => setLoading(true);
+    const started = () => { setLoading(true); setActionError(''); };
+    const failed = (event: any) => { if (event.isMainFrame !== false && event.errorCode !== -3) { setLoading(false); setActionError(event.errorDescription || 'Could not load this page.'); } };
     const stopped = () => { setLoading(false); setCanBack(view.canGoBack()); setCanForward(view.canGoForward()); };
     const domReady = () => { setWebviewReady(true); setLoading(false); };
     view.addEventListener('did-start-loading', started);
+    view.addEventListener('did-fail-load', failed);
     view.addEventListener('did-stop-loading', stopped);
     view.addEventListener('did-navigate', navigate);
     view.addEventListener('did-navigate-in-page', navigateInPage);
@@ -152,6 +160,7 @@ export function BrowserPane({ session }: { session: string }) {
     setLoading(true);
     return () => {
       view.removeEventListener('did-start-loading', started);
+      view.removeEventListener('did-fail-load', failed);
       view.removeEventListener('did-stop-loading', stopped);
       view.removeEventListener('did-navigate', navigate);
       view.removeEventListener('did-navigate-in-page', navigateInPage);
@@ -247,21 +256,19 @@ export function BrowserPane({ session }: { session: string }) {
   };
   const openPortal = (port: number, path: string, title: string) => void navigate(port, path, title);
   const addressSubmit = async () => {
-    if (!current) return;
-    if (/^https?:\/\//i.test(address)) {
-      try {
-        const parsed = new URL(address);
-        const port = Number(parsed.port);
-        if ((parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') && listed
-          && port >= listed.ports.base && port < listed.ports.base + listed.ports.count) {
-          await navigateCurrent(port, `${parsed.pathname}${parsed.search}${parsed.hash}`);
-          return;
-        }
-      } catch { /* Open non-preview URLs externally. */ }
-      void desktop?.openExternal(address);
-      return;
-    }
-    await navigateCurrent(current.port, address.startsWith('/') ? address : `/${address}`);
+    setActionError('');
+    try {
+      const target = browserDestination(address, current, listed?.ports);
+      if (target.port !== undefined) return await navigateCurrent(target.port, target.path);
+      if (current && webview.current && readyId === current.id) {
+        setPages(previous => previous.map(page => page.id === current.id ? { ...page, port: undefined, path: target.url } : page));
+        await webview.current.loadURL(target.url);
+      } else {
+        const page: BrowserPage = { id: `web:${Date.now()}`, title: new URL(target.url).hostname, path: target.url, url: target.url };
+        setPages(previous => [...previous, page]); setActive(pages.length);
+      }
+      setAddress(target.url);
+    } catch (error) { setActionError(error instanceof Error ? error.message : String(error)); }
   };
   const serviceAction = async (action: 'service.start' | 'service.stop' | 'service.restart', name: string) => {
     if (busyService) return;
@@ -282,6 +289,7 @@ export function BrowserPane({ session }: { session: string }) {
   };
   const openExternalCurrent = async () => {
     if (!current) return;
+    if (current.port === undefined) { if (isBrowserUrl(current.path)) void desktop?.openExternal(current.path); return; }
     const response = await transport.request('preview.url', { session, port: current.port, path: current.path });
     if (response.type === 'res') void desktop?.openExternal((response.body as { url: string }).url);
   };
@@ -311,7 +319,7 @@ export function BrowserPane({ session }: { session: string }) {
   const renderWebview = (style: Record<string, unknown>) => readyId === current?.id
     ? <>
       {createElement('webview' as any, {
-        key: `${current.id}:${partition}:${current.url}`, ref: webview, src: current.url, partition,
+        key: `${current.id}:${partition}`, ref: webview, src: current.url, partition,
         style: { background: 'var(--bg-main)', visibility: snapshotVisible || Boolean(inspector.frame) ? 'hidden' : 'visible', ...style },
       })}
       {snapshotVisible ? <img src={snapshot} alt="" aria-hidden="true" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', pointerEvents: 'none' }} /> : null}
@@ -343,6 +351,7 @@ export function BrowserPane({ session }: { session: string }) {
         setKeepSignins(value); localStorage.setItem(`ormi.browser.signins.${projectId}`, String(value));
       }} onClearBrowsingData={clearBrowsingData} onOverlayOpenChange={setOverlaysOpen}
     /> : null}
+    {actionError ? <div role="alert" style={{ padding: '6px 10px', color: 'var(--accent-red)', fontSize: 12 }}>{actionError}</div> : null}
     {relayRemote ? <div role="status" style={{ padding: '5px 10px', borderBottom: '1px solid var(--line-subtle)', background: 'var(--bg-raised)', color: 'var(--text-hint)', fontSize: 10.5 }}>Live reload isn't available over the relay; use Reload.</div> : null}
     {inspector.hint && !remote ? <div role="status" style={{ padding: '5px 10px', borderBottom: '1px solid var(--line-subtle)', background: 'var(--bg-raised)', color: 'var(--text-hint)', fontSize: 10.5 }}>{inspector.hint}</div> : null}
     {remote ? <main style={{ flex: 1, minHeight: 0, display: 'grid', placeItems: 'center', background: 'var(--bg-inset)' }}><RemotePreview /></main>

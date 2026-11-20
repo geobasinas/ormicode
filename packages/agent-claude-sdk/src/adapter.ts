@@ -8,6 +8,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { mapSdkMessage } from './map.ts';
+import { ThinkingCapture } from './thinking.ts';
 
 type QueryFactory = (params: { prompt: string | AsyncIterable<SDKUserMessage>; options?: Options }) => Query;
 interface PendingApproval { finish: (result: PermissionResult, reason?: string) => void; input: Record<string, unknown>; questions?: string[] }
@@ -135,6 +136,7 @@ export class ClaudeSdkAdapter implements AgentAdapter {
   }
   private async run(handle: Handle, session: Session, prompt: string, abort: AbortController): Promise<void> {
     let completed = false;
+    const thinking = new ThinkingCapture();
     try {
       const permission: CanUseTool = async (name, input, context) => {
         const request = `req_${makeId()}`;
@@ -173,7 +175,9 @@ export class ClaudeSdkAdapter implements AgentAdapter {
         });
       };
       const options: Options = {
+        env: { ...process.env },
         cwd: session.spec.cwd, abortController: abort, includePartialMessages: true,
+        thinking: { type: 'enabled', display: 'summarized' },
         settingSources: ['user', 'project', 'local'], tools: { type: 'preset', preset: 'claude_code' },
         permissionMode: (session.spec.mode ?? 'default') as Options['permissionMode'], canUseTool: permission,
         ...(session.spec.model ? { model: session.spec.model } : {}),
@@ -193,19 +197,21 @@ export class ClaudeSdkAdapter implements AgentAdapter {
       const stream = (this.options.query ?? query)({ prompt: inputs.iterable, options });
       session.stream = stream;
       session.commandsQuery = stream;
+      let reportedModel: string | undefined;
       for await (const message of stream) {
         if (session.disposed || abort.signal.aborted) break;
         this.log(session, 'stdout.log', JSON.stringify(message));
         if (message.type === 'system' && message.subtype === 'init') {
           this.log(session, 'meta.json', JSON.stringify({ command: 'claude-agent-sdk', cwd: session.spec.cwd, agentVersion: message.claude_code_version }));
         }
-        const mapped = mapSdkMessage(message);
+        if (message.type === 'assistant' && !message.parent_tool_use_id) reportedModel = message.message.model;
+        const mapped = mapSdkMessage(message, { model: reportedModel });
         if (mapped.nativeId) {
           this.options.onNativeId?.(handle, mapped.nativeId);
           session.nativeId = mapped.nativeId;
         }
         if (message.type === 'result') { completed = true; inputs.close(); }
-        const events = mapped.events.filter((event) => event.kind !== 'turn_end');
+        const events = thinking.accept(mapped.events).filter((event) => event.kind !== 'turn_end');
         if (events.length) session.queue.push(events);
       }
       inputs.close();
@@ -218,6 +224,7 @@ export class ClaudeSdkAdapter implements AgentAdapter {
         catch { session.queue.close(); }
       }
     } finally {
+      if (!session.disposed) { const remaining = thinking.flush(); if (remaining.length) session.queue.push(remaining); }
       for (const pending of session.approvals.values()) pending.finish({ behavior: 'deny', message: 'Session ended', interrupt: true }, 'turn_ended');
       session.active = false;
       session.abort = undefined;

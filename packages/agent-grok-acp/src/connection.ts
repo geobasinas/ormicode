@@ -88,11 +88,12 @@ export class AcpConnection {
   async setMode(sessionId: string, modeId: string): Promise<void> {
     await this.request('session/set_mode', { sessionId, modeId });
   }
-  async prompt(sessionId: string, text: string, timeoutMs = 300_000): Promise<string> {
+  async prompt(sessionId: string, text: string, timeoutMs = 300_000, onUsage?: (usage: unknown) => void): Promise<string> {
     if (!sessionId || !text) throw new Error('session ID and prompt are required');
     const result = await this.request('session/prompt', { sessionId, prompt: [{ type: 'text', text }] }, timeoutMs);
     const parsed = z.safeParse(z.looseObject({ stopReason: z.string().check(z.minLength(1)) }), result);
     if (!parsed.success) throw new Error('Invalid ACP session/prompt response');
+    onUsage?.(result);
     return parsed.data.stopReason;
   }
   cancel(sessionId: string): void {

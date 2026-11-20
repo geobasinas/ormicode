@@ -11,7 +11,7 @@ export const stateGlyph: Record<string, StateGlyph> = {
   awaiting_approval: { icon: Hand, color: 'var(--accent-amber)' },
   awaiting_input: { icon: MessageCircleQuestion, color: 'var(--accent-amber)' },
   paused_rate_limited: { icon: Pause, color: 'var(--accent-amber)' },
-  interrupted: { icon: Pause, color: 'var(--accent-amber)' },
+  interrupted: { icon: Pause, color: 'var(--text-hint)' },
   failed: { icon: CircleX, color: 'var(--accent-red)' },
   idle: { icon: Moon, color: 'var(--text-hint)' },
   done: { icon: Check, color: 'var(--text-secondary)' },
@@ -20,10 +20,10 @@ export const stateGlyph: Record<string, StateGlyph> = {
 export const glyphFor = (state: string): StateGlyph => stateGlyph[state] ?? stateGlyph.idle!;
 
 export const stateLabel = (state: string): string => ({
-  awaiting_approval: 'awaiting approval', awaiting_input: 'awaiting input', paused_rate_limited: 'rate limited',
+  awaiting_approval: 'awaiting approval', awaiting_input: 'awaiting input', paused_rate_limited: 'rate limited', interrupted: 'stopped',
 } as Record<string, string>)[state] ?? state;
 
-export const NEEDS_YOU = new Set(['awaiting_approval', 'awaiting_input', 'interrupted', 'failed', 'paused_rate_limited']);
+export { USER_WAIT_STATES as NEEDS_YOU } from './waiting.ts';
 export const LIVE = new Set(['running', 'starting', 'retrying']);
 
 export function StateIcon({ state, size = 13 }: { state: string; size?: number }) {

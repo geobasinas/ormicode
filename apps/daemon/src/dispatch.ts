@@ -3,6 +3,7 @@ import type { UserInteractions } from './user-interactions.ts';
 import { resumeSession } from './team-resume.ts';
 import { sessionTeamView } from './session-team-view.ts';
 import { sessionStatus } from './session-status.ts';
+import { abortSession } from './abort-session.ts';
 import {
   getSession, listSessions, setState, setTitle, listNotes, setNote, deleteNote, archiveSession, releaseSessionPorts,
   getPendingPromptData, deletePendingPromptData, getSessionPorts, listDevices, renameDevice, revokeDevice, type Store,
@@ -40,7 +41,7 @@ import { expandPrompt, PromptInvalidError, validatePrompt } from './prompt-conte
 import { retryPrompt } from './prompt-methods.ts';
 import { listModels } from './models.ts';
 import { startSession } from './session-start.ts';
-import { copyOutMethod, countScratchFiles } from './scratch-methods.ts';
+import { copyOutMethod, countScratchFiles, scratchWorkspaceInUse } from './scratch-methods.ts';
 import { SESSION_PORT_COUNT } from './session-ports.ts';
 import { serviceMethod } from './service-methods.ts';
 import type { Services } from './services.ts';
@@ -79,11 +80,11 @@ export interface DispatchCtx {
   resetUiCheckFollowups(session: string): void;
   spawnWorker(session: string): void;
   ensureWorker(session: string, timeoutMs?: number): Promise<void>;
-  stopWorker(session: string): Promise<void>;
+  stopWorker(session: string, force?: boolean): Promise<void>;
   setRecapPending(session: string, uptoSeq: number): void;
   toWorker(session: string, method: string, body: Record<string, unknown>): Promise<Frame | undefined>;
   sendPrompt(session: string, text: string, images?: unknown[], opts?: { journal?: boolean; context?: PromptContext[]; attachments?: PromptAttachment[] }): Promise<boolean>;
-  drainQueue(session: string, afterTurnEnd?: boolean): Promise<boolean>;
+  drainQueue(session: string, afterTurnEnd?: boolean, siblingsOnly?: boolean): Promise<boolean>;
   pairing: Pairing;
   relay(): RelayClient | undefined;
   checkpoints: Checkpoints;
@@ -167,7 +168,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
       }
       case 'session.digest': {
         const since = Number(body.since); const computedAt = Date.now();
-        const entries = listSessions(db).map(s => digestOf({ id: s.id, state: s.state, updatedAt: s.updated_at },
+        const entries = listSessions(db).map(s => digestOf({ id: s.id, state: sessionStatus(ctx, s).state, reason: s.reason, delegatedApproval: ctx.teamApprovals.delegatedOnly(s.id), updatedAt: s.updated_at },
           replay(db, s.id).filter(e => e.ts > since).map(e => ({ seq: e.seq, ts: e.ts, kind: e.kind, payload: JSON.parse(e.payload) as Record<string, unknown> })),
           since, computedAt));
         return client.link.reply(id, { since, computedAt, entries: rankDigest(entries) });
@@ -214,7 +215,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         if (!s) return client.link.replyError(id, 'session.not_found', String(body.session));
         const base = getSessionPorts(db, s.id);
         return client.link.reply(id, {
-          id: s.id, title: s.title, ...sessionStatus(ctx, s), parentless: Boolean(s.parentless), project: s.project, vendor: s.vendor,
+          id: s.id, title: s.title, ...sessionStatus(ctx, s), lastSeq: s.last_seq, parentless: Boolean(s.parentless), project: s.project, vendor: s.vendor,
           cwd: s.cwd, ...(s.project === 'scratch' ? { scratchFiles: countScratchFiles(s.cwd) } : {}),
           transport: s.transport, updatedAt: s.updated_at, branch: s.branch, worktree: Boolean(s.worktree),
           ...(base === undefined ? {} : { ports: { base, count: SESSION_PORT_COUNT } }),
@@ -280,10 +281,10 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         archiveSession(db, session);
         ctx.teamLifecycle.unavailable(session);
         releaseForSession(db, session);
-        // Scratch sessions own their folder; delete removes it (archive keeps it).
+        // Only the scratch folder owner may remove it, never while teammates still use it.
         const row = getSession(db, session);
         const scratchRoot = join(ormicodeDir(), 'scratch');
-        if (method === 'session.delete' && row?.cwd.startsWith(scratchRoot)) {
+        if (method === 'session.delete' && row?.cwd === join(scratchRoot, session) && !scratchWorkspaceInUse(db, row.cwd, session)) {
           try { rmSync(row.cwd, { recursive: true, force: true }); } catch { /* best effort */ }
         }
         if (method === 'session.delete') {
@@ -330,13 +331,12 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         const res = await ctx.toWorker(session, 'worker.steer', { text: prepared.text });
         if (res?.type !== 'res') return client.link.replyError(id, 'agent.unsupported', 'steer');
         if (shouldResetUiCheckFollowups(client.device)) ctx.resetUiCheckFollowups(session);
-        ctx.record(session, 'prompt', { text: String(body.text), ...(context.length ? { context } : {}), ...(prepared.attachments.length ? { attachments: prepared.attachments } : {}) });
+        ctx.record(session, 'prompt', { text: String(body.text), steer: true, ...(context.length ? { context } : {}), ...(prepared.attachments.length ? { attachments: prepared.attachments } : {}) });
         if (pending) deletePendingPromptData(db, session);
         return client.link.reply(id, { accepted: true, queued: false });
       }
       case 'session.abort': {
-        const res = await ctx.toWorker(String(body.session), 'worker.abort', {});
-        return res?.type === 'res' ? client.link.reply(id, { interrupted: true }) : client.link.replyError(id, 'agent.unsupported', 'abort');
+        return await abortSession(ctx, String(body.session)) ? client.link.reply(id, { interrupted: true }) : client.link.replyError(id, 'agent.unsupported', 'no active turn');
       }
       case 'session.subscribe': {
         const session = String(body.session);

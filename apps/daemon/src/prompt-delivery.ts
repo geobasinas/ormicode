@@ -17,6 +17,7 @@ interface PromptDeliveryOptions {
   lastPrompt: Map<string, Prompt>;
   closed?(): boolean;
   ensureWorker(session: string): Promise<void>;
+  restartWorker?(session: string): Promise<void>;
   toWorker(session: string, method: string, body: Record<string, unknown>): Promise<Frame | undefined>;
   terminals: TerminalHub;
   previewEntries(session: string, ids: string[]): PreviewConsoleEntry[];
@@ -72,6 +73,16 @@ export function createPromptDelivery(options: PromptDeliveryOptions) {
           text: prepared.text,
           ...(wireImages ? { images: wireImages } : {}),
         });
+        if (res?.type === 'err' && res.code === 'agent.failed' && options.restartWorker
+          && getSession(options.db, session)?.state === 'starting'
+          && ['idle', 'done', 'interrupted'].includes(previousState)) {
+          await options.restartWorker(session);
+          options.record(session, 'state', { state: 'starting', reason: 'prompt_recovery' });
+          res = await options.toWorker(session, 'worker.prompt', {
+            text: prepared.text,
+            ...(wireImages ? { images: wireImages } : {}),
+          });
+        }
       } finally {
         if ((!res || res.type === 'err') && getSession(options.db, session)?.state === 'starting')
           options.record(session, 'state', { state: previousState, reason: 'prompt_rejected' });
@@ -87,6 +98,7 @@ export function createPromptDelivery(options: PromptDeliveryOptions) {
       });
       if (opts?.journal !== false) options.record(session, 'prompt', {
         text: deliveredText,
+        ...(deliveredText !== text ? { retryText: text } : {}),
         ...(opts?.actor ? { actor: opts.actor } : {}),
         ...(opts?.context?.length ? { context: opts.context } : {}),
         ...(prepared.attachments.length ? { attachments: prepared.attachments } : {}),
