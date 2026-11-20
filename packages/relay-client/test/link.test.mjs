@@ -6,7 +6,7 @@ class FakeWs {
   sent = []; closed = false;
   constructor(url) { this.url = url; FakeWs.last = this; }
   send(s) { this.sent.push(JSON.parse(s)); }
-  close() { this.closed = true; this.onclose?.(); }
+  close(code = 1000) { this.closed = true; this.onclose?.({ code, reason: '' }); }
   emit(msg) { this.onmessage({ data: JSON.stringify(msg) }); }
 }
 const res = (id, body = {}) => ({ v: 1, type: 'res', id, ok: true, body });
@@ -61,6 +61,13 @@ test('request times out', async () => {
   await assert.rejects(link.request('daemon.status', {}, 20), /timed out/);
 });
 
+test('closing a relay link rejects outstanding requests', async () => {
+  const link = new WsLink(new FakeWs());
+  const pending = link.request('daemon.status', {});
+  link.close();
+  await assert.rejects(pending, /relay connection closed/);
+});
+
 test('connectRemote authenticates with the token first, then says hello', async () => {
   const prev = globalThis.WebSocket; globalThis.WebSocket = FakeWs;
   try {
@@ -73,6 +80,17 @@ test('connectRemote authenticates with the token first, then says hello', async 
     const link = await p;
     assert.deepEqual(ws.sent[1], { v: 1, type: 'hello', role: 'client', proto: 1, device: 'd_1' });
     assert.equal(link.closed, false);
+  } finally { globalThis.WebSocket = prev; }
+});
+
+test('connectRemote identifies relay auth rejection close codes', async () => {
+  const prev = globalThis.WebSocket; globalThis.WebSocket = FakeWs;
+  try {
+    const p = connectRemote({ relayUrl: 'https://relay.example', account: 'a', device: 'd_1', token: 'bad' });
+    const ws = FakeWs.last;
+    ws.onopen();
+    ws.close(4004);
+    await assert.rejects(p, error => error.name === 'RelayAuthError' && error.code === 4004);
   } finally { globalThis.WebSocket = prev; }
 });
 
