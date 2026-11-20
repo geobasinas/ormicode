@@ -5,6 +5,7 @@ import { addQueuedPrompt, addTeamMessage, getSession, getTeam } from '@ormicode/
 import type { Client, DispatchCtx } from './dispatch.ts';
 import { resolveHandoffApproval } from './handoff-dispatch.ts';
 import { ormicodeDir } from './socket.ts';
+import { APPROVAL_GUIDANCE } from './team-guidance.ts';
 
 type Payload = Record<string, unknown>;
 type Pending = { session: string; parent: string; payload: Payload; options: Payload[]; decision?: { actor: string; reason: string } };
@@ -71,10 +72,10 @@ export class TeamApprovals {
     const message = newId('q');
     addTeamMessage(ctx.db, { id: message, team: team.id, from_session: session, to_session: team.parent,
       reply_to: null, urgent: 0, created_at: Date.now(), body: JSON.stringify({ kind: 'approval', session, ...payload, options,
-        instruction: 'Use team_approve with session, request, one offered option and a reason. Once only.' }) });
+        instruction: APPROVAL_GUIDANCE }) });
     ctx.record(team.parent, 'team_message', { team: team.id, from: session, to: team.parent, message, approval: payload.request });
     if (['idle', 'done', 'interrupted'].includes(getSession(ctx.db, team.parent)!.state)) {
-      addQueuedPrompt(ctx.db, team.parent, { id: newId('q'), text: 'A child needs an approval. Read the team inbox and answer with team_approve.', createdAt: Date.now() });
+      addQueuedPrompt(ctx.db, team.parent, { id: newId('q'), text: `A child needs an approval. Read the team inbox. ${APPROVAL_GUIDANCE}`, createdAt: Date.now() });
       void ctx.drainQueue(team.parent).then(delivered => { if (!delivered) this.unavailable(team.parent); }).catch(() => this.unavailable(team.parent));
     }
     return ['team_approval_request', { ...payload, parent: team.parent, options }];
@@ -85,9 +86,20 @@ export class TeamApprovals {
     for (const [id, pending] of this.pending) {
       if (pending.session === session) { this.pending.delete(id); continue; }
       if (pending.parent !== session || pending.decision) continue;
-      this.pending.delete(id);
-      ctx.record(pending.session, 'approval_request', { ...pending.payload, userOnly: true, fallbackReason: 'parent_unavailable' });
+      this.toUser(pending, { fallbackReason: 'parent_unavailable' });
     }
+  }
+  private toUser(pending: Pending, payload: Payload): void {
+    this.pending.delete(key(pending.session, pending.payload.request));
+    this.context().record(pending.session, 'approval_request', { ...pending.payload, ...payload, userOnly: true });
+  }
+  escalate(client: Client, id: string, body: Payload): void {
+    const pending = this.pending.get(key(String(body.session), body.request));
+    if (!pending || pending.decision) return client.link.replyError(id, 'session.already_decided', 'approval is not pending for this parent');
+    if (pending.parent !== body.actor) return client.link.replyError(id, 'team.forbidden', 'only the approval parent may escalate');
+    if (!this.available(pending.parent)) { this.unavailable(pending.parent); return client.link.replyError(id, 'team.forbidden', 'parent is unavailable; approval returned to user'); }
+    this.toUser(pending, { escalatedBy: pending.parent, ...(body.reason !== undefined ? { escalationReason: body.reason } : {}) });
+    client.link.reply(id, { escalated: true });
   }
   async approve(client: Client, id: string, body: Payload): Promise<void> {
     const ctx = this.context(), session = String(body.session), request = String(body.request);
