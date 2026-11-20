@@ -77,3 +77,33 @@ test('CLI adapter interrupt and model list', async () => {
   assert.deepEqual(models, [{ id: 'gpt-test-1', name: 'GPT Test', efforts: ['low', 'high'] }]);
   await a.dispose(handle);
 });
+
+for (const text of ['approve me', 'question me']) test(`interrupt expires the pending interaction (${text}) and permits another turn`, async t => {
+  const a = adapter(), handle = await a.start({ cwd: '/repo' }); t.after(() => a.dispose(handle));
+  const stream = a.events(handle)[Symbol.asyncIterator]();
+  await a.prompt(handle, { text });
+  let event;
+  do { event = (await stream.next()).value; } while (!['approval_request', 'question_request'].includes(event.kind));
+  const request = event.request;
+  await a.interrupt(handle);
+  const events = [];
+  do { event = (await stream.next()).value; events.push(event); } while (event.kind !== 'turn_end');
+  assert.deepEqual(events.filter(e => e.kind === 'interaction_expired'), [{ kind: 'interaction_expired', request, reason: 'cancelled' }]);
+  await assert.rejects(a.approve(handle, request, 'accept'), /Unknown/);
+  await assert.rejects(a.answerQuestion(handle, request, { 'Which?': 'A' }), /Unknown/);
+  await a.prompt(handle, { text: 'again' });
+  do { event = (await stream.next()).value; assert.notEqual(event.kind, 'interaction_expired'); } while (event.kind !== 'turn_end');
+});
+
+test('a refused interrupt leaves its approval answerable', async t => {
+  const a = adapter(), handle = await a.start({ cwd: '/repo' }); t.after(() => a.dispose(handle));
+  const stream = a.events(handle)[Symbol.asyncIterator]();
+  await a.prompt(handle, { text: 'interrupt fails' });
+  let event;
+  do { event = (await stream.next()).value; } while (event.kind !== 'approval_request');
+  const request = event.request;
+  await assert.rejects(a.interrupt(handle), /interrupt refused/);
+  await a.approve(handle, request, 'accept');
+  assert.deepEqual((await stream.next()).value, { kind: 'approval_decision', request, option: 'accept' });
+  do { event = (await stream.next()).value; assert.notEqual(event.kind, 'interaction_expired'); } while (event.kind !== 'turn_end');
+});
