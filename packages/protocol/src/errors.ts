@@ -1,11 +1,13 @@
 export const errorCodes = [
   'design.not_found', 'design.conflict', 'design.invalid', 'design.outside', 'design.too_large', 'design.failed', 'design.forbidden',
+  'mcp.unauthorized', 'mcp.forbidden',
   'session.busy', 'session.already_decided', 'session.not_found', 'session.not_running',
   'session.resync_required', 'agent.unauthorized', 'agent.binary_missing', 'agent.rate_limited',
   'agent.plan_limit', 'agent.failed', 'agent.unsupported', 'machine.unreachable',
   'git.dirty_worktree', 'git.failed', 'git.worktree_in_use', 'git.nothing_to_commit', 'git.confirm_required',
   'checkpoint.busy', 'terminal.bad_request', 'relay.rate_limited',
   'prompt.invalid',
+  'team.closed', 'team.forbidden', 'team.limit', 'team.failed', 'team.not_found', 'team.not_member', 'team.invalid', 'team.delivery_failed',
   'handoff.confirm_required', 'handoff.declined', 'handoff.failed',
   'workspace.not_found',
   'fs.invalid_path', 'fs.not_found', 'fs.not_directory', 'fs.denied',

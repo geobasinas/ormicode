@@ -1,6 +1,6 @@
 import { newId } from '@ormicode/protocol';
 import { acquireWorkspace } from '@ormicode/leases';
-import { createSession, listSessions, releaseSessionPorts, setPendingPromptData } from '@ormicode/session-store';
+import { createSession, getSession, listSessions, ownedTeam, releaseSessionPorts, setPendingPromptData, setSessionTeam } from '@ormicode/session-store';
 import { defaultBranch, resolveWorkspace, type ResolvedWorkspace, type WorkspaceChoice } from '@ormicode/git-core';
 import { mkdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -16,6 +16,8 @@ import { sessionEnvironment } from './session-env.ts';
 export async function startSession(
   ctx: DispatchCtx, client: Client, id: string, body: Record<string, unknown>,
 ): Promise<void> {
+  if (body.parent && !body.team && (ownedTeam(ctx.db, String(body.parent)) || getSession(ctx.db, String(body.parent))?.team))
+    return client.link.replyError(id, 'team.forbidden', 'team members must start children through team.spawn');
   const vendor = String(body.vendor); const transport = String(body.transport);
   if (!hasTransport(vendor, transport)) return client.link.replyError(id, 'agent.unsupported', `${vendor}/${transport}`);
   const sessionId = newId('s');
@@ -91,6 +93,7 @@ export async function startSession(
     ...(body.agentArgs ? { agentArgs: body.agentArgs as string[] } : {}),
     ...(body.parent ? { parent: String(body.parent) } : {}),
   });
+  if (body.team) setSessionTeam(ctx.db, sessionId, String(body.team));
   if (Array.isArray(body.context) || Array.isArray(body.attachments)) {
     setPendingPromptData(ctx.db, sessionId, {
       ...(Array.isArray(body.context) ? { context: body.context as never[] } : {}),

@@ -15,6 +15,7 @@ import { feedback } from '../../lib/feedback.ts';
 import { useComposerInbox } from '../../lib/composer-inbox.ts';
 import { useComposerHeight } from './useComposerHeight.ts';
 import { useComposerQueue, type QueuedItem } from './useComposerQueue.ts';
+import { branchLabel } from './team-presentation.ts';
 
 const LIVE = new Set(['running', 'starting', 'retrying']);
 const WAITING = new Set(['awaiting_approval', 'awaiting_input', 'paused_rate_limited']);
@@ -334,7 +335,7 @@ export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefi
               }}
             >
               <GitBranch size={12} style={{ color: 'var(--text-hint)', flexShrink: 0 }} />
-              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{details.branch}</span>
+              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{branchLabel(details)}</span>
               {details.worktree ? <span style={{ color: 'var(--text-hint)', fontSize: 9, flexShrink: 0 }}>wt</span> : null}
             </button>
           ) : null}

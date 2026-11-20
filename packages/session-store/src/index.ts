@@ -7,4 +7,5 @@ export * from './queue.ts';
 export * from './pending-prompts.ts';
 export * from './drafts.ts';
 export * from './session-ports.ts';
+export * from './teams.ts';
 export * from './projects.ts';

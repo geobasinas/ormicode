@@ -2,6 +2,7 @@ import { NO_CAPABILITIES } from './adapter.ts';
 import type { AgentAdapter, AgentCommand, Handle, ModelList, PromptInput, StartSpec } from './adapter.ts';
 import { EventQueue } from './event-queue.ts';
 import type { AgentEvent } from '@ormicode/protocol';
+import { newId } from '@ormicode/protocol';
 
 export type FakeScript = 'echo' | 'slow' | 'tool' | 'approval' | 'ratelimit' | 'ratelimit_pause';
 type Session = {
@@ -87,8 +88,8 @@ export class FakeAdapter implements AgentAdapter {
           session.queue.push([{ kind: 'tool_result', callId: 'call-1', status: 'interrupted' }, { kind: 'interrupted', reason: 'user_abort' }]);
         } else session.queue.push([{ kind: 'tool_result', callId: 'call-1', status: 'completed', output: 'done' }, { kind: 'text', text }, { kind: 'turn_end' }]);
       } else if (session.script === 'approval') {
-        session.approvalRequest = `req_fake-${session.nativeId}`;
-        session.queue.push([...events, { kind: 'tool_call', callId: 'call-1', name: 'fake_tool', input: { text } }, { kind: 'approval_request', request: session.approvalRequest, options: [{ id: 'allow', label: 'Allow' }, { id: 'deny', label: 'Deny' }] }]);
+        session.approvalRequest = newId('req');
+        session.queue.push([...events, { kind: 'tool_call', callId: 'call-1', name: 'Bash', input: { command: text } }, { kind: 'approval_request', request: session.approvalRequest, tool: 'Bash', input: { command: text }, options: [{ id: 'allow', label: 'Allow' }, { id: 'deny', label: 'Deny' }] }]);
         const option = await new Promise<string>(resolve => { session.approvalResolve = resolve; this.endHold(session); session.hold = () => resolve('deny'); });
         session.queue.push([{ kind: 'approval_decision', request: session.approvalRequest, option }, { kind: 'tool_result', callId: 'call-1', status: option === 'allow' ? 'completed' : 'interrupted' }, ...(session.interrupted || option === 'deny' ? [{ kind: 'interrupted', reason: 'user_abort' } satisfies AgentEvent] : [{ kind: 'turn_end' } satisfies AgentEvent])]);
       } else if (session.script === 'ratelimit_pause') {

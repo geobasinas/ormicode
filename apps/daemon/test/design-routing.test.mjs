@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { createSession, setState } from '@ormicode/session-store';
 import { newId } from '@ormicode/protocol';
 import { startDaemon, connect } from '../src/index.ts';
+import { McpCredentials } from '../src/mcp-auth.ts';
 
 const cli = fileURLToPath(new URL('../../cli/src/ormi.ts', import.meta.url));
 const mcp = fileURLToPath(new URL('../src/mcp-serve.ts', import.meta.url));
@@ -43,7 +44,8 @@ test('design events fan out by canonical cwd; CLI file/stdin and MCP stay sessio
   const dir = mkdtempSync(join(tmpdir(), 'ormi-design-routing-'));
   const project = join(dir, 'project'); const otherProject = join(dir, 'other');
   mkdirSync(project); mkdirSync(otherProject);
-  const daemon = await startDaemon({ socketPath: '127.0.0.1:0', storePath: join(dir, 'store.db') });
+  const mcpCredentials = new McpCredentials();
+  const daemon = await startDaemon({ socketPath: '127.0.0.1:0', storePath: join(dir, 'store.db'), mcpCredentials });
   const client = await connect(daemon.socketPath);
   const self = newId('s'); const sibling = newId('s'); const other = newId('s');
   try {
@@ -55,7 +57,7 @@ test('design events fan out by canonical cwd; CLI file/stdin and MCP stay sessio
     assert.equal((await client.request('design.create', { session: self, slug: 'home', name: 'Home' })).type, 'res');
     assert.deepEqual(changed.sort(), [self, sibling].sort());
     assert.equal((await client.request('design.create', { session: other, slug: 'home', name: 'Other' })).type, 'res');
-    const env = { ...process.env, ORMICODE_SOCKET: daemon.socketPath, ORMI_SESSION: self, ORMICODE_HOME: dir, ORMICODE_REMOTE: '0' };
+    const env = { ...process.env, ORMICODE_SOCKET: daemon.socketPath, ORMI_SESSION: self, ORMI_MCP_TOKEN: mcpCredentials.issue(self), ORMICODE_HOME: dir, ORMICODE_REMOTE: '0' };
     const operations = join(dir, 'operations.json');
     writeFileSync(operations, JSON.stringify([{ type: 'frame.add', name: 'Phone', x: 0, y: 0, width: 390, height: 844, html: '<p>File input</p>', styles: '' }]));
     const fromFile = await runCli(['design', 'update', self, 'home', '1', operations], undefined, env);

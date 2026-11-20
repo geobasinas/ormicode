@@ -10,12 +10,14 @@ import { getSession, createSession } from '@ormicode/session-store';
 import { append, replay } from '@ormicode/journal';
 import { handoffBrief } from '../src/handoff.ts';
 import { fileURLToPath } from 'node:url';
+import { TestMcpCredentials } from './mcp-fixture.mjs';
 
 const boot = async () => {
   const dir = mkdtempSync(join(tmpdir(), 'ormi-handoff-test-'));
-  const daemon = await startDaemon({ socketPath: '127.0.0.1:0', storePath: join(dir, 'store.db') });
+  const credentials = new TestMcpCredentials();
+  const daemon = await startDaemon({ socketPath: '127.0.0.1:0', storePath: join(dir, 'store.db'), mcpCredentials: credentials });
   const client = await connect(daemon.socketPath);
-  return { dir, daemon, client };
+  return { dir, daemon, client, credentials };
 };
 const projectDir = mkdtempSync(join(tmpdir(), 'ormi-handoff-project-'));
 const otherProjectDir = mkdtempSync(join(tmpdir(), 'ormi-handoff-other-project-'));
@@ -145,7 +147,7 @@ test('at most one handoff per turn — a running session gets exactly one', asyn
 });
 
 test('unknown-price handoffs require user confirmation and agent approval', async () => {
-  const { daemon, client } = await boot();
+  const { daemon, client, credentials } = await boot();
   const session = (await startFake(client)).body.session;
   const gated = await client.request('session.handoff', { session, to: { vendor: 'fake' }, mode: 'rehydrate' });
   assert.equal(gated.type, 'err');
@@ -153,7 +155,7 @@ test('unknown-price handoffs require user confirmation and agent approval', asyn
   assert.match(gated.message, /confirmRequired/);
   const pending = client.request('session.handoff', {
     session, to: { vendor: 'fake' }, mode: 'rehydrate', reason: 'needs another agent', agentApproval: true,
-  });
+  }, 30_000, credentials.proof(session));
   const deadline = Date.now() + 5000;
   let request;
   while (!request && Date.now() < deadline) {
@@ -203,11 +205,11 @@ test('rehydrate rolls back when a fake child never becomes ready', async () => {
 });
 
 test('the ormi MCP server answers initialize, tools/list and ormi_notes over stdio', async () => {
-  const { daemon, client } = await boot();
+  const { daemon, client, credentials } = await boot();
   const session = (await startFake(client)).body.session;
   const serve = fileURLToPath(new URL('../src/mcp-serve.ts', import.meta.url));
   const proc = spawn(process.execPath, [serve], {
-    env: { ...process.env, ORMICODE_SOCKET: daemon.socketPath, ORMI_SESSION: session },
+    env: { ...process.env, ORMICODE_SOCKET: daemon.socketPath, ORMI_SESSION: session, ORMI_MCP_TOKEN: credentials.proof(session).token },
     stdio: ['pipe', 'pipe', 'inherit'],
   });
   try {

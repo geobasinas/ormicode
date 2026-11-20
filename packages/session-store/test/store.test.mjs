@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Database from 'better-sqlite3';
@@ -26,8 +26,10 @@ test('projects migration preserves the unused legacy table and its rows', () => 
   const dir = mkdtempSync(join(tmpdir(), 'ormi-project-migration-'));
   const path = join(dir, 'store.db');
   const legacy = new Database(path);
-  legacy.exec(`CREATE TABLE projects(id TEXT PRIMARY KEY, machine TEXT, path TEXT, remote TEXT, default_branch TEXT);
-    INSERT INTO projects VALUES ('old', 'm_old', '/old/repo', 'https://example.test/repo', 'main');
+  const migrations = new URL('../migrations/', import.meta.url);
+  for (const file of readdirSync(migrations).sort().filter(file => /^000[1-7]-/.test(file)))
+    legacy.exec(readFileSync(new URL(file, migrations), 'utf8'));
+  legacy.exec(`INSERT INTO projects VALUES ('old', 'm_old', '/old/repo', 'https://example.test/repo', 'main');
     PRAGMA user_version = 7;`);
   legacy.close();
   const db = openStore(path);

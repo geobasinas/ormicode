@@ -19,9 +19,15 @@ import { Checkpoints, DEFAULT_LIMITS } from '@ormicode/checkpoints';
 import { SecretBroker } from './secrets.ts';
 import { TerminalHub } from './terminal-methods.ts';
 import { PriceBook } from '@ormicode/pricing';
-import { serve, defaultSocketPath, ormicodeDir, sessionLogDir, type Link } from './socket.ts';
+import { serve, defaultSocketPath, ormicodeDir, type Link } from './socket.ts';
 import { allocateSessionPorts } from './session-ports.ts';
-import { environmentForSession } from './session-env.ts';
+import { workerEnvironment } from './worker-env.ts';
+import { McpCredentials } from './mcp-auth.ts';
+import { TeamApprovals } from './team-approvals.ts';
+import { TeamLifecycle } from './team-lifecycle.ts';
+import { UserInteractions } from './user-interactions.ts';
+import { beforeWorkerResume, resumeSession, resumeQueuedChildren, workerReadiness } from './team-resume.ts';
+import { rateRetries } from './rate-retry.ts';
 import { PreviewProxy } from './preview-proxy.ts';
 import { Services } from './services.ts';
 import { AgentBrowser } from './agent-browser.ts';
@@ -34,11 +40,13 @@ const WORKER_MAIN = join(dirname(fileURLToPath(import.meta.url)), 'worker-main.t
 const startedAt = Date.now();
 interface Worker { proc: ChildProcess; session: string; pid: number | undefined; ready: boolean }
 type HeldPrompt = { text: string; images?: unknown[]; context?: PromptContext[]; attachments?: PromptAttachment[]; actor?: 'auto' };
-export interface DaemonOptions { socketPath?: string; storePath?: string }
+export interface DaemonOptions { socketPath?: string; storePath?: string; mcpCredentials?: McpCredentials }
 export async function startDaemon(opts: DaemonOptions = {}) {
   let socketPath = opts.socketPath ?? process.env.ORMICODE_SOCKET ?? defaultSocketPath();
   const storePath = opts.storePath ?? process.env.ORMICODE_STORE ?? join(ormicodeDir(), 'store.db');
   const db = openStore(storePath);
+  const mcpCredentials = opts.mcpCredentials ?? new McpCredentials();
+  let dispatchCtx: DispatchCtx;
   const previewProxy = new PreviewProxy();
   await previewProxy.listen();
   if (socketPath !== defaultSocketPath() && existsSync(socketPath)) rmSync(socketPath);
@@ -69,15 +77,18 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     for (const c of clients) if (c.subscriptions.has(session) && !c.link.closed) c.link.send(JSON.parse(frame));
   };
   const delta = (session: string, kind: string, text: string) => {
+    text = mcpCredentials.redact(text);
     for (const c of clients) if (c.subscriptions.has(session) && !c.link.closed)
       c.link.send({ v: 1, type: 'evt', session, ts: Date.now(), body: { kind, text } });
     relay?.sendDelta(session, kind, text);
   };
   const record = (session: string, kind: string, payload: Record<string, unknown>, ts?: number, origin?: string) => {
     if (closing) return;
-    const { seq, frame } = append(db, session, { kind, payload: { kind, ...secrets.redact(session, payload) }, ...(ts ? { ts } : {}), ...(origin ? { origin } : {}) });
+    dispatchCtx?.teamLifecycle.event(session, kind, payload);
+    [kind, payload] = dispatchCtx?.teamApprovals.event(session, kind, payload) ?? [kind, payload];
+    const { seq, frame } = append(db, session, { kind, payload: { kind, ...secrets.redact(session, mcpCredentials.redact(payload)) }, ...(ts ? { ts } : {}), ...(origin ? { origin } : {}) });
     fanout(session, frame); relay?.sendEvt(session, seq, JSON.parse(frame));
-    const mapped = stateFor[kind];
+    const mapped = payload.teamMessage ? undefined : stateFor[kind];
     if (mapped) setState(db, session, mapped, typeof payload.reason === 'string' ? payload.reason : undefined, ts);
     else if (kind === 'state' && typeof payload.state === 'string') setState(db, session, payload.state as SessionState, typeof payload.reason === 'string' ? payload.reason : undefined, ts);
   };
@@ -110,32 +121,20 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     }
     if (!checkpoints.repo(session).exists()) void snapshotCheckpoint(session, 0, 'baseline');
     const waking = Boolean(db.prepare("SELECT 1 FROM events WHERE session = ? AND kind = 'turn_start' LIMIT 1").get(session));
+    const mcpToken = mcpCredentials.issue(session);
     const proc = spawn(process.execPath, [WORKER_MAIN], {
-      env: {
-        ...process.env,
-        ...secrets.envFor(session, row.project),
-        ...environmentForSession(row, base),
-        ORMICODE_SOCKET: socketPath, ORMICODE_SESSION: session,
-        ORMICODE_VENDOR: row.vendor, ORMICODE_TRANSPORT: row.transport,
-        ORMICODE_CWD: row.cwd, ...(row.native_id ? { ORMICODE_RESUME: row.native_id } : {}),
-        ORMICODE_LOG_DIR: sessionLogDir(session),
-        ...(row.model && row.model !== 'default' ? { ORMICODE_MODEL: row.model } : {}),
-        ...(row.effort && row.effort !== 'default' ? { ORMICODE_EFFORT: row.effort } : {}),
-        ...(row.mode && row.mode !== 'default' ? { ORMICODE_MODE: row.mode } : {}),
-        ...(row.agent_command ? { ORMICODE_AGENT_COMMAND: row.agent_command } : {}),
-        ...(row.agent_args ? { ORMICODE_AGENT_ARGS_JSON: row.agent_args } : {}),
-        ORMICODE_MCP: '1',
-      },
+      env: workerEnvironment(row, base, socketPath, secrets, mcpToken),
       stdio: 'ignore', windowsHide: true, detached: process.platform !== 'win32',
     });
     const worker: Worker = { proc, session, pid: proc.pid, ready: false };
     workers.set(session, worker);
     setState(db, session, 'starting');
     proc.on('exit', code => {
+      mcpCredentials.revoke(session, mcpToken);
       if (closing) return;
+      dispatchCtx.teamLifecycle.unavailable(session);
       const wasResuming = resuming.delete(session);
-      const retryTimer = retryTimers.get(session);
-      if (retryTimer) { clearTimeout(retryTimer); retryTimers.delete(session); }
+      retries.cancel(session);
       workers.delete(session);
       setWorkerPid(db, session, null);
       const current = getSession(db, session);
@@ -163,6 +162,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
         let recap = false;
         if (w) {
           w.ready = true; w.pid = Number(body.pid) || w.pid; setWorkerPid(db, session, w.pid ?? null); setState(db, session, 'idle'); armIdle(session, 'idle'); enforcePool();
+          dispatchCtx.teamLifecycle.available(session);
           if (resuming.delete(session)) record(session, 'resumed', {});
           const uptoSeq = recapPending.get(session);
           if (uptoSeq !== undefined) {
@@ -174,11 +174,13 @@ export async function startDaemon(opts: DaemonOptions = {}) {
           }
         }
         answer({ ok: true });
+        resumeQueuedChildren(dispatchCtx, session);
         if (!recap) void drainQueue(session);
         break;
       }
       case 'worker.event': {
-        const kind = String(body.kind);
+        let kind = String(body.kind);
+        dispatchCtx.teamLifecycle.event(session, kind, body.payload as Record<string, unknown>);
         if (kind === 'text_delta' || kind === 'thinking_delta') {
           delta(session, kind, String((body.payload as Record<string, unknown>)?.text ?? ''));
           return answer({ seq: 0 });
@@ -189,7 +191,8 @@ export async function startDaemon(opts: DaemonOptions = {}) {
           return answer({ seq: 0 });
         }
         if (kind === 'turn_start') startTurnCheckpoints(session, services, turnCheckpoints, handoffsInTurn);
-        const payload = secrets.redact(session, body.payload as Record<string, unknown>);
+        let payload = secrets.redact(session, mcpCredentials.redact(body.payload as Record<string, unknown>));
+        [kind, payload] = dispatchCtx.teamApprovals.event(session, kind, payload);
         const { seq } = append(db, session, { kind, payload: { kind, ...payload }, ts: Number(body.ts) || Date.now() });
         const frameOut = JSON.stringify({ v: 1, type: 'evt', session, seq, ts: Number(body.ts) || Date.now(), body: { kind, ...payload } });
         fanout(session, frameOut);
@@ -204,14 +207,16 @@ export async function startDaemon(opts: DaemonOptions = {}) {
         if (kind === 'error' && typeof payload?.resetAt === 'number'
             && (payload.code === 'rate_limited' || payload.code === 'plan_limit')) {
           setState(db, session, 'paused_rate_limited', String(payload.code));
-          scheduleRateRetry(session, payload.resetAt);
+          retries.schedule(session, payload.resetAt);
         }
         answer({ seq });
         if (kind === 'turn_end') finishTurnCheckpoints(session, turnCheckpoints, uiCheckFollowups, enqueueAutoPrompt, record, drainQueue);
+        if (kind === 'interrupted') void drainQueue(session, true, true);
         break;
       }
       case 'worker.state':
         setState(db, session, body.state as SessionState, body.reason as string | undefined);
+        dispatchCtx.teamLifecycle.event(session, 'state', body);
         answer({ seq: 0 });
         break;
       case 'worker.native':
@@ -227,6 +232,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   };
   const evictWorker = async (session: string, reason: string) => {
     if (closing) return;
+    mcpCredentials.revoke(session); dispatchCtx.teamLifecycle.unavailable(session);
     const w = workers.get(session);
     const link = workerLinks.get(session);
     if (link) { try { await link.request('worker.evict', { session }, 10_000); } catch { if (w) killTree(w.proc); } }
@@ -236,6 +242,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     setState(db, session, 'idle', reason);
   };
   const stopWorker = async (session: string) => {
+    mcpCredentials.revoke(session); dispatchCtx.teamLifecycle.unavailable(session);
     const w = workers.get(session);
     if (!w) return;
     const link = workerLinks.get(session);
@@ -267,45 +274,28 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   };
   const workerLinks = new Map<string, Link>();
   const sessionByLink = new Map<Link, string>();
-  const ensureWorker = (session: string, timeoutMs = 30_000): Promise<void> => new Promise((resolve, reject) => {
-    if (workers.get(session)?.ready) return resolve();
-    if (!workers.has(session)) spawnWorker(session);
-    const deadline = Date.now() + timeoutMs;
-    const poll = () => {
-      if (workers.get(session)?.ready) return resolve();
-      const failure = spawnFailures.get(session);
-      if (failure) { spawnFailures.delete(session); return reject(failure); }
-      if (!workers.has(session) && !pendingWorkers.has(session)) return reject(new Error('worker exited before ready'));
-      if (Date.now() > deadline) return reject(new Error('worker.ready timeout'));
-      setTimeout(poll, 25).unref();
-    };
-    poll();
+  const ensureWorker = workerReadiness({
+    ready: session => Boolean(workers.get(session)?.ready), exists: session => workers.has(session),
+    pending: session => pendingWorkers.has(session), spawn: spawnWorker,
+    failure: session => { const error = spawnFailures.get(session); spawnFailures.delete(session); return error; },
+    before: session => beforeWorkerResume(dispatchCtx, session, () => closing), closed: () => closing,
   });
   const { sendPrompt, drainQueue, enqueueAutoPrompt } = createPromptDelivery({
-    db, notesDir, paused, heldPrompts, lastPrompt, ensureWorker, toWorker, terminals, record,
+    db, notesDir, paused, heldPrompts, lastPrompt, ensureWorker, toWorker, terminals, record, closed: () => closing,
     previewEntries: (session, ids) => services.previewEntries(session, ids),
   });
-  // Sessions paused by a rate limit wake at the provider's reset time and retry
-  // the held prompt; timers are in-memory and re-armed from the journal on boot.
-  const retryTimers = new Map<string, NodeJS.Timeout>();
-  const scheduleRateRetry = (session: string, resetAt: number) => {
-    const existing = retryTimers.get(session);
-    if (existing) clearTimeout(existing);
-    retryTimers.set(session, setTimeout(() => {
-      retryTimers.delete(session);
-      const last = lastPrompt.get(session);
-      if (last && getSession(db, session)?.state === 'paused_rate_limited') {
-        void sendPrompt(session, last.text, last.images, {
-          journal: false, context: last.context, attachments: last.attachments, actor: last.actor,
-        }).then(ok => { if (!ok) setState(db, session, 'interrupted', 'resume_failed'); });
-      }
-    }, Math.max(0, resetAt - Date.now())).unref());
-  };
+  const retries = rateRetries(db, session => {
+    const last = lastPrompt.get(session);
+    return last ? sendPrompt(session, last.text, last.images, { journal: false, context: last.context, attachments: last.attachments, actor: last.actor }) : undefined;
+  });
   const pairing = new Pairing();
   const handoffsInTurn = new Map<string, number>();
   let relay: RelayClient | undefined;
-  const dispatchCtx: DispatchCtx = {
-    db, notesDir, startedAt, paused, heldPrompts, lastPrompt, handoffsInTurn,
+  dispatchCtx = {
+    teamLifecycle: new TeamLifecycle(() => dispatchCtx, session => Boolean(workers.get(session)?.ready) && workerLinks.has(session) && mcpCredentials.activeFor(session)),
+    interactions: new UserInteractions(() => dispatchCtx),
+    teamApprovals: new TeamApprovals(() => dispatchCtx, session => workers.has(session) && mcpCredentials.activeFor(session)),
+    db, notesDir, startedAt, paused, heldPrompts, lastPrompt, handoffsInTurn, mcpCredentials,
     lastError: () => lastError, liveWorkers: () => workers.size,
     spawnWorker, ensureWorker, stopWorker, setRecapPending: (session, uptoSeq) => recapPending.set(session, uptoSeq), toWorker, sendPrompt, drainQueue,
     resetUiCheckFollowups: session => uiCheckFollowups.reset(session),
@@ -316,6 +306,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
       maxAgeMs: (Number(process.env.ORMICODE_PRICING_CACHE_MINUTES) || 1440) * 60_000,
     }),
   };
+  dispatchCtx.teamLifecycle.start();
   // idx summaries keep remote session lists fresh without streaming transcripts.
   let idxTimer: NodeJS.Timeout | undefined;
   const pushIdx = (to: string) => {
@@ -365,25 +356,25 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     link.onClose = () => {
       for (const c of clients) if (c.link === link) { clients.delete(c); dispatchCtx.terminals.drop(c); }
       const s = sessionByLink.get(link);
-      if (s) { workerLinks.delete(s); sessionByLink.delete(link); }
+      if (s) { sessionByLink.delete(link); if (workerLinks.get(s) === link) { workerLinks.delete(s); mcpCredentials.revoke(s); dispatchCtx.teamLifecycle.unavailable(s); } }
     };
   });
   const addr = server.address();
   if (typeof addr === 'object' && addr) socketPath = `127.0.0.1:${addr.port}`;
-  for (const c of recovery.autoResume) { resuming.add(c.s.id); if (c.recapOnly) recapPending.set(c.s.id, Number.MAX_SAFE_INTEGER); spawnWorker(c.s.id); }
-  for (const r of recovery.rateLimited) scheduleRateRetry(r.id, r.resetAt);
+  for (const c of recovery.autoResume) { resuming.add(c.s.id); if (c.recapOnly) recapPending.set(c.s.id, Number.MAX_SAFE_INTEGER); void resumeSession(dispatchCtx, c.s.id).catch(error => { lastError = String(error); }); }
+  for (const r of recovery.rateLimited) retries.schedule(r.id, r.resetAt);
   return {
     socketPath, storePath, db, workers,
     async close() {
       await agentBrowser.closeAll();
       await services.shutdown();
       await previewProxy.close();
-      closing = true;
+      dispatchCtx.interactions.close(); closing = true;
+      dispatchCtx.teamLifecycle.close();
       if (idxTimer) clearTimeout(idxTimer);
       for (const t of idleTimers.values()) clearTimeout(t);
       idleTimers.clear();
-      for (const t of retryTimers.values()) clearTimeout(t);
-      retryTimers.clear();
+      retries.close();
       for (const w of workers.values()) {
         const link = workerLinks.get(w.session);
         try { await link?.request('worker.evict', { session: w.session }, 5_000); } catch { /* kill below */ }
@@ -391,6 +382,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
       }
       for (const c of clients) c.link.close();
       for (const link of workerLinks.values()) link.close();
+      mcpCredentials.clear();
       relay?.close();
       server.close();
       db.close();
