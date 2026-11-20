@@ -7,6 +7,7 @@ import {
 import type { Client, DispatchCtx } from './dispatch.ts';
 import { hasUnansweredUserQuestion } from './late-question.ts';
 import { expireHandoffApprovals } from './handoff-dispatch.ts';
+import { handoffTargetError } from './handoff-transition.ts';
 
 export function silenceInterval(value: unknown): number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : 600_000;
@@ -88,7 +89,7 @@ export class TeamLifecycle {
         urgent: 0, created_at: now,
       };
       addTeamMessage(ctx.db, message);
-      if (session.parentless) this.toUser(message, true);
+      if (session.parentless || handoffTargetError(ctx.db, team.parent)) this.toUser(message, true);
       else {
         ctx.record(session.id, 'team_message', { team: team.id, from: session.id, to: team.parent, message: message.id, nudge: true });
         ctx.record(team.parent, 'team_message', { team: team.id, from: session.id, to: team.parent, message: message.id, nudge: true });
@@ -120,6 +121,8 @@ export class TeamLifecycle {
     const session = String(body.session), request = String(body.request);
     const message = getTeamUserMessage(ctx.db, session, request);
     if (!message) return false;
+    const unavailable = handoffTargetError(ctx.db, session);
+    if (unavailable) { client.link.replyError(id, 'session.busy', unavailable); return true; }
     if (message.answered_at !== null) client.link.replyError(id, 'session.already_decided', 'message already answered');
     else {
       const text = Object.values(body.answers as Record<string, string>).join('\n').trim();

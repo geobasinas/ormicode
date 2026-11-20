@@ -10,7 +10,7 @@ import { allocateSessionPorts } from './session-ports.ts';
 import { sessionEnvironment } from './session-env.ts';
 import { runSessionHook } from './workspace-hooks.ts';
 import { restoreHandoffState } from './handoff-state.ts';
-import { reserveHandoff } from './handoff-transition.ts';
+import { handoffTargetError, reserveHandoff } from './handoff-transition.ts';
 import { transferHandoffPrompts } from './handoff-prompts.ts';
 
 const pendingApprovals = new Map<string, { ctx: DispatchCtx; session: string; expire(reason: string): void; resolve(approved: boolean): void }>();
@@ -52,6 +52,8 @@ async function runHandoff(ctx: DispatchCtx, client: Client, id: string, body: Re
   const db = ctx.db;
   const s = getSession(db, session);
   if (!s) return client.link.replyError(id, 'session.not_found', session);
+  const unavailable = handoffTargetError(db, session);
+  if (unavailable) return client.link.replyError(id, 'session.busy', unavailable);
   const to = body.to as { vendor?: string; transport?: string; model?: string; effort?: string; branch?: string };
   const mode = String(body.mode);
   const reason = typeof body.reason === 'string' ? body.reason : undefined;

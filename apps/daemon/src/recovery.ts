@@ -52,7 +52,7 @@ export interface Recovery { autoResume: ResumeCandidate[]; rateLimited: { id: st
 
 export function recoverSessions(db: Store, policy: ResumePolicy): Recovery {
   db.exec('DELETE FROM leases');
-  for (const s of listSessions(db).filter(s => [...inFlight, 'interrupted'].includes(s.state))) {
+  for (const s of listSessions(db).filter(s => !s.handed_off && [...inFlight, 'interrupted'].includes(s.state))) {
     checkTail(db, s.id);
     const team = s.team ? getTeam(db, s.team) : undefined;
     if (team && team.parent !== s.id && team.closed_at === null && ['starting', 'running', 'retrying'].includes(s.state)
@@ -67,7 +67,7 @@ export function recoverSessions(db: Store, policy: ResumePolicy): Recovery {
     }
     if (s.worker_pid) { try { process.kill(s.worker_pid, 0); killTreePid(s.worker_pid); } catch { /* gone */ } setWorkerPid(db, s.id, null); }
   }
-  const rateLimited = listSessions(db).filter(s => s.state === 'paused_rate_limited').flatMap(s => {
+  const rateLimited = listSessions(db).filter(s => !s.handed_off && s.state === 'paused_rate_limited').flatMap(s => {
     const row = db.prepare("SELECT payload FROM events WHERE session = ? AND kind = 'error' ORDER BY seq DESC LIMIT 1").get(s.id) as { payload: string } | undefined;
     const resetAt = row ? (JSON.parse(row.payload) as { resetAt?: number }).resetAt : undefined;
     return typeof resetAt === 'number' ? [{ id: s.id, resetAt }] : [];
@@ -78,6 +78,7 @@ export function recoverSessions(db: Store, policy: ResumePolicy): Recovery {
   // and get a journaled handoff_brief recap instead of their transcript.
   const autoResume = listSessions(db)
     .filter(s => {
+      if (s.handed_off) return false;
       const team = s.team ? getTeam(db, s.team) : undefined;
       if (team && team.parent !== s.id) return false;
       if (ownedTeam(db, s.id)?.closed_at === null && (['idle', 'done'].includes(s.state) || s.state === 'interrupted' && s.reason === 'host_restart')) return true;

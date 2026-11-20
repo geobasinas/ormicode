@@ -3,6 +3,7 @@ import { getSession, getTeam, ownedTeam, type SessionState } from '@ormicode/ses
 import { preparePr, publishPr, type PreparedPr } from '@ormicode/git-core';
 import type { Client, DispatchCtx } from './dispatch.ts';
 import { lateQuestionAnswer, validQuestionAnswer } from './late-question.ts';
+import { handoffTargetError } from './handoff-transition.ts';
 
 type Body = Record<string, unknown>;
 type Pending = {
@@ -94,6 +95,8 @@ export class UserInteractions {
   }
   async method(client: Client, id: string, method: string, body: Body): Promise<void> {
     const ctx = this.context(), session = String(body.session), request = String(body.request);
+    const unavailable = handoffTargetError(ctx.db, session);
+    if (unavailable) return client.link.replyError(id, 'session.busy', unavailable);
     if (method === 'session.askUser') return this.ask(client, id, session, body);
     const pending = this.find(session, request);
     if (!pending && method === 'session.answer' && lateQuestionAnswer(ctx, client, id, session, request, body.answers as Record<string, string>)) return;

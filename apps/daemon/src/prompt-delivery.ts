@@ -5,7 +5,7 @@ import type { Store } from '@ormicode/session-store';
 import type { TerminalHub } from './terminal-methods.ts';
 import { expandPrompt, PromptInvalidError } from './prompt-context.ts';
 import type { PreviewConsoleEntry } from './preview-inspector.ts';
-import { handoffInProgress } from './handoff-transition.ts';
+import { handoffTargetError } from './handoff-transition.ts';
 
 type Prompt = { text: string; images?: unknown[]; context?: PromptContext[]; attachments?: PromptAttachment[]; actor?: 'auto' };
 
@@ -35,7 +35,7 @@ export function createPromptDelivery(options: PromptDeliveryOptions) {
     opts?: { journal?: boolean; context?: PromptContext[]; attachments?: PromptAttachment[]; actor?: 'auto' },
   ): Promise<boolean> => {
     const row = getSession(options.db, session);
-    if (!row || row.handed_off || handoffInProgress(options.db, session)) return false;
+    if (!row || handoffTargetError(options.db, session)) return false;
     if (row.team && getTeam(options.db, row.team)?.parent !== session) {
       if (row.archived || getTeam(options.db, row.team)?.closed_at != null) throw new Error('team.closed: child is closed');
       const busy = teamChildren(options.db, row.team).filter(s => s.id !== session && !s.archived
@@ -46,7 +46,7 @@ export function createPromptDelivery(options: PromptDeliveryOptions) {
     sending.add(session);
     try {
       await options.ensureWorker(session);
-      if (options.closed?.() || handoffInProgress(options.db, session) || getSession(options.db, session)?.handed_off) return false;
+      if (options.closed?.() || handoffTargetError(options.db, session)) return false;
       const messages = unreadTeamMessages(options.db, session);
       const deliveredText = messages.length
         ? `Team inbox:\n${messages.map(m => `[${m.id}] From ${m.from_session}: ${m.body}`).join('\n')}\n\n${text}` : text;
@@ -100,9 +100,10 @@ export function createPromptDelivery(options: PromptDeliveryOptions) {
       }
     }
     if (siblingsOnly) return true;
+    if (handoffTargetError(options.db, session)) return false;
     if (options.paused.has(session)) return true;
     const current = getSession(options.db, session);
-    if (!current || current.archived || current.handed_off || handoffInProgress(options.db, session)
+    if (!current || current.archived
       || !['idle', 'done', 'interrupted'].includes(current.state)) return true;
     if (queueSending.has(session)) {
       if (afterTurnEnd) queueRequested.add(session);
@@ -149,6 +150,7 @@ export function createPromptDelivery(options: PromptDeliveryOptions) {
   };
 
   const enqueueAutoPrompt = (session: string, text: string, context: PromptContext[]): void => {
+    if (handoffTargetError(options.db, session)) return;
     const item = { id: newId('q'), text, createdAt: Date.now(), context, actor: 'auto' as const };
     addQueuedPrompt(options.db, session, item);
     moveQueuedPrompt(options.db, session, item.id, 0);

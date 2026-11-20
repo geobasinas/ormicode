@@ -6,6 +6,7 @@ import type { Client, DispatchCtx } from './dispatch.ts';
 import { resolveHandoffApproval } from './handoff-dispatch.ts';
 import { ormicodeDir } from './socket.ts';
 import { APPROVAL_GUIDANCE } from './team-guidance.ts';
+import { handoffTargetError } from './handoff-transition.ts';
 
 type Payload = Record<string, unknown>;
 type Pending = { session: string; parent: string; payload: Payload; options: Payload[]; decision?: { actor: string; reason: string } };
@@ -33,7 +34,7 @@ export class TeamApprovals {
   }
   private available(session: string): boolean {
     const ctx = this.context(), parent = getSession(ctx.db, session);
-    return Boolean(parent && !parent.archived && !parent.handed_off && this.hasWorker(session));
+    return Boolean(parent && !parent.archived && !handoffTargetError(ctx.db, session) && this.hasWorker(session));
   }
   private destructive(payload: Payload): boolean {
     if (payload.destructive === true) return true;
