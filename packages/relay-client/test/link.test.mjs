@@ -33,6 +33,40 @@ test('events are deduped by seq and queue until a handler is set', async () => {
   assert.deepEqual(seen, [2, 3]);
 });
 
+test('sequence gaps hold later events and replay from the last contiguous cursor only once', async () => {
+  const ws = new FakeWs(); const link = new WsLink(ws), seen = [];
+  link.onFrame = frame => seen.push(frame.seq);
+  const pending = link.request('session.subscribe', { session: evt(1).session, after: 1 });
+  ws.emit(res(ws.sent.at(-1).id)); await pending;
+  ws.emit(evt(4)); ws.emit(evt(3)); ws.emit(evt(4));
+  assert.deepEqual(seen, []);
+  assert.equal(ws.sent.filter(frame => frame.type === 'subscribe').length, 1);
+  const replay = ws.sent.filter(frame => frame.method === 'session.subscribe');
+  assert.equal(replay.length, 2);
+  assert.deepEqual(replay[1].body, { session: evt(1).session, after: 1 });
+  ws.emit({ ...evt(2), body: { kind: 'approval_request' } });
+  assert.deepEqual(seen, [2, 3, 4]);
+  ws.emit(evt(2)); ws.emit(evt(3)); ws.emit(evt(4));
+  ws.emit(res(replay[1].id)); await Promise.resolve();
+  ws.emit(evt(5));
+  assert.deepEqual(seen, [2, 3, 4, 5]);
+  link.close();
+});
+
+test('gap replay failures close the connection for retry instead of skipping the missing event', async () => {
+  const ws = new FakeWs(); const link = new WsLink(ws), seen = [];
+  link.onFrame = frame => seen.push(frame.seq);
+  const pending = link.request('session.subscribe', { session: evt(1).session, after: 10 });
+  ws.emit(res(ws.sent.at(-1).id)); await pending;
+  ws.emit(evt(11));
+  assert.equal(ws.sent.filter(frame => frame.method === 'session.subscribe').length, 1);
+  ws.emit(evt(13));
+  ws.emit({ v: 1, type: 'err', id: ws.sent.at(-1).id, code: 'daemon.error', message: 'retry' });
+  await Promise.resolve();
+  assert.equal(link.closed, true);
+  assert.deepEqual(seen, [11]);
+});
+
 test('a fresh subscription without a cursor replays events seen by the previous renderer', async () => {
   const ws = new FakeWs(); const link = new WsLink(ws);
   const seen = []; link.onFrame = f => seen.push(f.seq);

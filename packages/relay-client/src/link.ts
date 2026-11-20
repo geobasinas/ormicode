@@ -36,6 +36,7 @@ export class WsLink {
   private lastSeq = new Map<string, number>(); // dedupe DO-outbox vs hub-journal replays
   private subscriptions = new Map<string, number>();
   private replays = new Map<string, Promise<Frame>>();
+  private gaps = new Map<string, Map<number, Frame>>();
   lastSub: { session: string; after: number } | undefined; // last subscribe for resync replay
   closed = false;
   closeCode?: number;
@@ -79,12 +80,17 @@ export class WsLink {
       const session = String(body.session);
       const after = typeof body.after === 'number' ? body.after : 0;
       this.subscriptions.set(session, after);
-      if (typeof body.after !== 'number') this.lastSeq.set(session, after);
+      if (typeof body.after !== 'number' || !this.lastSeq.has(session)) {
+        this.lastSeq.set(session, after);
+        this.gaps.delete(session);
+      }
       this.lastSub = { session, after };
       this.send({ type: 'subscribe', session: body.session, after: this.lastSub.after });
     }
     if (method === 'session.unsubscribe') {
       this.subscriptions.delete(String(body.session));
+      this.lastSeq.delete(String(body.session));
+      this.gaps.delete(String(body.session));
       this.send({ type: 'unsubscribe', session: body.session });
     }
     return this.requestHub(method, body, timeoutMs);
@@ -124,8 +130,32 @@ export class WsLink {
     if (frame.type === 'evt' && 'seq' in frame && typeof frame.seq === 'number') {
       const prev = this.lastSeq.get(frame.session) ?? 0;
       if (frame.seq <= prev) return; // already delivered via the other replay path
+      if (this.subscriptions.has(frame.session) && frame.seq > prev + 1) {
+        const pending = this.gaps.get(frame.session) ?? new Map<number, Frame>();
+        pending.set(frame.seq, frame);
+        this.gaps.set(frame.session, pending);
+        void this.replay(frame.session)?.then(result => {
+          if (result.type === 'err' && !this.closed) this.close();
+        }, () => { if (!this.closed) this.close(); });
+        return;
+      }
       this.lastSeq.set(frame.session, frame.seq);
+      this.deliver(frame);
+      const pending = this.gaps.get(frame.session);
+      let next = frame.seq + 1;
+      while (pending?.has(next)) {
+        const buffered = pending.get(next)!;
+        pending.delete(next);
+        this.lastSeq.set(frame.session, next++);
+        this.deliver(buffered);
+      }
+      if (!pending?.size) this.gaps.delete(frame.session);
+      return;
     }
+    this.deliver(frame);
+  }
+
+  private deliver(frame: Frame): void {
     if ((frame.type === 'res' || frame.type === 'err') && this.pending.has(frame.id)) {
       const p = this.pending.get(frame.id)!;
       this.pending.delete(frame.id);
