@@ -13,8 +13,24 @@ interface JsonRpc { jsonrpc?: string; id?: string | number; method: string; para
 
 const text = (s: string) => ({ content: [{ type: 'text', text: s }] });
 const errText = (s: string) => ({ content: [{ type: 'text', text: s }], isError: true });
+export const UI_CHECK_INSTRUCTIONS = 'After you change UI code while a preview service is running, check your work before finishing: ormi_browser_open the page, ormi_browser_snapshot, ormi_browser_screenshot, and ormi_browser_logs for errors. Fix what you find.';
 
-const TOOLS = [
+export function initializeResult(uiCheck: boolean) {
+  return {
+    protocolVersion: '2025-06-18', capabilities: { tools: {} },
+    serverInfo: { name: 'ormi', version: '0.0.0' },
+    ...(uiCheck ? { instructions: UI_CHECK_INSTRUCTIONS } : {}),
+  };
+}
+
+export async function initializeWithBrowserSettings(
+  request: (method: string, body: Record<string, unknown>, timeoutMs: number) => Promise<Record<string, unknown>>,
+) {
+  const settings = await request('browser.settings', {}, 1_000).catch(() => undefined);
+  return initializeResult(settings?.uiCheck === true);
+}
+
+export const TOOLS = [
   { name: 'ormi_sessions', description: 'List sessions in this project, or read one session\'s state', inputSchema: { type: 'object', properties: { session: { type: 'string', description: 'session id to get; omit to list all' } } } },
   { name: 'ormi_start', description: 'Start a sibling session (own worktree) with an agent and prompt. Returns its session id.', inputSchema: { type: 'object', required: ['prompt'], properties: { prompt: { type: 'string' }, vendor: { type: 'string' }, transport: { type: 'string' }, model: { type: 'string' }, effort: { type: 'string' } } } },
   { name: 'ormi_message', description: 'Send a follow-up prompt to a session this one started', inputSchema: { type: 'object', required: ['session', 'text'], properties: { session: { type: 'string' }, text: { type: 'string' } } } },
@@ -22,7 +38,57 @@ const TOOLS = [
   { name: 'ormi_handoff', description: 'Hand this task to another agent or model. You write the brief.', inputSchema: { type: 'object', required: ['reason'], properties: { vendor: { type: 'string' }, transport: { type: 'string' }, model: { type: 'string' }, effort: { type: 'string' }, mode: { type: 'string', enum: ['in_place', 'rehydrate', 'fork'] }, brief: { type: 'string' }, reason: { type: 'string' } } } },
   { name: 'ormi_notes', description: 'Read this session\'s notes, or write one (title + body)', inputSchema: { type: 'object', properties: { title: { type: 'string' }, body: { type: 'string' } } } },
   ...designMcpTools(),
+  { name: 'ormi_browser_open', description: 'Use this to check your own UI changes on the session dev server. Open only this session preview; inspect it with snapshot before interacting.', inputSchema: { type: 'object', properties: { port: { type: 'number' }, path: { type: 'string' }, url: { type: 'string' }, device: { type: 'string', enum: ['phone', 'tablet', 'desktop'] } } } },
+  { name: 'ormi_browser_click', description: 'Click an element in your own session preview. Use snapshot first and prefer role= selectors such as role=button[name=\"Save\"].', inputSchema: { type: 'object', required: ['selector'], properties: { selector: { type: 'string' } } } },
+  { name: 'ormi_browser_type', description: 'Type into your own session preview. Use snapshot first and prefer role= selectors.', inputSchema: { type: 'object', required: ['selector', 'text'], properties: { selector: { type: 'string' }, text: { type: 'string' }, submit: { type: 'boolean' } } } },
+  { name: 'ormi_browser_snapshot', description: 'Read the accessible snapshot of your own session preview before choosing click or type selectors.', inputSchema: { type: 'object', properties: {} } },
+  { name: 'ormi_browser_screenshot', description: 'Capture a screenshot of your own session preview for visual verification.', inputSchema: { type: 'object', properties: { fullPage: { type: 'boolean' }, selector: { type: 'string' } } } },
+  { name: 'ormi_browser_logs', description: 'Read console and network errors from your own session preview.', inputSchema: { type: 'object', properties: { kind: { type: 'string', enum: ['console', 'network', 'all'] }, after: { type: 'number' } } } },
 ];
+
+export function formatBrowserLogs(entries: Record<string, unknown>[], maxBytes = 16 * 1024): string {
+  const lines = entries.map(entry => {
+    const parts = [`${String(entry.level ?? 'error')}/${String(entry.kind ?? 'console')}`, String(entry.message ?? '')];
+    if (entry.method || entry.url) parts.push(`Request: ${String(entry.method ?? 'GET')} ${String(entry.url ?? '')} ${entry.status ? `(${entry.status})` : ''}`.trim());
+    if (entry.requestBody) parts.push(`Request body: ${String(entry.requestBody)}`);
+    if (entry.responseBody) parts.push(`Response: ${String(entry.responseBody)}`);
+    if (entry.stack) parts.push(`Stack:\n${String(entry.stack).split('\n').slice(0, 5).join('\n')}`);
+    return parts.join('\n');
+  });
+  let result = '';
+  for (const line of lines) {
+    const next = `${result ? '\n\n' : ''}${line}`;
+    if (Buffer.byteLength(result + next) > maxBytes) break;
+    result += next;
+  }
+  return result;
+}
+
+type BrowserRequest = (method: string, body: Record<string, unknown>) => Promise<Record<string, unknown>>;
+export async function callBrowserTool(name: string, args: Record<string, unknown>, self: string, req: BrowserRequest): Promise<unknown> {
+  switch (name) {
+    case 'ormi_browser_open': return text(JSON.stringify(await req('browser.open', { ...args, session: self })));
+    case 'ormi_browser_click': return text(JSON.stringify(await req('browser.click', { selector: String(args.selector), session: self })));
+    case 'ormi_browser_type': return text(JSON.stringify(await req('browser.type', { selector: String(args.selector), text: String(args.text), submit: Boolean(args.submit), session: self })));
+    case 'ormi_browser_snapshot': return text(String((await req('browser.snapshot', { session: self })).snapshot ?? ''));
+    case 'ormi_browser_screenshot': {
+      const r = await req('browser.screenshot', { session: self, ...args });
+      const artifact = String(r.artifact ?? '');
+      const image = await req('browser.artifact', { session: self, id: artifact });
+      return { content: [
+        { type: 'text', text: `Screenshot saved as ${artifact}` },
+        { type: 'image', data: String(r.jpeg ?? image.data), mimeType: 'image/jpeg' },
+      ] };
+    }
+    case 'ormi_browser_logs': {
+      const r = await req('preview.console', { session: self, ...(args.after === undefined ? {} : { after: Number(args.after) }) }) as { entries?: Record<string, unknown>[] };
+      const kind = String(args.kind ?? 'all');
+      const entries = (r.entries ?? []).filter(entry => kind === 'all' || entry.kind === kind || (kind === 'console' && ['console', 'error', 'rejection'].includes(String(entry.kind))));
+      return text(formatBrowserLogs(entries));
+    }
+    default: return errText(`unknown tool ${name}`);
+  }
+}
 
 /** Run the stdio server until stdin closes. `self` is the owning session id. */
 export async function serveOrmiMcp(socketPath: string, self: string): Promise<void> {
@@ -93,6 +159,13 @@ export async function serveOrmiMcp(socketPath: string, self: string): Promise<vo
       case 'ormi_design_history': return text(JSON.stringify(await req('design.history', { session: self, slug: String(args.slug) })));
       case 'ormi_design_activity': return text(JSON.stringify(await req('design.activity', { session: self, slug: String(args.slug) })));
       case 'ormi_design_restore': return text(JSON.stringify(await req('design.restore', { session: self, slug: String(args.slug), expectedRevision: args.expectedRevision, targetRevision: args.targetRevision })));
+      case 'ormi_browser_open':
+      case 'ormi_browser_click':
+      case 'ormi_browser_type':
+      case 'ormi_browser_snapshot':
+      case 'ormi_browser_screenshot':
+      case 'ormi_browser_logs':
+        return callBrowserTool(name, args, self, req);
       default: return errText(`unknown tool ${name}`);
     }
   };
@@ -117,8 +190,11 @@ export async function serveOrmiMcp(socketPath: string, self: string): Promise<vo
     const reply = (result: unknown) => ({ jsonrpc: '2.0', id: msg.id, result });
     try {
       switch (msg.method) {
-        case 'initialize':
-          return reply({ protocolVersion: String((msg.params?.protocolVersion) ?? '2025-06-18'), capabilities: { tools: {} }, serverInfo: { name: 'ormi', version: '0.0.0' } });
+        case 'initialize': {
+          const initialized = await initializeWithBrowserSettings(req);
+          return reply({ ...initialized,
+            protocolVersion: String(msg.params?.protocolVersion ?? '2025-06-18') });
+        }
         case 'ping': return reply({});
         case 'tools/list': return reply({ tools: TOOLS });
         case 'tools/call': {

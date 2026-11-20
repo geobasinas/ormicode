@@ -54,7 +54,10 @@ export class WsLink {
     // Subscription state lives in the DO so it can filter fan-out and replay
     // the outbox; the protocol req still reaches the hub for bookkeeping.
     if (method === 'session.subscribe') {
-      this.lastSub = { session: String(body.session), after: typeof body.after === 'number' ? body.after : 0 };
+      const session = String(body.session);
+      const after = typeof body.after === 'number' ? body.after : 0;
+      if (typeof body.after !== 'number') this.lastSeq.set(session, after);
+      this.lastSub = { session, after };
       this.send({ type: 'subscribe', session: body.session, after: this.lastSub.after });
     }
     if (method === 'session.unsubscribe') this.send({ type: 'unsubscribe', session: body.session });

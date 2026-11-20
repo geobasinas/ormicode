@@ -8,6 +8,7 @@ export interface StoredQueueItem {
   images?: { data: string; mimeType: string; name?: string; size?: number }[];
   context?: PromptContext[];
   attachments?: PromptAttachment[];
+  actor?: 'auto';
   error?: string;
 }
 

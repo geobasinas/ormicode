@@ -6,7 +6,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { Frame } from '@ormicode/protocol';
 
-export interface RemoteInfo { relayUrl: string; account: string; device: string; name: string }
+export interface RemoteInfo { relayUrl: string; account: string; device: string; name: string; active?: boolean }
 
 const bridge = {
   request: (method: string, body?: Record<string, unknown>): Promise<Frame> =>

@@ -15,6 +15,7 @@ import { newId } from '@ormicode/protocol';
 import { flag } from './usage.ts';
 import { serviceCommand, previewCommand } from './service.ts';
 import { designCommand } from './design.ts';
+import { browserCommand } from './browser.ts';
 
 const [group, command, ...rest] = process.argv.slice(2);
 if (group === 'agent' && command === 'smoke') {
@@ -45,6 +46,8 @@ if (group === 'agent' && command === 'smoke') {
   process.exit(await serviceCommand(command, rest));
 } else if (group === 'preview') {
   process.exit(await previewCommand(command, rest));
+} else if (group === 'browser') {
+  process.exit(await browserCommand(command, rest));
 } else if (group === 'status' && !command) {
   process.exit(await statusMain());
 } else if (group === 'pair' && !command) {

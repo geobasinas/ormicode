@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, request as httpRequest } from 'node:http';
+import { parseWireFrame } from '@ormicode/protocol';
+import { onClientFrame } from '../src/dispatch.ts';
 import { PreviewProxy, previewLabel } from '../src/preview-proxy.ts';
+import { isInspectorHttpFailure, serializeInspectorValue, trimInspectorStack } from '../src/preview-inspector-helpers.ts';
 import { PreviewInspector, buildElementSelector, parseReactDebugStack, previewInspectorScript, truncateInspectorText } from '../src/preview-inspector.ts';
 
 const request = (port, host, path, options = {}) => new Promise((resolve, reject) => {
@@ -13,6 +16,24 @@ const request = (port, host, path, options = {}) => new Promise((resolve, reject
   });
   req.once('error', reject);
   req.end(options.body);
+});
+
+test('preview console clear frames parse and dispatch', async () => {
+  const session = 's_00000000000000000000000000';
+  const id = 'req_00000000000000000000000000';
+  const frame = JSON.stringify({
+    v: 1, type: 'req', id, method: 'preview.consoleClear', body: { session }, ts: Date.now(),
+  });
+  const parsed = parseWireFrame(frame);
+  assert.equal(parsed.success, true);
+  if (!parsed.success) return;
+  let cleared;
+  let reply;
+  await onClientFrame({ db: {}, services: { clearPreviewConsole: value => { cleared = value; } } },
+    { link: { reply: (requestId, body) => { reply = { requestId, body }; }, replyError: (_requestId, code, message) => { throw new Error(`${code}: ${message}`); } }, subscriptions: new Set(), device: 'test' },
+    parsed.data);
+  assert.equal(cleared, session);
+  assert.deepEqual(reply, { requestId: id, body: { cleared: true } });
 });
 
 test('inspector helper truncation and React dev-stack parsing are bounded', () => {
@@ -30,6 +51,30 @@ test('inspector helper truncation and React dev-stack parsing are bounded', () =
   assert.match(previewInspectorScript, /window\.onerror/);
   assert.match(previewInspectorScript, /buildSelector/);
   assert.match(previewInspectorScript, /unhandledrejection/);
+  assert.match(previewInspectorScript, /stack: trimStack\(error && error\.stack \|\| new Error\(\)\.stack/);
+  assert.match(previewInspectorScript, /if \(failedStatus\(response\.status\)\) add/);
+  assert.match(previewInspectorScript, /if \(failedStatus\(this\.status\)\)/);
+  assert.match(previewInspectorScript, /args\.find\(value => value instanceof Error\)/);
+  assert.match(previewInspectorScript, /new Error\(\)\.stack/);
+  assert.match(previewInspectorScript, /addEventListener\('error', \(\) => record/);
+});
+
+test('inspector captures HTTP failures and serializes errors and circular values safely', () => {
+  const error = new Error('fixture failed');
+  assert.equal(serializeInspectorValue(error, 2048), 'Error: fixture failed');
+  assert.match(previewInspectorScript, /stack: trimStack\(error && error\.stack/);
+  assert.doesNotMatch(serializeInspectorValue(error, 2048), /preview-inspector\.test\.mjs/);
+  const circular = { ok: true }; circular.self = circular;
+  assert.match(serializeInspectorValue(circular, 2048), /"\[Circular\]"/);
+  assert.ok(serializeInspectorValue({ value: 'x'.repeat(100) }, 32).length <= 32);
+  assert.equal(isInspectorHttpFailure(200), false);
+  assert.equal(isInspectorHttpFailure(404), true);
+  assert.equal(isInspectorHttpFailure(500), true);
+  const stack = trimInspectorStack('Error: failed\n at report (http://site/__ormi/inspect.js:1:2)\n at click (http://site/src/main.jsx:8:4)');
+  assert.doesNotMatch(stack, /__ormi\/inspect\.js/);
+  assert.match(stack, /src\/main\.jsx:8:4/);
+  assert.match(previewInspectorScript, /failedStatus\(response\.status\)/);
+  assert.match(previewInspectorScript, /xhrSend\.apply/);
 });
 
 test('console ring enforces target rate, caps at 500, pages by cursor, and clears', () => {
@@ -47,6 +92,8 @@ test('console ring enforces target rate, caps at 500, pages by cursor, and clear
   assert.deepEqual(inspector.forPrompt('s_ring', []).map(entry => entry.seq), Array.from({ length: 10 }, (_, index) => 591 + index));
   inspector.clear('s_ring');
   assert.deepEqual(inspector.list('s_ring'), { entries: [], next: 0, dropped: 0 });
+  inspector.report('s_other', 41000, { entries: [{ kind: 'error', message: 'other session' }] }, 4000);
+  assert.equal(inspector.list('s_other').entries[0].message, 'other session');
   inspector.report('s_ring', 41000, { entries: batch().slice(0, 1) }, 4000);
   assert.equal(inspector.list('s_ring').entries[0].seq, 601);
 });
@@ -57,6 +104,7 @@ test('proxy injects authenticated inspector script into bounded HTML and accepts
   const upstream = createServer((req, res) => {
     identity.push(req.headers['accept-encoding']);
     if (req.url === '/head') return res.writeHead(200, { 'content-type': 'text/html', etag: '"head"' }).end('<html><head id="x"></head><body>ok</body></html>');
+    if (req.url === '/app') return res.writeHead(200, { 'content-type': 'text/html' }).end('<html><head></head><script type="module" src="/src/app.js"></script></html>');
     if (req.url === '/nohead') return res.writeHead(200, { 'content-type': 'text/html' }).end('<main>ok</main>');
     if (req.url === '/json') return res.writeHead(200, { 'content-type': 'application/json' }).end('{"markup":"<head>"}');
     if (req.url === '/large') return res.writeHead(200, { 'content-type': 'text/html', 'content-length': large.length, etag: '"large"' }).end(large);
@@ -84,6 +132,9 @@ test('proxy injects authenticated inspector script into bounded HTML and accepts
 
     const head = await request(proxy.port, host, '/head', { headers: { cookie, accept: 'text/html' } });
     assert.match(head.body.toString(), /<head id="x"><script src="\/__ormi\/inspect.js"><\/script>/);
+    assert.doesNotMatch(head.body.toString(), /<script[^>]+(?:async|defer)/i);
+    const app = await request(proxy.port, host, '/app', { headers: { cookie, accept: 'text/html' } });
+    assert.ok(app.body.toString().indexOf('/__ormi/inspect.js') < app.body.toString().indexOf('/src/app.js'));
     assert.equal(head.headers['content-length'], undefined);
     assert.equal(head.headers.etag, undefined);
     const noHead = await request(proxy.port, host, '/nohead', { headers: { cookie, accept: 'text/html' } });

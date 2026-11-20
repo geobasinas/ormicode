@@ -5,11 +5,17 @@ import { useMemo, useState, type ReactNode } from 'react';
 import { Pencil, CircleAlert, RotateCw, Pause, ChevronRight, History, CircleCheck, MessageCircle, Clock3, Search, Cpu, Gauge } from 'lucide-react';
 import { ToolRow, ThinkingRow, CheckpointMark } from './ToolRow.tsx';
 import type { TranscriptEvent } from './useTranscript.ts';
+import { checkpointPreview, checkpointScreenshots, type CheckpointScreenshotChoice } from './checkpoint-preview.ts';
 import { Markdown } from './Markdown.tsx';
 import { TranscriptScroller } from './TranscriptScroller.tsx';
 import { ChangedFilesCard } from './ChangedFilesCard.tsx';
 import { AgentActions, PromptActions } from './MessageActions.tsx';
 import { ErrorRow, HandoffRow } from './TranscriptRows.tsx';
+import { contextChipLabel } from './composer-parts.tsx';
+import type { PromptContext } from '@ormicode/protocol';
+import { BrowserActionRow } from './BrowserActionRow.tsx';
+import { UiCheckRow } from './UiCheckRow.tsx';
+import { TranscriptContextDetails } from './TranscriptContextDetails.tsx';
 
 const mono = { fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap' as const, wordBreak: 'break-word' as const };
 const small = { fontSize: 12 };
@@ -21,7 +27,7 @@ function eventLine(icon: ReactNode, text: string, color = 'var(--text-hint)') {
 interface Ctx {
   session: string; results: Map<string, TranscriptEvent>; cpAfter: Map<number, TranscriptEvent>;
   calls: Set<string>; attached: Set<number>; children: Map<string, TranscriptEvent[]>;
-  hiddenCount: number; showHidden: boolean; toggleHidden(): void; events: TranscriptEvent[]; scratch: boolean;
+  hiddenCount: number; showHidden: boolean; toggleHidden(): void; events: TranscriptEvent[]; screenshots: CheckpointScreenshotChoice[]; scratch: boolean;
   onHandoff?: () => void; onOpenSession?: (session: string) => void; onEditPrompt?: (text: string) => void; busy?: boolean;
 }
 
@@ -31,6 +37,8 @@ const keyOf = (event: TranscriptEvent, index: number) => event.seq > 0 ? event.s
 
 function toolRow(event: TranscriptEvent, ctx: Ctx) {
   const callId = String(event.body.callId);
+  const checkpoint = ctx.results.has(callId) ? ctx.cpAfter.get(ctx.results.get(callId)!.seq) : undefined;
+  const previews = checkpoint ? checkpointPreview(ctx.events, checkpoint) : undefined;
   const children = ctx.children.get(callId) ?? [];
   const nested = renderEvents(children, ctx, true);
   const childRunning = children.some(child =>
@@ -42,7 +50,7 @@ function toolRow(event: TranscriptEvent, ctx: Ctx) {
       && (index === 0 || children[index - 1]?.kind !== child.kind)).length;
   return <ToolRow
     call={event} result={ctx.results.get(callId)}
-    checkpoint={ctx.results.has(callId) ? ctx.cpAfter.get(ctx.results.get(callId)!.seq) : undefined}
+    checkpoint={checkpoint} screenshot={previews?.screenshot} previous={previews?.previous} screenshots={ctx.screenshots}
     session={ctx.session} childCount={childCount} childRunning={childRunning} nested={nested.length ? nested : undefined}
     busy={ctx.busy} onOpenSession={ctx.onOpenSession} hideCheckpoint={ctx.scratch}
   />;
@@ -64,6 +72,7 @@ function line(e: TranscriptEvent, ctx: Ctx): ReactNode {
   switch (e.kind) {
     case 'prompt': {
       const previousCheckpoint = ctx.events.filter(event => event.kind === 'checkpoint' && event.seq < e.seq).at(-1);
+      const promptContexts = Array.isArray(b.context) ? b.context as PromptContext[] : [], inspectableContexts = promptContexts.filter(entry => entry.kind === 'element' || entry.kind === 'console');
       return (
         <div className="ormi-hover-zone" style={{ display: 'flex', justifyContent: 'flex-end', margin: '10px 0' }}>
           <div style={{ maxWidth: '78%' }}>
@@ -72,9 +81,10 @@ function line(e: TranscriptEvent, ctx: Ctx): ReactNode {
               border: '1px solid var(--line-card)', borderRadius: 'var(--radius-md)',
               color: 'var(--text-active)', fontSize: 14, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
             }}>
-              {Array.isArray(b.context) && b.context.length ? <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 5 }}>{(b.context as { kind: string; path?: string }[]).map((entry, i) => <span key={i} style={{ padding: '1px 5px', borderRadius: 4, background: 'var(--bg-inset)', color: 'var(--text-hint)', fontSize: 10 }}>@{entry.path ?? (entry.kind === 'diff' ? 'Diff' : entry.kind === 'terminal' ? 'Terminal' : entry.kind === 'notes' ? 'Notes' : entry.kind)}</span>)}</div> : null}
+              {promptContexts.length ? <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 5 }}>{promptContexts.map((entry, i) => <span key={i} style={{ padding: '1px 5px', borderRadius: 4, background: 'var(--bg-inset)', color: 'var(--text-hint)', fontSize: 10 }}>{contextChipLabel(entry)}</span>)}</div> : null}
               {Array.isArray(b.attachments) && b.attachments.length ? <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 5 }}>{(b.attachments as { name: string; size?: number }[]).map((file, i) => <span key={i} style={{ padding: '2px 5px', borderRadius: 4, background: 'var(--bg-inset)', color: 'var(--text-hint)', fontSize: 10 }}>{file.name}{file.size ? ` · ${Math.ceil(file.size / 1024)} KB` : ''}</span>)}</div> : null}
               {String(b.text)}
+              {inspectableContexts.length ? <TranscriptContextDetails contexts={inspectableContexts} /> : null}
             </div>
             <PromptActions session={ctx.session} text={String(b.text)} checkpoint={previousCheckpoint ? String(previousCheckpoint.body.id) : undefined} onEdit={ctx.onEditPrompt} />
           </div>
@@ -90,7 +100,12 @@ function line(e: TranscriptEvent, ctx: Ctx): ReactNode {
     case 'plan':
       return <div style={{ ...mono, ...small, color: 'var(--text-secondary)', fontStyle: 'italic' }}>{String(b.text)}</div>;
     case 'tool_call':
+      if (/^mcp__ormi__ormi_browser_/.test(String(b.name ?? b.tool ?? ''))) return null;
       return toolRow(e, ctx);
+    case 'browser_action':
+      return <BrowserActionRow event={e} session={ctx.session} />;
+    case 'ui_check':
+      return <UiCheckRow event={e} session={ctx.session} />;
     case 'tool_result':
       return null;
     case 'error':
@@ -115,10 +130,17 @@ function line(e: TranscriptEvent, ctx: Ctx): ReactNode {
     case 'interrupted':
       return <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--accent-amber)', ...small }}><Pause size={12} /> interrupted{typeof b.reason === 'string' ? ` — ${b.reason}` : ''}</div>;
     case 'checkpoint':
-      if (ctx.attached.has(e.seq)) return null;
-      return <div className="ormi-hover-zone" style={{ position: 'relative', height: 14 }}>
-        <span style={{ position: 'absolute', right: -26, top: -4, width: 22, display: 'inline-flex', justifyContent: 'center' }}><CheckpointMark session={ctx.session} cp={e} busy={ctx.busy} onOpenSession={ctx.onOpenSession} /></span>
-      </div>;
+      {
+        if (ctx.attached.has(e.seq)) return null;
+        const previews = checkpointPreview(ctx.events, e);
+        return <div className="ormi-hover-zone" style={{ position: 'relative', height: 14 }}>
+          <span style={{ position: 'absolute', right: -26, top: -4, width: 22, display: 'inline-flex', justifyContent: 'center' }}><CheckpointMark session={ctx.session} cp={e}
+            screenshot={previews.screenshot} previous={previews.previous} screenshots={ctx.screenshots}
+            busy={ctx.busy} onOpenSession={ctx.onOpenSession} /></span>
+        </div>;
+      }
+    case 'checkpoint_screenshot':
+      return null;
     case 'checkpoint_restored':
       return <div style={{ ...small, color: 'var(--text-hint)', display: 'flex', gap: 6, alignItems: 'center', margin: '4px 0' }} title={String(b.id ?? '')}>
         <History size={11} />Restored files to checkpoint <span style={mono}>{String(b.id ?? '').slice(0, 7)}</span>
@@ -171,10 +193,6 @@ function line(e: TranscriptEvent, ctx: Ctx): ReactNode {
 }
 
 const linkButton = { border: 0, background: 'transparent', color: 'var(--text-secondary)', font: 'inherit', padding: 0, cursor: 'pointer', textDecoration: 'underline' };
-
-function ChevronDownSmall() {
-  return <ChevronRight size={11} style={{ transform: 'rotate(90deg)' }} />;
-}
 
 function WorkspaceStepsRow({ steps }: { steps: TranscriptEvent[] }) {
   const [expanded, setExpanded] = useState(false);
@@ -238,7 +256,7 @@ function ExploreRow({ members, files, searches, ctx }: {
       border: 0, background: 'transparent', color: 'var(--text-hint)', fontSize: 12, cursor: 'pointer',
     }}>
       <Search size={12} />{summary}
-      {expanded ? <ChevronDownSmall /> : <ChevronRight size={11} className="ormi-hover-reveal" />}
+      {expanded ? <ChevronRight size={11} style={{ transform: 'rotate(90deg)' }} /> : <ChevronRight size={11} className="ormi-hover-reveal" />}
     </button>
     {expanded ? <div style={{ margin: '3px 0 3px 18px', paddingLeft: 9, borderLeft: '1px solid var(--line-card)' }}>
       {members.map((event, index) => <div key={keyOf(event, index)}>{line(event, ctx)}</div>)}
@@ -359,12 +377,11 @@ export function Transcript({ events, session, onHandoff, onOpenSession, onEditPr
   const rewind = [...events].reverse().find(event => event.kind === 'conversation_rewound');
   const rewindTo = typeof rewind?.body.to === 'number' ? rewind.body.to : -1;
   const hiddenCount = rewind ? events.filter(event => event.seq > rewindTo && event.seq < rewind.seq).length : 0;
-  const visibleEvents = rewind && !showHidden
-    ? events.filter(event => event.seq <= rewindTo || event.seq >= rewind.seq)
-    : events;
+  const visibleEvents = rewind && !showHidden ? events.filter(event => event.seq <= rewindTo || event.seq >= rewind.seq) : events;
   const ctx = useMemo<Ctx>(() => {
     const results = new Map<string, TranscriptEvent>(); const calls = new Set<string>(); const cpAfter = new Map<number, TranscriptEvent>(); const attached = new Set<number>();
     const children = new Map<string, TranscriptEvent[]>();
+    const screenshots = checkpointScreenshots(visibleEvents);
     for (const e of visibleEvents) {
       if (e.kind === 'tool_call') calls.add(String(e.body.callId));
       else if (e.kind === 'tool_result') results.set(String(e.body.callId), e);
@@ -373,7 +390,7 @@ export function Transcript({ events, session, onHandoff, onOpenSession, onEditPr
     }
     const resultSeqs = new Set([...results.values()].filter(r => calls.has(String(r.body.callId))).map(r => r.seq));
     for (const e of visibleEvents) if (e.kind === 'checkpoint' && resultSeqs.has(Number(e.body.seq))) { cpAfter.set(Number(e.body.seq), e); attached.add(e.seq); }
-    return { session, results, calls, cpAfter, attached, children, hiddenCount, showHidden, toggleHidden: () => setShowHidden(value => !value), events, onHandoff, onOpenSession, onEditPrompt, busy, scratch };
+    return { session, results, calls, cpAfter, attached, children, hiddenCount, showHidden, toggleHidden: () => setShowHidden(value => !value), events, screenshots, onHandoff, onOpenSession, onEditPrompt, busy, scratch };
   }, [visibleEvents, events, session, hiddenCount, showHidden, onHandoff, onOpenSession, onEditPrompt, busy, scratch]);
   return <TranscriptScroller count={events.length}>{renderEvents(visibleEvents, ctx)}</TranscriptScroller>;
 }

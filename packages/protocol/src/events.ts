@@ -13,7 +13,7 @@ export const eventBodies = {
   prompt: z.looseObject({ kind: z.literal('prompt'), text }),
   queue_changed: z.looseObject({
     kind: z.literal('queue_changed'),
-    items: z.array(z.object({ id: nonEmpty, text: nonEmpty, createdAt: timestampSchema, images: z.optional(count), error: z.optional(text) })),
+    items: z.array(z.object({ id: nonEmpty, text: nonEmpty, createdAt: timestampSchema, images: z.optional(count), error: z.optional(text), actor: z.optional(z.literal('auto')) })),
   }),
   turn_start: z.looseObject({ kind: z.literal('turn_start') }),
   turn_end: z.looseObject({ kind: z.literal('turn_end') }),
@@ -50,6 +50,24 @@ export const eventBodies = {
   }),
   // A restore point after a tool call (seq = the tool_result); overCap = bytes when one checkpoint alone exceeds the cap.
   checkpoint: z.looseObject({ kind: z.literal('checkpoint'), id: nonEmpty, seq: count, tool: text, overCap: z.optional(count) }),
+  browser_action: z.looseObject({
+    kind: z.literal('browser_action'), action: z.enum(['open', 'click', 'type', 'snapshot', 'screenshot', 'close']),
+    target: z.optional(text), url: text, ok: z.boolean(), error: z.optional(text), artifact: z.optional(nonEmpty),
+    actor: z.enum(['agent', 'user', 'auto']),
+  }),
+  checkpoint_screenshot: z.looseObject({
+    kind: z.literal('checkpoint_screenshot'), checkpoint: nonEmpty, artifact: nonEmpty, url: text, actor: z.literal('auto'),
+  }),
+  ui_check: z.looseObject({
+    kind: z.literal('ui_check'), checkpoint: z.optional(nonEmpty), artifact: z.optional(nonEmpty), url: text,
+    errors: count, warnings: count,
+    entries: z.array(z.object({
+      level: z.enum(['error', 'warn']), kind: z.enum(['console', 'error', 'rejection', 'network']),
+      message: text, request: z.optional(text), status: z.optional(count), frames: z.array(text),
+    })).check(z.maxLength(10)),
+    followup: z.optional(z.boolean()),
+    actor: z.literal('auto'),
+  }),
   checkpoint_restored: z.looseObject({ kind: z.literal('checkpoint_restored'), id: nonEmpty, mode: nonEmpty }),
   conversation_rewound: z.looseObject({ kind: z.literal('conversation_rewound'), to: count, checkpoint: nonEmpty }),
   renamed: z.looseObject({ kind: z.literal('renamed'), title: nonEmpty }),

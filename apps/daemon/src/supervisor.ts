@@ -24,16 +24,16 @@ import { allocateSessionPorts } from './session-ports.ts';
 import { environmentForSession } from './session-env.ts';
 import { PreviewProxy } from './preview-proxy.ts';
 import { Services } from './services.ts';
+import { AgentBrowser } from './agent-browser.ts';
+import { CheckpointScreenshotScheduler, checkpointSnapshot } from './checkpoint-screenshots.ts';
+import { UiCheckFollowupGuard } from './ui-check.ts';
+import { finishTurnCheckpoints, recordToolCheckpoint, startTurnCheckpoints } from './turn-checkpoints.ts';
 import { runSessionHook } from './workspace-hooks.ts';
+import { stateFor } from './supervisor-state.ts';
 const WORKER_MAIN = join(dirname(fileURLToPath(import.meta.url)), 'worker-main.ts');
 const startedAt = Date.now();
 interface Worker { proc: ChildProcess; session: string; pid: number | undefined; ready: boolean }
-type HeldPrompt = { text: string; images?: unknown[]; context?: PromptContext[]; attachments?: PromptAttachment[] };
-const stateFor: Record<string, SessionState> = {
-  turn_start: 'running', turn_end: 'idle', approval_request: 'awaiting_approval',
-  approval_decision: 'running', question_request: 'awaiting_input',
-  rate_limited: 'retrying', retry_scheduled: 'retrying', interrupted: 'interrupted',
-};
+type HeldPrompt = { text: string; images?: unknown[]; context?: PromptContext[]; attachments?: PromptAttachment[]; actor?: 'auto' };
 export interface DaemonOptions { socketPath?: string; storePath?: string }
 export async function startDaemon(opts: DaemonOptions = {}) {
   let socketPath = opts.socketPath ?? process.env.ORMICODE_SOCKET ?? defaultSocketPath();
@@ -49,7 +49,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   const notesDir = join(ormicodeDir(), 'notes');
   const paused = new Set<string>();
   const heldPrompts = new Map<string, HeldPrompt[]>();
-  const lastPrompt = new Map<string, { text: string; images?: unknown[]; context?: PromptContext[]; attachments?: PromptAttachment[] }>();
+  const lastPrompt = new Map<string, { text: string; images?: unknown[]; context?: PromptContext[]; attachments?: PromptAttachment[]; actor?: 'auto' }>();
   const idleTimers = new Map<string, NodeJS.Timeout>();
   const idleTimeoutMs = Number(process.env.ORMICODE_IDLE_TIMEOUT_MS ?? 20 * 60_000);
   const poolMax = Number(process.env.ORMICODE_POOL_MAX ?? 8);
@@ -60,6 +60,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   const checkpointsOn = process.env.ORMICODE_CHECKPOINTS !== '0';
   const secrets = new SecretBroker(join(ormicodeDir(), 'logs', 'secrets-audit.jsonl'), join(ormicodeDir(), 'secrets-index.json'));
   const toolNames = new Map<string, string>();
+  const uiCheckFollowups = new UiCheckFollowupGuard();
   const resuming = new Set<string>();
   const recapPending = new Map<string, number>();
   sweepLogs();
@@ -74,23 +75,23 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   };
   const record = (session: string, kind: string, payload: Record<string, unknown>, ts?: number, origin?: string) => {
     if (closing) return;
-    const { frame, seq } = append(db, session, { kind, payload: { kind, ...secrets.redact(session, payload) }, ...(ts ? { ts } : {}), ...(origin ? { origin } : {}) });
-    fanout(session, frame); if (kind === 'design_changed' || kind === 'queue_changed' || kind === 'prompt') relay?.sendEvt(session, seq, JSON.parse(frame));
+    const { seq, frame } = append(db, session, { kind, payload: { kind, ...secrets.redact(session, payload) }, ...(ts ? { ts } : {}), ...(origin ? { origin } : {}) });
+    fanout(session, frame); relay?.sendEvt(session, seq, JSON.parse(frame));
     const mapped = stateFor[kind];
     if (mapped) setState(db, session, mapped, typeof payload.reason === 'string' ? payload.reason : undefined, ts);
     else if (kind === 'state' && typeof payload.state === 'string') setState(db, session, payload.state as SessionState, typeof payload.reason === 'string' ? payload.reason : undefined, ts);
   };
   const terminals = new TerminalHub(record, ormicodeDir());
   const services = new Services(db, previewProxy, record, ormicodeDir());
+  const agentBrowser = new AgentBrowser(ormicodeDir(), services);
   const pendingWorkers = new Set<string>();
   const spawnFailures = new Map<string, Error>();
-  const checkpointSoon = (session: string, seq: number, tool: string) => {
-    const cwd = getSession(db, session)?.cwd;
-    if (!checkpointsOn || !cwd || !existsSync(cwd) || cwd.startsWith(join(ormicodeDir(), 'scratch'))) return;
-    checkpoints.snapshot(session, cwd, seq, tool).then(r => {
-      if (r.checkpoint) record(session, 'checkpoint', { id: r.checkpoint.id, seq, tool, ...(r.overCap ? { overCap: r.overCap } : {}) });
-    }).catch((e: unknown) => { lastError = `checkpoint ${session}: ${e instanceof Error ? e.message : String(e)}`; });
-  };
+  const snapshotCheckpoint = checkpointSnapshot(checkpoints, db, record, () => checkpointsOn, ormicodeDir(), (session, error) => {
+    lastError = `checkpoint ${session}: ${error instanceof Error ? error.message : String(error)}`;
+  });
+  const turnCheckpoints = new CheckpointScreenshotScheduler(snapshotCheckpoint,
+    (session, checkpoint, files, startedAt, consoleAfter, shouldCheck) => agentBrowser.captureCheckpoint(session, checkpoint, files, startedAt, consoleAfter, record, shouldCheck),
+    (session, files) => agentBrowser.shouldRunUiCheck(session, files));
   const spawnWorker = (session: string) => {
     const row = getSession(db, session);
     if (!row) throw new Error(`unknown session ${session}`);
@@ -107,7 +108,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
       });
       return;
     }
-    if (!checkpoints.repo(session).exists()) checkpointSoon(session, 0, 'baseline');
+    if (!checkpoints.repo(session).exists()) void snapshotCheckpoint(session, 0, 'baseline');
     const waking = Boolean(db.prepare("SELECT 1 FROM events WHERE session = ? AND kind = 'turn_start' LIMIT 1").get(session));
     const proc = spawn(process.execPath, [WORKER_MAIN], {
       env: {
@@ -187,19 +188,14 @@ export async function startDaemon(opts: DaemonOptions = {}) {
             && !['starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying'].includes(getSession(db, session)?.state ?? '')) {
           return answer({ seq: 0 });
         }
-        if (kind === 'turn_start') handoffsInTurn.delete(session);
+        if (kind === 'turn_start') startTurnCheckpoints(session, services, turnCheckpoints, handoffsInTurn);
         const payload = secrets.redact(session, body.payload as Record<string, unknown>);
         const { seq } = append(db, session, { kind, payload: { kind, ...payload }, ts: Number(body.ts) || Date.now() });
         const frameOut = JSON.stringify({ v: 1, type: 'evt', session, seq, ts: Number(body.ts) || Date.now(), body: { kind, ...payload } });
         fanout(session, frameOut);
         relay?.sendEvt(session, seq, JSON.parse(frameOut));
         idxSoon();
-        if (kind === 'tool_call') {
-          toolNames.set(`${session}/${String(payload?.callId)}`, String(payload?.name ?? 'tool'));
-        } else if (kind === 'tool_result') {
-          const key = `${session}/${String(payload?.callId)}`;
-          checkpointSoon(session, seq, toolNames.get(key) ?? 'tool'); toolNames.delete(key);
-        }
+        recordToolCheckpoint(session, kind, payload, seq, toolNames, turnCheckpoints);
         const mapped = stateFor[kind];
         if (mapped) {
           setState(db, session, mapped, typeof payload?.reason === 'string' ? payload.reason as string : undefined);
@@ -211,7 +207,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
           scheduleRateRetry(session, payload.resetAt);
         }
         answer({ seq });
-        if (kind === 'turn_end') void drainQueue(session, true);
+        if (kind === 'turn_end') finishTurnCheckpoints(session, turnCheckpoints, uiCheckFollowups, enqueueAutoPrompt, record, drainQueue);
         break;
       }
       case 'worker.state':
@@ -285,7 +281,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     };
     poll();
   });
-  const { sendPrompt, drainQueue } = createPromptDelivery({
+  const { sendPrompt, drainQueue, enqueueAutoPrompt } = createPromptDelivery({
     db, notesDir, paused, heldPrompts, lastPrompt, ensureWorker, toWorker, terminals, record,
     previewEntries: (session, ids) => services.previewEntries(session, ids),
   });
@@ -299,7 +295,9 @@ export async function startDaemon(opts: DaemonOptions = {}) {
       retryTimers.delete(session);
       const last = lastPrompt.get(session);
       if (last && getSession(db, session)?.state === 'paused_rate_limited') {
-        void sendPrompt(session, last.text, last.images, { journal: false }).then(ok => { if (!ok) setState(db, session, 'interrupted', 'resume_failed'); });
+        void sendPrompt(session, last.text, last.images, {
+          journal: false, context: last.context, attachments: last.attachments, actor: last.actor,
+        }).then(ok => { if (!ok) setState(db, session, 'interrupted', 'resume_failed'); });
       }
     }, Math.max(0, resetAt - Date.now())).unref());
   };
@@ -310,7 +308,8 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     db, notesDir, startedAt, paused, heldPrompts, lastPrompt, handoffsInTurn,
     lastError: () => lastError, liveWorkers: () => workers.size,
     spawnWorker, ensureWorker, stopWorker, setRecapPending: (session, uptoSeq) => recapPending.set(session, uptoSeq), toWorker, sendPrompt, drainQueue,
-    pairing, relay: () => relay, checkpoints, record, secrets, terminals, services,
+    resetUiCheckFollowups: session => uiCheckFollowups.reset(session),
+    pairing, relay: () => relay, checkpoints, record, secrets, terminals, services, agentBrowser,
     prices: new PriceBook({
       cachePath: join(ormicodeDir(), 'cache', 'prices.json'), overridesPath: join(ormicodeDir(), 'prices.json'),
       url: process.env.ORMICODE_PRICES_URL === 'off' ? null : process.env.ORMICODE_PRICES_URL,
@@ -376,6 +375,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   return {
     socketPath, storePath, db, workers,
     async close() {
+      await agentBrowser.closeAll();
       await services.shutdown();
       await previewProxy.close();
       closing = true;

@@ -28,7 +28,7 @@ export interface DesktopExtras {
   /** safeStorage backend — 'basic_text' means no OS keyring (warn the user). */
   storageBackend(): string;
   /** Paired relay endpoint without the token, or null when unpaired. */
-  remote(): { relayUrl: string; account: string; device: string; name: string } | null;
+  remote(): { relayUrl: string; account: string; device: string; name: string; active?: boolean } | null;
   pair(args: { relay: string; account: string; code: string; name?: string }): Promise<{ device: string }>;
   unpair(): Promise<void>;
   /** Frameless-window controls (desktop draws its own titlebar). */

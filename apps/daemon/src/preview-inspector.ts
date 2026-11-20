@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { isInspectorHttpFailure, serializeInspectorValue, trimInspectorStack } from './preview-inspector-helpers.ts';
 
 export type PreviewConsoleKind = 'console' | 'error' | 'rejection' | 'network';
 export type PreviewConsoleEntry = {
@@ -56,12 +57,11 @@ export const previewInspectorScript = String.raw`(() => {
   try {
   if (window.__ormiPreview) return;
   const buildSelector = (${buildElementSelector.toString()});
+  const previewValue = (${serializeInspectorValue.toString()});
+  const trimStack = (${trimInspectorStack.toString()});
+  const failedStatus = (${isInspectorHttpFailure.toString()});
   const cap = (value, size) => {
-    let text = '';
-    try { text = typeof value === 'string' ? value : JSON.stringify(value); }
-    catch { text = String(value); }
-    text = String(text == null ? '' : text);
-    return text.length <= size ? text : text.slice(0, size - 14) + '[truncated]';
+    return previewValue(value, size);
   };
   const sourceFrame = (stack) => {
     if (!stack) return undefined;
@@ -143,7 +143,12 @@ export const previewInspectorScript = String.raw`(() => {
   for (const method of ['error', 'warn']) {
     const original = console[method];
     console[method] = function() {
-      try { add({ kind: 'console', level: method, message: Array.from(arguments).map(value => cap(value, 2048)).join(' ') }); } catch (_) {}
+      try {
+        const args = Array.from(arguments);
+        const error = args.find(value => value instanceof Error);
+        add({ kind: 'console', level: method, message: args.map(value => cap(value, 2048)).join(' '),
+          stack: trimStack(error && error.stack || new Error().stack || '') });
+      } catch (_) {}
       return original.apply(this, arguments);
     };
   }
@@ -181,7 +186,7 @@ export const previewInspectorScript = String.raw`(() => {
     const requestBody = typeof (init && init.body) === 'string' ? init.body : '';
     try {
       const response = await nativeFetch.apply(this, arguments);
-      if (response.status >= 400) add({ kind: 'network', level: 'error', message: 'HTTP ' + response.status + ' ' + method + ' ' + url,
+      if (failedStatus(response.status)) add({ kind: 'network', level: 'error', message: 'HTTP ' + response.status + ' ' + method + ' ' + url,
         method, url, status: response.status, durationMs: performance.now() - started, requestBody, responseBody: await excerpt(response) });
       return response;
     } catch (error) {
@@ -207,7 +212,7 @@ export const previewInspectorScript = String.raw`(() => {
       add({ kind: 'network', level: 'error', message, method: meta.method, url: meta.url,
         status: this.status || undefined, durationMs: performance.now() - started, requestBody, responseBody });
     };
-    this.addEventListener('load', () => { if (this.status >= 400) record('HTTP ' + this.status + ' ' + meta.method + ' ' + meta.url); }, { once: true });
+    this.addEventListener('load', () => { if (failedStatus(this.status)) record('HTTP ' + this.status + ' ' + meta.method + ' ' + meta.url); }, { once: true });
     this.addEventListener('error', () => record('Network request failed: ' + meta.method + ' ' + meta.url), { once: true });
     this.addEventListener('timeout', () => record('Request timed out: ' + meta.method + ' ' + meta.url), { once: true });
     return xhrSend.apply(this, arguments);

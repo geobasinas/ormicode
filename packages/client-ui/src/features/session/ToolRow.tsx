@@ -6,9 +6,12 @@ import { Pencil, Wrench, SquareTerminal, FileText, Search, Globe, ListChecks, Sp
 import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/popover.tsx';
 import { usePlatform } from '../../lib/platform.ts';
 import type { TranscriptEvent } from './useTranscript.ts';
+import type { CheckpointScreenshotChoice } from './checkpoint-preview.ts';
+import { CheckpointCompareDialog } from './CheckpointCompareDialog.tsx';
 import { requestOpenFile } from '../../lib/openFile.ts';
 import { Markdown } from './Markdown.tsx';
 import { feedback } from '../../lib/feedback.ts';
+import { fetchArtifact } from './fetchArtifact.ts';
 
 const mono = { fontFamily: 'var(--font-mono)' };
 const hint = { color: 'var(--text-hint)' };
@@ -65,8 +68,8 @@ function diffFiles(patch: string): DiffFile[] {
   return [...files.values()];
 }
 
-export function CheckpointMark({ session, cp, inline, busy, onOpenSession }: {
-  session: string; cp: TranscriptEvent; inline?: boolean; busy?: boolean; onOpenSession?(session: string): void;
+export function CheckpointMark({ session, cp, screenshot = '', previous, screenshots, inline, busy, onOpenSession }: {
+  session: string; cp: TranscriptEvent; screenshot?: string; previous?: { id: string; artifact: string }; screenshots?: CheckpointScreenshotChoice[]; inline?: boolean; busy?: boolean; onOpenSession?(session: string): void;
 }) {
   const { transport } = usePlatform();
   const [open, setOpen] = useState(false);
@@ -77,7 +80,22 @@ export function CheckpointMark({ session, cp, inline, busy, onOpenSession }: {
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
   const [undoing, setUndoing] = useState(false);
+  const [compare, setCompare] = useState(false);
+  const [preview, setPreview] = useState('');
+  const [previousPreview, setPreviousPreview] = useState('');
   const id = String(cp.body.id ?? '');
+  const screenshotChoices = screenshots ?? [];
+  useEffect(() => {
+    if (!open || !screenshot) return;
+    let alive = true;
+    void fetchArtifact(transport, session, screenshot).then(image => {
+      if (alive) setPreview(`data:${image.mime};base64,${image.data}`);
+    }).catch(() => undefined);
+    if (previous?.artifact) void fetchArtifact(transport, session, previous.artifact).then(image => {
+      if (alive) setPreviousPreview(`data:${image.mime};base64,${image.data}`);
+    }).catch(() => undefined);
+    return () => { alive = false; };
+  }, [open, previous?.artifact, previous?.id, screenshot, id, session, transport]);
   useEffect(() => {
     if (!open) return;
     void transport.request('session.get', { session }).then(result => {
@@ -98,11 +116,11 @@ export function CheckpointMark({ session, cp, inline, busy, onOpenSession }: {
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setLoading(false); }
   };
-  const restore = async (mode: 'files' | 'conversation') => {
+  const restore = async (mode: 'files' | 'conversation', checkpointId = id) => {
     if (loading || busy) return;
     setLoading(true); setError('');
     try {
-      const r = await transport.request('checkpoint.restore', { session, id, mode });
+      const r = await transport.request('checkpoint.restore', { session, id: checkpointId, mode });
       if (r.type === 'err') { setError(String(r.message ?? r.code)); return; }
       setConfirm(undefined); setNote(mode === 'files' ? 'Files restored' : 'Conversation rewound');
       const undoId = (r.body as { undoId?: unknown }).undoId;
@@ -123,15 +141,16 @@ export function CheckpointMark({ session, cp, inline, busy, onOpenSession }: {
     } catch (cause) { feedback.error(cause instanceof Error ? cause.message : String(cause)); }
     finally { setUndoing(false); }
   };
-  const fork = async () => {
+  const fork = async (checkpointId = id) => {
     if (loading || busy) return;
     setLoading(true); setError('');
     try {
-      const r = await transport.request('checkpoint.fork', { session, id, branch });
+      const r = await transport.request('checkpoint.fork', { session, id: checkpointId, branch });
       if (r.type === 'err') { setError(String(r.message ?? r.code)); return; }
       const child = (r.body as { session?: unknown }).session;
       if (typeof child === 'string') onOpenSession?.(child);
       setOpen(false);
+      setCompare(false);
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setLoading(false); }
   };
@@ -149,6 +168,10 @@ export function CheckpointMark({ session, cp, inline, busy, onOpenSession }: {
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 11, color: 'var(--text-hint)', marginBottom: 7 }}>
             <span>{tool} · {when}</span><span style={mono}>{id.slice(0, 7)}</span>
           </div>
+          {preview ? <div style={{ display: 'grid', gap: 5, marginBottom: 7 }}>
+            <img alt="Checkpoint preview" src={preview} style={{ width: '100%', maxHeight: 120, objectFit: 'contain', background: 'var(--bg-inset)', borderRadius: 5 }} />
+            <button type="button" disabled={!previous || !previousPreview} onClick={() => setCompare(true)} style={textButton}>Compare…</button>
+          </div> : null}
           <button type="button" disabled={loading} onClick={() => diff ? setDiff(undefined) : void loadDiff()} style={textButton}>
             {loading ? 'Loading…' : diff ? 'Hide changes' : 'Preview changes'}
           </button>
@@ -177,6 +200,10 @@ export function CheckpointMark({ session, cp, inline, busy, onOpenSession }: {
           {error ? <div style={{ fontSize: 11, color: 'var(--accent-red)', marginTop: 4 }}>{error}</div> : null}
         </PopoverContent>
       </Popover>
+      <CheckpointCompareDialog open={compare} onClose={() => setCompare(false)} session={session}
+      choices={screenshotChoices} initialA={id} initialB={previous?.id ?? ''} busy={Boolean(busy)}
+        onRestore={checkpointId => void restore('files', checkpointId)}
+        onFork={checkpointId => void fork(checkpointId)} />
     </span>
   );
 }
@@ -208,8 +235,8 @@ export function Detail({ name, input, raw }: { name: string; input: Record<strin
   return <><div style={{ ...hint, marginBottom: 4 }}>{name}</div>{pretty(raw)}</>;
 }
 
-export function ToolRow({ call, result, checkpoint, session, childCount = 0, childRunning, nested, hideCheckpoint }: {
-  call: TranscriptEvent; result?: TranscriptEvent; checkpoint?: TranscriptEvent; session: string;
+export function ToolRow({ call, result, checkpoint, screenshot, previous, screenshots, session, childCount = 0, childRunning, nested, hideCheckpoint }: {
+  call: TranscriptEvent; result?: TranscriptEvent; checkpoint?: TranscriptEvent; screenshot?: string; previous?: { id: string; artifact: string }; screenshots?: CheckpointScreenshotChoice[]; session: string;
   childCount?: number; childRunning?: boolean; nested?: ReactNode; busy?: boolean; onOpenSession?(session: string): void; hideCheckpoint?: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -238,7 +265,7 @@ export function ToolRow({ call, result, checkpoint, session, childCount = 0, chi
           {open ? <ChevronDown size={11} style={{ ...hint, flexShrink: 0 }} /> : <ChevronRight size={11} className="ormi-hover-reveal" style={{ ...hint, flexShrink: 0 }} />}
           <span style={{ flex: 1 }} />
         </div>
-        {checkpoint && !hideCheckpoint ? <span style={{ position: 'absolute', right: -26, top: -1, width: 22, display: 'inline-flex', justifyContent: 'center' }}><CheckpointMark session={session} cp={checkpoint} inline /></span> : null}
+        {checkpoint && !hideCheckpoint ? <span style={{ position: 'absolute', right: -26, top: -1, width: 22, display: 'inline-flex', justifyContent: 'center' }}><CheckpointMark session={session} cp={checkpoint} screenshot={screenshot} previous={previous} screenshots={screenshots} inline /></span> : null}
       </div>
       {open ? <div style={{ margin: '2px 0 6px 19px', padding: '6px 9px', borderRadius: 6, background: 'var(--bg-inset)', ...mono, fontSize: 11, color: 'var(--text-label)', maxHeight: 280, overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
         <Detail name={String(call.body.name)} input={input} raw={call.body.input} />

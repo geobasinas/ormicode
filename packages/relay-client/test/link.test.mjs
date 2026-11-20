@@ -33,6 +33,19 @@ test('events are deduped by seq and queue until a handler is set', async () => {
   assert.deepEqual(seen, [2, 3]);
 });
 
+test('a fresh subscription without a cursor replays events seen by the previous renderer', async () => {
+  const ws = new FakeWs(); const link = new WsLink(ws);
+  const seen = []; link.onFrame = f => seen.push(f.seq);
+  ws.emit(evt(2));
+  seen.length = 0;
+  const pending = link.request('session.subscribe', { session: 's_01ARZ3NDEKTSV4RRFFQ69G5FAV' });
+  const req = ws.sent[1];
+  ws.emit(evt(1)); ws.emit(evt(2));
+  ws.emit(res(req.id, { subscribed: true }));
+  await pending;
+  assert.deepEqual(seen, [1, 2]);
+});
+
 test('relay control messages bypass the parser; invalid frames are dropped', () => {
   const ws = new FakeWs(); const link = new WsLink(ws);
   const relay = []; link.onRelayMessage = m => relay.push(m.type);

@@ -1888,13 +1888,15 @@ The daemon methods for this pane are built. The UI can use the status, history, 
 
 ## Browser preview
 
-**Implementation status:** The daemon allocates stable 10-port blocks (`ORMICODE_PORT_RANGE`, default `41000-48999`) and builds session-scoped `PORT`, `ORMI_*` variables for workers, terminals, hooks and services. `.ormi/setup`, `.ormi/resume` and `.ormi/teardown` run through the shared hook runner; resume is non-blocking and teardown precedes daemon worktree removal. `apps/daemon/src/services.ts` reads `.ormi/services.yaml` from the session folder then project root, validates at most 10 services with unique offsets, manages `service.list/start/stop/restart/logs`, health checks and bounded logs, and stops children with the daemon; services do not auto-start after daemon boot. `preview.url` and `ormi preview url` return host-routed authenticated URLs from the `node:http` proxy (`ORMICODE_PREVIEW_PORT` or an ephemeral loopback port); `ormi service` exposes service operations. For authorized `*.localhost` pages, the proxy requests identity encoding and injects `__ormi/inspect.js` into successful HTML responses up to 5 MiB; its same-origin report route is cookie protected, not journaled, and accepts at most 64 KiB/50 entries per request and 200 entries per second per target. Console events live in a 500-entry per-session ring exposed by `preview.console {session, after?, limit?}`, `preview.console_clear {session}` and `ormi preview console`. The Browser pane supports element picking and annotated comments, sends element/console prompt contexts and image crops through a session-keyed Composer inbox, and polls the Console drawer every two seconds. Limits: each service uses one port in its block, logs are capped at 2,000 lines/1 MiB plus a persistent file, and annotation PNGs are capped at 2 MiB. Pages not served through the proxy or blocked by CSP cannot be inspected; remote/relay preview and headless screenshots are not built. The owner excluded an “Adjust” feature.
+**Implementation status:** The daemon allocates stable 10-port blocks (`ORMICODE_PORT_RANGE`, default `41000-48999`) and builds session-scoped `PORT`, `ORMI_*` variables for workers, terminals, hooks and services. `.ormi/setup`, `.ormi/resume` and `.ormi/teardown` run through the shared hook runner; resume is non-blocking and teardown precedes daemon worktree removal. `apps/daemon/src/services.ts` reads `.ormi/services.yaml` from the session folder then project root, validates at most 10 services with unique offsets, manages service lifecycle, health checks and bounded logs, and stops children with the daemon. `preview.url` returns authenticated URLs through the `node:http` proxy. The proxy injects the Stage B inspector into authorized HTML; console and network events live in a bounded per-session ring. The Browser pane supports picking and annotated comments. Agents can use the scoped `ormi_browser_*` MCP tools to inspect their own session preview with Playwright Core; actions are journaled and screenshots are stored under the daemon data root, outside the worktree. A global setting captures a headless screenshot after turns that produced a checkpoint while a service is running; checkpoint popovers show thumbnails and comparison. The daemon installs only `chromium-headless-shell` under `~/.ormicode/browsers` (or the configured data root). The owner excluded an “Adjust” feature.
 
 > **Status:** later · **Needs:** [Sessions](#sessions)
 
 **Your running app is part of the context.**
 
-**Embedded preview (default):** a tab next to the session showing the dev server, proxied through the hub with an authenticated URL, so it works on the phone too. Proxies HTTP and websockets (live reload works).
+**Embedded preview (default):** a tab next to the session showing the dev server, proxied through the hub with an authenticated URL, so it works on the phone too. Local preview proxies HTTP and websockets (live reload works).
+
+**Relay status:** Desktop preview works over the relay without HMR; web preview needs a dedicated preview origin (see Open questions).
 
 Services are declared in `.ormi/services.yaml` (no port guessing):
 ```yaml
@@ -1921,7 +1923,7 @@ services:
 
 **Element picker (later):** hold the picker key and click → DOM path, computed styles, component name.
 
-**Headless evidence:** for unattended runs, a headless browser takes screenshots (and optionally a short video) as session artifacts. Downloaded once (120 MB), never your browser. Off by default.
+**Headless evidence:** agent browser actions use a daemon-managed headless browser and session-scoped preview proxy. At each turn's checkpoint, a screenshot is captured in the background when the global setting is on and a service is running. Screenshots are stored outside the worktree under the daemon data root. The managed Chromium headless shell downloads once (about 120 MB); it never uses the user's browser profile.
 
 **Real Chrome:** see [Chrome](#chrome).
 
@@ -3417,7 +3419,7 @@ Then:
 
 Big decisions waiting for the owner. Add one as `Q<n>: question — options — your pick — where (section)`, then keep working on whatever doesn't depend on it. Once it's answered, write the answer into the right section and delete the item.
 
-**Open:** none.
+**Open:** Q1: What dedicated preview origin should web previews use? — wildcard subdomain or path-based origin — use a dedicated wildcard origin — Browser preview.
 
 # Lessons from similar projects
 
