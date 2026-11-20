@@ -8,7 +8,7 @@
 import { connect } from './socket.ts';
 import { newId } from '@ormicode/protocol';
 import { TEAM_TOOLS, callTeamTool } from './team-mcp.ts';
-import type { McpProof } from './mcp-auth.ts';
+import { waitFor } from './mcp-wait.ts';
 
 interface JsonRpc { jsonrpc?: string; id?: string | number; method: string; params?: Record<string, unknown> }
 
@@ -205,30 +205,4 @@ export async function serveOrmiMcp(socketPath: string, self: string, token: stri
       return reply(errText(error instanceof Error ? error.message : String(error)));
     }
   }
-}
-
-/** Subscribe and watch live events until the session settles or times out. */
-async function waitFor(link: Awaited<ReturnType<typeof connect>>, session: string, until: string, timeoutMs: number, proof: McpProof): Promise<string> {
-  const res = await link.request('session.subscribe', { session }, 30_000, proof);
-  if (res.type === 'err') return JSON.stringify({ error: res.code });
-  return new Promise(resolve => {
-    const timer = setTimeout(async () => {
-      link.onFrame = undefined;
-      const s = await link.request('session.get', { session }, 30_000, proof).catch(() => undefined);
-      resolve(JSON.stringify({ timedOut: true, state: s && (s.body as Record<string, unknown>).state }));
-    }, timeoutMs);
-    const done = async (state: string) => {
-      clearTimeout(timer); link.onFrame = undefined;
-      await link.request('session.unsubscribe', { session }, 30_000, proof).catch(() => undefined);
-      resolve(JSON.stringify({ state }));
-    };
-    link.onFrame = frame => {
-      if (frame.type !== 'evt') return;
-      const body = frame.body as Record<string, unknown>;
-      if (until === 'approval' && ['approval_request', 'team_approval_request', 'question_request'].includes(String(body.kind))) void done('awaiting_approval');
-      if (body.kind === 'turn_end' && until !== 'approval') void done('idle');
-      if (body.kind === 'done' || (until === 'done' && body.kind === 'turn_end')) void done('done');
-      if (body.kind === 'error') void done(`error:${String(body.code ?? 'unknown')}`);
-    };
-  });
 }

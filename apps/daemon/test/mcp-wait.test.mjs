@@ -1,0 +1,67 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { waitFor } from '../src/mcp-wait.ts';
+
+const proof = { session: 'parent', token: 'test' };
+const event = (kind, session = 'child') => ({ type: 'evt', session, body: { kind } });
+
+function fixture(handle) {
+  const calls = [];
+  const link = { onFrame: undefined, async request(method, body, timeout, auth) {
+    assert.deepEqual(auth, proof);
+    calls.push(method);
+    return await handle(method, link) ?? { type: 'res', body: {} };
+  } };
+  return { link, calls };
+}
+
+test('MCP wait rechecks state after subscribing when completion precedes the subscription reply', async () => {
+  for (const until of ['idle', 'done', 'approval']) {
+    const { link, calls } = fixture((method, link) => {
+      if (method === 'session.subscribe') link.onFrame(event('turn_end'));
+      if (method === 'session.get') return { type: 'res', body: { state: 'done' } };
+    });
+    assert.deepEqual(JSON.parse(await waitFor(link, 'child', until, 100, proof)), { state: 'done' });
+    assert.deepEqual(calls, ['session.subscribe', 'session.get', 'session.unsubscribe']);
+    assert.equal(link.onFrame, undefined);
+  }
+});
+
+test('MCP wait catches live completion during the status request and ignores other sessions', async () => {
+  const { link } = fixture((method, link) => {
+    if (method === 'session.get') {
+      link.onFrame(event('error', 'other'));
+      link.onFrame(event('turn_end'));
+      return { type: 'res', body: { state: 'running' } };
+    }
+  });
+  assert.deepEqual(JSON.parse(await waitFor(link, 'child', 'idle', 100, proof)), { state: 'idle' });
+});
+
+test('MCP wait ignores historical completion and times out with current state', async () => {
+  const { link, calls } = fixture((method, link) => {
+    if (method === 'session.subscribe') link.onFrame(event('turn_end'));
+    if (method === 'session.get') return { type: 'res', body: { state: 'running' } };
+  });
+  assert.deepEqual(JSON.parse(await waitFor(link, 'child', 'idle', 1, proof)), { timedOut: true, state: 'running' });
+  assert.equal(calls.at(-1), 'session.unsubscribe');
+});
+
+test('MCP wait cleans up on subscription/status errors and restores the existing listener', async () => {
+  for (const failure of ['session.subscribe', 'session.get']) {
+    for (const throws of [false, true]) {
+      const { link, calls } = fixture(method => {
+        if (method !== failure) return;
+        if (throws) throw new Error('connection closed');
+        return { type: 'err', code: 'mcp.forbidden' };
+      });
+      const listener = () => {};
+      link.onFrame = listener;
+      const waiting = waitFor(link, 'child', 'idle', 100, proof);
+      if (throws) await assert.rejects(waiting, /connection closed/);
+      else assert.deepEqual(JSON.parse(await waiting), { error: 'mcp.forbidden' });
+      assert.equal(link.onFrame, listener);
+      assert.equal(calls.includes('session.unsubscribe'), failure === 'session.get');
+    }
+  }
+});
