@@ -10,6 +10,7 @@ import { getSession, listQueuedPrompts, unreadTeamMessages } from '@ormicode/ses
 import { replay } from '@ormicode/journal';
 import { startDaemon, connect } from '../src/index.ts';
 import { TestMcpCredentials } from './mcp-fixture.mjs';
+import { callTeamTool } from '../src/team-mcp.ts';
 
 async function eventually(check) {
   const deadline = Date.now() + 15_000;
@@ -122,7 +123,17 @@ test('parent failure is exposed in team tree/status and a new parent turn clears
   assert.equal(getSession(daemon.db, child).state, 'running');
   assert.equal((await req('team.tree', { actor: parent })).body.children.find(s => s.session === child).parentless, true);
   assert.equal((await req('team.status', { actor: parent, session: child })).body.parentless, true);
+  await req('team.message', { actor: child, to: parent, text: 'Need your answer' });
   assert.equal((await req('session.prompt', { session: parent, text: 'reattach' })).type, 'res');
   await eventually(() => getSession(daemon.db, child).parentless === 0);
+  const status = await req('team.status', { actor: parent, session: child });
+  assert.equal(status.body.state, 'awaiting_input');
+  assert.equal((await req('session.get', { session: child })).body.state, status.body.state);
+  const result = await callTeamTool('team_wait', { session: child, until: 'approval' }, parent,
+    async (method, body) => (await req(method, body)).body, () => assert.fail('unanswered messages must return immediately'));
+  assert.equal(JSON.parse(result).state, 'awaiting_input');
+  const question = events(daemon.db, child, 'question_request').at(-1);
+  await req('session.answer', { session: child, request: question.request, answers: { reply: 'Continue' } });
+  assert.equal((await req('team.status', { actor: parent, session: child })).body.state, 'running');
   assert.deepEqual(events(daemon.db, child, 'team_parent_changed').map(e => e.parentless), [true, false]);
 });

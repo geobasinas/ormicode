@@ -87,6 +87,7 @@ const queuedPrompt = z.object({
 });
 const detailsSchema = z.extend(summarySchema, {
   cwd: nonEmpty,
+  turnCompleted: z.optional(z.boolean()),
   scratchFiles: z.optional(count),
   model: z.nullable(z.string()), effort: z.nullable(z.string()), mode: z.optional(z.nullable(z.string())),
   // What actually ran: the agent's own session id for resume, its reported version,

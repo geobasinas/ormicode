@@ -6,12 +6,10 @@ export async function waitFor(link: Pick<Link, 'request' | 'onFrame'>, session: 
   const deadline = Date.now() + Math.max(0, timeoutMs);
   const remaining = () => Math.max(1, deadline - Date.now());
   let live = false;
-  let subscribed = false;
+  let subscriptionRequested = false;
   let unsubscribed = false;
   let settled = false;
   let lastState: string | undefined;
-  let pendingTurn = false;
-  let completedTurn = false;
   let finish!: (result: Record<string, unknown>) => void;
   let fail!: (error: unknown) => void;
   const completed = new Promise<Record<string, unknown>>((resolve, reject) => {
@@ -20,7 +18,7 @@ export async function waitFor(link: Pick<Link, 'request' | 'onFrame'>, session: 
   });
   const timer = setTimeout(() => finish({ timedOut: true, ...(lastState ? { state: lastState } : {}) }), Math.max(0, timeoutMs));
   const unsubscribe = () => {
-    if (!subscribed || unsubscribed) return;
+    if (!subscriptionRequested || unsubscribed) return;
     unsubscribed = true;
     void link.request('session.unsubscribe', { session }, remaining(), proof).catch(() => undefined);
   };
@@ -40,7 +38,7 @@ export async function waitFor(link: Pick<Link, 'request' | 'onFrame'>, session: 
         const state = String((current.body as Record<string, unknown>).state);
         lastState = state;
         if (['done', 'failed', 'archived', 'interrupted'].includes(state)
-          || (until === 'approval' ? ['awaiting_approval', 'awaiting_input'].includes(state) : state === 'idle' && completedTurn && !pendingTurn)) finish({ state });
+          || (until === 'approval' ? ['awaiting_approval', 'awaiting_input'].includes(state) : state === 'idle' && (current.body as Record<string, unknown>).turnCompleted === true)) finish({ state });
       } while (recheck && !settled);
     }).finally(() => { checking = undefined; });
     return checking;
@@ -49,17 +47,13 @@ export async function waitFor(link: Pick<Link, 'request' | 'onFrame'>, session: 
   link.onFrame = frame => {
     previous?.(frame);
     if (frame.type !== 'evt' || frame.session !== session) return;
-    const body = frame.body as Record<string, unknown>;
-    if (body.kind === 'turn_start' || body.kind === 'state' && body.reason === 'prompt_dispatch') pendingTurn = true;
-    if (body.kind === 'turn_end') { pendingTurn = false; completedTurn = true; }
     if (!live) return;
-    if (['turn_end', 'done', 'error', 'state', 'interrupted', 'approval_request', 'team_approval_request', 'question_request'].includes(String(body.kind)))
-      void checkState().catch(fail);
+    void checkState().catch(fail);
   };
   const setup = async () => {
+    subscriptionRequested = true;
     const res = await link.request('session.subscribe', { session }, remaining(), proof);
     if (res.type === 'err') { finish({ error: res.code }); return; }
-    subscribed = true;
     if (settled) { unsubscribe(); return; }
     live = true;
     await checkState();

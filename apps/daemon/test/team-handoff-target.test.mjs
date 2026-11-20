@@ -16,7 +16,7 @@ function fixture(t, retiring) {
   else db.prepare('UPDATE sessions SET handed_off = 1 WHERE id = ?').run('old');
   const calls = [], replies = [], errors = [];
   const ctx = { db, record: (...args) => calls.push(args), drainQueue: async session => { calls.push(['drain', session]); return true; },
-    teamApprovals: { waiting: () => false }, ensureWorker: () => assert.fail('must not wake the retired worker'), toWorker: () => assert.fail('must not abort the retired worker') };
+    teamApprovals: { waiting: () => false }, teamLifecycle: { state: session => session.state }, ensureWorker: () => assert.fail('must not wake the retired worker'), toWorker: () => assert.fail('must not abort the retired worker') };
   const client = { link: { reply: (_id, body) => replies.push(body), replyError: (_id, code, message) => errors.push({ code, message }) } };
   return { db, ctx, calls, replies, errors, client };
 }
