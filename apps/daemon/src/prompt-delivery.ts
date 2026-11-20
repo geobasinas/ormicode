@@ -177,7 +177,9 @@ export function createPromptDelivery(options: PromptDeliveryOptions) {
     options.record(session, 'queue_changed', { items: queueEventItems(options.db, session) });
   };
 
-  return { sendPrompt, drainQueue, enqueueAutoPrompt };
+  const isSending = (session: string) => sending.has(session);
+
+  return { sendPrompt, drainQueue, enqueueAutoPrompt, isSending };
 }
 
 export function queueEventItems(db: Store, session: string) {

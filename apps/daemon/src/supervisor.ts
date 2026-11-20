@@ -102,6 +102,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   const agentBrowser = new AgentBrowser(ormicodeDir(), services);
   const pendingWorkers = new Set<string>();
   const spawnFailures = new Map<string, Error>();
+  let isSending = (_session: string) => false;
   const snapshotCheckpoint = checkpointSnapshot(checkpoints, db, record, () => checkpointsOn, ormicodeDir(), (session, error) => {
     lastError = `checkpoint ${session}: ${error instanceof Error ? error.message : String(error)}`;
   });
@@ -166,7 +167,11 @@ export async function startDaemon(opts: DaemonOptions = {}) {
         const w = workers.get(session);
         let recap = false;
         if (w) {
-          w.ready = true; w.pid = Number(body.pid) || w.pid; setWorkerPid(db, session, w.pid ?? null); setState(db, session, 'idle'); armIdle(session, 'idle'); enforcePool(session);
+          w.ready = true; w.pid = Number(body.pid) || w.pid; setWorkerPid(db, session, w.pid ?? null);
+          // A prompt may already be waiting on this worker. Stay off the idle
+          // evict list so pool pressure cannot drop it before the turn starts.
+          if (!isSending(session)) { setState(db, session, 'idle'); armIdle(session, 'idle'); }
+          enforcePool(session);
           dispatchCtx.teamLifecycle.available(session);
           if (resuming.delete(session) && shouldRecordResume(db, session)) record(session, 'resumed', {});
           const uptoSeq = recapPending.get(session);
@@ -238,10 +243,11 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   };
   const evictWorker = async (session: string, reason: string) => {
     if (closing) return;
-    // Re-check at eviction time: a turn may have started since the pool or idle timer picked this worker.
+    // Re-check at eviction time: a turn may have started, or a prompt may be
+    // mid-dispatch, since the pool or idle timer picked this worker.
     const row = getSession(db, session);
     const w = workers.get(session);
-    if (!w || w.stopping || !row || row.pinned || !['idle', 'done'].includes(row.state)) return;
+    if (!w || w.stopping || !row || row.pinned || isSending(session) || !['idle', 'done'].includes(row.state)) return;
     await stopWorker(session);
     record(session, 'evicted', { reason, idleMs: 0 });
     setState(db, session, 'idle', reason);
@@ -261,19 +267,22 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     if (existing) { clearTimeout(existing); idleTimers.delete(session); }
     if (state === 'idle' || state === 'done') {
       idleTimers.set(session, setTimeout(() => { void evictWorker(session, 'idle_timeout'); }, idleTimeoutMs).unref());
+      enforcePool(session);
     }
   };
-  /** `fresh` just became ready, usually because a prompt is waiting for it, so it is never the one evicted. */
+  /** `fresh` just became ready or idle, usually because a prompt is waiting for it, so it is never the one evicted. */
   const enforcePool = (fresh: string) => {
-    const live = [...workers.entries()].filter(([, w]) => w.ready);
+    const live = [...workers.entries()].filter(([, w]) => w.ready && !w.stopping);
     if (live.length <= poolMax) return;
-    const idle = live.filter(([s, w]) => s !== fresh && !w.stopping && getSession(db, s)?.state === 'idle' && !(getSession(db, s)?.pinned));
-    if (idle.length) void evictWorker(idle[0]![0], 'pool_full');
+    const idle = live.filter(([s, w]) => s !== fresh && !isSending(s) && getSession(db, s)?.state === 'idle' && !(getSession(db, s)?.pinned));
+    const overflow = live.length - poolMax;
+    for (const [session] of idle.slice(0, overflow)) void evictWorker(session, 'pool_full');
   };
   const toWorker = async (session: string, method: string, body: Record<string, unknown>) => {
     const w = workers.get(session);
     const link = workerLinks.get(session);
-    const response = w && link ? await link.request(method, { session, ...body }, 30_000) : undefined;
+    if (!w || w.stopping || !link) return undefined;
+    const response = await link.request(method, { session, ...body }, 30_000);
     if (method === 'worker.abort' && body.preserveHandoffs !== true && response?.type === 'res') expireHandoffApprovals(dispatchCtx, session, 'cancelled');
     return response;
   };
@@ -285,11 +294,12 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     failure: session => { const error = spawnFailures.get(session); spawnFailures.delete(session); return error; },
     before: session => beforeWorkerResume(dispatchCtx, session, () => closing), closed: () => closing,
   });
-  const { sendPrompt, drainQueue, enqueueAutoPrompt } = createPromptDelivery({
+  const { sendPrompt, drainQueue, enqueueAutoPrompt, isSending: sendingPrompt } = createPromptDelivery({
     db, notesDir, paused, heldPrompts, lastPrompt, ensureWorker, toWorker, terminals, record, closed: () => closing,
     restartWorker: async session => { await stopWorker(session, true); await ensureWorker(session); },
     previewEntries: (session, ids) => services.previewEntries(session, ids),
   });
+  isSending = sendingPrompt;
   const retries = rateRetries(db, session => {
     const last = lastPrompt.get(session);
     return last ? sendPrompt(session, last.text, last.images, { journal: false, context: last.context, attachments: last.attachments, actor: last.actor }) : undefined;

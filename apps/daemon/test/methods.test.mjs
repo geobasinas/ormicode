@@ -285,6 +285,45 @@ test('a full pool keeps a running worker and the worker that just started', asyn
   } finally { await cleanup(); rmSync(other, { recursive: true, force: true }); }
 });
 
+test('a full pool still accepts prompts on every session at once', async () => {
+  const dirs = Array.from({ length: 6 }, () => mkdtempSync(join(tmpdir(), 'ormi-daemon-pool-')));
+  const { daemon, client, cleanup } = await boot({ ORMICODE_POOL_MAX: '2' });
+  try {
+    const sessions = [];
+    for (const dir of dirs) {
+      const started = await client.request('session.start', {
+        machine: newId('m'), project: dir, vendor: 'fake', transport: 'cli',
+        model: 'x', effort: 'x', mode: 'x', workspace: { kind: 'current' },
+      });
+      assert.equal(started.type, 'res', JSON.stringify(started));
+      sessions.push(started.body.session);
+    }
+    const readyDeadline = Date.now() + 15_000;
+    while (Date.now() < readyDeadline) {
+      const ready = sessions.filter(session => daemon.workers.get(session)?.ready === true).length;
+      const spawned = sessions.filter(session => daemon.workers.has(session) || getSession(daemon.db, session)).length;
+      if (spawned === sessions.length && ready >= 2) break;
+      await new Promise(r => setTimeout(r, 25));
+    }
+    const results = await Promise.all(sessions.map(session =>
+      client.request('session.prompt', { session, text: 'Reply with only the word pong.' })));
+    const failed = results.filter(r => r.type !== 'res').map(r => `${r.code}:${r.message}`);
+    assert.deepEqual(failed, []);
+    for (const session of sessions) {
+      const deadline = Date.now() + 15_000;
+      while (Date.now() < deadline) {
+        const state = getSession(daemon.db, session).state;
+        if (['idle', 'done', 'interrupted'].includes(state)) break;
+        await new Promise(r => setTimeout(r, 25));
+      }
+      assert.ok(['idle', 'done', 'interrupted'].includes(getSession(daemon.db, session).state), session);
+    }
+  } finally {
+    await cleanup();
+    for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 for (const method of ['session.archive', 'session.delete']) test(`${method} stops a running worker`, async () => {
   const { daemon, client, cleanup } = await boot({ ORMICODE_FAKE_SCRIPT: 'tool' });
   try {
