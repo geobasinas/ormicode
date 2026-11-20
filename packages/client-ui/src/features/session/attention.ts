@@ -3,7 +3,8 @@ import type { DigestEntry } from './useDigest.ts';
 import { needsUser } from './team-tree.ts';
 
 export function needsAttention(session: SessionSummary, entry?: DigestEntry): boolean {
-  return session.state !== 'archived' && !session.delegatedApproval
+  const userRequest = entry?.rank === 'waiting' && (entry.wants?.kind === 'approval' || entry.wants?.kind === 'question');
+  return session.state !== 'archived' && (!session.delegatedApproval || userRequest)
     && (needsUser(session) || entry?.rank === 'waiting' || entry?.rank === 'failed');
 }
 

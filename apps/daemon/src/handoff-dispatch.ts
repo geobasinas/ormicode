@@ -10,11 +10,18 @@ import { allocateSessionPorts } from './session-ports.ts';
 import { sessionEnvironment } from './session-env.ts';
 import { runSessionHook } from './workspace-hooks.ts';
 
-const pendingApprovals = new Map<string, { session: string; resolve(approved: boolean): void }>();
+const pendingApprovals = new Map<string, { ctx: DispatchCtx; session: string; expire(reason: string): void; resolve(approved: boolean): void }>();
+
+export function expireHandoffApprovals(ctx: DispatchCtx, session?: string, reason = 'session_unavailable'): boolean {
+  let expired = false;
+  for (const pending of pendingApprovals.values())
+    if (pending.ctx === ctx && (session === undefined || pending.session === session)) { pending.expire(reason); expired = true; }
+  return expired;
+}
 
 export function resolveHandoffApproval(ctx: DispatchCtx, session: string, request: string, option: string): boolean {
   const pending = pendingApprovals.get(request);
-  if (pending?.session !== session) return false;
+  if (pending?.ctx !== ctx || pending.session !== session) return false;
   pendingApprovals.delete(request);
   const approved = option === 'approve';
   pending.resolve(approved);
@@ -51,12 +58,18 @@ export async function handoffRequest(ctx: DispatchCtx, client: Client, id: strin
       return client.link.replyError(id, 'handoff.confirm_required', JSON.stringify(estimate));
     const request = newId('req');
     const approved = await new Promise<boolean>(resolve => {
-      const timer = setTimeout(() => {
+      const expire = (reason: string) => {
         pendingApprovals.delete(request);
+        clearTimeout(timer);
+        ctx.record(session, 'interaction_expired', { request, approvalKind: 'handoff', reason });
+        const current = getSession(db, session);
+        if (current && !current.archived && current.state === 'awaiting_approval')
+          ctx.record(session, 'state', { state: reason === 'cancelled' ? 'interrupted' : s.state });
         resolve(false);
-      }, 10 * 60_000).unref();
+      };
+      const timer = setTimeout(() => expire('timeout'), 10 * 60_000).unref();
       pendingApprovals.set(request, {
-        session,
+        ctx, session, expire,
         resolve: value => { clearTimeout(timer); resolve(value); },
       });
       ctx.record(session, 'approval_request', {

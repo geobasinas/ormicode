@@ -172,6 +172,27 @@ test('unknown-price handoffs require user confirmation and agent approval', asyn
   await daemon.close();
 });
 
+test('ordinary user-routed handoffs expire when aborted and cannot be approved later', async t => {
+  const { daemon, client, credentials } = await boot();
+  t.after(async () => { client.close(); await daemon.close(); });
+  const session = (await startFake(client)).body.session;
+  const pending = client.request('session.handoff', { session, to: { vendor: 'fake' }, mode: 'rehydrate', agentApproval: true }, 30_000, credentials.proof(session));
+  const deadline = Date.now() + 5000;
+  let request;
+  while (!request && Date.now() < deadline) {
+    const event = replay(daemon.db, session).find(e => e.kind === 'approval_request');
+    if (event) request = JSON.parse(event.payload).request;
+    else await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  assert.ok(request);
+  const aborted = await client.request('session.abort', { session });
+  assert.equal(aborted.type, 'res', JSON.stringify(aborted));
+  assert.equal((await pending).code, 'handoff.declined');
+  assert.equal(replay(daemon.db, session).filter(e => e.kind === 'interaction_expired').length, 1);
+  assert.equal((await client.request('session.decide', { session, request, option: 'approve' })).type, 'err');
+  assert.equal(daemon.db.prepare('SELECT COUNT(*) AS n FROM sessions WHERE parent = ?').get(session).n, 0);
+});
+
 test('rehydrate rolls back when a fake child never becomes ready', async () => {
   const previousReady = process.env.ORMICODE_FAKE_READY;
   const previousTimeout = process.env.ORMICODE_HANDOFF_READY_MS;

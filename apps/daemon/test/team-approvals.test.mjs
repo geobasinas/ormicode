@@ -11,6 +11,7 @@ import { TestMcpCredentials } from './mcp-fixture.mjs';
 import { newId } from '@ormicode/protocol';
 import { getSession } from '@ormicode/session-store';
 import { replay } from '@ormicode/journal';
+import { needsAttention } from '../../../packages/client-ui/src/features/session/attention.ts';
 
 async function eventually(check) {
   const deadline = Date.now() + 15000;
@@ -120,6 +121,30 @@ for (const reason of [undefined, '', 'major security design decision']) test(`pa
   assert.equal(decision.parentDecided, false);
 });
 
+test('one user-routed approval stays in Needs You while another request remains delegated', async t => {
+  const { daemon, client, req, parent, spawn, credentials } = await fixture(t);
+  const child = await spawn();
+  const pending = client.request('session.handoff', { session: child.session, to: { vendor: 'fake', model: 'unknown-price' }, mode: 'rehydrate', agentApproval: true }, 30_000, credentials.proof(child.session));
+  await eventually(() => events(daemon.db, child.session, 'team_approval_request').length === 2);
+  const summary = async () => (await req('session.list', {})).body.sessions.find(s => s.id === child.session);
+  assert.equal((await summary()).delegatedApproval, true);
+  await req('team.escalate', { actor: parent, ...child, reason: 'security-sensitive command' });
+  const mixed = await summary();
+  assert.equal(mixed.delegatedApproval, false);
+  assert.equal(needsAttention(mixed), true);
+  const digest = (await req('session.digest', { since: 0 })).body.entries.find(e => e.session === child.session);
+  assert.equal(digest.wants.kind, 'approval');
+  assert.equal(needsAttention(mixed, digest), true);
+  assert.equal((await req('session.get', { session: parent })).body.teamApprovals.length, 1);
+  await req('session.decide', { ...child, option: 'allow' });
+  await eventually(() => getSession(daemon.db, child.session).state === 'idle');
+  const delegated = await summary();
+  assert.equal(delegated.delegatedApproval, true);
+  assert.equal(needsAttention(delegated), false);
+  await req('session.abort', { session: child.session });
+  assert.equal((await pending).code, 'handoff.declined');
+});
+
 test('escalation rejects missing proof, forged actors, non-parents and undelegated requests', async t => {
   const { daemon, client, req, parent, spawn, approve, credentials } = await fixture(t);
   const child = await spawn();
@@ -152,6 +177,24 @@ for (const escalate of [false, true]) test(`confirmation-required handoffs remai
     assert.equal((await req('session.decide', { ...target, option: 'deny' })).body.decided, true);
   } else assert.equal((await approve(target, 'deny')).body.decided, true);
   assert.equal((await result).code, 'handoff.declined');
+});
+
+for (const escalate of [false, true]) for (const method of ['session.abort', 'team.cancel']) test(`${escalate ? 'escalated' : 'delegated'} handoffs cannot start a replacement after ${method}`, async t => {
+  const { daemon, client, req, parent, spawn, approve, credentials } = await fixture(t);
+  const child = await spawn();
+  await approve(child, 'allow');
+  await eventually(() => getSession(daemon.db, child.session).state === 'idle');
+  const pending = client.request('session.handoff', { session: child.session, to: { vendor: 'fake', model: 'unknown-price' }, mode: 'rehydrate', agentApproval: true }, 30_000, credentials.proof(child.session));
+  await eventually(() => events(daemon.db, child.session, 'team_approval_request').some(e => e.approvalKind === 'handoff'));
+  const request = events(daemon.db, child.session, 'team_approval_request').find(e => e.approvalKind === 'handoff').request;
+  if (escalate) await req('team.escalate', { actor: parent, session: child.session, request });
+  const aborted = await req(method, { ...(method === 'team.cancel' ? { actor: parent } : {}), session: child.session });
+  assert.equal(aborted.type, 'res', JSON.stringify(aborted));
+  assert.equal((await pending).code, 'handoff.declined');
+  assert.equal(events(daemon.db, child.session, 'interaction_expired').find(e => e.request === request).reason, 'cancelled');
+  assert.equal((await req('session.decide', { session: child.session, request, option: 'approve' })).type, 'err');
+  assert.equal(daemon.db.prepare('SELECT COUNT(*) AS n FROM sessions WHERE parent = ?').get(child.session).n, 0);
+  assert.equal(getSession(daemon.db, child.session).handed_off, 0);
 });
 
 test('destructive commands, including custom patterns, stay in the user queue', async t => {
