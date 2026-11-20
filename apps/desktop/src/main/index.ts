@@ -7,7 +7,7 @@
  * (~/.ormicode/desktop/remote.json + safeStorage token), fall back to
  * the relay WebSocket. Pairing goes through `ormi:pair` IPC.
  */
-import { app, BrowserWindow, dialog, ipcMain, safeStorage, screen, session as electronSession, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, safeStorage, screen, session as electronSession, shell } from 'electron';
 import { isAbsolute, join } from 'node:path';
 import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, statSync } from 'node:fs';
 import * as daemonSocket from '@ormicode/daemon/socket';
@@ -344,6 +344,9 @@ app.whenReady().then(async () => {
       : (encryption ? 'os_keyring' : 'basic_text');
   });
   ipcMain.on('ormi:hubLabel', e => { e.returnValue = loadRemoteFile()?.relayUrl ?? socketPath(); });
+  ipcMain.on('ormi:theme', (_e, theme: unknown) => {
+    if (theme === 'light' || theme === 'dark') nativeTheme.themeSource = theme;
+  });
   ipcMain.on('ormi:win:min', () => { if (win) void minimizeAnimated(win); });
   ipcMain.on('ormi:win:max', () => { if (win) toggleMax(win); });
   ipcMain.on('ormi:win:close', () => { if (win) void fadeOut(win).then(() => win?.close()); });

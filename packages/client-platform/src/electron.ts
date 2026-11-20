@@ -31,6 +31,7 @@ interface OrmiBridge {
   layoutWrite(descriptor: unknown): Promise<void>;
   openExternal(url: string): Promise<void>;
   previewClearData(partition: string): Promise<void>;
+  setTheme?(theme: 'light' | 'dark'): void;
 }
 
 declare global {
@@ -88,6 +89,7 @@ export function electronPlatform(): ClientPlatform {
       layoutWrite: descriptor => b.layoutWrite(descriptor),
       openExternal: url => b.openExternal(url),
       previewClearData: partition => b.previewClearData(partition),
+      setTheme: theme => b.setTheme?.(theme),
     },
   };
 }

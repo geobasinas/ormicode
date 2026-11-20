@@ -40,6 +40,7 @@ const bridge = {
   layoutWrite: (descriptor: unknown): Promise<void> => ipcRenderer.invoke('ormi:layout:write', descriptor),
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('ormi:openExternal', url),
   previewClearData: (partition: string): Promise<void> => ipcRenderer.invoke('ormi:preview:clearData', partition),
+  setTheme: (theme: 'light' | 'dark') => ipcRenderer.send('ormi:theme', theme),
 };
 
 contextBridge.exposeInMainWorld('ormi', bridge);

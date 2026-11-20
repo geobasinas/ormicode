@@ -1,8 +1,9 @@
 /** Settings tab (Settings-2 mockup): inner nav + one section at a time. Only
  * client-side prefs and existing daemon methods are wired; the rest say so. */
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useState, type ReactNode } from 'react';
 import { Settings as Gear, Palette, SlidersHorizontal, Bell, Keyboard, Smartphone, Laptop, Shield, Info, Coins, KeyRound, Globe, type LucideIcon } from 'lucide-react';
 import { usePlatform } from '../lib/platform.ts';
+import { applyTheme, themeByName } from '../lib/theme.ts';
 import { ago, compactTokens, formatUsd, projectName } from '../lib/format.ts';
 import { useSessions } from '../features/session/useSessions.ts';
 import { LayoutSettings } from './LayoutSettings.tsx';
@@ -310,8 +311,13 @@ function About({ connection }: { connection?: string }) {
 }
 
 export function SettingsView({ prefs, onPrefs, connection }: { prefs: Prefs; onPrefs: (p: Prefs) => void; connection?: string }) {
+  const { desktop } = usePlatform();
   const [section, setSection] = useState('general');
   const set = (patch: Partial<Prefs>) => { const p = { ...prefs, ...patch }; savePrefs(p); onPrefs(p); };
+  useLayoutEffect(() => {
+    applyTheme(themeByName(prefs.theme));
+    if (prefs.theme === 'light' || prefs.theme === 'dark') desktop?.setTheme?.(prefs.theme);
+  }, [desktop, prefs.theme]);
   const [title, sub] = TITLES[section]!;
   return (
     <div style={{ display: 'flex', height: '100%' }}>
@@ -354,7 +360,7 @@ export function SettingsView({ prefs, onPrefs, connection }: { prefs: Prefs; onP
             <Group title="THEME">
               {['dark', 'light'].map(t => (
                 <Row key={t} title={t === 'dark' ? 'Dark' : 'Light'} hint={t === 'dark' ? 'Matches the mockups' : 'Same layout, light palette'}>
-                  <SettingsSwitch on={prefs.theme === t} onChange={() => set({ theme: t })} />
+                  <SettingsSwitch ariaLabel={t === 'dark' ? 'Dark theme' : 'Light theme'} on={prefs.theme === t} onChange={checked => { if (checked) set({ theme: t }); }} />
                 </Row>
               ))}
             </Group>

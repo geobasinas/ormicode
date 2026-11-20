@@ -229,7 +229,10 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
     };
   }, [platform]);
 
-  useEffect(() => { applyTheme(themeByName(theme)); }, [theme]);
+  useLayoutEffect(() => {
+    applyTheme(themeByName(theme));
+    if (theme === 'light' || theme === 'dark') platform.desktop?.setTheme?.(theme);
+  }, [platform, theme]);
   const searchRef = useMemo(() => ({ current: null as HTMLInputElement | null }), []);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
