@@ -75,3 +75,16 @@ test('authoritative turn outcome resets for new work and preserves non-idle stat
   record({ kind: 'turn_start' }); record({ kind: 'turn_end' });
   assert.deepEqual(status(), { state: 'idle', turnCompleted: true });
 });
+
+test('terminal and persistent activity states take precedence over outstanding input and approval overlays', t => {
+  const { db } = fixture(t);
+  const ctx = { db, teamApprovals: { waiting: () => true }, teamLifecycle: { state: () => 'awaiting_input' } };
+  for (const state of ['interrupted', 'failed', 'done', 'archived', 'paused_rate_limited']) {
+    setState(db, 'child', state);
+    assert.equal(sessionStatus(ctx, getSession(db, 'child')).state, state);
+  }
+  setState(db, 'child', 'running');
+  assert.equal(sessionStatus(ctx, getSession(db, 'child')).state, 'awaiting_approval');
+  ctx.teamApprovals.waiting = () => false;
+  assert.equal(sessionStatus(ctx, getSession(db, 'child')).state, 'awaiting_input');
+});

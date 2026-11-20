@@ -137,3 +137,26 @@ test('parent failure is exposed in team tree/status and a new parent turn clears
   assert.equal((await req('team.status', { actor: parent, session: child })).body.state, 'running');
   assert.deepEqual(events(daemon.db, child, 'team_parent_changed').map(e => e.parentless), [true, false]);
 });
+
+test('cancelling a child closes unanswered user-routed messages and completion waits return interrupted', async t => {
+  const { daemon, req, parent, spawn } = await fixture(t);
+  const child = await spawn();
+  await req('worker.state', { session: parent, state: 'failed', reason: 'parent unavailable' });
+  const sent = await req('team.message', { actor: child, to: parent, text: 'Please answer before I continue' });
+  assert.equal(sent.type, 'res');
+  const question = events(daemon.db, child, 'question_request').at(-1);
+  assert.equal((await req('team.status', { actor: parent, session: child })).body.state, 'awaiting_input');
+  assert.equal((await req('team.cancel', { actor: parent, session: child })).type, 'res');
+  assert.equal(getSession(daemon.db, child).state, 'interrupted');
+  assert.equal((await req('team.status', { actor: parent, session: child })).body.state, 'interrupted');
+  assert.equal((await req('session.get', { session: child })).body.state, 'interrupted');
+  for (const until of ['idle', 'done', 'approval']) {
+    const result = await callTeamTool('team_wait', { session: child, until }, parent,
+      async (method, body) => (await req(method, body)).body, () => assert.fail('cancelled child must not wait'));
+    assert.equal(JSON.parse(result).state, 'interrupted');
+  }
+  assert.ok(events(daemon.db, child, 'interaction_expired').some(e => e.request === question.request && e.answerable === false));
+  assert.notEqual((await req('session.digest', { since: 0 })).body.entries.find(e => e.session === child)?.wants?.kind, 'question');
+  assert.equal((await req('session.answer', { session: child, request: question.request, answers: { reply: 'Too late' } })).code, 'session.already_decided');
+  assert.deepEqual(listQueuedPrompts(daemon.db, child), []);
+});

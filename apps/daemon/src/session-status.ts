@@ -20,6 +20,7 @@ export function sessionStatus(ctx: Pick<DispatchCtx, 'db' | 'teamApprovals' | 't
   }
   cache.set(session.id, turn);
   const state = session.handed_off ? session.archived ? 'archived' : 'done'
+    : ['interrupted', 'failed', 'done', 'archived', 'paused_rate_limited'].includes(session.state) ? session.state
     : ctx.teamApprovals.waiting(session.id) ? 'awaiting_approval' : ctx.teamLifecycle.state(session);
   return { state: state === 'idle' && turn.turnCompleted && turn.turnFailed ? 'failed' : state, turnCompleted: turn.turnCompleted };
 }
