@@ -28,14 +28,33 @@ test('MCP wait rechecks state after subscribing when completion precedes the sub
 });
 
 test('MCP wait catches live completion during the status request and ignores other sessions', async () => {
+  let first = true;
   const { link } = fixture((method, link) => {
     if (method === 'session.get') {
-      link.onFrame(event('error', 'other'));
-      link.onFrame(event('turn_end'));
-      return { type: 'res', body: { state: 'running' } };
+      if (first) {
+        first = false;
+        link.onFrame(event('error', 'other'));
+        link.onFrame(event('turn_end'));
+        return { type: 'res', body: { state: 'running' } };
+      }
+      return { type: 'res', body: { state: 'idle' } };
     }
   });
   assert.deepEqual(JSON.parse(await waitFor(link, 'child', 'idle', 100, proof)), { state: 'idle' });
+});
+
+test('live completion reports authoritative team status in every wait mode', async () => {
+  for (const until of ['idle', 'done', 'approval']) {
+    let state = 'running';
+    const { link } = fixture(method => {
+      if (method === 'team.status') return { type: 'res', body: { state } };
+    });
+    const waiting = waitFor(link, 'child', until, 1000, proof, true).then(JSON.parse);
+    await new Promise(resolve => setImmediate(resolve));
+    state = until === 'approval' ? 'awaiting_input' : 'idle';
+    link.onFrame(event(until === 'approval' ? 'question_request' : 'turn_end'));
+    assert.deepEqual(await waiting, { state });
+  }
 });
 
 test('MCP wait ignores historical completion and times out with current state', async () => {

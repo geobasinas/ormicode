@@ -110,7 +110,7 @@ export async function serveOrmiMcp(socketPath: string, self: string, token: stri
 
   const call = async (name: string, args: Record<string, unknown>): Promise<unknown> => {
     if (name.startsWith('team_')) return text(await callTeamTool(name, args, self, req,
-      (session, until, timeout) => waitFor(link, session, until, timeout, proof)));
+      (session, until, timeout) => waitFor(link, session, until, timeout, proof, true)));
     switch (name) {
       case 'ormi_ask_user': return text(JSON.stringify(await req('session.askUser', { session: self, question: args.question, options: args.options })));
       case 'ormi_sessions': {
