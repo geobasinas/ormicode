@@ -262,7 +262,7 @@ test('SPA serves /pair and scrubs pairing fragments before browser requests', as
     assert.ok(requests.every(request => !request.url.includes(code) && !request.headers.referer?.includes(code)));
     await hub.issue(code);
     await page.getByRole('button', { name: 'Pair', exact: true }).click();
-    await page.getByRole('button', { name: 'Settings' }).waitFor();
+    await page.getByText('Home', { exact: true }).waitFor();
     await openAbout(page);
     await page.getByText('online', { exact: true }).waitFor();
     await page.getByText(version, { exact: true }).waitFor();
@@ -282,7 +282,7 @@ test('good pairing stores the token only in IndexedDB and shows an online connec
   try {
     await page.goto(webOrigin);
     await enterCode(page, code);
-    await page.getByRole('button', { name: 'Settings' }).waitFor();
+    await page.getByText('Home', { exact: true }).waitFor();
     await openAbout(page);
     await page.getByText('online', { exact: true }).waitFor();
     const stored = await page.evaluate(async () => {
@@ -316,7 +316,7 @@ test('bad and burned pairing codes are rejected', async t => {
     await enterCode(first, '000000000000');
     await first.getByRole('alert').filter({ hasText: "That code didn't work." }).waitFor();
     await enterCode(first, code);
-    await first.getByRole('button', { name: 'Settings' }).waitFor();
+    await first.getByText('Home', { exact: true }).waitFor();
     await openAbout(first);
     await first.getByText('online', { exact: true }).waitFor();
     await second.goto(webOrigin);
@@ -333,7 +333,7 @@ test('revocation clears the browser token and returns to pairing', async t => {
   try {
     await page.goto(webOrigin);
     await enterCode(page, code);
-    await page.getByRole('button', { name: 'Settings' }).waitFor();
+    await page.getByText('Home', { exact: true }).waitFor();
     await openAbout(page);
     await page.getByText('online', { exact: true }).waitFor();
     const device = [...hub.devices.keys()].at(-1);
@@ -356,7 +356,7 @@ test('a second tab takes over the relay connection when the leader closes', asyn
   try {
     await leader.goto(webOrigin);
     await enterCode(leader, code);
-    await leader.getByRole('button', { name: 'Settings' }).waitFor();
+    await leader.getByText('Home', { exact: true }).waitFor();
     await follower.goto(webOrigin);
     const onlineBefore = hub.onlineNotices;
     const statusBefore = hub.statusRequests;

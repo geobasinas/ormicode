@@ -282,7 +282,7 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
             <aside style={{
               width: '100%', height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column',
               gap: 1, padding: '12px 8px 6px', background: 'var(--bg-window)',
-            }}>{onboarding ? null : <>
+            }}>
               <div style={{ height: 30, display: 'flex', alignItems: 'center', gap: 9, padding: '0 10px', background: 'var(--bg-card)', borderRadius: 8, border: '1px solid var(--line-divider)' }}>
                 <Search size={15} style={{ color: 'var(--text-label)', flexShrink: 0 }} />
                 <input ref={el => { searchRef.current = el; }} value={query} onChange={e => setQuery(e.target.value)} placeholder="Search"
@@ -313,7 +313,7 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
               </div>
               <div style={{ height: 8 }} />
               <div style={{ flex: 1, overflow: 'auto' }}>
-                {filter !== 'Bots' ? <SessionList active={route !== 'now' ? route : undefined} onSelect={open} query={query} /> : (
+                {onboarding ? null : filter !== 'Bots' ? <SessionList active={route !== 'now' ? route : undefined} onSelect={open} query={query} /> : (
                   <div style={{ padding: '0 var(--space-3)', color: 'var(--text-hint)', fontSize: 13 }}>no bots yet</div>
                 )}
               </div>
@@ -325,7 +325,7 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
                 <Settings size={15} style={{ color: route === 'settings' ? 'var(--text-active)' : 'var(--text-label)', flexShrink: 0 }} />
                 <span style={{ fontSize: 12.5, color: route === 'settings' ? 'var(--text-active)' : 'var(--text-label)' }}>Settings</span>
               </button>
-            </>}</aside>
+            </aside>
             </Panel>
             <Separator className="ormi-handle" />
           </> : null}
