@@ -99,6 +99,9 @@ function ApprovalLine({ session, req, events }: { session: string; req: Transcri
       </Line>
       {typeof b.title === 'string' || typeof b.description === 'string' || typeof b.reason === 'string'
         ? <div style={{ fontSize: 11.5, color: 'var(--text-hint)', padding: '0 0 2px 19px' }}>{String(b.description ?? b.title ?? b.reason)}</div> : null}
+      {typeof b.escalatedBy === 'string' ? <div style={{ fontSize: 11.5, color: 'var(--text-hint)', padding: '0 0 2px 19px', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+        Escalated by parent{typeof b.escalationReason === 'string' && b.escalationReason.trim() ? `: ${b.escalationReason}` : ''}
+      </div> : null}
       {error ? <div style={{ fontSize: 11.5, color: 'var(--accent-red)', padding: '0 0 2px 19px' }}>{error}</div> : null}
       {open && sub ? <div style={{ margin: '2px 0 6px 19px', padding: '6px 9px', borderRadius: 6, background: 'var(--bg-inset)', ...mono, fontSize: 11, color: 'var(--text-label)', maxHeight: 200, overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
         <Detail name={sub.name} input={sub.input} raw={sub.raw} />
