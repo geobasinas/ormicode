@@ -309,14 +309,14 @@ test('bad and burned pairing codes are rejected', async t => {
   try {
     await first.goto(webOrigin);
     await enterCode(first, '000000000000');
-    await first.getByText(/pairing\.invalid_code|pairing\.rejected/).waitFor();
+    await first.getByRole('alert').filter({ hasText: "That code didn't work." }).waitFor();
     await enterCode(first, code);
     await first.getByText('Pair this browser').waitFor({ state: 'detached' });
     await openAbout(first);
     await first.getByText('online', { exact: true }).waitFor();
     await second.goto(webOrigin);
     await enterCode(second, code);
-    await second.getByText(/pairing\.invalid_code|pairing\.rejected/).waitFor();
+    await second.getByRole('alert').filter({ hasText: "That code didn't work." }).waitFor();
   } finally { await first.close(); await second.close(); }
 });
 

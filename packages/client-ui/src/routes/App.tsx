@@ -20,7 +20,7 @@ import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panel
 import { Toaster } from '../components/ui/sonner.tsx';
 import { agoText } from '../lib/format.ts';
 import { Button } from '../components/Button.tsx';
-import { PairScreen } from '../features/pair/PairScreen.tsx';
+import { PairDialog } from '../features/pair/PairDialog.tsx';
 
 const MAX_TABS = 8;
 const drag = { WebkitAppRegion: 'drag' } as const;
@@ -244,14 +244,6 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
     return next;
   });
 
-  if (platform.web && state === 'unpaired') return (
-    <PlatformContext.Provider value={platform}>
-      <div style={{ height: '100vh', overflow: 'auto', background: 'var(--bg-window)', color: 'var(--text-label)', fontFamily: 'var(--font-ui)', fontSize: 14 }}>
-        <PairScreen pairPrefill={pairPrefill} />
-      </div>
-    </PlatformContext.Provider>
-  );
-
   return (
     <PlatformContext.Provider value={platform}>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-window)', color: 'var(--text-label)', fontFamily: 'var(--font-ui)', fontSize: 14, borderRadius: 14, overflow: 'hidden' }}>
@@ -349,6 +341,7 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
           <Rail route={route} rail={rail} onRail={setRail} />
         </div>
       </div>
+      {platform.web && state === 'unpaired' ? <PairDialog pairPrefill={pairPrefill} /> : null}
       <Toaster className="toaster group ormi-toast-toaster" position="bottom-center" duration={3000} visibleToasts={1} closeButton={false}
         offset={{ top: 16, right: 16, bottom: toastBottomOffset, left: 16 }}
         mobileOffset={{ top: 16, right: 16, bottom: toastBottomOffset, left: 16 }} />
