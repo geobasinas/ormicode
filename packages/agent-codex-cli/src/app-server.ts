@@ -47,11 +47,11 @@ export class CodexAppServer {
   request(method: string, params: unknown, timeoutMs?: number): Promise<unknown> { return this.peer.request(method, params, timeoutMs); }
   async startThread(options: { cwd: string; model?: string; sandbox?: string; approvalPolicy?: string }): Promise<string> {
     if (!options.cwd) throw new Error('cwd is required');
-    return this.threadRequest('thread/start', { cwd: options.cwd, approvalPolicy: options.approvalPolicy ?? 'never', sandbox: options.sandbox ?? 'read-only', ...(options.model ? { model: options.model } : {}) });
+    return this.threadRequest('thread/start', { cwd: options.cwd, approvalPolicy: options.approvalPolicy ?? 'on-request', sandbox: options.sandbox ?? 'workspace-write', ...(options.model ? { model: options.model } : {}) });
   }
   async resumeThread(options: { threadId: string; cwd: string; model?: string; sandbox?: string; approvalPolicy?: string }): Promise<string> {
     if (!options.cwd || !options.threadId) throw new Error('cwd and thread ID are required');
-    const id = await this.threadRequest('thread/resume', { threadId: options.threadId, cwd: options.cwd, approvalPolicy: options.approvalPolicy ?? 'never', sandbox: options.sandbox ?? 'read-only', ...(options.model ? { model: options.model } : {}) });
+    const id = await this.threadRequest('thread/resume', { threadId: options.threadId, cwd: options.cwd, approvalPolicy: options.approvalPolicy ?? 'on-request', sandbox: options.sandbox ?? 'workspace-write', ...(options.model ? { model: options.model } : {}) });
     if (id !== options.threadId) throw new Error('App-server returned a different thread ID');
     return id;
   }

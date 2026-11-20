@@ -68,8 +68,8 @@ export class CodexCliAdapter implements AgentAdapter {
     session.server = await this.openServer(session);
     try {
       const id = nativeId
-        ? await session.server.resumeThread({ threadId: nativeId, cwd: spec.cwd, model: spec.model, sandbox: spec.mode ?? 'read-only', approvalPolicy: 'on-request' })
-        : await session.server.startThread({ cwd: spec.cwd, model: spec.model, sandbox: spec.mode ?? 'read-only', approvalPolicy: 'on-request' });
+        ? await session.server.resumeThread({ threadId: nativeId, cwd: spec.cwd, model: spec.model, sandbox: spec.mode ?? 'workspace-write', approvalPolicy: 'on-request' })
+        : await session.server.startThread({ cwd: spec.cwd, model: spec.model, sandbox: spec.mode ?? 'workspace-write', approvalPolicy: 'on-request' });
       session.nativeId = id;
       this.onNativeId?.(handle, id);
     } catch (error) { session.server.close(); throw error; }
@@ -120,6 +120,7 @@ export class CodexCliAdapter implements AgentAdapter {
     const session = this.get(handle);
     const pending = session.approvals.get(requestId);
     if (!pending) throw new Error(`Unknown approval request: ${requestId}`);
+    if (!APPROVAL_OPTIONS.some(option => option.id === optionId)) throw new Error('Unknown approval option');
     session.approvals.delete(requestId);
     if (!session.active || !session.turnId || pending.turnId !== session.turnId) {
       session.queue.push([{ kind: 'interaction_expired', request: requestId, reason: 'turn_ended' }]);

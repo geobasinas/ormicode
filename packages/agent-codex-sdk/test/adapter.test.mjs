@@ -26,14 +26,14 @@ test('SDK adapter runs isolated turns and records a native thread ID', async () 
       yield { type: 'turn.completed', usage };
     })() }) };
   }) });
-  const handle = await adapter.start({ cwd: '/repo' });
+  const handle = await adapter.start({ cwd: '/repo', mode: 'read-only' });
   const stream = adapter.events(handle)[Symbol.asyncIterator]();
   await adapter.prompt(handle, { text: 'hello' });
   const events = [];
   for (;;) { const item = await stream.next(); events.push(item.value); if (item.value.kind === 'turn_end') break; }
   assert.deepEqual(events.map((e) => e.kind), ['turn_start', 'text', 'usage', 'turn_end']);
   assert.deepEqual(ids, ['thread-1']);
-  assert.equal(options[0].approvalPolicy, 'never');
+  assert.equal(options[0].approvalPolicy, 'on-request');
   assert.equal(options[0].sandboxMode, 'read-only');
   await adapter.dispose(handle);
 });
@@ -41,7 +41,7 @@ test('SDK adapter runs isolated turns and records a native thread ID', async () 
 test('SDK adapter reports ended streams as interrupted and rejects unsafe modes', async () => {
   const adapter = new CodexSdkAdapter({ client: client(() => ({ runStreamed: async () => ({ events: (async function* () {})() }) })) });
   await assert.rejects(adapter.start({ cwd: '/repo', mode: 'danger-full-access' }), /unsafe/);
-  const handle = await adapter.start({ cwd: '/repo' });
+  const handle = await adapter.start({ cwd: '/repo', mode: 'read-only' });
   const stream = adapter.events(handle)[Symbol.asyncIterator]();
   await adapter.prompt(handle, { text: 'hello' });
   assert.deepEqual((await stream.next()).value, { kind: 'interrupted', reason: 'sdk_stream_ended' });
@@ -63,7 +63,7 @@ test('SDK stops at fatal stream errors and requires recovery', async () => {
     yield { type: 'error', message: 'connection failed' };
     yield { type: 'turn.completed', usage };
   })() }) })) });
-  const handle = await adapter.start({ cwd: '/repo' });
+  const handle = await adapter.start({ cwd: '/repo', mode: 'read-only' });
   const stream = adapter.events(handle)[Symbol.asyncIterator]();
   await adapter.prompt(handle, { text: 'hello' });
   assert.equal((await stream.next()).value.kind, 'turn_start');
@@ -82,7 +82,7 @@ test('SDK stages prompt images as local_image items and turns options into TurnO
       yield { type: 'turn.completed', usage };
     })() };
   } })) });
-  const handle = await adapter.start({ cwd: '/repo' });
+  const handle = await adapter.start({ cwd: '/repo', mode: 'read-only' });
   await assert.rejects(adapter.setOption(handle, 'outputSchema', '{bad'), /valid JSON/);
   await assert.rejects(adapter.setOption(handle, 'cyberAccessProgram', 'nope'), /cyberAccessProgram/);
   await assert.rejects(adapter.setOption(handle, 'mystery', 'x'), /Unknown Codex option/);

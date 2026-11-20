@@ -1,9 +1,12 @@
 import readline from 'node:readline';
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 const out = (frame) => process.stdout.write(JSON.stringify(frame) + '\n');
 const notify = (method, params) => out({ method, params });
 let nextRequest = 1000;
 let nextTurn = 0;
 let failInterrupt = false;
+let workspace;
 const pending = new Map();
 const finishTurn = (threadId, turnId) => {
   notify('item/started', { threadId, turnId, item: { type: 'agent_message', id: 'msg-1', text: 'ok' } });
@@ -21,6 +24,8 @@ for await (const line of lines) {
   if (message.method === 'initialize') out({ id: message.id, result: { userAgent: 'fixture', codexHome: '/tmp', platformFamily: 'test', platformOs: 'test' } });
   else if (message.method === 'test/echo') out({ id: message.id, result: message.params });
   else if (message.method === 'thread/start' || message.method === 'thread/resume') {
+    workspace = message.params.cwd;
+    if (message.params.sandbox !== 'workspace-write' || message.params.approvalPolicy !== 'on-request') process.exit(9);
     if (!['never', 'on-request'].includes(message.params.approvalPolicy) || !['read-only', 'workspace-write'].includes(message.params.sandbox)) process.exit(4);
     out({ id: message.id, result: { thread: { id: message.params.threadId ?? 'thread-1' } } });
   }
@@ -40,6 +45,14 @@ for await (const line of lines) {
       notify('error', { threadId: 'thread-1', turnId, error: { message: retry ? 'Reconnecting stream' : 'Unrecoverable error' }, willRetry: retry });
       if (text === 'retry fails') notify('turn/completed', { threadId: 'thread-1', turn: { id: turnId, status: 'failed', error: { message: 'Retries exhausted' } } });
       else finishTurn('thread-1', turnId);
+    } else if (text === 'approve write' || text === 'decline write') {
+      const rid = ++nextRequest;
+      pending.set(rid, response => {
+        if (!['accept', 'decline'].includes(response.result?.decision)) process.exit(10);
+        if (response.result.decision === 'accept') writeFileSync(join(workspace, 'approved.txt'), 'approved');
+        finishTurn('thread-1', turnId);
+      });
+      out({ id: rid, method: 'item/fileChange/requestApproval', params: { threadId: 'thread-1', turnId, itemId: 'write-1' } });
     } else if (text === 'approve me' || text === 'approval ends' || text === 'interrupt fails') {
       const rid = ++nextRequest;
       pending.set(rid, message => { if (message.result?.decision === 'cancel') return; if (text === 'approval ends') process.exit(7); finishTurn('thread-1', turnId); });
