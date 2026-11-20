@@ -21,7 +21,7 @@ test('header and Settings usage price Codex/Claude aliases and journaled Grok AC
  let result; const client = { link: { reply: (_id, body) => { result = body; } } };
  try {
   const claude = mapSdkMessage({ type: 'result', subtype: 'success', usage: { input_tokens: 1_000_000, output_tokens: 0 }, total_cost_usd: 3, modelUsage: { 'claude-3-5-sonnet-20241022': {} } }).events.find(e => e.kind === 'usage');
-  const grok = new GrokTurnMapper('native').finish({ inputTokens: 1_000_000, outputTokens: 0, model: 'x-ai/grok-code-fast-1' }).find(e => e.kind === 'usage');
+  const grok = new GrokTurnMapper('native').finish({ _meta: { usage: { modelUsage: { 'grok-code-fast-1': { inputTokens: 1_000_000, outputTokens: 0 } } } } }).find(e => e.kind === 'usage');
   for (const [id, vendor, transport, model, usage, usd] of [
    ['s_codex', 'codex', 'sdk', 'codex-mini-latest', { input: 1_000_000 }, 1.5],
    ['s_claude', 'claude', 'sdk', null, claude, 3], ['s_grok', 'grok', 'acp', null, grok, 0.2],

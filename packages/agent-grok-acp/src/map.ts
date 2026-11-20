@@ -1,6 +1,7 @@
 import * as z from 'zod/mini';
 import type { AgentEvent } from '@ormicode/protocol';
 import { parseEventBody } from '@ormicode/protocol';
+import { promptUsage } from './usage.ts';
 
 const envelope = z.looseObject({ sessionId: z.string(), update: z.looseObject({ sessionUpdate: z.string() }) });
 const chunk = z.looseObject({ content: z.looseObject({ type: z.string(), text: z.optional(z.string()) }) });
@@ -45,17 +46,7 @@ export class GrokTurnMapper {
     if (this.text) events.push({ kind: 'text', text: this.text });
     for (const callId of this.calls) events.push({ kind: 'tool_result', callId, status: 'interrupted' });
     this.calls.clear();
-    if (usage && typeof usage === 'object' && !Array.isArray(usage)) {
-      const raw = usage as Record<string, unknown>;
-      const event: Record<string, unknown> = { kind: 'usage' };
-      for (const [field, aliases] of Object.entries({ input: ['inputTokens', 'input_tokens'], output: ['outputTokens', 'output_tokens'], cacheRead: ['cacheReadInputTokens', 'cached_input_tokens'], cacheWrite: ['cacheCreationInputTokens', 'cache_write_input_tokens'] })) {
-        const key = aliases.find(key => raw[key] !== undefined);
-        if (key) event[field] = raw[key];
-      }
-      if (typeof raw.model === 'string') event.model = raw.model;
-      const parsed = parseEventBody(event);
-      if (Object.keys(event).some(key => ['input', 'output', 'cacheRead', 'cacheWrite'].includes(key)) && parsed.success) events.push(parsed.data);
-    }
+    events.push(...promptUsage(usage));
     return this.validate(events);
   }
   private validate(events: unknown[]): AgentEvent[] {

@@ -93,7 +93,7 @@ export class AcpConnection {
     const result = await this.request('session/prompt', { sessionId, prompt: [{ type: 'text', text }] }, timeoutMs);
     const parsed = z.safeParse(z.looseObject({ stopReason: z.string().check(z.minLength(1)) }), result);
     if (!parsed.success) throw new Error('Invalid ACP session/prompt response');
-    if (parsed.data.usage !== undefined) onUsage?.(parsed.data.usage);
+    onUsage?.(result);
     return parsed.data.stopReason;
   }
   cancel(sessionId: string): void {

@@ -12,7 +12,7 @@ for await (const line of lines) {
  else if (message.method === 'session/load') reply({});
  else if (message.method === 'session/prompt') {
   promptId = message.id;
-  usage = message.params.prompt[0].text === 'usage-test' ? { inputTokens: 12, outputTokens: 3, cacheReadInputTokens: 2, model: 'x-ai/grok-code-fast-1' } : undefined;
+  usage = message.params.prompt[0].text === 'usage-test' ? { inputTokens: 12, outputTokens: 3, cachedReadTokens: 2, cacheCreationTokens: 1, modelUsage: { 'grok-code-fast-1': { inputTokens: 12, outputTokens: 3, cachedReadTokens: 2, cacheCreationTokens: 1 } } } : undefined;
   const ask = ['approval-test', 'approval-allow'].includes(message.params.prompt[0].text);
   const choice = message.params.prompt[0].text === 'approval-allow' ? 'allow' : 'deny';
   expectedOutcome = ask ? `selected:${choice}` : 'cancelled';
@@ -22,6 +22,6 @@ for await (const line of lines) {
  else if (message.id === 'permission-1') {
   const actual = message.result?.outcome;
   if ((actual?.outcome === 'selected' ? `selected:${actual.optionId}` : actual?.outcome) !== expectedOutcome) process.exit(5);
-  process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: promptId, result: { stopReason: 'end_turn', ...(usage ? { usage } : {}) } }) + '\n');
+  process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: promptId, result: { stopReason: 'end_turn', ...(usage ? { _meta: { usage } } : {}) } }) + '\n');
  }
 }
