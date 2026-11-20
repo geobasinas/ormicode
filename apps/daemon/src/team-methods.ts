@@ -37,8 +37,10 @@ async function handle(ctx: DispatchCtx, client: Client, id: string, method: stri
     return fail('team.forbidden', 'only the team parent may perform this action (children may close only themselves)');
   if (body.session !== undefined && (!target || (target.team !== team.id && target.id !== team.parent)))
     return fail('team.not_member', 'target is not in this team');
-  const targetError = target && handoffTargetError(ctx.db, target.id);
-  if (targetError && !['team.diff', 'team.report'].includes(method) && !(method === 'team.status' && !body.wake))
+  const targetsWork = ['team.openPr', 'team.approve', 'team.escalate', 'team.cancel', 'team.reassign', 'team.close'].includes(method)
+    || method === 'team.status' && body.wake;
+  const targetError = targetsWork && target && handoffTargetError(ctx.db, target.id);
+  if (targetError)
     return fail('team.invalid', targetError);
   const reply = (result: Record<string, unknown>) => client.link.reply(id, result);
   switch (method) {
@@ -112,11 +114,11 @@ async function message(ctx: DispatchCtx, client: Client, id: string, body: Recor
   if (original && body.to && body.to !== original.from_session)
     return client.link.replyError(id, 'team.invalid', 'reply recipient must be the original sender');
   const recipient = getSession(ctx.db, to);
-  const toUser = Boolean(actor.parentless) && to === team.parent;
+  const recipientError = handoffTargetError(ctx.db, to);
+  const toUser = to === team.parent && Boolean(actor.parentless || recipientError);
   if (!recipient || recipient.archived && !toUser || (recipient.team !== team.id && recipient.id !== team.parent))
     return client.link.replyError(id, 'team.not_member', 'recipient is not a live member of this team');
-  const recipientError = handoffTargetError(ctx.db, to);
-  if (recipientError) return client.link.replyError(id, 'team.invalid', recipientError);
+  if (!toUser && recipientError) return client.link.replyError(id, 'team.invalid', recipientError);
   const messageId = newId('q');
   addTeamMessage(ctx.db, { id: messageId, team: team.id, from_session: actor.id, to_session: to,
     reply_to: original?.id ?? null, body: String(body.text), urgent: body.urgent ? 1 : 0, created_at: Date.now() });

@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { openStore, createSession, createTeam, setSessionTeam, listQueuedPrompts, unreadTeamMessages } from '@ormicode/session-store';
+import { openStore, createSession, createTeam, setSessionTeam, listQueuedPrompts, unreadTeamMessages, addTeamMessage, getTeamUserMessage } from '@ormicode/session-store';
+import { append, replay } from '@ormicode/journal';
 import { teamMethod } from '../src/team-methods.ts';
 import { reserveHandoff } from '../src/handoff-transition.ts';
+import { TeamLifecycle } from '../src/team-lifecycle.ts';
 
 function fixture(t, retiring) {
   const db = openStore(':memory:'); t.after(() => db.close());
@@ -33,4 +35,28 @@ for (const retiring of [false, true]) test(`team mutations reject ${retiring ? '
   await teamMethod(ctx, client, 'live-message', 'team.message', { actor: 'parent', to: 'live', text: 'live update' });
   assert.equal(errors.length, 10); assert.ok(replies.at(-1).id);
   assert.equal(unreadTeamMessages(db, 'live')[0].body, 'live update');
+});
+
+for (const retiring of [false, true]) for (const parentless of [false, true]) test(`messages through a ${retiring ? 'transitioning' : 'retired'} parent reach the user (parentless=${parentless})`, async t => {
+  const { db, ctx, calls, replies, errors, client } = fixture(t, false);
+  if (retiring) t.after(reserveHandoff(db, 'parent'));
+  else db.prepare('UPDATE sessions SET handed_off = 1 WHERE id = ?').run('parent');
+  db.prepare('UPDATE sessions SET parentless = ? WHERE id = ?').run(Number(parentless), 'live');
+  ctx.record = (session, kind, payload) => append(db, session, { kind, payload });
+  ctx.teamLifecycle = new TeamLifecycle(() => ctx, () => false);
+  t.after(() => ctx.teamLifecycle.close());
+  addTeamMessage(db, { id: 'original', team: 'team', from_session: 'parent', to_session: 'live', reply_to: null, body: 'Report back', urgent: 0, created_at: 0 });
+  for (const urgent of [false, true]) for (const reply of [false, true]) {
+    await teamMethod(ctx, client, 'message', 'team.message', { actor: 'live', ...(reply ? { replyTo: 'original' } : { to: 'parent' }), text: 'Please review', urgent });
+    assert.deepEqual(errors, []);
+    const message = replies.at(-1).id;
+    const question = JSON.parse(replay(db, 'live').filter(e => e.kind === 'question_request').at(-1).payload);
+    assert.equal(question.teamMessage, message);
+    assert.equal(getTeamUserMessage(db, 'live', question.request).message, message);
+  }
+  assert.deepEqual(calls, []);
+  assert.deepEqual(unreadTeamMessages(db, 'parent'), []);
+  assert.deepEqual(listQueuedPrompts(db, 'parent'), []);
+  await teamMethod(ctx, client, 'missing', 'team.message', { actor: 'live', to: 'missing', text: 'not a member' });
+  assert.equal(errors.at(-1).code, 'team.not_member');
 });
