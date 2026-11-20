@@ -6,7 +6,8 @@ import '@ormicode/client-ui/index.css';
 window.ormi = {
   request: async (method: string) => ({ v: 1, type: 'res', id: 'req_test', ok: true, body:
     method === 'agents.list' ? { agents: [] } : method === 'project.list' ? { projects: [] }
-      : method === 'session.list' ? { sessions: [] } : method === 'session.draft.get' ? { text: '' } : {} }),
+      : method === 'session.list' ? { sessions: [] } : method === 'session.digest' ? { computedAt: Date.now(), entries: [] }
+        : method === 'session.draft.get' ? { text: '' } : {} }),
   onState: listener => listener('online'),
   onEvent() {}, subscribe() {}, unsubscribe() {},
   tokenGet: async () => undefined, tokenSet: async () => {}, tokenClear: async () => {},
