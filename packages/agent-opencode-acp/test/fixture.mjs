@@ -1,5 +1,4 @@
 import readline from 'node:readline';
-if (JSON.parse(process.env.OPENCODE_CONFIG_CONTENT ?? '{}').permission?.['*'] !== 'ask') process.exit(6);
 const lines = readline.createInterface({ input: process.stdin });
 let promptId;
 let expectedOutcome = 'cancelled';

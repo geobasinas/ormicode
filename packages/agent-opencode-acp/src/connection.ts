@@ -4,7 +4,6 @@ import * as z from 'zod/mini';
 import type { RawLog } from '@ormicode/agent-core';
 import type { AcpMcpServer } from './options.ts';
 import { attachRawLog } from '@ormicode/agent-core';
-import { permissionEnvironment } from './environment.ts';
 
 type Spawn = (command: string, args: string[], options: SpawnOptionsWithoutStdio) => ChildProcessWithoutNullStreams;
 type Pending = { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> };
@@ -36,7 +35,7 @@ export class AcpConnection {
     void this.read();
   }
   static async start(options: { executable: string; args: string[]; cwd?: string; spawn?: Spawn; log?: RawLog; onNotification?: (method: string, params: unknown) => void; onRequest?: (method: string, params: unknown) => Promise<unknown> }): Promise<AcpConnection> {
-    const child = (options.spawn ?? spawn)(options.executable, options.args, { cwd: options.cwd, env: permissionEnvironment(), windowsHide: true, shell: false });
+    const child = (options.spawn ?? spawn)(options.executable, options.args, { cwd: options.cwd, windowsHide: true, shell: false });
     attachRawLog(child, options.log, [options.executable, ...options.args].join(' '), options.cwd);
     const connection = new AcpConnection(child, options.onNotification, options.onRequest, options.log);
     try {

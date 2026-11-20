@@ -5,7 +5,10 @@ import { fileURLToPath } from 'node:url';
 import { OpenCodeAcpAdapter, OpenCodeTurnMapper } from '../src/index.ts';
 import { validateTurn } from '@ormicode/agent-core';
 const fixture = fileURLToPath(new URL('./fixture.mjs', import.meta.url));
-const fake = (_command, _args, options) => spawn(process.execPath, [fixture], options);
+const fake = (_command, _args, options) => {
+ assert.equal(options.env, undefined, 'ACP inherits the caller environment; no invented V1 override');
+ return spawn(process.execPath, [fixture], options);
+};
 
 test('OpenCode ACP adapter streams and completes a turn through its own transport', async () => {
  let nativeId;
