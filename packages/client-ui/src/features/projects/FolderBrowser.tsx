@@ -79,7 +79,7 @@ export function FolderBrowser({ machine, busy, error: addError, onBack, onCancel
     </div>
     {current?.truncated ? <div style={truncated}>Showing first 2000 folders</div> : null}
     <div style={footer}>
-      <span title={chosen} style={chosenPath}>{chosen}</span>
+      <span title={chosen} style={chosenPath}><bdi>{chosen}</bdi></span>
       <Button variant="ghost" disabled={busy} onClick={onCancel}>Cancel</Button>
       <Button variant="primary" disabled={busy || !chosen} onClick={() => onAdd(chosen)}>{busy ? 'Adding…' : 'Add project'}</Button>
     </div>
