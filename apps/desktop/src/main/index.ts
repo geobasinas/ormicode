@@ -231,7 +231,7 @@ async function minimizeAnimated(w: BrowserWindow): Promise<void> {
 function createWindow(): void {
   win = new BrowserWindow({
     width: 1280, height: 800, minWidth: 720, minHeight: 480,
-    title: 'ormicode',
+    title: 'Ormicode',
     frame: false,
     transparent: true,
     autoHideMenuBar: true,
