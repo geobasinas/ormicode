@@ -111,3 +111,26 @@ test('MCP wait cleans up on subscription/status errors and restores the existing
     }
   }
 });
+
+test('MCP wait deadline includes stalled setup and cleanup, with late subscription cleanup', async () => {
+  for (const stalled of ['session.subscribe', 'session.get', 'session.unsubscribe']) {
+    let release;
+    const blocked = new Promise(resolve => { release = resolve; });
+    const calls = [];
+    const previous = () => {};
+    const link = { onFrame: previous, async request(method, body, timeout) {
+      assert.ok(timeout > 0 && timeout <= 20);
+      calls.push(method);
+      if (method === stalled) return blocked;
+      return { type: 'res', body: { state: 'running' } };
+    } };
+    const start = performance.now();
+    assert.deepEqual(JSON.parse(await waitFor(link, 'child', 'idle', 20, proof)),
+      { timedOut: true, ...(stalled === 'session.unsubscribe' ? { state: 'running' } : {}) });
+    assert.ok(performance.now() - start < 500, 'must not wait for the stalled request');
+    assert.equal(link.onFrame, previous);
+    release({ type: 'res', body: { state: 'idle' } });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(calls.filter(method => method === 'session.unsubscribe').length, 1);
+  }
+});
