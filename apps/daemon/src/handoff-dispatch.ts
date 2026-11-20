@@ -1,5 +1,5 @@
 import { newId } from '@ormicode/protocol';
-import { createSession, getSession, releaseSessionPorts, setState } from '@ormicode/session-store';
+import { createSession, getSession, releaseSessionPorts, setState, transferQueuedPrompts } from '@ormicode/session-store';
 import { acquireWorkspace, releaseForSession } from '@ormicode/leases';
 import { hasTransport } from './registry.ts';
 import { handoffBrief } from './handoff.ts';
@@ -10,6 +10,8 @@ import { allocateSessionPorts } from './session-ports.ts';
 import { sessionEnvironment } from './session-env.ts';
 import { runSessionHook } from './workspace-hooks.ts';
 import { restoreHandoffState } from './handoff-state.ts';
+import { reserveHandoff } from './handoff-transition.ts';
+import { queueEventItems } from './prompt-delivery.ts';
 
 const pendingApprovals = new Map<string, { ctx: DispatchCtx; session: string; expire(reason: string): void; resolve(approved: boolean): void }>();
 
@@ -25,14 +27,27 @@ export function resolveHandoffApproval(ctx: DispatchCtx, session: string, reques
   if (pending?.ctx !== ctx || pending.session !== session) return false;
   pendingApprovals.delete(request);
   const approved = option === 'approve';
+  pending.resolve(approved);
   ctx.record(session, 'approval_decision', { request, option: approved ? 'approve' : 'deny', approvalKind: 'handoff' });
   restoreHandoffState(ctx, session);
-  pending.resolve(approved);
   if (!approved) void ctx.drainQueue(session).catch(() => undefined);
   return true;
 }
 
 export async function handoffRequest(ctx: DispatchCtx, client: Client, id: string, body: Record<string, unknown>): Promise<void> {
+  const session = String(body.session);
+  let release: (() => void) | undefined;
+  try { await runHandoff(ctx, client, id, body, () => { release ??= reserveHandoff(ctx.db, session); }); }
+  finally {
+    if (release) {
+      release();
+      restoreHandoffState(ctx, session);
+      await ctx.drainQueue(session).catch(() => undefined);
+    }
+  }
+}
+
+async function runHandoff(ctx: DispatchCtx, client: Client, id: string, body: Record<string, unknown>, reserve: () => void): Promise<void> {
   const session = String(body.session);
   const db = ctx.db;
   const s = getSession(db, session);
@@ -72,7 +87,7 @@ export async function handoffRequest(ctx: DispatchCtx, client: Client, id: strin
       const timer = setTimeout(() => expire('timeout'), 10 * 60_000).unref();
       pendingApprovals.set(request, {
         ctx, session, expire,
-        resolve: value => { clearTimeout(timer); resolve(value); },
+        resolve: value => { clearTimeout(timer); if (value) reserve(); resolve(value); },
       });
       ctx.record(session, 'approval_request', {
         request, approvalKind: 'handoff', target: to, mode, reason: reason ?? '', estimate,
@@ -81,14 +96,8 @@ export async function handoffRequest(ctx: DispatchCtx, client: Client, id: strin
     });
     if (!approved) return client.link.replyError(id, 'handoff.declined', 'The handoff was declined or expired');
   }
-  const resume = async () => {
-    restoreHandoffState(ctx, session);
-    await ctx.drainQueue(session);
-  };
-  const fail = async (code: string, detail: string) => {
-    await resume();
-    client.link.replyError(id, code, detail);
-  };
+  reserve();
+  const fail = (code: string, detail: string) => client.link.replyError(id, code, detail);
   if (mode === 'in_place') {
     for (const [kind, value] of [['model', to.model], ['effort', to.effort]] as const) {
       if (!value) continue;
@@ -96,7 +105,6 @@ export async function handoffRequest(ctx: DispatchCtx, client: Client, id: strin
       if (res?.type === 'res') db.prepare(`UPDATE sessions SET ${kind} = ? WHERE id = ?`).run(value, session);
     }
     ctx.handoffsInTurn.set(session, (ctx.handoffsInTurn.get(session) ?? 0) + 1);
-    await resume();
     return client.link.reply(id, { session: s.id, brief: '', parent: s.id });
   }
   const child = newId('s');
@@ -144,9 +152,13 @@ export async function handoffRequest(ctx: DispatchCtx, client: Client, id: strin
     if (lease.conflict) throw new Error(`workspace held by ${lease.conflict}`);
     const sent = await ctx.sendPrompt(child, `You are taking over this task${reason ? ` — ${reason}` : ''}. Handoff brief:\n${brief}\nContinue where the previous session left off.`, undefined, { journal: false });
     if (!sent) throw new Error('new worker rejected the handoff brief');
+    if (transferQueuedPrompts(db, session, child)) {
+      for (const target of [session, child]) ctx.record(target, 'queue_changed', { items: queueEventItems(db, target) });
+    }
     ctx.record(session, 'handoff_started', { child, target: targetVendor, mode });
     ctx.record(child, 'handoff_continued', { parent: session, parentTitle: s.title ?? session });
     ctx.handoffsInTurn.set(session, (ctx.handoffsInTurn.get(session) ?? 0) + 1);
+    await ctx.drainQueue(child).catch(() => undefined);
     return client.link.reply(id, { session: child, brief, parent: s.id });
   } catch (error) {
     const reasonText = error instanceof Error ? error.message : String(error);
