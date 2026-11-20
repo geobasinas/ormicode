@@ -137,7 +137,19 @@ export class CodexCliAdapter implements AgentAdapter {
   async interrupt(handle: Handle): Promise<void> {
     const session = this.get(handle);
     if (!session.active || !session.turnId) throw new Error('Codex session has no active turn');
-    await session.server.interruptTurn(session.nativeId as string, session.turnId);
+    const turnId = session.turnId;
+    await session.server.interruptTurn(session.nativeId as string, turnId);
+    this.expireTurnInteractions(session, turnId);
+  }
+  private expireTurnInteractions(session: Session, turnId: string): void {
+    for (const [pending, result] of [[session.approvals, { decision: 'cancel' }], [session.questions, { answers: {} }]] as const) {
+      for (const [request, entry] of pending) {
+        if (entry.turnId !== turnId) continue;
+        pending.delete(request);
+        session.queue.push([{ kind: 'interaction_expired', request, reason: 'cancelled' }]);
+        entry.resolve(result);
+      }
+    }
   }
   events(handle: Handle) { return this.get(handle).queue.subscribe(); }
   async dispose(handle: Handle): Promise<void> {
@@ -168,7 +180,8 @@ export class CodexCliAdapter implements AgentAdapter {
     else if (method === 'item/completed') feed({ type: 'item.completed', item: translateItem(p.item) });
     else if (method === 'turn/started') { session.turnId = (p.turn as { id: string }).id; feed({ type: 'turn.started' }); }
     else if (method === 'turn/completed') {
-      const turn = p.turn as { status?: string; error?: { message?: string } | null };
+      const turn = p.turn as { id?: string; status?: string; error?: { message?: string } | null };
+      if (turn?.status === 'interrupted' && (turn.id ?? session.turnId)) this.expireTurnInteractions(session, (turn.id ?? session.turnId)!);
       if (turn?.status === 'failed' || turn?.error?.message) feed({ type: 'turn.failed', error: { message: turn.error?.message ?? 'turn failed' } });
       else feed({ type: 'turn.completed', usage: session.lastUsage ?? { input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_write_input_tokens: 0 } });
       session.lastUsage = undefined;
@@ -193,7 +206,7 @@ export class CodexCliAdapter implements AgentAdapter {
     }
     if (method === 'item/tool/requestUserInput') {
       session.queue.push([{ kind: 'question_request', request: id, questions: (p.questions ?? []).map((q) => ({ question: q.question, header: q.header, options: (q.options ?? []).map((o) => ({ label: o.label, description: o.description ?? '' })), multiSelect: false })) }]);
-      return new Promise((resolve) => { session.questions.set(id, { resolve }); });
+      return new Promise((resolve) => { session.questions.set(id, { resolve, turnId: p.turnId ?? session.turnId }); });
     }
     throw new Error(`Unsupported app-server request: ${method}`);
   }
