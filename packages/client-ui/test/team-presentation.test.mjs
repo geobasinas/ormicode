@@ -62,8 +62,16 @@ test('approval commands preserve real newlines, shell escapes and punctuation in
 test('Needs You excludes ordinary running/progressed/done and delegated approvals, even in digest fallback', () => {
   assert.equal(needsAttention(session()), false);
   for (const rank of ['silent', 'progressed', 'done']) assert.equal(needsAttention(session(), entry(rank)), false);
-  assert.equal(needsAttention(session('awaiting_approval', { delegatedApproval: true }), entry('waiting', { kind: 'approval' })), false);
+  assert.equal(needsAttention(session('awaiting_approval', { delegatedApproval: true }), entry('waiting')), false);
   assert.equal(needsAttention(session('archived'), entry('waiting', { kind: 'question' })), false);
+});
+
+test('user-routed approvals and questions override a simultaneous delegated wait', () => {
+  const mixed = session('awaiting_approval', { delegatedApproval: true });
+  for (const kind of ['approval', 'question']) assert.equal(needsAttention(mixed, entry('waiting', { kind })), true);
+  assert.equal(needsAttention(mixed), false);
+  assert.equal(needsAttention(mixed, entry('waiting', { kind: 'rate_limit' })), false);
+  assert.equal(needsAttention({ ...mixed, state: 'archived' }, entry('waiting', { kind: 'approval' })), false);
 });
 
 test('genuine questions remain actionable while workers run, including late-answer questions and offline fallback', () => {

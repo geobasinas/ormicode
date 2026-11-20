@@ -158,7 +158,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
           return {
             id: s.id, title: s.title, state: ctx.teamLifecycle.state(s), parentless: Boolean(s.parentless), project: s.project, vendor: s.vendor,
             transport: s.transport, updatedAt: s.updated_at, branch: s.branch,
-            worktree: Boolean(s.worktree), ...sessionTeamView(db, s), delegatedApproval: ctx.teamApprovals.waiting(s.id),
+            worktree: Boolean(s.worktree), ...sessionTeamView(db, s), delegatedApproval: ctx.teamApprovals.delegatedOnly(s.id),
             ...(base === undefined ? {} : { ports: { base, count: SESSION_PORT_COUNT } }),
             ...(s.base_commit && !s.archived ? { diff: diffStats.get(s.cwd, s.base_commit) } : {}),
           };

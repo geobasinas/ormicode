@@ -11,6 +11,7 @@ import { TestMcpCredentials } from './mcp-fixture.mjs';
 import { newId } from '@ormicode/protocol';
 import { getSession } from '@ormicode/session-store';
 import { replay } from '@ormicode/journal';
+import { needsAttention } from '../../../packages/client-ui/src/features/session/attention.ts';
 
 async function eventually(check) {
   const deadline = Date.now() + 15000;
@@ -118,6 +119,30 @@ for (const reason of [undefined, '', 'major security design decision']) test(`pa
   const decision = events(daemon.db, child.session, 'approval_decision')[0];
   assert.equal(decision.actor, 'cli');
   assert.equal(decision.parentDecided, false);
+});
+
+test('one user-routed approval stays in Needs You while another request remains delegated', async t => {
+  const { daemon, client, req, parent, spawn, credentials } = await fixture(t);
+  const child = await spawn();
+  const pending = client.request('session.handoff', { session: child.session, to: { vendor: 'fake', model: 'unknown-price' }, mode: 'rehydrate', agentApproval: true }, 30_000, credentials.proof(child.session));
+  await eventually(() => events(daemon.db, child.session, 'team_approval_request').length === 2);
+  const summary = async () => (await req('session.list', {})).body.sessions.find(s => s.id === child.session);
+  assert.equal((await summary()).delegatedApproval, true);
+  await req('team.escalate', { actor: parent, ...child, reason: 'security-sensitive command' });
+  const mixed = await summary();
+  assert.equal(mixed.delegatedApproval, false);
+  assert.equal(needsAttention(mixed), true);
+  const digest = (await req('session.digest', { since: 0 })).body.entries.find(e => e.session === child.session);
+  assert.equal(digest.wants.kind, 'approval');
+  assert.equal(needsAttention(mixed, digest), true);
+  assert.equal((await req('session.get', { session: parent })).body.teamApprovals.length, 1);
+  await req('session.decide', { ...child, option: 'allow' });
+  await eventually(() => getSession(daemon.db, child.session).state === 'idle');
+  const delegated = await summary();
+  assert.equal(delegated.delegatedApproval, true);
+  assert.equal(needsAttention(delegated), false);
+  await req('session.abort', { session: child.session });
+  assert.equal((await pending).code, 'handoff.declined');
 });
 
 test('escalation rejects missing proof, forged actors, non-parents and undelegated requests', async t => {
