@@ -14,7 +14,7 @@ export async function beforeWorkerResume(ctx: DispatchCtx, session: string, stop
   if (!team || team.parent === session) return;
   if (team.closed_at !== null || row?.archived) throw new Error('team.closed: child is closed');
   const parent = getSession(ctx.db, team.parent);
-  if (parent && !parent.archived && parent.state !== 'failed') await ctx.ensureWorker(parent.id);
+  if (parent && !parent.archived && parent.state !== 'failed' && !handoffTargetError(ctx.db, parent.id)) await ctx.ensureWorker(parent.id);
   if (stopped()) throw new Error('daemon is closing');
   const reserved = reservations.get(ctx) ?? new Set<string>();
   reservations.set(ctx, reserved);

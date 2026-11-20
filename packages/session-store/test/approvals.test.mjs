@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { openStore, hasPendingApproval } from '../src/index.ts';
+import { openStore, hasPendingApproval, pendingQuestions } from '../src/index.ts';
 
 test('pending user approvals are session-scoped and closed only by a later matching decision or expiry', t => {
   const db = openStore(':memory:'); t.after(() => db.close());
@@ -25,6 +25,29 @@ test('pending user approvals are session-scoped and closed only by a later match
   event('child', 'interaction_expired', 'request');
   assert.equal(hasPendingApproval(db, 'child'), false);
   assert.equal(hasPendingApproval(db, 'other'), false);
+});
+
+test('pending questions distinguish late-answerable expiry from permanent closure and remain session-scoped', t => {
+  const db = openStore(':memory:'); t.after(() => db.close());
+  let seq = 0;
+  const event = (session, kind, request, extra = {}) => db.prepare('INSERT INTO events(session, seq, kind, payload) VALUES (?, ?, ?, ?)')
+    .run(session, ++seq, kind, JSON.stringify({ request, ...extra }));
+  assert.deepEqual(pendingQuestions(db, 'child'), []);
+  event('other', 'question_request', 'other');
+  event('child', 'question_answer', 'daemon');
+  event('child', 'question_request', 'daemon', { daemonInteraction: true });
+  event('child', 'question_request', 'native');
+  event('child', 'interaction_expired', 'daemon', { answerable: true });
+  event('other', 'interaction_expired', 'native');
+  assert.deepEqual(pendingQuestions(db, 'child'), ['daemon', 'native']);
+  assert.deepEqual(pendingQuestions(db, 'child', { daemonOnly: true }), ['daemon']);
+  event('child', 'interaction_expired', 'daemon', { answerable: false });
+  event('child', 'question_answer', 'native');
+  assert.deepEqual(pendingQuestions(db, 'child'), []);
+  event('child', 'question_request', 'native');
+  event('child', 'interaction_expired', 'native');
+  assert.deepEqual(pendingQuestions(db, 'child'), []);
+  assert.deepEqual(pendingQuestions(db, 'other'), ['other']);
 });
 
 test('pending approval queries can exclude handoffs without excluding native permissions', t => {

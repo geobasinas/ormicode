@@ -1,6 +1,16 @@
 import type { Store } from './db.ts';
 import { getSession, type SessionState } from './sessions.ts';
 
+export function pendingQuestions(db: Store, session: string, options: { daemonOnly?: boolean } = {}): string[] {
+  const rows = db.prepare(`SELECT json_extract(q.payload, '$.request') AS request FROM events q
+    WHERE q.session = ? AND q.kind = 'question_request'
+    AND (? = 0 OR json_extract(q.payload, '$.daemonInteraction') = 1) AND NOT EXISTS (
+      SELECT 1 FROM events a WHERE a.session = q.session AND a.seq > q.seq
+      AND (a.kind = 'question_answer' OR a.kind = 'interaction_expired' AND COALESCE(json_extract(a.payload, '$.answerable'), 0) = 0)
+      AND json_extract(a.payload, '$.request') = json_extract(q.payload, '$.request')) ORDER BY q.seq`).all(session, Number(Boolean(options.daemonOnly))) as { request: string }[];
+  return rows.map(row => row.request);
+}
+
 export function hasPendingApproval(db: Store, session: string, options: { includeHandoffs?: boolean } = {}): boolean {
   return Boolean(db.prepare(`SELECT 1 FROM events q
     WHERE q.session = ? AND q.kind = 'approval_request'

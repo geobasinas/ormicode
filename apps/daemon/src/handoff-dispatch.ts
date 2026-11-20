@@ -12,6 +12,7 @@ import { runSessionHook } from './workspace-hooks.ts';
 import { restoreHandoffState } from './handoff-state.ts';
 import { handoffTargetError, reserveHandoff } from './handoff-transition.ts';
 import { transferHandoffPrompts, validateHandoffPrompts } from './handoff-prompts.ts';
+import { expireHandoffQuestions } from './handoff-questions.ts';
 
 const pendingApprovals = new Map<string, { ctx: DispatchCtx; session: string; expire(reason: string): void; resolve(approved: boolean): void }>();
 
@@ -156,6 +157,8 @@ async function runHandoff(ctx: DispatchCtx, client: Client, id: string, body: Re
     const sent = await ctx.sendPrompt(child, `You are taking over this task${reason ? ` — ${reason}` : ''}. Handoff brief:\n${brief}\nContinue where the previous session left off.`, undefined, { journal: false });
     if (!sent) throw new Error('new worker rejected the handoff brief');
     transferHandoffPrompts(ctx, session, child);
+    ctx.interactions?.unavailable(session, 'handed_off');
+    expireHandoffQuestions(ctx, session);
     ctx.record(session, 'handoff_started', { child, target: targetVendor, mode });
     ctx.record(child, 'handoff_continued', { parent: session, parentTitle: s.title ?? session });
     ctx.handoffsInTurn.set(session, (ctx.handoffsInTurn.get(session) ?? 0) + 1);

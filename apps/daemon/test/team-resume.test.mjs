@@ -108,3 +108,38 @@ test('concurrent readiness reserves a child slot across asynchronous spawn, dedu
   await assert.rejects(ctx.ensureWorker(f.children[2]), /team.closed/);
   stopped = true; await assert.rejects(ctx.ensureWorker(f.children[3]), /closing/); f.db.close();
 });
+
+for (const policy of ['safe', 'all']) test(`${policy} restart recovers children of a retired parent under the cap without waking the parent`, async t => {
+  const f = await fixture(t, policy), [queued, interrupted, inbox, dormant] = f.children;
+  f.db.prepare('UPDATE sessions SET handed_off = 1 WHERE id = ?').run(f.parent); setState(f.db, f.parent, 'done');
+  addQueuedPrompt(f.db, queued, { id: newId('q'), text: 'follow-up after parent handoff', createdAt: Date.now() });
+  append(f.db, interrupted, { kind: 'prompt', payload: { text: 'unfinished task' } }); setState(f.db, interrupted, 'running');
+  addTeamMessage(f.db, { id: newId('q'), team: f.team, from_session: f.parent, to_session: inbox, reply_to: null, body: 'pending inbox work', urgent: 0, created_at: Date.now() });
+  const { daemon, req } = await f.start();
+  const remaining = new Set([queued, interrupted, inbox]);
+  for (let n = 0; n < 3; n++) {
+    await eventually(() => [...remaining].some(s => getSession(daemon.db, s).state === 'running'));
+    const child = [...remaining].find(s => getSession(daemon.db, s).state === 'running'); remaining.delete(child);
+    assert.equal(f.children.filter(s => ['starting', 'running'].includes(getSession(daemon.db, s).state)).length, 1);
+    assert.equal(daemon.workers.has(f.parent), false); assert.equal(daemon.workers.has(dormant), false);
+    assert.equal(getSession(daemon.db, child).parentless, 1);
+    assert.equal((await req('session.abort', { session: child })).type, 'res');
+  }
+  assert.equal(unreadTeamMessages(daemon.db, inbox).length, 0);
+  assert.match(events(daemon.db, queued, 'prompt').at(-1).text, /follow-up after parent handoff/);
+  assert.ok(events(daemon.db, interrupted, 'prompt').some(p => p.text.includes('Resume your interrupted team task')));
+  assert.equal(events(daemon.db, f.parent, 'resumed').length, 0);
+});
+
+test('retired team recovery honors wait and closed teams and leaves empty children dormant', async t => {
+  const f = await fixture(t, 'wait');
+  f.db.prepare('UPDATE sessions SET handed_off = 1 WHERE id = ?').run(f.parent); setState(f.db, f.parent, 'done');
+  assert.deepEqual(recoverSessions(f.db, 'safe').retiredTeamParents, [f.parent]);
+  addQueuedPrompt(f.db, f.children[0], { id: newId('q'), text: 'wait for user', createdAt: Date.now() });
+  assert.deepEqual(recoverSessions(f.db, 'wait').retiredTeamParents, []);
+  f.db.prepare('UPDATE teams SET closed_at = 1 WHERE id = ?').run(f.team);
+  assert.deepEqual(recoverSessions(f.db, 'all').retiredTeamParents, []);
+  f.db.prepare('UPDATE teams SET closed_at = NULL WHERE id = ?').run(f.team);
+  const { daemon } = await f.start();
+  assert.equal(daemon.workers.size, 0); assert.equal(listQueuedPrompts(daemon.db, f.children[0]).length, 1);
+});

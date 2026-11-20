@@ -7,6 +7,7 @@ import { resumable } from './registry.ts';
 import { readdirSync, statSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { ormicodeDir } from './socket.ts';
+import { expireHandoffQuestions } from './handoff-questions.ts';
 
 /** Raw session logs are kept 7 days; called once at boot. */
 export function sweepLogs(root = join(ormicodeDir(), 'logs', 'sessions'), maxAgeMs = 7 * 24 * 3600 * 1000): number {
@@ -48,10 +49,12 @@ function expirePending(db: Store, session: string): void {
  * resume support, 'all' also retries interrupted ones, 'wait' resumes nothing.
  */
 export interface ResumeCandidate { s: SessionRow; recapOnly: boolean }
-export interface Recovery { autoResume: ResumeCandidate[]; rateLimited: { id: string; resetAt: number }[] }
+export interface Recovery { autoResume: ResumeCandidate[]; rateLimited: { id: string; resetAt: number }[]; retiredTeamParents: string[] }
 
 export function recoverSessions(db: Store, policy: ResumePolicy): Recovery {
   db.exec('DELETE FROM leases');
+  for (const s of listSessions(db).filter(s => s.handed_off))
+    expireHandoffQuestions({ db, record: (session, kind, payload) => { append(db, session, { kind, payload }); } }, s.id);
   for (const s of listSessions(db).filter(s => !s.handed_off && [...inFlight, 'interrupted'].includes(s.state))) {
     checkTail(db, s.id);
     const team = s.team ? getTeam(db, s.team) : undefined;
@@ -72,7 +75,8 @@ export function recoverSessions(db: Store, policy: ResumePolicy): Recovery {
     const resetAt = row ? (JSON.parse(row.payload) as { resetAt?: number }).resetAt : undefined;
     return typeof resetAt === 'number' ? [{ id: s.id, resetAt }] : [];
   });
-  if (policy === 'wait') return { autoResume: [], rateLimited };
+  if (policy === 'wait') return { autoResume: [], rateLimited, retiredTeamParents: [] };
+  const retiredTeamParents = listSessions(db).filter(s => s.handed_off && ownedTeam(db, s.id)?.closed_at === null).map(s => s.id);
   const states = policy === 'all' ? ['idle', 'done', 'interrupted'] : ['idle', 'done'];
   // 'all' also picks sessions with no usable native resume; those respawn fresh
   // and get a journaled handoff_brief recap instead of their transcript.
@@ -85,5 +89,5 @@ export function recoverSessions(db: Store, policy: ResumePolicy): Recovery {
       return policy === 'all' ? states.includes(s.state) : s.native_id && states.includes(s.state) && resumable(s.vendor, s.transport);
     })
     .map(s => ({ s, recapOnly: !(s.native_id && resumable(s.vendor, s.transport)) }));
-  return { autoResume, rateLimited };
+  return { autoResume, rateLimited, retiredTeamParents };
 }
