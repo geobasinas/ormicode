@@ -272,7 +272,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     const w = workers.get(session);
     const link = workerLinks.get(session);
     const response = w && link ? await link.request(method, { session, ...body }, 30_000) : undefined;
-    return cancelled && response?.type !== 'res' ? { v: 1, type: 'res', id: 'worker.abort', body: { interrupted: true } } as Frame : response;
+    return cancelled && response?.type !== 'res' ? { v: 1, type: 'res', id: 'worker.abort', ok: true, body: { interrupted: true } } as Frame : response;
   };
   const workerLinks = new Map<string, Link>();
   const sessionByLink = new Map<Link, string>();
