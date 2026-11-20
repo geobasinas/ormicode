@@ -35,6 +35,11 @@ for await (const line of lines) {
     notify('item/agentMessage/delta', { threadId: 'thread-1', turnId, itemId: 'msg-1', delta: 'o' });
     if (text === 'fail turn') {
       notify('turn/completed', { threadId: 'thread-1', turn: { id: turnId, status: 'failed', error: { message: 'fixture turn failed' } } });
+    } else if (text === 'retry succeeds' || text === 'retry fails' || text === 'fatal error') {
+      const retry = text !== 'fatal error';
+      notify('error', { threadId: 'thread-1', turnId, error: { message: retry ? 'Reconnecting stream' : 'Unrecoverable error' }, willRetry: retry });
+      if (text === 'retry fails') notify('turn/completed', { threadId: 'thread-1', turn: { id: turnId, status: 'failed', error: { message: 'Retries exhausted' } } });
+      else finishTurn('thread-1', turnId);
     } else if (text === 'approve me' || text === 'approval ends' || text === 'interrupt fails') {
       const rid = ++nextRequest;
       pending.set(rid, message => { if (message.result?.decision === 'cancel') return; if (text === 'approval ends') process.exit(7); finishTurn('thread-1', turnId); });

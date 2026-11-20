@@ -1422,7 +1422,7 @@ secrets:
 
 Parent-only except `team_send`, `team_reply`, `team_inbox`, `team_board_read`, `team_board_write`, `team_close`.
 
-`session.get` and team status expose `turnCompleted`, reset by prompt dispatch or turn start and set by turn end. Completed turns containing an agent error report `failed` rather than `idle`; a new prompt resets that outcome. MCP waits use this authoritative status, including approval/input waits, rather than inferring completion from event arrival order.
+`session.get` and team status expose `turnCompleted`, reset by prompt dispatch or turn start and set by turn end. Completed turns containing an agent error report `failed` rather than `idle`; a new prompt resets that outcome. Codex app-server errors marked `willRetry` journal `state: retrying`, not a failed-turn error; a later terminal error still fails the turn. MCP waits use this authoritative status, including approval/input waits, rather than inferring completion from event arrival order.
 
 **Inheritance:** children get the parent's MCP servers, skills and permission mode. The parent picks agent, model, effort, mode and tool allowlist per child. Children never see the parent's transcript — just their task and the board.
 
