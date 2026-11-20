@@ -53,6 +53,7 @@ import { teamMethod } from './team-methods.ts';
 import { authorizeMcp, type McpCredentials } from './mcp-auth.ts';
 import type { TeamApprovals } from './team-approvals.ts';
 import type { TeamLifecycle } from './team-lifecycle.ts';
+import { shouldResetUiCheckFollowups } from './ui-check.ts';
 
 /** What a client transport must do: send frames and answer requests. */
 export interface ClientLink {
@@ -74,10 +75,11 @@ export interface DispatchCtx {
   lastError: () => string | null | undefined;
   liveWorkers: () => number;
   paused: Set<string>;
-  heldPrompts: Map<string, { text: string; images?: unknown[]; context?: PromptContext[]; attachments?: PromptAttachment[] }[]>;
-  lastPrompt: Map<string, { text: string; images?: unknown[]; context?: PromptContext[]; attachments?: PromptAttachment[] }>;
+  heldPrompts: Map<string, { text: string; images?: unknown[]; context?: PromptContext[]; attachments?: PromptAttachment[]; actor?: 'auto' }[]>;
+  lastPrompt: Map<string, { text: string; images?: unknown[]; context?: PromptContext[]; attachments?: PromptAttachment[]; actor?: 'auto' }>;
   /** Handoffs since the session's last turn_start — cleared by the supervisor. */
   handoffsInTurn: Map<string, number>;
+  resetUiCheckFollowups(session: string): void;
   spawnWorker(session: string): void;
   ensureWorker(session: string, timeoutMs?: number): Promise<void>;
   stopWorker(session: string): Promise<void>;
@@ -181,10 +183,12 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
       case 'service.restart':
       case 'service.logs':
       case 'preview.url':
+      case 'preview.fetch':
+      case 'preview.fetchMore':
       case 'preview.console':
       case 'preview.consoleClear':
         return await serviceMethod(ctx, client, id, method, body);
-      case 'browser.status': case 'browser.settings': case 'browser.setSettings': case 'browser.install':
+      case 'browser.status': case 'browser.settings': case 'browser.setSettings': case 'browser.install': case 'browser.diff':
       case 'browser.open': case 'browser.click': case 'browser.type': case 'browser.snapshot':
       case 'browser.screenshot': case 'browser.close': case 'browser.artifact':
         return await browserMethod(ctx, client, id, method, body);
@@ -233,6 +237,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         try { validatePrompt(s.cwd, { text: String(body.text), context, attachments }); }
         catch (error) { return client.link.replyError(id, 'prompt.invalid', error instanceof Error ? error.message : String(error)); }
         if (ctx.paused.has(session)) {
+          if (shouldResetUiCheckFollowups(client.device)) ctx.resetUiCheckFollowups(session);
           const held = ctx.heldPrompts.get(session) ?? [];
           held.push({ text: String(body.text), ...(body.images ? { images: body.images as unknown[] } : {}), ...(context.length ? { context } : {}), ...(attachments.length ? { attachments } : {}) });
           ctx.heldPrompts.set(session, held);
@@ -251,6 +256,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
           if (error instanceof PromptInvalidError) return client.link.replyError(id, 'prompt.invalid', error.message);
           throw error;
         }
+        if (sent && shouldResetUiCheckFollowups(client.device)) ctx.resetUiCheckFollowups(session);
         if (sent && pending) deletePendingPromptData(db, session);
         return sent ? client.link.reply(id, { accepted: true }) : client.link.replyError(id, 'agent.failed', 'worker rejected prompt');
       }
@@ -326,6 +332,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         }
         const res = await ctx.toWorker(session, 'worker.steer', { text: prepared.text });
         if (res?.type !== 'res') return client.link.replyError(id, 'agent.unsupported', 'steer');
+        if (shouldResetUiCheckFollowups(client.device)) ctx.resetUiCheckFollowups(session);
         ctx.record(session, 'prompt', { text: String(body.text), ...(context.length ? { context } : {}), ...(prepared.attachments.length ? { attachments: prepared.attachments } : {}) });
         if (pending) deletePendingPromptData(db, session);
         return client.link.reply(id, { accepted: true, queued: false });

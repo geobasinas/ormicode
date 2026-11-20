@@ -1,6 +1,21 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { callBrowserTool, formatBrowserLogs, TOOLS } from '../src/mcp.ts';
+import { callBrowserTool, formatBrowserLogs, initializeResult, initializeWithBrowserSettings, TOOLS, UI_CHECK_INSTRUCTIONS } from '../src/mcp.ts';
+
+test('MCP initialize only includes UI-check instructions when enabled', () => {
+  assert.equal(initializeResult(true).instructions, UI_CHECK_INSTRUCTIONS);
+  assert.equal(Object.hasOwn(initializeResult(false), 'instructions'), false);
+});
+
+test('MCP initialize settings lookup is bounded to one second and failure omits instructions', async () => {
+  const calls = [];
+  const result = await initializeWithBrowserSettings(async (...args) => {
+    calls.push(args);
+    throw new Error('browser settings unavailable');
+  });
+  assert.deepEqual(calls, [['browser.settings', {}, 1000]]);
+  assert.equal(Object.hasOwn(result, 'instructions'), false);
+});
 
 test('MCP lists the scoped browser tools', () => {
   const names = TOOLS.map(tool => tool.name);

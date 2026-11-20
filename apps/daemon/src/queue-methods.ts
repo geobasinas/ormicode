@@ -5,6 +5,7 @@ import {
 import type { PromptAttachment, PromptContext } from '@ormicode/protocol';
 import type { Client, DispatchCtx } from './dispatch.ts';
 import { validatePrompt } from './prompt-context.ts';
+import { shouldResetUiCheckFollowups } from './ui-check.ts';
 
 export function queueMethod(
   ctx: DispatchCtx,
@@ -32,6 +33,7 @@ export function queueMethod(
         ...(body.attachments ? { attachments: body.attachments as PromptAttachment[] } : {}),
       };
       addQueuedPrompt(ctx.db, session, queued);
+      if (shouldResetUiCheckFollowups(client.device)) ctx.resetUiCheckFollowups(session);
       ctx.record(session, 'queue_changed', { items: queueEventItems(ctx.db, session) });
       void ctx.drainQueue(session);
       return client.link.reply(id, { id: queued.id });
@@ -66,5 +68,6 @@ function queueEventItems(db: DispatchCtx['db'], session: string) {
     createdAt: item.createdAt,
     ...(item.images?.length ? { images: item.images.length } : {}),
     ...(item.error ? { error: item.error } : {}),
+    ...(item.actor ? { actor: item.actor } : {}),
   }));
 }

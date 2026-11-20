@@ -14,6 +14,22 @@ interface JsonRpc { jsonrpc?: string; id?: string | number; method: string; para
 
 const text = (s: string) => ({ content: [{ type: 'text', text: s }] });
 const errText = (s: string) => ({ content: [{ type: 'text', text: s }], isError: true });
+export const UI_CHECK_INSTRUCTIONS = 'After you change UI code while a preview service is running, check your work before finishing: ormi_browser_open the page, ormi_browser_snapshot, ormi_browser_screenshot, and ormi_browser_logs for errors. Fix what you find.';
+
+export function initializeResult(uiCheck: boolean) {
+  return {
+    protocolVersion: '2025-06-18', capabilities: { tools: {} },
+    serverInfo: { name: 'ormi', version: '0.0.0' },
+    ...(uiCheck ? { instructions: UI_CHECK_INSTRUCTIONS } : {}),
+  };
+}
+
+export async function initializeWithBrowserSettings(
+  request: (method: string, body: Record<string, unknown>, timeoutMs: number) => Promise<Record<string, unknown>>,
+) {
+  const settings = await request('browser.settings', {}, 1_000).catch(() => undefined);
+  return initializeResult(settings?.uiCheck === true);
+}
 
 export const TOOLS = [
   { name: 'ormi_ask_user', description: 'Ask the user a question and wait for their answer. Optional choices; otherwise free text. Team children must ask their parent.', inputSchema: { type: 'object', required: ['question'], properties: { question: { type: 'string' }, options: { type: 'array', items: { type: 'string' } } } } },
@@ -171,8 +187,11 @@ export async function serveOrmiMcp(socketPath: string, self: string, token: stri
     const reply = (result: unknown) => ({ jsonrpc: '2.0', id: msg.id, result });
     try {
       switch (msg.method) {
-        case 'initialize':
-          return reply({ protocolVersion: String((msg.params?.protocolVersion) ?? '2025-06-18'), capabilities: { tools: {} }, serverInfo: { name: 'ormi', version: '0.0.0' } });
+        case 'initialize': {
+          const initialized = await initializeWithBrowserSettings(req);
+          return reply({ ...initialized,
+            protocolVersion: String(msg.params?.protocolVersion ?? '2025-06-18') });
+        }
         case 'ping': return reply({});
         case 'tools/list': return reply({ tools: TOOLS });
         case 'tools/call': {

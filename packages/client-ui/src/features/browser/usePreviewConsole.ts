@@ -7,6 +7,8 @@ export function usePreviewConsole(session: string) {
   const { transport } = usePlatform();
   const [entries, setEntries] = useState<PreviewConsoleEntry[]>([]);
   const [unread, setUnread] = useState(0);
+  const [unreadErrors, setUnreadErrors] = useState(0);
+  const [unreadWarnings, setUnreadWarnings] = useState(0);
   const [dropped, setDropped] = useState(0);
   const cursor = useRef(new PreviewConsoleCursor());
   const stored = useRef<PreviewConsoleEntry[]>([]);
@@ -18,7 +20,7 @@ export function usePreviewConsole(session: string) {
     cursor.current.reset();
     clearing.current = false;
     stored.current = [];
-    setEntries([]); setUnread(0); setDropped(0);
+    setEntries([]); setUnread(0); setUnreadErrors(0); setUnreadWarnings(0); setDropped(0);
     const poll = async () => {
       if (clearing.current) return;
       const request = cursor.current.beginRequest();
@@ -31,7 +33,11 @@ export function usePreviewConsole(session: string) {
       const fresh = page.entries.filter(entry => !known.has(entry.id));
       stored.current = [...stored.current, ...fresh].slice(-500);
       setEntries(stored.current);
-      if (!open.current) setUnread(value => value + fresh.length);
+      if (!open.current) {
+        setUnread(value => value + fresh.length);
+        setUnreadErrors(value => value + fresh.filter(entry => entry.level === 'error').length);
+        setUnreadWarnings(value => value + fresh.filter(entry => entry.level === 'warn').length);
+      }
       setDropped(page.dropped);
     };
     void poll();
@@ -41,7 +47,7 @@ export function usePreviewConsole(session: string) {
 
   const setOpen = useCallback((value: boolean) => {
     open.current = value;
-    if (value) setUnread(0);
+    if (value) { setUnread(0); setUnreadErrors(0); setUnreadWarnings(0); }
   }, []);
   const clear = useCallback(async () => {
     cursor.current.reset();
@@ -50,9 +56,9 @@ export function usePreviewConsole(session: string) {
       const response = await transport.request('preview.consoleClear', { session });
       if (response.type === 'res') {
         stored.current = [];
-        setEntries([]); setUnread(0); setDropped(0);
+        setEntries([]); setUnread(0); setUnreadErrors(0); setUnreadWarnings(0); setDropped(0);
       }
     } finally { clearing.current = false; }
   }, [session, transport]);
-  return { entries, unread, dropped, setOpen, clear };
+  return { entries, unread, unreadErrors, unreadWarnings, dropped, setOpen, clear };
 }

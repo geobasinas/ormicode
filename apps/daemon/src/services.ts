@@ -10,6 +10,7 @@ import { killTreePid } from './proctree.ts';
 import { allocateSessionPorts } from './session-ports.ts';
 import { environmentForSession } from './session-env.ts';
 import { PreviewProxy } from './preview-proxy.ts';
+import { PreviewFetchPages } from './preview-fetch.ts';
 import type { PreviewConsoleEntry } from './preview-inspector.ts';
 
 const serviceSchema = z.object({
@@ -26,7 +27,7 @@ type ServiceConfig = z.infer<typeof serviceSchema>;
 type State = 'stopped' | 'starting' | 'running' | 'unhealthy' | 'exited';
 interface Definition { name: string; config: ServiceConfig; offset: number; cwd: string }
 interface ConfigResult { found: boolean; path?: string; error?: string; definitions: Definition[] }
-interface LogLine { id: number; text: string }
+interface LogLine { id: number; text: string; stream: 'stdout' | 'stderr' }
 interface Runtime extends Definition {
   port: number;
   state: State; child?: ChildProcess; pid?: number; code?: number | null; detail?: string;
@@ -77,6 +78,7 @@ export class Services {
   private readonly sessions = new Map<string, Map<string, Runtime>>();
   private readonly db: Store;
   private readonly proxy: PreviewProxy;
+  private readonly fetchPages = new PreviewFetchPages();
   private readonly record: (session: string, kind: string, payload: Record<string, unknown>) => void;
   private readonly home: string;
   constructor(
@@ -193,6 +195,26 @@ export class Services {
     return this.proxy.consoleEntries(session, ids);
   }
 
+  async previewFetch(client: string, session: string, port: number, method: string, path: string,
+    headers: Record<string, string>, body: Buffer) {
+    if (!getSession(this.db, session)) throw new ServiceError('session.not_found', session);
+    try { return this.fetchPages.first(client, await this.proxy.fetch(session, port, method, path, headers, body)); }
+    catch (error) {
+      if (error && typeof error === 'object' && 'code' in error && typeof error.code === 'string')
+        throw new ServiceError(error.code, error instanceof Error ? error.message : String(error));
+      throw error;
+    }
+  }
+
+  previewFetchMore(client: string, handle: string) {
+    try { return this.fetchPages.next(client, handle); }
+    catch (error) {
+      if (error && typeof error === 'object' && 'code' in error && typeof error.code === 'string')
+        throw new ServiceError(error.code, error instanceof Error ? error.message : String(error));
+      throw error;
+    }
+  }
+
   async start(session: string, name: string): Promise<ServiceView> {
     const row = getSession(this.db, session);
     if (!row) throw new ServiceError('session.not_found', session);
@@ -227,9 +249,9 @@ export class Services {
     child.stderr?.on('data', chunk => this.consume(session, runtime, 'stderr', chunk.toString()));
     child.once('error', error => this.transition(session, runtime, 'exited', error.message));
     child.once('close', code => {
-      for (const stream of ['stdout', 'stderr']) {
+      for (const stream of ['stdout', 'stderr'] as const) {
         const remaining = runtime.partial.get(stream) ?? '';
-        if (remaining) this.pushLine(session, runtime, remaining);
+        if (remaining) this.pushLine(session, runtime, remaining, stream);
         runtime.partial.set(stream, '');
       }
       runtime.child = undefined;
@@ -254,16 +276,16 @@ export class Services {
     }
   }
 
-  private consume(session: string, runtime: Runtime, stream: string, chunk: string): void {
+  private consume(session: string, runtime: Runtime, stream: 'stdout' | 'stderr', chunk: string): void {
     const text = `${runtime.partial.get(stream) ?? ''}${chunk}`;
     const parts = text.split(/\r?\n/);
     runtime.partial.set(stream, parts.pop() ?? '');
-    for (const line of parts) this.pushLine(session, runtime, line);
+    for (const line of parts) this.pushLine(session, runtime, line, stream);
   }
 
-  private pushLine(session: string, runtime: Runtime, text: string): void {
+  private pushLine(session: string, runtime: Runtime, text: string, stream: 'stdout' | 'stderr'): void {
     const line = text.slice(-1024 * 1024);
-    const entry = { id: runtime.nextLine++, text: line };
+    const entry = { id: runtime.nextLine++, text: line, stream };
     runtime.lines.push(entry); runtime.bytes += Buffer.byteLength(`${line}\n`);
     const path = join(this.home, 'logs', 'services', session, `${runtime.name}.log`);
     mkdirSync(join(this.home, 'logs', 'services', session), { recursive: true, mode: 0o700 });
@@ -311,13 +333,13 @@ export class Services {
     return this.start(session, name);
   }
 
-  logs(session: string, name: string, after?: number): { lines: string[]; next: number; truncated: boolean } {
+  logs(session: string, name: string, after?: number): { lines: { text: string; stream: 'stdout' | 'stderr' }[]; next: number; truncated: boolean } {
     const runtime = this.runtimes(session).get(name);
     if (!runtime) throw new ServiceError('service.not_found', name);
     const cursor = after ?? 0;
     const oldest = runtime.lines[0]?.id ?? runtime.nextLine;
     const truncated = cursor < oldest - 1;
-    const lines = runtime.lines.filter(line => line.id > cursor).map(line => line.text);
+    const lines = runtime.lines.filter(line => line.id > cursor).map(({ text, stream }) => ({ text, stream }));
     return { lines, next: runtime.lines.at(-1)?.id ?? cursor, truncated };
   }
 
@@ -336,6 +358,7 @@ export class Services {
   }
 
   async shutdown(): Promise<void> {
+    this.fetchPages.close();
     await Promise.all([...this.sessions.keys()].map(session => this.stopSession(session)));
   }
 }

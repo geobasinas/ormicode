@@ -10,6 +10,7 @@ import { usePreviewConsole } from './usePreviewConsole.ts';
 import { pushToComposer } from '../../lib/composer-inbox.ts';
 import { ChoosePreview, EmptyPreview, RemotePreview, StoppedPreview } from './BrowserNotice.tsx';
 import type { BrowserListed, BrowserPage, DevicePreset } from './browser-types.ts';
+import { TooltipProvider } from '../../components/ui/tooltip.tsx';
 
 const readJson = <T,>(key: string, fallback: T): T => {
   try { return JSON.parse(localStorage.getItem(key) ?? '') as T; } catch { return fallback; }
@@ -35,7 +36,7 @@ export function BrowserPane({ session }: { session: string }) {
   const [logsService, setLogsService] = useState('');
   const [drawerTab, setDrawerTab] = useState<'logs' | 'console'>();
   const [consoleFilter, setConsoleFilter] = useState<'all' | 'errors' | 'network'>('all');
-  const [logs, setLogs] = useState<string[]>([]);
+  const [logs, setLogs] = useState<{ text: string; stream: 'stdout' | 'stderr' }[]>([]);
   const [logsHeight, setLogsHeight] = useState(180);
   const [followLogs, setFollowLogs] = useState(true);
   const [address, setAddress] = useState('');
@@ -61,7 +62,8 @@ export function BrowserPane({ session }: { session: string }) {
   const inspector = useBrowserInspector(session, webview, current, Boolean(readyId && webviewReady));
   const previewConsole = usePreviewConsole(session);
   const partition = `${keepSignins ? 'persist:' : ''}ormi-preview-${projectId}`;
-  const remote = platform.kind !== 'desktop' || (desktop?.remote() !== null && desktop?.remote() !== undefined);
+  const remote = platform.kind !== 'desktop';
+  const relayRemote = Boolean(desktop?.remote()?.active);
   const currentService = listed?.services.find(service => service.port === current?.port);
   useEffect(() => { previewConsole.setOpen(drawerTab === 'console'); }, [drawerTab, previewConsole.setOpen]);
 
@@ -182,7 +184,7 @@ export function BrowserPane({ session }: { session: string }) {
       const after = logsCursor.current || undefined;
       const response = await transport.request('service.logs', { session, service: logsService, ...(after ? { after } : {}) });
       if (alive && response.type === 'res') {
-        const page = response.body as { lines: string[]; next: number };
+        const page = response.body as { lines: { text: string; stream: 'stdout' | 'stderr' }[]; next: number };
         setLogs(previous => after ? [...previous, ...page.lines].slice(-2000) : page.lines);
         logsCursor.current = page.next;
       }
@@ -200,6 +202,29 @@ export function BrowserPane({ session }: { session: string }) {
     document.addEventListener('keydown', keydown);
     return () => document.removeEventListener('keydown', keydown);
   }, [inspector.pick]);
+  useEffect(() => {
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      const target = event.target;
+      if (target instanceof Element && target.closest('input, textarea, [contenteditable]:not([contenteditable="false"])')) return;
+      if (document.querySelector('textarea[aria-label^="Comment "]')) return;
+      const overlayOpen = [...document.querySelectorAll('[role="dialog"], [role="menu"]')].some(element => {
+        const style = getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return element.getAttribute('data-state') !== 'closed'
+          && element.getAttribute('aria-hidden') !== 'true'
+          && style.display !== 'none'
+          && style.visibility !== 'hidden'
+          && rect.width > 0
+          && rect.height > 0;
+      });
+      if (overlayOpen) return;
+      if (inspector.pickActive) { event.preventDefault(); void inspector.pick(); }
+      else if (inspector.frame) { event.preventDefault(); inspector.setFrame(undefined); }
+    };
+    window.addEventListener('keydown', keydown, true);
+    return () => window.removeEventListener('keydown', keydown, true);
+  }, [inspector.frame, inspector.pick, inspector.pickActive, inspector.setFrame]);
 
   const navigate = async (port: number, path: string, title = 'Preview') => {
     const normalized = path.startsWith('/') ? path : `/${path}`;
@@ -249,6 +274,12 @@ export function BrowserPane({ session }: { session: string }) {
       setActionError(error instanceof Error ? error.message : String(error));
     } finally { setBusyService(''); }
   };
+  const serviceActionAll = async (action: 'service.start' | 'service.stop') => {
+    const targets = listed?.services.filter(service => action === 'service.start'
+      ? service.state !== 'running' && service.state !== 'starting'
+      : ['running', 'starting', 'unhealthy'].includes(service.state)) ?? [];
+    for (const service of targets) await serviceAction(action, service.name);
+  };
   const openExternalCurrent = async () => {
     if (!current) return;
     const response = await transport.request('preview.url', { session, port: current.port, path: current.path });
@@ -291,7 +322,7 @@ export function BrowserPane({ session }: { session: string }) {
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 11 }}><span className="ormi-browser-spinner" />Loading preview…</span>
     </div>;
 
-  return <div style={{ height: '100%', minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg-main)', color: 'var(--text-label)' }}>
+  return <TooltipProvider delayDuration={250}><div style={{ height: '100%', minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg-main)', color: 'var(--text-label)' }}>
     {!remote ? <BrowserControls
       pages={pages} active={active} listed={listed} current={current} canBack={canBack} canForward={canForward} loading={loading}
       address={address} history={history} device={device} fixed={Boolean(deviceSize)}
@@ -303,14 +334,16 @@ export function BrowserPane({ session }: { session: string }) {
       }}
       onOpenPortal={openPortal} onBack={() => webview.current?.goBack()} onForward={() => webview.current?.goForward()}
       onReload={() => webview.current?.reload()} onAddressChange={setAddress} onAddressSubmit={() => void addressSubmit()}
-      pickActive={inspector.pickActive} consoleUnread={previewConsole.unread} onPick={() => void inspector.pick()}
+      pickActive={inspector.pickActive} annotateActive={Boolean(inspector.frame)}
+      consoleUnread={previewConsole.unread} consoleErrors={previewConsole.unreadErrors} onPick={() => void inspector.pick()}
       onAnnotate={() => void inspector.annotate()} onConsole={() => setDrawerTab('console')}
       onDeviceChange={setDevice} onRotate={() => setRotated(value => !value)} onRefresh={() => void refresh()}
-      onServiceAction={(action, name) => void serviceAction(action, name)} onLogs={openLogs}
+      onServiceAction={(action, name) => void serviceAction(action, name)} onServiceAll={action => void serviceActionAll(action)} onLogs={openLogs}
       onOpenExternal={() => void openExternalCurrent()} onKeepSigninsChange={value => {
         setKeepSignins(value); localStorage.setItem(`ormi.browser.signins.${projectId}`, String(value));
       }} onClearBrowsingData={clearBrowsingData} onOverlayOpenChange={setOverlaysOpen}
     /> : null}
+    {relayRemote ? <div role="status" style={{ padding: '5px 10px', borderBottom: '1px solid var(--line-subtle)', background: 'var(--bg-raised)', color: 'var(--text-hint)', fontSize: 10.5 }}>Live reload isn't available over the relay; use Reload.</div> : null}
     {inspector.hint && !remote ? <div role="status" style={{ padding: '5px 10px', borderBottom: '1px solid var(--line-subtle)', background: 'var(--bg-raised)', color: 'var(--text-hint)', fontSize: 10.5 }}>{inspector.hint}</div> : null}
     {remote ? <main style={{ flex: 1, minHeight: 0, display: 'grid', placeItems: 'center', background: 'var(--bg-inset)' }}><RemotePreview /></main>
       : <main ref={paneRef} style={{
@@ -340,12 +373,12 @@ export function BrowserPane({ session }: { session: string }) {
     {drawerTab && !remote ? <>
       <div role="separator" aria-orientation="horizontal" aria-label="Resize service logs" className="ormi-handle ormi-handle-horizontal"
         onPointerDown={startResize} style={{ height: 6, width: 'auto', flexShrink: 0, cursor: 'ns-resize', touchAction: 'none' }} />
-      <BrowserLogDrawer tab={drawerTab} unread={previewConsole.unread} entries={previewConsole.entries} dropped={previewConsole.dropped}
+      <BrowserLogDrawer tab={drawerTab} unread={previewConsole.unread} unreadErrors={previewConsole.unreadErrors} entries={previewConsole.entries} dropped={previewConsole.dropped}
         filter={consoleFilter} onTabChange={setDrawerTab} onFilterChange={setConsoleFilter}
         onConsoleClear={() => void previewConsole.clear()} onConsoleAdd={addConsoleEntry} onConsoleSend={sendConsoleEntry}
         service={logsService} services={listed?.services.map(service => service.name) ?? (logsService ? [logsService] : [])} lines={logs}
         height={logsHeight} follow={followLogs} onServiceChange={setLogsService} onFollowChange={setFollowLogs}
         onClear={() => setLogs([])} onClose={() => setDrawerTab(undefined)} onScroll={setFollowLogs} />
     </> : null}
-  </div>;
+  </div></TooltipProvider>;
 }

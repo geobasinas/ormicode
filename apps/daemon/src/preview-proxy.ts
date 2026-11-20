@@ -16,6 +16,20 @@ export function previewLabel(session: string, port: number): string {
   return `${short}-${port}`.slice(0, 63);
 }
 
+const HOP_HEADERS = new Set([
+  'connection', 'keep-alive', 'transfer-encoding', 'upgrade', 'te', 'trailer',
+]);
+
+function cleanHeaders(headers: Record<string, string | string[] | undefined>) {
+  const blocked = new Set(HOP_HEADERS);
+  const connection = headers.connection;
+  for (const name of (Array.isArray(connection) ? connection.join(',') : connection ?? '').split(',')) {
+    if (name.trim()) blocked.add(name.trim().toLowerCase());
+  }
+  return Object.fromEntries(Object.entries(headers).filter(([name, value]) =>
+    value !== undefined && !blocked.has(name.toLowerCase()) && !name.toLowerCase().startsWith('proxy-')));
+}
+
 function sameToken(a: string | undefined, b: string): boolean {
   if (!a || a.length !== b.length) return false;
   return timingSafeEqual(Buffer.from(a), Buffer.from(b));
@@ -87,6 +101,65 @@ export class PreviewProxy {
 
   origin(session: string, port: number): string {
     return `http://${previewLabel(session, port)}.localhost:${this.portValue}`;
+  }
+
+  fetch(session: string, port: number, method: string, path: string, headers: Record<string, string>, body: Buffer): Promise<{
+    status: number; headers: Record<string, string | string[]>; body: Buffer;
+  }> {
+    const target = this.targets.get(targetKey(session, port));
+    if (!target) return Promise.reject(Object.assign(new Error('Preview port is not registered for this session.'), { code: 'preview.not_allowed' }));
+    let parsed: URL;
+    try { parsed = new URL(path, 'http://preview.local'); }
+    catch { return Promise.reject(Object.assign(new Error('Preview path is invalid.'), { code: 'preview.not_allowed' })); }
+    if (!path.startsWith('/') || path.startsWith('//') || parsed.origin !== 'http://preview.local' || /[\r\n]/.test(path))
+      return Promise.reject(Object.assign(new Error('Preview path must be origin-relative.'), { code: 'preview.not_allowed' }));
+    const requestPath = `${parsed.pathname}${parsed.search}`;
+    const appCookie = stripPreviewCookie(headers.cookie);
+    const requestHeaders = cleanHeaders(headers) as Record<string, string | string[]>;
+    delete requestHeaders.host;
+    delete requestHeaders.cookie;
+    delete requestHeaders['content-length'];
+    requestHeaders.host = `${previewLabel(session, port)}.localhost:${this.portValue}`;
+    requestHeaders.cookie = [appCookie, `__ormi_preview=${target.token}`].filter(Boolean).join('; ');
+    if (body.length) requestHeaders['content-length'] = String(body.length);
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      let size = 0;
+      const chunks: Buffer[] = [];
+      const finish = (error?: Error, result?: { status: number; headers: Record<string, string | string[]>; body: Buffer }) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        if (error) reject(error);
+        else resolve(result!);
+      };
+      const timeout = setTimeout(() => {
+        request.destroy();
+        finish(Object.assign(new Error('Preview request timed out after 30 seconds.'), { code: 'preview.unavailable' }));
+      }, 30_000);
+      const request = httpRequest({
+        hostname: '127.0.0.1', port: this.portValue, method, path: requestPath, headers: requestHeaders,
+      }, response => {
+        response.on('data', (chunk: Buffer) => {
+          size += chunk.length;
+          if (size > 50 * 1024 * 1024) {
+            response.destroy();
+            request.destroy();
+            finish(Object.assign(new Error('Preview response exceeds the 50 MiB limit.'), { code: 'preview.too_large' }));
+            return;
+          }
+          chunks.push(chunk);
+        });
+        response.once('end', () => finish(undefined, {
+          status: response.statusCode ?? 502,
+          headers: cleanHeaders(response.headers) as Record<string, string | string[]>,
+          body: Buffer.concat(chunks),
+        }));
+        response.once('error', error => finish(Object.assign(new Error(`Preview response failed: ${error.message}`), { code: 'preview.unavailable' })));
+      });
+      request.once('error', error => finish(Object.assign(new Error(`Preview request failed: ${error.message}`), { code: 'preview.unavailable' })));
+      request.end(body);
+    });
   }
 
   url(session: string, base: number, port: number, path = '/'): string {

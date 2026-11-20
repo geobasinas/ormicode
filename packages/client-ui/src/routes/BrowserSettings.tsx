@@ -1,32 +1,73 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { usePlatform } from '../lib/platform.ts';
+import { Button } from '../components/ui/button.tsx';
+import { SettingsSwitch } from './SettingsSwitch.tsx';
 
-export function BrowserSettings({ enabled, onChange }: { enabled: boolean; onChange(value: boolean): void }) {
+type BrowserStatus = { available: boolean; source: 'env' | 'installed' | 'system' | null; path?: string };
+type BrowserSettingsState = { checkpointScreenshots: boolean; uiCheck: boolean };
+
+export function BrowserSettings() {
   const { transport } = usePlatform();
-  const [available, setAvailable] = useState<boolean>();
+  const [status, setStatus] = useState<BrowserStatus>();
+  const [settings, setSettings] = useState<BrowserSettingsState>({ checkpointScreenshots: true, uiCheck: true });
   const [installing, setInstalling] = useState(false);
-  useEffect(() => {
-    void transport.request('browser.status', {}).then(r => { if (r.type === 'res') setAvailable(Boolean((r.body as { available?: boolean }).available)); });
-    void transport.request('browser.setSettings', { checkpointScreenshots: enabled }).catch(() => undefined);
-  }, [enabled, transport]);
+  const refresh = useCallback(async () => {
+    const [statusResponse, settingsResponse] = await Promise.all([
+      transport.request('browser.status', {}).catch(() => undefined),
+      transport.request('browser.settings', {}).catch(() => undefined),
+    ]);
+    if (statusResponse?.type === 'res') setStatus(statusResponse.body as BrowserStatus);
+    if (settingsResponse?.type === 'res') setSettings(settingsResponse.body as BrowserSettingsState);
+  }, [transport]);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+  const change = (key: keyof BrowserSettingsState, value: boolean) => {
+    const next = { ...settings, [key]: value };
+    setSettings(next);
+    void transport.request('browser.setSettings', next).then(response => {
+      if (response.type === 'res') setSettings(response.body as BrowserSettingsState);
+    }).catch(() => undefined);
+  };
+
   const install = async () => {
     setInstalling(true);
     try {
-      const result = await transport.request('browser.install', {});
-      setAvailable(result.type === 'res');
+      await transport.request('browser.install', {});
+      await refresh();
     } finally { setInstalling(false); }
   };
-  const control = { font: 'inherit', fontSize: 11.5, color: 'var(--text-title)', background: 'transparent', border: '1px solid var(--line-card)', borderRadius: 7, padding: '0 10px', height: 26, cursor: 'pointer' };
+  const source = status?.source === 'env' ? 'ORMICODE_BROWSER'
+    : status?.source === 'installed' ? 'Managed browser'
+      : status?.source === 'system' ? 'System Chrome' : '';
+
   return <div style={{ marginTop: 18 }}>
-    <div style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-label)', letterSpacing: 1, marginBottom: 7 }}>BROWSER</div>
+    <div style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-label)', letterSpacing: 1, marginBottom: 7 }}>BROWSER PREVIEW</div>
     <div style={{ background: 'var(--bg-card)', border: '1px solid var(--line-card)', borderRadius: 10, overflow: 'hidden' }}>
-      {available === false ? <div style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 44, padding: '7px 14px', borderTop: '1px solid var(--line-card)' }}>
-        <div style={{ flex: 1, fontSize: 13, color: 'var(--text-title)' }}>No browser found</div>
-        <button style={control} disabled={installing} onClick={() => void install()}>{installing ? 'Installing…' : 'Install'}</button>
-      </div> : null}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 44, padding: '7px 14px', borderTop: '1px solid var(--line-card)' }}>
-        <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 13, color: 'var(--text-title)' }}>Screenshot the preview at each turn&apos;s checkpoint</div><div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>Applies to all sessions</div></div>
-        <button role="switch" aria-checked={enabled} disabled={available === false} onClick={() => onChange(!enabled)} style={{ width: 30, height: 17, border: 0, borderRadius: 999, padding: 2, background: enabled ? 'var(--bg-selected)' : 'var(--bg-raised)' }}><span style={{ display: 'block', marginLeft: enabled ? 13 : 0, width: 13, height: 13, borderRadius: 999, background: enabled ? 'var(--bg-main)' : 'var(--text-hint)' }} /></button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 48, padding: '8px 14px', borderTop: '1px solid var(--line-card)' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, color: 'var(--text-title)' }}>{status?.available ? 'Browser found' : status ? 'No browser found' : 'Checking for a browser…'}</div>
+          {status?.available ? <div style={{ marginTop: 2, color: 'var(--text-secondary)', fontSize: 11 }}>
+            {source}{status.path ? <span style={{ marginLeft: 7, color: 'var(--text-hint)', fontFamily: 'var(--font-mono)' }}>{status.path}</span> : null}
+          </div> : null}
+        </div>
+        {status?.available === false ? <Button size="sm" variant="outline" disabled={installing} onClick={() => void install()}>{installing ? 'Installing…' : 'Install'}</Button> : null}
+      </div>
+      {installing ? <div className="ormi-browser-progress" aria-label="Installing browser" /> : null}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 48, padding: '8px 14px', borderTop: '1px solid var(--line-card)' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, color: 'var(--text-title)' }}>Screenshot the preview at each turn&apos;s checkpoint</div>
+          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>Applies to all sessions</div>
+        </div>
+        <SettingsSwitch ariaLabel="Screenshot preview at checkpoints" on={settings.checkpointScreenshots}
+          onChange={value => change('checkpointScreenshots', value)} disabled={!status?.available} />
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 48, padding: '8px 14px', borderTop: '1px solid var(--line-card)' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, color: 'var(--text-title)' }}>Check the preview after UI changes</div>
+          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>The agent sees errors and a screenshot before finishing</div>
+        </div>
+        <SettingsSwitch ariaLabel="Check the preview after UI changes" on={settings.uiCheck}
+          onChange={value => change('uiCheck', value)} disabled={!status?.available} />
       </div>
     </div>
   </div>;

@@ -70,7 +70,9 @@ test('services validate config, start healthy apps, journal transitions, and sto
 test('unhealthy, exited, invalid YAML, log cursors, and ring truncation are observable', async () => {
   const f = await fixture({ services: { web: {
     command: `node -e "setInterval(()=>{},1000)"`, health: '/never', health_timeout: 1,
-  }, exit: { command: `node -e "process.exit(7)"` }, logs: {
+  }, exit: { command: `node -e "process.exit(7)"` }, errors: {
+    command: `node -e "console.error('stderr marker')"`,
+  }, logs: {
     command: `node -e "for(let i=0;i<2105;i++)console.log('line'+i)"`,
   } } });
   try {
@@ -79,12 +81,15 @@ test('unhealthy, exited, invalid YAML, log cursors, and ring truncation are obse
     await f.services.start(f.session, 'exit');
     const exited = await waitFor(() => f.events.find(event => event.payload.service === 'exit' && event.payload.state === 'exited'));
     assert.equal(exited.payload.code, 7);
+    await f.services.start(f.session, 'errors');
+    await waitFor(() => f.events.find(event => event.payload.service === 'errors' && event.payload.state === 'exited'));
+    assert.deepEqual(f.services.logs(f.session, 'errors').lines, [{ text: 'stderr marker', stream: 'stderr' }]);
     await f.services.start(f.session, 'logs');
     await waitFor(() => f.events.find(event => event.payload.service === 'logs' && event.payload.state === 'exited'));
     const page = f.services.logs(f.session, 'logs');
     assert.equal(page.lines.length, 2000);
     assert.equal(page.truncated, true);
-    assert.match(page.lines.at(-1), /line2104/);
+    assert.ok(page.lines.some(line => line.text === 'line2104' && line.stream === 'stdout'));
     assert.equal(f.services.logs(f.session, 'logs', page.next).lines.length, 0);
   } finally { await f.close(); }
 });

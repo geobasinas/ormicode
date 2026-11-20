@@ -29,6 +29,7 @@
     "secrets",
     "checkpoints",
     "diff",
+    "pixel-diff",
     "computer-use",
     "device-lab",
     "chrome-bridge",

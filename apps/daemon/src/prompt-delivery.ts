@@ -1,12 +1,12 @@
-import type { Frame, PromptAttachment, PromptContext } from '@ormicode/protocol';
-import { getSession, getTeam, listQueuedPrompts, markTeamMessagesRead, removeQueuedPrompt, settingValue, setQueuedPromptError, teamChildren, unreadTeamMessages } from '@ormicode/session-store';
+import { newId, type Frame, type PromptAttachment, type PromptContext } from '@ormicode/protocol';
+import { addQueuedPrompt, getSession, getTeam, markTeamMessagesRead, settingValue, teamChildren, unreadTeamMessages, listQueuedPrompts, moveQueuedPrompt, removeQueuedPrompt, setQueuedPromptError } from '@ormicode/session-store';
 import { teamLimits } from '@ormicode/team-core';
 import type { Store } from '@ormicode/session-store';
 import type { TerminalHub } from './terminal-methods.ts';
 import { expandPrompt, PromptInvalidError } from './prompt-context.ts';
 import type { PreviewConsoleEntry } from './preview-inspector.ts';
 
-type Prompt = { text: string; images?: unknown[]; context?: PromptContext[]; attachments?: PromptAttachment[] };
+type Prompt = { text: string; images?: unknown[]; context?: PromptContext[]; attachments?: PromptAttachment[]; actor?: 'auto' };
 
 interface PromptDeliveryOptions {
   db: Store;
@@ -31,7 +31,7 @@ export function createPromptDelivery(options: PromptDeliveryOptions) {
     session: string,
     text: string,
     images?: unknown[],
-    opts?: { journal?: boolean; context?: PromptContext[]; attachments?: PromptAttachment[] },
+    opts?: { journal?: boolean; context?: PromptContext[]; attachments?: PromptAttachment[]; actor?: 'auto' },
   ): Promise<boolean> => {
     const row = getSession(options.db, session);
     if (!row) return false;
@@ -74,9 +74,11 @@ export function createPromptDelivery(options: PromptDeliveryOptions) {
         ...(images ? { images } : {}),
         ...(opts?.context ? { context: opts.context } : {}),
         ...(opts?.attachments ? { attachments: opts.attachments } : {}),
+        ...(opts?.actor ? { actor: opts.actor } : {}),
       });
       if (opts?.journal !== false) options.record(session, 'prompt', {
         text: deliveredText,
+        ...(opts?.actor ? { actor: opts.actor } : {}),
         ...(opts?.context?.length ? { context: opts.context } : {}),
         ...(prepared.attachments.length ? { attachments: prepared.attachments } : {}),
         ...(images?.length ? {
@@ -111,7 +113,7 @@ export function createPromptDelivery(options: PromptDeliveryOptions) {
       const prompt = held?.[0];
       if (prompt) {
         try {
-          if (!await sendPrompt(session, prompt.text, prompt.images, { context: prompt.context, attachments: prompt.attachments })) return false;
+          if (!await sendPrompt(session, prompt.text, prompt.images, { context: prompt.context, attachments: prompt.attachments, actor: prompt.actor })) return false;
         } catch { return false; }
         held!.shift();
         if (!held!.length) options.heldPrompts.delete(session);
@@ -122,7 +124,7 @@ export function createPromptDelivery(options: PromptDeliveryOptions) {
       if (!item) return true;
       if (item.error) { queueRequested.delete(session); return false; }
       try {
-        if (!await sendPrompt(session, item.text, item.images, { context: item.context, attachments: item.attachments })) return false;
+        if (!await sendPrompt(session, item.text, item.images, { context: item.context, attachments: item.attachments, actor: item.actor })) return false;
       } catch (error) {
         if (error instanceof PromptInvalidError) {
           setQueuedPromptError(options.db, session, item.id, error.message);
@@ -144,7 +146,14 @@ export function createPromptDelivery(options: PromptDeliveryOptions) {
     }
   };
 
-  return { sendPrompt, drainQueue };
+  const enqueueAutoPrompt = (session: string, text: string, context: PromptContext[]): void => {
+    const item = { id: newId('q'), text, createdAt: Date.now(), context, actor: 'auto' as const };
+    addQueuedPrompt(options.db, session, item);
+    moveQueuedPrompt(options.db, session, item.id, 0);
+    options.record(session, 'queue_changed', { items: queueEventItems(options.db, session) });
+  };
+
+  return { sendPrompt, drainQueue, enqueueAutoPrompt };
 }
 
 function queueEventItems(db: Store, session: string) {
@@ -153,5 +162,6 @@ function queueEventItems(db: Store, session: string) {
     text: item.text,
     createdAt: item.createdAt,
     ...(item.images?.length ? { images: item.images.length } : {}),
+    ...(item.actor ? { actor: item.actor } : {}),
   }));
 }

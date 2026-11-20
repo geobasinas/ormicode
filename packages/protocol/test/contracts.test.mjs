@@ -53,6 +53,15 @@ test('response contracts reject missing fields and unknown methods', () => {
   assert.deepEqual(parseResponseBody('session.teleport', {}), { success: false, error: 'protocol.unknown_method' });
 });
 
+test('preview relay requests and paged responses are bounded and typed', () => {
+  const request = { session, port: 41001, method: 'POST', path: '/submit', headers: { 'content-type': 'text/plain' }, body: 'aGVsbG8=' };
+  assert.equal(parseRequestBody('preview.fetch', request).success, true);
+  assert.equal(parseRequestBody('preview.fetch', { ...request, port: 40000 }).success, true);
+  assert.equal(parseRequestBody('preview.fetchMore', { handle: 'opaque-handle' }).success, true);
+  assert.equal(parseResponseBody('preview.fetch', { status: 200, headers: {}, body: 'AA==', size: 1, more: 'opaque-handle' }).success, true);
+  assert.equal(parseResponseBody('preview.fetchMore', { body: 'AA==' }).success, true);
+});
+
 test('conversation rewind events and checkpoint restore responses have explicit shapes', () => {
   assert.equal(parseEventBody({ kind: 'conversation_rewound', to: 12, checkpoint: 'abc123' }).success, true);
   assert.equal(parseResponseBody('checkpoint.restore', { restored: true, id: 'abc123', mode: 'conversation' }).success, true);
@@ -176,7 +185,7 @@ test('service and preview methods validate their request and response contracts'
   assert.equal(parseRequestBody('preview.console', { session, after: 10, limit: 20 }).success, true);
   assert.equal(parseRequestBody('preview.consoleClear', { session }).success, true);
   assert.equal(parseResponseBody('service.list', { ports: { base: 41000, count: 10 }, proxy: { port: 123 }, config: { found: true }, services: [entry], detected: [] }).success, true);
-  assert.equal(parseResponseBody('service.logs', { lines: ['line'], next: 1, truncated: false }).success, true);
+  assert.equal(parseResponseBody('service.logs', { lines: [{ text: 'line', stream: 'stderr' }], next: 1, truncated: false }).success, true);
   assert.equal(parseResponseBody('preview.url', { url: 'http://web.localhost:123/__ormi/auth?t=x' }).success, true);
   const consoleEntry = { id: 'pc_1', seq: 1, ts: 10, port: 41000, path: '/', kind: 'network', level: 'error', message: 'HTTP 500', method: 'GET', url: '/broken', status: 500 };
   assert.equal(parseResponseBody('preview.console', { entries: [consoleEntry], next: 1, dropped: 0 }).success, true);

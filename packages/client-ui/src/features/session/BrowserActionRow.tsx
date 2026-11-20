@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Globe } from 'lucide-react';
 import { usePlatform } from '../../lib/platform.ts';
 import type { TranscriptEvent } from './useTranscript.ts';
+import { fetchArtifact } from './fetchArtifact.ts';
 
 export function BrowserActionRow({ event, session }: { event: TranscriptEvent; session: string }) {
   const { transport } = usePlatform();
@@ -12,8 +13,8 @@ export function BrowserActionRow({ event, session }: { event: TranscriptEvent; s
   useEffect(() => {
     if (!artifact) return;
     let alive = true;
-    void transport.request('browser.artifact', { session, id: artifact }).then(r => {
-      if (alive && r.type === 'res') setSrc(`data:${String((r.body as { mime: string }).mime)};base64,${String((r.body as { data: string }).data)}`);
+    void fetchArtifact(transport, session, artifact).then(image => {
+      if (alive) setSrc(`data:${image.mime};base64,${image.data}`);
     }).catch(() => undefined);
     return () => { alive = false; };
   }, [artifact, session, transport]);

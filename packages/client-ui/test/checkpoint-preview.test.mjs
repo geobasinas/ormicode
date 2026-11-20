@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { checkpointPreview, checkpointScreenshots, samePixelBytes } from '../src/features/session/checkpoint-preview.ts';
+import { checkpointPreview, checkpointScreenshots } from '../src/features/session/checkpoint-preview.ts';
 
 test('attached tool checkpoints select their screenshot and the previous screenshot', () => {
   const checkpoint = { seq: 44, kind: 'checkpoint', body: { id: 'current' } };
@@ -31,10 +31,4 @@ test('checkpoint choices include only screenshots and use time, tool or prompt, 
   assert.equal(choices[0].label.split(' · ')[1], 'Fix header spacing');
   assert.equal(choices[1].label.split(' · ')[1], 'apply_patch');
   assert.match(choices[1].label, /abcdef1/);
-});
-
-test('pixel row comparison detects equal and differing pixels', () => {
-  assert.equal(samePixelBytes(Uint8Array.from([0, 64, 128]), Uint8Array.from([0, 64, 128])), true);
-  assert.equal(samePixelBytes(Uint8Array.from([0, 64, 128]), Uint8Array.from([0, 64, 129])), false);
-  assert.equal(samePixelBytes(Uint8Array.from([0]), Uint8Array.from([0, 1])), false);
 });

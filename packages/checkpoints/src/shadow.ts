@@ -87,6 +87,17 @@ export class ShadowRepo {
     return patch.length > PATCH_CAP ? { patch: patch.slice(0, PATCH_CAP), truncated: true } : { patch, truncated: false };
   }
 
+  async changedFiles(from: Checkpoint, to?: Checkpoint): Promise<string[]> {
+    let a = from.id; let b = to?.id;
+    if (!b) {
+      const all = await this.list();
+      const prev = all[all.findIndex(c => c.id === from.id) + 1];
+      b = from.id; a = prev?.id ?? EMPTY_TREE;
+    }
+    const output = await this.git(this.dir, ['diff', '--name-only', '--no-renames', '-z', a, b]);
+    return output.split('\0').filter(Boolean);
+  }
+
   /** Make `worktree` match the checkpoint: changed files rewritten, files it lacks deleted, ignored files untouched. */
   async writeTo(worktree: string, cp: Checkpoint): Promise<void> {
     const index = join(this.dir, `restore-${randomBytes(4).toString('hex')}.index`);

@@ -1,7 +1,7 @@
 export function serializeInspectorValue(value: unknown, max: number): string {
   let text = '';
   try {
-    if (value instanceof Error) text = `${value.name}: ${value.message}${value.stack ? `\n${value.stack}` : ''}`;
+    if (value instanceof Error) text = `${value.name}: ${value.message}`;
     else if (typeof value === 'string') text = value;
     else {
       const seen = new WeakSet<object>();
