@@ -236,9 +236,11 @@ test('Git pane methods, fake PR status and terminal.open session cwd', { skip: p
   const dir = mkdtempSync(join(tmpdir(), 'ormi-git-pane-'));
   const project = join(dir, 'project');
   execFileSync('git', ['init', '-q', '-b', 'main', project]);
+  git(project, 'config', 'user.email', 't@t');
+  git(project, 'config', 'user.name', 't');
   writeFileSync(join(project, 'file.txt'), 'base\n');
   git(project, 'add', 'file.txt');
-  git(project, '-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-m', 'base');
+  git(project, 'commit', '-m', 'base');
   const gh = join(dir, 'fake-gh');
   writeFileSync(gh, `#!/usr/bin/env node
 process.stdout.write(JSON.stringify({
