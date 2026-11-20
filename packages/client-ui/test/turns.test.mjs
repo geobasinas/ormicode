@@ -3,17 +3,29 @@ import assert from 'node:assert/strict';
 import { transcriptTurns, turnContents } from '../src/features/session/turns.ts';
 
 const event = (seq, kind, body = {}) => ({ seq, kind, body, ts: seq * 1000 });
-test('worker acceptance journals turn_start before its prompt without splitting the turn', () => {
-  const events = [event(1, 'turn_start'), event(2, 'prompt', { text: 'write a file' }),
-    event(3, 'tool_call', { callId: 'call-1', name: 'Write', input: { file_path: '/a', content: 'hello' } }),
+for (const delayed of [false, true]) test(`accepted prompt stays inside its open turn (after tool: ${delayed})`, () => {
+  const prompt = event(delayed ? 3 : 2, 'prompt', { text: 'write a file' });
+  const tool = event(delayed ? 2 : 3, 'tool_call', { callId: 'call-1', name: 'Write', input: { file_path: '/a', content: 'hello' } });
+  const events = [event(1, 'turn_start'), ...(delayed ? [tool, prompt] : [prompt, tool]),
     event(4, 'tool_result', { callId: 'call-1', status: 'completed' }), event(5, 'text', { text: 'done' }), event(6, 'turn_end')];
   const parts = transcriptTurns(events);
   assert.equal(parts.length, 1);
   assert.equal(parts[0].start.seq, 1);
   assert.equal(parts[0].end.seq, 6);
   assert.equal(parts[0].end.ts - parts[0].start.ts, 5000);
-  assert.deepEqual(turnContents(parts[0].events).activity.map(e => e.seq), [3, 4]);
-  assert.deepEqual(turnContents(parts[0].events).visible.map(e => e.seq), [2, 5, 6]);
+  assert.deepEqual(turnContents(parts[0].events, parts[0].prompt).activity.map(e => e.seq), [tool.seq, 4]);
+  assert.deepEqual(turnContents(parts[0].events, parts[0].prompt).visible.map(e => e.seq), [prompt.seq, 5, 6]);
+  const running = transcriptTurns(events.slice(0, 3));
+  assert.equal(running.length, 1);
+  assert.equal(running[0].end, undefined);
+});
+test('legacy steering after an initiating prompt stays inline without splitting the turn', () => {
+  const events = [event(1, 'prompt'), event(2, 'turn_start'), event(3, 'tool_call'),
+    event(4, 'prompt', { text: 'steer' }), event(5, 'tool_result'), event(6, 'turn_end')];
+  const parts = transcriptTurns(events);
+  assert.equal(parts.length, 2);
+  assert.equal(parts[1].prompt, undefined);
+  assert.deepEqual(turnContents(parts[1].events, parts[1].prompt).activity.map(e => e.seq), [3, 4, 5]);
 });
 test('completed and interrupted turns retain their boundaries and stay separate from prompts', () => {
   const events = [event(1, 'prompt'), event(2, 'turn_start'), event(3, 'thinking'), event(4, 'tool_call'),
@@ -42,6 +54,6 @@ test('running, empty, text-only and incomplete historical turns have safe bounda
   assert.equal(running.end, undefined);
   assert.deepEqual(turnContents([event(1, 'text')]).activity, []);
   const interruptedHistory = transcriptTurns([event(1, 'turn_start'), event(2, 'tool_call'), event(3, 'prompt'), event(4, 'turn_start')]);
-  assert.equal(interruptedHistory[0].end.seq, 3);
-  assert.equal(interruptedHistory[2].end, undefined);
+  assert.equal(interruptedHistory[0].end.seq, 4);
+  assert.equal(interruptedHistory[1].end, undefined);
 });

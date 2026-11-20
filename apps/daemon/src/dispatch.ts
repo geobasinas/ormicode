@@ -331,7 +331,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         const res = await ctx.toWorker(session, 'worker.steer', { text: prepared.text });
         if (res?.type !== 'res') return client.link.replyError(id, 'agent.unsupported', 'steer');
         if (shouldResetUiCheckFollowups(client.device)) ctx.resetUiCheckFollowups(session);
-        ctx.record(session, 'prompt', { text: String(body.text), ...(context.length ? { context } : {}), ...(prepared.attachments.length ? { attachments: prepared.attachments } : {}) });
+        ctx.record(session, 'prompt', { text: String(body.text), steer: true, ...(context.length ? { context } : {}), ...(prepared.attachments.length ? { attachments: prepared.attachments } : {}) });
         if (pending) deletePendingPromptData(db, session);
         return client.link.reply(id, { accepted: true, queued: false });
       }

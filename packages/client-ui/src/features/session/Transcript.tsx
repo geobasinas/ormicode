@@ -358,13 +358,13 @@ function renderTurns(events: TranscriptEvent[], ctx: Ctx) {
     const members = new Set(part.events);
     const turnCtx = { ...ctx, results: transcriptToolResults(part.events),
       children: new Map([...ctx.children].map(([id, children]) => [id, children.filter(event => members.has(event))])) };
-    const { activity, visible } = turnContents(part.events);
+    const { activity, visible } = turnContents(part.events, part.prompt);
     const start = part.start.ts ?? part.events.find(event => event.ts !== undefined)?.ts ?? 0;
     const end = part.end?.ts ?? part.events.findLast(event => event.ts !== undefined)?.ts ?? start;
     return <Fragment key={`turn-${part.start.seq}`}>
-    {renderEvents(visible.filter(event => event.kind === 'prompt'), turnCtx)}
-    <TurnActivity start={start} end={end} running={!part.end && Boolean(ctx.busy)} activity={renderEvents(activity, turnCtx)}>
-      {renderEvents(visible.filter(event => event.kind !== 'prompt'), turnCtx)}
+    {renderEvents(part.prompt ? [part.prompt] : [], turnCtx)}
+    <TurnActivity start={start} end={end} running={!part.end} activity={renderEvents(activity, turnCtx)}>
+      {renderEvents(visible.filter(event => event !== part.prompt), turnCtx)}
       {part.end?.kind === 'turn_end' ? <ChangedFilesCard session={ctx.session} events={part.events} allowDiff={!ctx.scratch} /> : null}
     </TurnActivity></Fragment>;
   });
