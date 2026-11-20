@@ -364,6 +364,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   const addr = server.address();
   if (typeof addr === 'object' && addr) socketPath = `127.0.0.1:${addr.port}`;
   for (const c of recovery.autoResume) { resuming.add(c.s.id); if (c.recapOnly) recapPending.set(c.s.id, Number.MAX_SAFE_INTEGER); void resumeSession(dispatchCtx, c.s.id).catch(error => { lastError = String(error); }); }
+  for (const parent of recovery.retiredTeamParents) resumeQueuedChildren(dispatchCtx, parent);
   for (const r of recovery.rateLimited) retries.schedule(r.id, r.resetAt);
   return {
     socketPath, storePath, db, workers,
