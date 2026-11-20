@@ -62,8 +62,8 @@ export function FolderBrowser({ machine, busy, error: addError, onBack, onCancel
     </div>
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '8px 0' }}>
       <input value={filter} onChange={event => setFilter(event.target.value)} placeholder="Filter folders" aria-label="Filter folders" style={field} />
-      <label style={{ display: 'flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap', fontSize: 10.5, color: 'var(--text-secondary)' }}>
-        <input type="checkbox" checked={hidden} onChange={event => setHidden(event.target.checked)} />Show hidden
+      <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', whiteSpace: 'nowrap', fontSize: 10.5, color: 'var(--text-secondary)' }}>
+        <input type="checkbox" className="ormi-check" checked={hidden} onChange={event => setHidden(event.target.checked)} />Show hidden
       </label>
     </div>
     <div ref={list} role="listbox" aria-label="Folders" tabIndex={0} onKeyDown={keyDown} style={folderList}>

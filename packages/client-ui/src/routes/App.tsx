@@ -374,7 +374,7 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
         </div>
       </div>
       {!onboarding ? <AddProjectDialog open={addProjectOpen} onClose={() => setAddProjectOpen(false)} /> : null}
-      <Toaster className="toaster group ormi-toast-toaster" position="bottom-center" duration={3000} visibleToasts={1} closeButton={false}
+      <Toaster className="toaster group ormi-toast-toaster" position="bottom-right" duration={3000} visibleToasts={1} closeButton={false}
         offset={{ top: 16, right: 16, bottom: toastBottomOffset, left: 16 }}
         mobileOffset={{ top: 16, right: 16, bottom: toastBottomOffset, left: 16 }} />
     </PlatformContext.Provider>
