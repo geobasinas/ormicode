@@ -33,7 +33,7 @@ function Titlebar({ platform, workspace, onWorkspaceChange, sidebarOpen, onSideb
   platform: ClientPlatform; workspace: Workspace; onWorkspaceChange(workspace: Workspace): void; sidebarOpen: boolean; onSidebarToggle(): void;
 }) {
   const d = platform.desktop;
-  const btn = { ...noDrag, width: 46, height: 40, font: 'inherit', fontSize: 13, border: 'none', cursor: 'default', background: 'transparent', color: 'var(--text-secondary)' };
+  const btn = { ...noDrag, width: 30, height: 26, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', font: 'inherit', border: 'none', borderRadius: 7, cursor: 'default', background: 'transparent', color: 'var(--text-secondary)' };
   return (
     <div className="app-titlebar" style={{ ...drag, height: 40, display: 'flex', alignItems: 'center', paddingLeft: 14, background: 'var(--bg-window)', flexShrink: 0 }}>
       <button type="button" className="hv" title="Toggle sidebar" aria-label="Toggle sidebar" aria-expanded={sidebarOpen} onClick={onSidebarToggle}
@@ -41,10 +41,10 @@ function Titlebar({ platform, workspace, onWorkspaceChange, sidebarOpen, onSideb
       <WorkspaceSwitcher workspace={workspace} onChange={onWorkspaceChange} />
       <span style={{ flex: 1 }} />
       {d ? (
-        <span style={{ display: 'flex' }}>
-          <button className="hv" style={btn} onClick={() => d.winMin()} title="Minimize"><Minus size={15} style={{ display: 'block', margin: 'auto' }} /></button>
-          <button className="hv" style={btn} onClick={() => d.winMax()} title="Maximize"><Square size={13} style={{ display: 'block', margin: 'auto' }} /></button>
-          <button className="hv hv-close" style={btn} onClick={() => d.winClose()} title="Close"><X size={16} style={{ display: 'block', margin: 'auto' }} /></button>
+        <span style={{ display: 'flex', gap: 2, paddingRight: 8 }}>
+          <button className="hv" style={btn} onClick={() => d.winMin()} title="Minimize"><Minus size={13} /></button>
+          <button className="hv" style={btn} onClick={() => d.winMax()} title="Maximize"><Square size={11} /></button>
+          <button className="hv hv-close" style={btn} onClick={() => d.winClose()} title="Close"><X size={14} /></button>
         </span>
       ) : null}
     </div>

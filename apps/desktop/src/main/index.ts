@@ -253,6 +253,7 @@ function createWindow(): void {
   const devUrl = process.env.ELECTRON_RENDERER_URL;
   if (devUrl) void win.loadURL(devUrl);
   else void win.loadFile(join(__dirname, '../renderer/index.html'));
+  win.webContents.on('did-finish-load', () => send('ormi:state', currentState));
 }
 
 app.whenReady().then(async () => {
