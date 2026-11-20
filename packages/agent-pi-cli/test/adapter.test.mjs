@@ -38,11 +38,28 @@ test('CLI fails closed on truncated output and requires recovery', async () => {
   await assert.rejects(adapter.prompt(handle, { text: 'again' }), /recovery/);
   await adapter.dispose(handle);
 });
-test('CLI reports aborted runs as user interrupts', async () => {
+test('CLI completes a current-Pi stream that ends with agent_end and no agent_settled', async () => {
   const adapter = new PiCliAdapter({ spawn: fake });
   const handle = await adapter.start({ cwd: process.cwd() });
-  const events = await run(adapter, handle, 'aborted');
+  const events = await run(adapter, handle, 'hello');
+  assert.deepEqual(events.map(event => event.kind), ['turn_start', 'text_delta', 'usage', 'text', 'turn_end']);
+  assert.equal(events.some(event => event.reason === 'pi_cli_stream_ended'), false);
+  assert.equal((await run(adapter, handle, 'again')).at(-1).kind, 'turn_end');
+  await adapter.dispose(handle);
+});
+test('CLI still completes older streams that end with agent_settled', async () => {
+  const adapter = new PiCliAdapter({ spawn: fake });
+  const handle = await adapter.start({ cwd: process.cwd() });
+  const events = await run(adapter, handle, 'legacy');
+  assert.deepEqual(events.map(event => event.kind), ['turn_start', 'text_delta', 'usage', 'text', 'turn_end']);
+  await adapter.dispose(handle);
+});
+for (const prompt of ['aborted', 'legacy-aborted']) test(`CLI reports aborted runs as user interrupts (${prompt})`, async () => {
+  const adapter = new PiCliAdapter({ spawn: fake });
+  const handle = await adapter.start({ cwd: process.cwd() });
+  const events = await run(adapter, handle, prompt);
   assert.equal(events.at(-1).kind, 'interrupted');
+  assert.equal(events.at(-1).reason, 'user_abort');
   await adapter.dispose(handle);
 });
 test('CLI completes a turn that includes a tool call', async () => {
@@ -51,6 +68,18 @@ test('CLI completes a turn that includes a tool call', async () => {
   const events = await run(adapter, handle, 'tool');
   assert.deepEqual(events.map(event => event.kind), ['turn_start', 'tool_call', 'tool_result', 'text_delta', 'usage', 'text', 'turn_end']);
   await adapter.dispose(handle);
+});
+test('CLI mapper treats agent_end as terminal unless Pi will retry', () => {
+  const mapper = new PiCliMapper();
+  assert.equal(mapper.map({ type: 'agent_end', messages: [], willRetry: true }).terminal, undefined);
+  mapper.map({ type: 'message_update', assistantMessageEvent: { type: 'text_delta', delta: 'hi' } });
+  const end = mapper.map({ type: 'agent_end', messages: [] });
+  assert.equal(end.terminal, true); assert.equal(end.aborted, false);
+  assert.deepEqual(end.events.map(event => event.kind), ['text']);
+  assert.deepEqual(mapper.map({ type: 'agent_settled', aborted: false }).events, []);
+  assert.throws(() => mapper.map({ type: 'turn_start' }), /after agent_settled/);
+  const strict = new PiCliMapper(); strict.map({ type: 'agent_end', messages: [] });
+  assert.throws(() => strict.map({ type: 'turn_start' }), /after agent_end/);
 });
 test('CLI mapper maps retries, compaction and thinking changes', () => {
   const mapper = new PiCliMapper();

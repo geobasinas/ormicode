@@ -15,6 +15,10 @@ if (prompt === 'broken') {
   process.exit(0);
 }
 if (prompt === 'aborted') {
+  line({ type: 'agent_end', messages: [], aborted: true });
+  process.exit(0);
+}
+if (prompt === 'legacy-aborted') {
   line({ type: 'agent_end', messages: [], willRetry: false });
   line({ type: 'agent_settled', aborted: true });
   process.exit(0);
@@ -26,5 +30,10 @@ if (prompt === 'tool') {
 line({ type: 'message_update', usage: { input: 10, output: 4, cacheRead: 2, cacheWrite: 0, totalTokens: 14, cost: { total: 0.01 } }, assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: 'hello' } });
 line({ type: 'message_end', message: { role: 'assistant' } });
 line({ type: 'turn_end', message: { role: 'assistant' }, toolResults: [] });
-line({ type: 'agent_end', messages: [], willRetry: false });
-line({ type: 'agent_settled', aborted: false });
+// Pi 0.73 ends with `agent_end`; pre-0.73 builds also printed `agent_settled`.
+if (prompt === 'legacy') {
+  line({ type: 'agent_end', messages: [], willRetry: false });
+  line({ type: 'agent_settled', aborted: false });
+} else {
+  line({ type: 'agent_end', messages: [{ role: 'user' }, { role: 'assistant' }] });
+}

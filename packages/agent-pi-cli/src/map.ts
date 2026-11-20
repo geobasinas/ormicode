@@ -9,14 +9,19 @@ const update = z.looseObject({ usage: z.optional(z.looseObject({ input: z.option
 const toolStart = z.looseObject({ toolCallId: z.string().check(z.minLength(1)), toolName: z.string().check(z.minLength(1)), args: z.optional(z.json()) });
 const toolEnd = z.looseObject({ toolCallId: z.string().check(z.minLength(1)), result: z.optional(z.json()), isError: z.optional(z.boolean()) });
 const settled = z.looseObject({ aborted: z.optional(z.boolean()) });
+const agentEnd = z.looseObject({ aborted: z.optional(z.boolean()), willRetry: z.optional(z.boolean()) });
 const retry = z.looseObject({ attempt: z.number().check(z.int()), delayMs: z.optional(z.number()), errorMessage: z.optional(z.string()), success: z.optional(z.boolean()), finalError: z.optional(z.string()) });
 const compaction = z.looseObject({ result: z.optional(z.json()), aborted: z.optional(z.boolean()), errorMessage: z.optional(z.string()) });
 const thinkingLevel = z.looseObject({ level: z.string().check(z.minLength(1)) });
 
-/** Maps `pi --mode json` records for one invocation. Usage is cumulative; only the latest value is emitted per update. */
+/**
+ * Maps `pi --mode json` records for one invocation. Usage is cumulative; only the latest value is emitted per update.
+ * Pi 0.73 ends a run with `agent_end`; older builds follow it with `agent_settled`. Either one is terminal.
+ */
 export class PiCliMapper {
   private text = '';
   private thinking = '';
+  private ended = false;
   private settled = false;
   private aborted = false;
   private readonly calls = new Set<string>();
@@ -27,6 +32,7 @@ export class PiCliMapper {
     const events: unknown[] = [];
     let nativeId: string | undefined;
     if (this.settled) throw new Error('pi output after agent_settled');
+    if (this.ended && message.type !== 'agent_settled') throw new Error('pi output after agent_end');
     if (message.type === 'session') {
       nativeId = z.parse(sessionHeader, message).id;
     } else if (message.type === 'message_update') {
@@ -63,13 +69,15 @@ export class PiCliMapper {
     } else if (message.type === 'thinking_level_changed') {
       const value = z.parse(thinkingLevel, message);
       events.push({ kind: 'effort_changed', effort: value.level });
+    } else if (message.type === 'agent_end') {
+      const value = z.parse(agentEnd, message);
+      if (value.willRetry !== true) { this.ended = true; this.aborted = value.aborted === true; events.push(...this.close()); }
     } else if (message.type === 'agent_settled') {
       const value = z.parse(settled, message);
-      this.settled = true; this.aborted = value.aborted === true;
-      events.push(...this.finish());
-      if (this.lastUsage) { events.push(this.lastUsage); this.lastUsage = undefined; }
+      this.settled = true; this.aborted ||= value.aborted === true;
+      events.push(...this.close());
     }
-    return { events: events.map(event => { const parsed = parseEventBody(event); if (!parsed.success) throw new Error('Invalid pi CLI event'); return parsed.data; }), ...(nativeId ? { nativeId } : {}), ...(this.settled ? { terminal: true, aborted: this.aborted } : {}) };
+    return { events: events.map(event => { const parsed = parseEventBody(event); if (!parsed.success) throw new Error('Invalid pi CLI event'); return parsed.data; }), ...(nativeId ? { nativeId } : {}), ...(this.ended || this.settled ? { terminal: true, aborted: this.aborted } : {}) };
   }
   /** Emit retained text and close tool calls that never finished. */
   finish(): AgentEvent[] {
@@ -80,6 +88,11 @@ export class PiCliMapper {
     for (const callId of this.calls) events.push({ kind: 'tool_result', callId, status: 'interrupted' });
     this.calls.clear();
     return events.map(event => { const parsed = parseEventBody(event); if (!parsed.success) throw new Error('Invalid pi CLI event'); return parsed.data; });
+  }
+  private close(): unknown[] {
+    const events: unknown[] = this.finish();
+    if (this.lastUsage) { events.push(this.lastUsage); this.lastUsage = undefined; }
+    return events;
   }
   private usage(value: unknown): AgentEvent | undefined {
     if (!value || typeof value !== 'object') return undefined;
