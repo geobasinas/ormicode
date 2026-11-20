@@ -21,7 +21,12 @@ export function unstage(cwd: string, paths?: string[]) {
 
 export function commit(cwd: string, message: string, amend = false) {
   if (!amend && git(cwd, 'diff', '--cached', '--name-only', '-z').length === 0) throw new NothingToCommit();
-  run('git', cwd, ['commit', ...(amend ? ['--amend'] : []), '-F', '-'], message);
+  try { run('git', cwd, ['commit', ...(amend ? ['--amend'] : []), '-F', '-'], message); }
+  catch (error) {
+    if (error instanceof CommandError && /identity unknown|unable to auto-detect email|empty ident|no (?:email|name) was given/i.test(error.message))
+      throw new Error('Git identity is missing. Set user.name/user.email for this repository: git config user.name "Your Name" and git config user.email "you@example.com".', { cause: error });
+    throw error;
+  }
   return { sha: head(cwd) };
 }
 

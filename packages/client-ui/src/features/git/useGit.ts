@@ -2,6 +2,7 @@
  *  after actions; actions return the error message instead of throwing. */
 import { useCallback, useEffect, useState } from 'react';
 import { usePlatform } from '../../lib/platform.ts';
+import { gitAction } from './git-action.ts';
 
 export interface FileStat { path: string; oldPath?: string; status: string; binary?: boolean; added: number; removed: number }
 export interface Commit { sha: string; subject: string; author: string; email: string; ts: number; parents: string[]; refs: string[]; pushed: boolean; session?: string }
@@ -36,8 +37,6 @@ export function useGit<T>(session: string, method: string, body: Record<string, 
 export function useGitAction(session: string) {
   const { transport } = usePlatform();
   return useCallback(async <T = Record<string, unknown>>(method: string, body: Record<string, unknown> = {}): Promise<{ body?: T; error?: string }> => {
-    const res = await transport.request(method, { session, ...body });
-    if (res.type === 'err') return { error: String((res as { message?: string }).message ?? res.code) };
-    return { body: res.body as T };
+    return gitAction<T>(transport, session, method, body);
   }, [transport, session]);
 }
