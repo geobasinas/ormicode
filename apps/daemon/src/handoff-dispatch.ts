@@ -1,5 +1,5 @@
 import { newId } from '@ormicode/protocol';
-import { createSession, getSession, releaseSessionPorts, sessionActivityState, setState } from '@ormicode/session-store';
+import { createSession, getSession, releaseSessionPorts, setState } from '@ormicode/session-store';
 import { acquireWorkspace, releaseForSession } from '@ormicode/leases';
 import { hasTransport } from './registry.ts';
 import { handoffBrief } from './handoff.ts';
@@ -163,8 +163,7 @@ export async function handoffRequest(ctx: DispatchCtx, client: Client, id: strin
     releaseSessionPorts(db, child);
     if (mode === 'fork' && resolved.worktree && resolved.branch) removeWorktree(s.project, resolved.worktree, resolved.branch);
     db.prepare('UPDATE sessions SET handed_off = 0, worker_pid = NULL WHERE id = ?').run(session);
-    if (parentStopped && ['running', 'starting', 'retrying', 'awaiting_input'].includes(sessionActivityState(db, session)))
-      ctx.record(session, 'turn_end', {});
+    if (parentStopped) ctx.record(session, 'turn_end', {});
     let leaseMessage = reasonText;
     if (mode !== 'fork' && !db.prepare('SELECT 1 FROM leases WHERE path = ? AND session = ?').get(s.cwd, session)) {
       const lease = acquireWorkspace(db, s.cwd, session, s.machine);
