@@ -10,13 +10,13 @@ import type { AgentAdapter, Handle, NativeRef, PromptInput, StartSpec } from '@o
 import { PiCliMapper } from './map.ts';
 
 type Spawn = (command: string, args: string[], options: SpawnOptionsWithoutStdio) => ChildProcessWithoutNullStreams;
-type Session = { model?: string; effort?: string; imageDir?: string; pendingImages?: string[];  spec: StartSpec; log?: RawLog; nativeId?: string; generatedId: boolean; queue: EventQueue; active: boolean; disposed: boolean; needsRecovery: boolean; process?: ChildProcessWithoutNullStreams; running?: Promise<void>; interrupted: boolean };
+type Session = { model?: string; effort?: string; imageDir?: string; pendingImages?: string[];  spec: StartSpec; log?: RawLog; nativeId?: string; queue: EventQueue; active: boolean; disposed: boolean; needsRecovery: boolean; process?: ChildProcessWithoutNullStreams; running?: Promise<void>; interrupted: boolean };
 const execFileAsync = promisify(execFile);
 const limit = 1024 * 1024;
 const efforts = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 const MIME_EXT: Record<string, string> = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif' };
 
-/** One `pi --mode json` process per prompt. New sessions get a generated `--session-id` so later turns resume with `--session`. */
+/** One `pi --print --mode json` process per prompt. Later turns resume with `--session` using the id Pi reports. */
 export class PiCliAdapter implements AgentAdapter {
   readonly id = 'pi';
   readonly transport = 'cli' as const;
@@ -48,7 +48,7 @@ export class PiCliAdapter implements AgentAdapter {
     if (spec.mode) throw new Error('pi CLI modes are not supported');
     if (spec.effort && !['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(spec.effort)) throw new Error('Unsupported pi thinking level');
     const handle = Object.freeze({ id: `pi-cli-${randomUUID()}` });
-    this.sessions.set(handle, { model: spec.model, effort: spec.effort, spec: { ...spec }, log: spec.logDir ? new RawLog(spec.logDir) : undefined, nativeId: nativeId ?? randomUUID(), generatedId: !nativeId, queue: new EventQueue(), active: false, disposed: false, needsRecovery: false, interrupted: false });
+    this.sessions.set(handle, { model: spec.model, effort: spec.effort, spec: { ...spec }, log: spec.logDir ? new RawLog(spec.logDir) : undefined, nativeId, queue: new EventQueue(), active: false, disposed: false, needsRecovery: false, interrupted: false });
     return handle;
   }
   async prompt(handle: Handle, input: PromptInput): Promise<void> {
@@ -74,12 +74,13 @@ export class PiCliAdapter implements AgentAdapter {
     try {
       if (session.disposed) return;
       if (session.interrupted) { session.queue.push([{ kind: 'interrupted', reason: 'user_abort' }]); return; }
-      const args = ['--mode', 'json'];
-      if (session.nativeId) args.push(session.generatedId ? '--session-id' : '--session', session.nativeId);
+      // Pi 0.73 rejects `--session-id` and a stray `--`. `--print` is the non-interactive switch; the message is positional.
+      const args = ['--print', '--mode', 'json'];
+      if (session.nativeId) args.push('--session', session.nativeId);
       if (session.model) args.push('--model', session.model);
       if (session.effort) args.push('--thinking', session.effort);
       const images = session.pendingImages ?? []; session.pendingImages = [];
-      args.push('--', ...images.map(path => `@${path}`), text);
+      args.push(...images.map(path => `@${path}`), text);
       child = (this.options.spawn ?? spawn)(this.options.executable ?? 'pi', args, { cwd: session.spec.cwd, windowsHide: true, shell: false });
       session.process = child; child.stdin.end();
       attachRawLog(child, session.log, this.options.executable ?? 'pi', session.spec.cwd);

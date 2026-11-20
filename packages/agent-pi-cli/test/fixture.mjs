@@ -1,7 +1,11 @@
-const prompt = process.argv.at(-1);
 const args = process.argv.slice(2);
+if (args.includes('--session-id') || args.includes('--')) {
+  console.error('Error: Unknown options: --session-id, --');
+  process.exit(1);
+}
+const prompt = args.at(-1);
 const flag = name => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
-const sessionId = flag('--session') ?? flag('--session-id') ?? 'sess-none';
+const sessionId = flag('--session') ?? 'sess-none';
 const line = value => console.log(JSON.stringify(value));
 line({ type: 'session', version: 3, id: sessionId, timestamp: '2026-01-01T00:00:00Z', cwd: process.cwd() });
 line({ type: 'agent_start' });

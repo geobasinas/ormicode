@@ -11,15 +11,23 @@ async function run(adapter, handle, text) {
   for await (const event of stream) { events.push(event); if (event.kind === 'turn_end' || event.kind === 'interrupted') break; }
   return events;
 }
-test('CLI streams text and usage, resumes with --session-id', async () => {
-  let id; let seen; const adapter = new PiCliAdapter({ spawn: (cmd, args, options) => { seen = args; return fake(cmd, args, options); }, onNativeId: (_, value) => { id = value; } });
+test('CLI streams text and usage, resumes with --session', async () => {
+  let id; const seen = []; const adapter = new PiCliAdapter({ spawn: (cmd, args, options) => { seen.push(args); return fake(cmd, args, options); }, onNativeId: (_, value) => { id = value; } });
   const handle = await adapter.start({ cwd: process.cwd() });
   const events = await run(adapter, handle, 'hello');
   assert.deepEqual(events.map(event => event.kind), ['turn_start', 'text_delta', 'usage', 'text', 'turn_end']);
-  assert.ok(seen.includes('--session-id'));
-  assert.equal(id, seen[seen.indexOf('--session-id') + 1]);
+  assert.equal(seen[0].includes('--session-id'), false);
+  assert.equal(seen[0].includes('--'), false);
+  assert.equal(seen[0].includes('--session'), false);
+  assert.ok(seen[0].includes('--print'));
+  assert.equal(seen[0][seen[0].indexOf('--mode') + 1], 'json');
+  assert.equal(seen[0].at(-1), 'hello');
+  assert.equal(id, 'sess-none');
   const second = await run(adapter, handle, 'again');
   assert.equal(second.at(-1).kind, 'turn_end');
+  assert.equal(seen[1][seen[1].indexOf('--session') + 1], id);
+  assert.equal(seen[1].includes('--session-id'), false);
+  assert.equal(seen[1].includes('--'), false);
   await adapter.dispose(handle);
 });
 test('CLI fails closed on truncated output and requires recovery', async () => {
