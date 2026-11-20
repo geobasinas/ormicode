@@ -103,7 +103,7 @@ function status(ctx: DispatchCtx, session: SessionRow): Record<string, unknown> 
     const payload = JSON.parse(event.payload) as { input?: number; output?: number };
     return sum + (payload.input ?? 0) + (payload.output ?? 0);
   }, 0) : null;
-  const state = session.handed_off ? session.archived ? 'archived' : 'done' : ctx.teamApprovals.waiting(session.id) ? 'awaiting_approval' : session.state;
+  const state = session.handed_off ? session.archived ? 'archived' : 'done' : ctx.teamApprovals.waiting(session.id) ? 'awaiting_approval' : ctx.teamLifecycle.state(session);
   return { session: session.id, state, parentless: Boolean(session.parentless), lastActivity: session.updated_at, tokens };
 }
 async function message(ctx: DispatchCtx, client: Client, id: string, body: Record<string, unknown>, actor: SessionRow, team: TeamRow): Promise<void> {
