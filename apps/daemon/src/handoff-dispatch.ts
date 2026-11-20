@@ -1,5 +1,5 @@
 import { newId } from '@ormicode/protocol';
-import { createSession, getSession, releaseSessionPorts, setState } from '@ormicode/session-store';
+import { createSession, getSession, hasPendingApproval, releaseSessionPorts, sessionActivityState, setState } from '@ormicode/session-store';
 import { acquireWorkspace, releaseForSession } from '@ormicode/leases';
 import { hasTransport } from './registry.ts';
 import { handoffBrief } from './handoff.ts';
@@ -63,8 +63,9 @@ export async function handoffRequest(ctx: DispatchCtx, client: Client, id: strin
         clearTimeout(timer);
         ctx.record(session, 'interaction_expired', { request, approvalKind: 'handoff', reason });
         const current = getSession(db, session);
-        if (current && !current.archived && current.state === 'awaiting_approval')
-          ctx.record(session, 'state', { state: reason === 'cancelled' ? 'interrupted' : s.state });
+        if (current && !current.archived && current.state === 'awaiting_approval'
+          && (reason === 'cancelled' || !hasPendingApproval(db, session) && !ctx.teamApprovals.waiting(session)))
+          ctx.record(session, 'state', { state: reason === 'cancelled' ? 'interrupted' : sessionActivityState(db, session) });
         resolve(false);
       };
       const timer = setTimeout(() => expire('timeout'), 10 * 60_000).unref();

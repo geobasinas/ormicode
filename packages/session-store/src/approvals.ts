@@ -1,4 +1,5 @@
 import type { Store } from './db.ts';
+import type { SessionState } from './sessions.ts';
 
 export function hasPendingApproval(db: Store, session: string): boolean {
   return Boolean(db.prepare(`SELECT 1 FROM events q
@@ -6,4 +7,17 @@ export function hasPendingApproval(db: Store, session: string): boolean {
       SELECT 1 FROM events a WHERE a.session = q.session AND a.seq > q.seq
       AND a.kind IN ('approval_decision', 'interaction_expired')
       AND json_extract(a.payload, '$.request') = json_extract(q.payload, '$.request')) LIMIT 1`).get(session));
+}
+
+export function sessionActivityState(db: Store, session: string): SessionState {
+  const row = db.prepare(`SELECT CASE kind
+      WHEN 'turn_start' THEN 'running' WHEN 'turn_end' THEN 'idle'
+      WHEN 'interrupted' THEN 'interrupted' WHEN 'question_request' THEN 'awaiting_input'
+      WHEN 'rate_limited' THEN 'retrying' WHEN 'retry_scheduled' THEN 'retrying'
+      WHEN 'state' THEN json_extract(payload, '$.state') END AS state
+    FROM events WHERE session = ?
+      AND kind IN ('turn_start', 'turn_end', 'interrupted', 'question_request', 'rate_limited', 'retry_scheduled', 'state')
+      AND (kind != 'state' OR json_extract(payload, '$.state') != 'awaiting_approval')
+    ORDER BY seq DESC LIMIT 1`).get(session) as { state: SessionState } | undefined;
+  return row?.state ?? 'idle';
 }
