@@ -2,6 +2,7 @@ import { setTimeout } from 'node:timers/promises';
 import { getSession, sessionActivityState } from '@ormicode/session-store';
 import type { DispatchCtx } from './dispatch.ts';
 import { expireHandoffApprovals } from './handoff-dispatch.ts';
+import { restoreHandoffState } from './handoff-state.ts';
 
 export async function interrupt(ctx: DispatchCtx, session: string, options: { timeoutMs?: number; cancelHandoffs?: boolean } = {}): Promise<void> {
   const { timeoutMs = 5000, cancelHandoffs = false } = options;
@@ -21,5 +22,8 @@ export async function interrupt(ctx: DispatchCtx, session: string, options: { ti
     }
   };
   if (cancelHandoffs) { await abort(); expireHandoffApprovals(ctx, session, 'cancelled'); }
-  else await ctx.teamLifecycle.preserveHandoffs(session, abort);
+  else {
+    await ctx.teamLifecycle.preserveHandoffs(session, abort);
+    restoreHandoffState(ctx, session, { allowHandoffs: true });
+  }
 }

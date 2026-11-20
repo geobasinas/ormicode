@@ -89,7 +89,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     [kind, payload] = dispatchCtx?.teamApprovals.event(session, kind, payload) ?? [kind, payload];
     const { seq, frame } = append(db, session, { kind, payload: { kind, ...secrets.redact(session, mcpCredentials.redact(payload)) }, ...(ts ? { ts } : {}), ...(origin ? { origin } : {}) });
     fanout(session, frame); relay?.sendEvt(session, seq, JSON.parse(frame));
-    const mapped = payload.teamMessage ? undefined : stateFor[kind];
+    const mapped = payload.teamMessage || kind === 'approval_decision' && payload.approvalKind === 'handoff' ? undefined : stateFor[kind];
     if (mapped) setState(db, session, mapped, typeof payload.reason === 'string' ? payload.reason : undefined, ts);
     else if (kind === 'state' && typeof payload.state === 'string') setState(db, session, payload.state as SessionState, typeof payload.reason === 'string' ? payload.reason : undefined, ts);
   };

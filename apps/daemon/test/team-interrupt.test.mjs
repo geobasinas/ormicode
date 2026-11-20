@@ -24,7 +24,7 @@ test('cancel succeeds when the adapter has finished but turn_end is still being 
     assert.equal((await stream.next()).value.kind, 'turn_end');
     setState(db, 'child', 'idle');
     return { type: 'err', code: 'agent.failed' };
-  } }, 'child');
+  } }, 'child', { cancelHandoffs: true });
   assert.equal(rejected, true);
 });
 
@@ -32,12 +32,12 @@ test('cancel is an idle no-op and still rejects an abort that leaves the child b
   const db = openStore(':memory:'); t.after(() => db.close());
   createSession(db, { id: 'child', machine: 'local', project: '/repo', vendor: 'fake', transport: 'cli', cwd: '/repo' });
   const ctx = { db, teamLifecycle, teamApprovals: { waiting: () => false }, toWorker: async () => { assert.fail('idle children must not be interrupted'); } };
-  await interrupt(ctx, 'child');
+  await interrupt(ctx, 'child', { cancelHandoffs: true });
   setState(db, 'child', 'running');
   ctx.toWorker = async () => ({ type: 'err', code: 'agent.unsupported' });
-  await assert.rejects(interrupt(ctx, 'child', { timeoutMs: 0 }), /could not be interrupted/);
+  await assert.rejects(interrupt(ctx, 'child', { timeoutMs: 0, cancelHandoffs: true }), /could not be interrupted/);
   ctx.toWorker = async () => ({ type: 'res' });
-  await assert.rejects(interrupt(ctx, 'child', { timeoutMs: 0 }), /did not finish interrupting/);
+  await assert.rejects(interrupt(ctx, 'child', { timeoutMs: 0, cancelHandoffs: true }), /did not finish interrupting/);
 });
 
 test('cancel does not treat stale delegated approvals as an active turn', async t => {
@@ -45,5 +45,5 @@ test('cancel does not treat stale delegated approvals as an active turn', async 
   createSession(db, { id: 'child', machine: 'local', project: '/repo', vendor: 'fake', transport: 'cli', cwd: '/repo' });
   await interrupt({ db, teamLifecycle, teamApprovals: { waiting: () => true }, toWorker: async () => {
     assert.fail('an ended turn must not be interrupted');
-  } }, 'child');
+  } }, 'child', { cancelHandoffs: true });
 });

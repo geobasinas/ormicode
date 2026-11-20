@@ -1,12 +1,13 @@
 import type { Store } from './db.ts';
 import type { SessionState } from './sessions.ts';
 
-export function hasPendingApproval(db: Store, session: string): boolean {
+export function hasPendingApproval(db: Store, session: string, options: { includeHandoffs?: boolean } = {}): boolean {
   return Boolean(db.prepare(`SELECT 1 FROM events q
-    WHERE q.session = ? AND q.kind = 'approval_request' AND NOT EXISTS (
+    WHERE q.session = ? AND q.kind = 'approval_request'
+    AND (? OR COALESCE(json_extract(q.payload, '$.approvalKind'), '') != 'handoff') AND NOT EXISTS (
       SELECT 1 FROM events a WHERE a.session = q.session AND a.seq > q.seq
       AND a.kind IN ('approval_decision', 'interaction_expired')
-      AND json_extract(a.payload, '$.request') = json_extract(q.payload, '$.request')) LIMIT 1`).get(session));
+      AND json_extract(a.payload, '$.request') = json_extract(q.payload, '$.request')) LIMIT 1`).get(session, options.includeHandoffs === false ? 0 : 1));
 }
 
 export function sessionActivityState(db: Store, session: string): SessionState {

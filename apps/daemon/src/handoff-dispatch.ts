@@ -1,5 +1,5 @@
 import { newId } from '@ormicode/protocol';
-import { createSession, getSession, hasPendingApproval, releaseSessionPorts, sessionActivityState, setState } from '@ormicode/session-store';
+import { createSession, getSession, releaseSessionPorts, sessionActivityState, setState } from '@ormicode/session-store';
 import { acquireWorkspace, releaseForSession } from '@ormicode/leases';
 import { hasTransport } from './registry.ts';
 import { handoffBrief } from './handoff.ts';
@@ -9,6 +9,7 @@ import type { Client, DispatchCtx } from './dispatch.ts';
 import { allocateSessionPorts } from './session-ports.ts';
 import { sessionEnvironment } from './session-env.ts';
 import { runSessionHook } from './workspace-hooks.ts';
+import { restoreHandoffState } from './handoff-state.ts';
 
 const pendingApprovals = new Map<string, { ctx: DispatchCtx; session: string; expire(reason: string): void; resolve(approved: boolean): void }>();
 
@@ -24,8 +25,10 @@ export function resolveHandoffApproval(ctx: DispatchCtx, session: string, reques
   if (pending?.ctx !== ctx || pending.session !== session) return false;
   pendingApprovals.delete(request);
   const approved = option === 'approve';
+  ctx.record(session, 'approval_decision', { request, option: approved ? 'approve' : 'deny', approvalKind: 'handoff' });
+  restoreHandoffState(ctx, session);
   pending.resolve(approved);
-  ctx.record(session, 'approval_decision', { request, option: approved ? 'approve' : 'deny' });
+  if (!approved) void ctx.drainQueue(session).catch(() => undefined);
   return true;
 }
 
@@ -62,12 +65,8 @@ export async function handoffRequest(ctx: DispatchCtx, client: Client, id: strin
         pendingApprovals.delete(request);
         clearTimeout(timer);
         ctx.record(session, 'interaction_expired', { request, approvalKind: 'handoff', reason });
-        const current = getSession(db, session);
-        const activity = sessionActivityState(db, session);
-        const interrupted = reason === 'cancelled' && ['running', 'starting', 'retrying', 'awaiting_input'].includes(activity);
-        if (current && !current.archived && current.state === 'awaiting_approval'
-          && (interrupted || !hasPendingApproval(db, session) && !ctx.teamApprovals.waiting(session)))
-          ctx.record(session, 'state', { state: interrupted ? 'interrupted' : activity });
+        restoreHandoffState(ctx, session, { cancelled: reason === 'cancelled' });
+        if (reason === 'timeout') void ctx.drainQueue(session).catch(() => undefined);
         resolve(false);
       };
       const timer = setTimeout(() => expire('timeout'), 10 * 60_000).unref();
@@ -82,6 +81,14 @@ export async function handoffRequest(ctx: DispatchCtx, client: Client, id: strin
     });
     if (!approved) return client.link.replyError(id, 'handoff.declined', 'The handoff was declined or expired');
   }
+  const resume = async () => {
+    restoreHandoffState(ctx, session);
+    await ctx.drainQueue(session);
+  };
+  const fail = async (code: string, detail: string) => {
+    await resume();
+    client.link.replyError(id, code, detail);
+  };
   if (mode === 'in_place') {
     for (const [kind, value] of [['model', to.model], ['effort', to.effort]] as const) {
       if (!value) continue;
@@ -89,12 +96,13 @@ export async function handoffRequest(ctx: DispatchCtx, client: Client, id: strin
       if (res?.type === 'res') db.prepare(`UPDATE sessions SET ${kind} = ? WHERE id = ?`).run(value, session);
     }
     ctx.handoffsInTurn.set(session, (ctx.handoffsInTurn.get(session) ?? 0) + 1);
+    await resume();
     return client.link.reply(id, { session: s.id, brief: '', parent: s.id });
   }
   const child = newId('s');
   let ports: { base: number; count: 10 };
   try { ports = await allocateSessionPorts(db, child); }
-  catch (error) { return client.link.replyError(id, 'session.ports_unavailable', String(error)); }
+  catch (error) { return fail('session.ports_unavailable', String(error)); }
   let resolved = { cwd: s.cwd, worktree: s.worktree ?? undefined, branch: s.branch ?? undefined, baseCommit: s.base_commit ?? undefined };
   if (mode === 'fork') {
     const name = to.branch ?? `handoff-${child.slice(-8)}`;
@@ -106,11 +114,11 @@ export async function handoffRequest(ctx: DispatchCtx, client: Client, id: strin
       );
     } catch (error) {
       releaseSessionPorts(db, child);
-      return client.link.replyError(id, 'workspace.failed', String(error));
+      return fail('workspace.failed', String(error));
     }
     if ('err' in r) {
       releaseSessionPorts(db, child);
-      return client.link.replyError(id, r.err, r.detail ?? r.err);
+      return fail(r.err, r.detail ?? r.err);
     }
     resolved = { cwd: r.cwd, worktree: r.worktree, branch: r.branch, baseCommit: r.baseCommit };
   }
@@ -123,7 +131,6 @@ export async function handoffRequest(ctx: DispatchCtx, client: Client, id: strin
     ...(to.effort ?? s.effort ? { effort: String(to.effort ?? s.effort) } : {}),
     ...(s.mode ? { mode: s.mode } : {}), title: s.title ?? undefined, parent: s.id,
   });
-  const originalState = s.state;
   const readyMs = Number(process.env.ORMICODE_HANDOFF_READY_MS ?? 60_000);
   let parentStopped = false;
   try {
@@ -155,7 +162,9 @@ export async function handoffRequest(ctx: DispatchCtx, client: Client, id: strin
     db.prepare('DELETE FROM sessions WHERE id = ?').run(child);
     releaseSessionPorts(db, child);
     if (mode === 'fork' && resolved.worktree && resolved.branch) removeWorktree(s.project, resolved.worktree, resolved.branch);
-    db.prepare('UPDATE sessions SET handed_off = 0, state = ?, worker_pid = NULL WHERE id = ?').run(originalState, session);
+    db.prepare('UPDATE sessions SET handed_off = 0, worker_pid = NULL WHERE id = ?').run(session);
+    if (parentStopped && ['running', 'starting', 'retrying', 'awaiting_input'].includes(sessionActivityState(db, session)))
+      ctx.record(session, 'turn_end', {});
     let leaseMessage = reasonText;
     if (mode !== 'fork' && !db.prepare('SELECT 1 FROM leases WHERE path = ? AND session = ?').get(s.cwd, session)) {
       const lease = acquireWorkspace(db, s.cwd, session, s.machine);
@@ -166,6 +175,6 @@ export async function handoffRequest(ctx: DispatchCtx, client: Client, id: strin
       await ctx.ensureWorker(session, Number.isFinite(readyMs) && readyMs > 0 ? readyMs : 60_000);
     } catch { /* session remains recoverable */ }
     ctx.record(session, 'handoff_failed', { reason: leaseMessage });
-    return client.link.replyError(id, 'handoff.failed', reasonText);
+    return fail('handoff.failed', reasonText);
   }
 }

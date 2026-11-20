@@ -9,7 +9,7 @@ import { startDaemon, connect } from '../src/index.ts';
 import { onceOptions, TeamApprovals } from '../src/team-approvals.ts';
 import { TestMcpCredentials } from './mcp-fixture.mjs';
 import { newId } from '@ormicode/protocol';
-import { getSession } from '@ormicode/session-store';
+import { addQueuedPrompt, getSession, listQueuedPrompts, unreadTeamMessages } from '@ormicode/session-store';
 import { replay } from '@ormicode/journal';
 import { needsAttention } from '../../../packages/client-ui/src/features/session/attention.ts';
 
@@ -194,6 +194,8 @@ for (const active of [false, true]) for (const escalate of [false, true]) test(`
   if (escalate) await req('team.escalate', { actor: parent, ...target });
   const response = await req('team.message', { actor: parent, to: child.session, text: 'Urgent context, not a cancellation', urgent: true });
   assert.equal(response.type, 'res', JSON.stringify(response));
+  assert.equal(unreadTeamMessages(daemon.db, child.session).some(m => m.id === response.body.id), false);
+  assert.ok(events(daemon.db, child.session, 'prompt').some(e => e.text.includes('Urgent context, not a cancellation')));
   assert.equal(events(daemon.db, child.session, 'interaction_expired').some(e => e.request === request), false);
   assert.equal(events(daemon.db, child.session, 'interrupted').length > 0, active);
   const decision = escalate
@@ -201,6 +203,28 @@ for (const active of [false, true]) for (const escalate of [false, true]) test(`
     : await approve(target, 'deny');
   assert.equal(decision.body?.decided, true, JSON.stringify(decision));
   assert.equal((await pending).code, 'handoff.declined');
+});
+
+for (const escalate of [false, true]) test(`denying a preserved ${escalate ? 'escalated' : 'delegated'} handoff after its follow-up turn ends drains queued work`, async t => {
+  const { daemon, client, req, parent, spawn, approve, credentials } = await fixture(t);
+  const child = await spawn();
+  const pending = client.request('session.handoff', { session: child.session, to: { vendor: 'fake', model: 'unknown-price' }, mode: 'rehydrate', agentApproval: true }, 30_000, credentials.proof(child.session));
+  await eventually(() => events(daemon.db, child.session, 'team_approval_request').some(e => e.approvalKind === 'handoff'));
+  const request = events(daemon.db, child.session, 'team_approval_request').find(e => e.approvalKind === 'handoff').request;
+  await req('team.message', { actor: parent, to: child.session, text: 'follow up', urgent: true });
+  let followup;
+  await eventually(() => (followup = events(daemon.db, child.session, 'team_approval_request').find(e => e.request !== child.request && e.approvalKind !== 'handoff')));
+  await approve({ session: child.session, request: followup.request }, 'allow');
+  await eventually(() => getSession(daemon.db, child.session).state === 'idle');
+  if (escalate) await req('team.escalate', { actor: parent, session: child.session, request });
+  addQueuedPrompt(daemon.db, child.session, { id: newId('q'), text: 'queued after follow-up', createdAt: Date.now() });
+  const decision = escalate
+    ? await req('session.decide', { session: child.session, request, option: 'deny' })
+    : await approve({ session: child.session, request }, 'deny');
+  assert.equal(decision.body?.decided, true, JSON.stringify(decision));
+  assert.equal((await pending).code, 'handoff.declined');
+  await eventually(() => events(daemon.db, child.session, 'prompt').some(e => e.text === 'queued after follow-up'));
+  assert.equal(listQueuedPrompts(daemon.db, child.session).length, 0);
 });
 
 for (const escalate of [false, true]) for (const method of ['session.abort', 'team.cancel']) test(`${escalate ? 'escalated' : 'delegated'} handoffs cannot start a replacement after ${method}`, async t => {
