@@ -20,7 +20,8 @@ export function closeTeam(db: Store, id: string): void {
   db.prepare('UPDATE teams SET closed_at = ? WHERE id = ?').run(Date.now(), id);
 }
 export function activeTeamCount(db: Store): number {
-  return (db.prepare('SELECT COUNT(*) AS n FROM teams WHERE closed_at IS NULL').get() as { n: number }).n;
+  return (db.prepare(`SELECT COUNT(*) AS n FROM teams WHERE closed_at IS NULL
+    AND EXISTS (SELECT 1 FROM sessions WHERE archived = 0 AND (team = teams.id OR id = teams.parent))`).get() as { n: number }).n;
 }
 export function teamChildren(db: Store, team: string): SessionRow[] {
   return db.prepare('SELECT * FROM sessions WHERE team = ? AND id != (SELECT parent FROM teams WHERE id = ?) ORDER BY created_at, id').all(team, team) as SessionRow[];
