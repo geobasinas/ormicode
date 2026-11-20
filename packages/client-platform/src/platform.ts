@@ -28,6 +28,8 @@ export interface DesktopExtras {
   storageBackend(): string;
   /** Paired relay endpoint without the token, or null when unpaired. */
   remote(): { relayUrl: string; account: string; device: string; name: string; active?: boolean } | null;
+  /** True while this window is connected to its local daemon socket. */
+  linkIsLocal(): boolean;
   pair(args: { relay: string; account: string; code: string; name?: string }): Promise<{ device: string }>;
   unpair(): Promise<void>;
   /** Frameless-window controls (desktop draws its own titlebar). */

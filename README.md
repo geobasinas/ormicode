@@ -1544,7 +1544,7 @@ Triggers, guards and approvals for automations: [README: automations](#automatio
 
 ## Machines
 
-> **Status:** later (one hub first) · **Needs:** [Relay](#relay), [Handoff](#handoff)
+> **Status:** now — local machine and project registries plus a directories-only folder browser; node and boat pairing remain later. · **Needs:** [Relay](#relay), [Handoff](#handoff)
 
 **A machine is anything that can run a worker.**
 
@@ -1564,7 +1564,7 @@ All three speak the same protocol; the client only adds a sandbox's expiry.
 
 **Why a node, not SSH:** the project's files and tools are there. Streaming every file read over SSH breaks on network hiccups and makes diffs slow. A daemon gives one protocol, one journal, and works offline on both ends. SSH stays as a reduced escape hatch for machines where you can't install anything (no remote journal, terminals don't survive, diffs streamed) — clearly labelled.
 
-**Project identity:** two clones of the same repo are one project. Identity = normalized git remote (host, owner, repo). No remote → `machine:path`, machine-local. A project has one checkout per machine; the session list groups by project and shows the machine.
+**Project registry (now):** add a folder from the sidebar by choosing a machine, then browsing its directories. Desktop uses the native folder picker when connected to its local daemon; web, relay-connected desktop, and other machines use `fs.browse`. The hub stores each project by machine and absolute normalized path, matching sessions' `project` value. `.git` is shown as a hint, not identity; using the normalized git remote to identify clones is later. Migration 0008 preserves the unused legacy `projects` table as `projects_legacy`, including any existing rows.
 
 **Moving a session** (explicit, never automatic — e.g. "laptop's asleep, continue on the VPS")
 1. Push the branch from the source.
@@ -1574,10 +1574,12 @@ All three speak the same protocol; the client only adds a sandbox's expiry.
 5. The agent's own session id doesn't travel — it's a new agent session with the same workspace and a brief.
 
 **Status:** `online`, `degraded`, `offline`, with last heartbeat and reason. Show the age, not a spinner.
-- `machine.list` → `[{id, name, kind, status, heartbeat, reason?}]` (`m_` ids).
+- `machine.list {}` → `{machines:[{id, name, kind, status, heartbeat, reason?}]}`. For now it returns exactly one local machine: `m_local`, named from the host (or `local`), always online.
+- `fs.browse {machine, path?, hidden?}` → the current path, parent, home, directory entries and `truncated`. Follows directory symlinks, returns directories only (never file contents), and hides dot-directories by default. It is available to any paired device.
+- `project.list {}`, `project.add {machine, path}`, and `project.remove {machine, path}` manage the hub's project registry. Removal never touches files or sessions.
 - `machine.status {machine}` → that record + resources.
 - `machine.projects {machine}` → `[{identity, path}]`.
-- Until node pairing lands, only the local machine exists (always online). Unknown id → `machine.unreachable`.
+- Until node pairing lands, only the local machine exists (always online). Unknown machine id → `machine.unreachable`.
 
 **Names:** given at pairing (`studio`, `mint`, `vps`, `boat-1`) and used everywhere instead of hostnames.
 
@@ -2505,9 +2507,13 @@ Network denied unless a domain is listed (requests go through a logging host pro
 
 ## First screens
 
-> **Status:** now — base scaffold built: `apps/desktop` (Electron main + CJS preload + restricted `window.ormi` IPC, `safeStorage` token store, daemon socket via `@ormicode/daemon/socket`), `apps/web` (Worker static-assets shell), `packages/client-ui` (App shell, Now + session routes, SessionList/Transcript/Approvals/Composer skeletons, layout descriptor), `packages/client-platform` (Electron + IndexedDB-backed browser `ClientPlatform`), `packages/ui-tokens` (dark theme from the source palette). The screens exist and render; they are not yet at the full spec below. · **Needs:** [CLI](#cli), [Relay](#relay)
+> **Status:** now — base scaffold built: `apps/desktop` (Electron main + CJS preload + restricted `window.ormi` IPC, `safeStorage` token store, daemon socket via `@ormicode/daemon/socket`), `apps/web` (Worker static-assets shell), `packages/client-ui` (App shell, cross-platform onboarding, project folder browser, Now + session routes, SessionList/Transcript/Approvals/Composer skeletons, layout descriptor), `packages/client-platform` (Electron + IndexedDB-backed browser `ClientPlatform`), `packages/ui-tokens` (dark theme from the source palette). The screens exist and render; other areas remain in progress. · **Needs:** [CLI](#cli), [Relay](#relay)
 
 **The first screens to build, for desktop and web: Now, Sessions, transcript, approvals, layout.** Both shells render them from `client-ui`.
+
+**Onboarding:** both shells use the same pairing flow. Desktop opens it after startup when unpaired or when no remote is configured, and it does not reopen after the app has been online once. Desktop welcome and code steps offer **Skip for now**; skipping is in-memory, so pairing appears again next launch. Desktop pairing says “this app” and allows changing the relay URL; web says “this browser” and has no relay field or skip. The old desktop `PairCard` is removed.
+
+**Project folders:** the sidebar's **Add project folder** button opens a machine chooser and directory browser. Registered folders without visible sessions still appear as empty project groups; searching also matches their names.
 
 **Frame**
 ```
@@ -2591,7 +2597,7 @@ Network denied unless a domain is listed (requests go through a logging host pro
 - **Notifications:** in-app only for now.
 - **Keyboard shortcuts:** the table below.
 - **Paired devices:** list and revoke (the first screens shows only the hub and this device until `devices.*` exists).
-- **Machines:** status (local only until `machine.list` is built).
+- **Machines:** the local machine is listed as always online until node pairing lands.
 - **Data & privacy:** retention (read-only until the settings API) and a docs link.
 - **About:** version, commit, update channel, check for updates, web deploy version.
 - Never show a provider account or sign-out ("Signed in · Claude Code · Max plan" must not ship). Show "Claude Code detected on this machine" with version, read-only.
@@ -3302,7 +3308,7 @@ There are no per-package root scripts and no `lint:js`-style variants. A script 
 
 **Schemas:** Before implementing a method, define request and response schemas, errors, authorization, timeout, ordering and retry behavior. Include worked examples for start, prompt, subscribe, approval and reconnect. A response can be lost after success: side-effecting methods need an idempotency key with defined scope, retention, replay result and conflicting-body error, or must explicitly reject automatic retries. `packages/protocol` has a zod schema for every method and event body. The schema is the definition and this section is the index. No schema = not implemented. Bodies that don't parse are refused before reaching the daemon.
 
-**Current protocol foundation:** envelope and ID validation, a UTF-8 JSON frame parser with a 256 KB cap, core session request/response schemas, and initial agent and lifecycle event schemas live in the isolated protocol package. The registered schemas are listed in `packages/protocol/src/methods.ts` and `packages/protocol/src/events.ts`. This does not implement daemon methods. An envelope passing validation is not sufficient: the receiver also validates the body against its registered method or event schema. Unregistered methods and event kinds return `protocol.unknown_method` and `protocol.unknown_event` respectively. Many later-feature method and event schemas, replay behavior and transport integration still need implementation. No method is exposed to a client until its complete request, response and error semantics are defined.
+**Current protocol foundation:** envelope and ID validation, a UTF-8 JSON frame parser with a 256 KB cap, core session request/response schemas, and initial agent and lifecycle event schemas live in the isolated protocol package. The registered schemas are listed in `packages/protocol/src/methods.ts` and `packages/protocol/src/events.ts`. The daemon implements `machine.list`, `fs.browse`, and the project registry methods; many later-feature schemas, replay behavior and transport integration still need implementation. An envelope passing validation is not sufficient: the receiver also validates the body against its registered method or event schema. Unregistered methods and event kinds return `protocol.unknown_method` and `protocol.unknown_event` respectively. No method is exposed to a client until its complete request, response and error semantics are defined.
 
 For these initial contracts, the client must not automatically retry a side-effecting session operation after a lost response: the action may already have succeeded. Read-only lookups may be retried. A subscription is scoped to its connection; reconnect using `session.subscribe` with the last processed per-session cursor. The daemon must define an idempotency strategy before it offers automatic retries of side-effecting methods.
 
@@ -3319,14 +3325,14 @@ Example request and response bodies (inside their corresponding envelopes):
 {"body":{"decided":true}}
 ```
 
-**Ids:** `<prefix>_<26-char Crockford ULID>`. Prefixes: `s` session, `req` request, `a` artifact, `bl` blob, `d` device, `n` note, `m` machine, `q` queued prompt. Ids sort by creation time.
+**Ids:** `<prefix>_<26-char Crockford ULID>`. Prefixes: `s` session, `req` request, `a` artifact, `bl` blob, `d` device, `n` note, `m` machine, `q` queued prompt. The local singleton machine has the stable id `m_local` until node pairing. Other ids sort by creation time.
 
 **Methods**
 | Area | Methods |
 | --- | --- |
 | Sessions | `session.list`, `get`, `start`, `prompt`, `steer`, `queue.add`, `queue.list`, `queue.update`, `queue.remove`, `queue.move`, `pause`, `resume`, `abort`, `decide`, `answer`, `setModel`, `setEffort`, `setMode`, `setOption`, `retry`, `handoff`, `fork`, `commit`, `archive`, `delete`, `events`, `subscribe`, `unsubscribe`, `logs`, `getNotes`, `setNotes`, `deleteNote` |
 | Pairing (local only) | `pairing.start`, `pairing.status`, `pairing.confirm` |
-| Machines | `machine.list`, `status`, `projects`, `terminalOpen`, `terminalWrite`, `terminalResize`, `terminalClose` |
+| Machines and projects | `machine.list`, `fs.browse`, `project.list`, `project.add`, `project.remove`; planned: `machine.status`, `machine.projects`, `terminalOpen`, `terminalWrite`, `terminalResize`, `terminalClose` |
 | Git | Built: `git.status`, `stage`, `unstage`, `commit`, `push`, `log`, `show`, `branches`, `checkout`, `createBranch`, `deleteBranch`, `merge`, `cherryPick`, `revert`, `stash`, `prStatus`, `pr`, `prMerge`, `diff`. Planned: `worktrees`, `createWorktree`, `removeWorktree`, `graph`, `conflict`, `reflog`, `fetch`, `pull`, `rebase`, `tag` |
 | Review | `review.queue`, `comment`, `batch` |
 | Files | `file.list`, `file.read`, `file.write`, `file.search`, `file.blame`, `file.history`, `project.searchFiles` |
@@ -3368,7 +3374,7 @@ Example request and response bodies (inside their corresponding envelopes):
 
 **Efficiency:** batch frames per tick, merge text deltas, put several messages in one frame, enable `web_socket_compression`, and send snapshot + deltas by `seq` rather than full replays ([Performance](#performance)).
 
-**Errors:** `domain.reason` codes, lowercase: `session.busy`, `session.already_decided`, `session.not_found`, `session.not_running`, `session.resync_required`, `agent.unauthorized`, `agent.binary_missing`, `agent.rate_limited`, `agent.plan_limit`, `agent.failed`, `agent.unsupported`, `machine.unreachable`, `git.dirty_worktree`, `git.failed`, `git.worktree_in_use`, `git.nothing_to_commit`, `git.confirm_required`, `checkpoint.busy`, `terminal.bad_request`, `relay.rate_limited`, `pairing.expired`, `acp.unsupported_version`, `lease.held`, `protocol.unknown_method`, `protocol.unknown_event`, `protocol.unsupported_version`, `protocol.invalid_frame`. The registry is `packages/protocol/src/errors.ts`, and a new code gets added there. Human wording lives in the client.
+**Errors:** `domain.reason` codes, lowercase: `session.busy`, `session.already_decided`, `session.not_found`, `session.not_running`, `session.resync_required`, `agent.unauthorized`, `agent.binary_missing`, `agent.rate_limited`, `agent.plan_limit`, `agent.failed`, `agent.unsupported`, `machine.unreachable`, `fs.invalid_path`, `fs.not_found`, `fs.not_directory`, `fs.denied`, `git.dirty_worktree`, `git.failed`, `git.worktree_in_use`, `git.nothing_to_commit`, `git.confirm_required`, `checkpoint.busy`, `terminal.bad_request`, `relay.rate_limited`, `pairing.expired`, `acp.unsupported_version`, `lease.held`, `protocol.unknown_method`, `protocol.unknown_event`, `protocol.unsupported_version`, `protocol.invalid_frame`. The registry is `packages/protocol/src/errors.ts`, and a new code gets added there. Human wording lives in the client.
 
 **Always included:** every session frame carries `vendor`, `transport`, and for ACP `acpVersion`, so clients show what actually ran.
 

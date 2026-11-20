@@ -1,7 +1,4 @@
-/**
- * Web onboarding (frames 1c–1e): fills the main pane, with an empty sidebar,
- * until this browser has paired and reached the hub. The token is stored by the platform, never here.
- */
+/** Cross-platform onboarding for pairing a client with its hub. */
 import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { ArrowLeft, LoaderCircle } from 'lucide-react';
 import { usePlatform } from '../../lib/platform.ts';
@@ -30,28 +27,39 @@ const mono: CSSProperties = { fontFamily: 'var(--font-mono)', color: 'var(--text
 
 type Step = 'welcome' | 'code' | 'connecting';
 
-export function Onboarding({ state, pairPrefill }: { state: string; pairPrefill?: { account?: string; code?: string } }) {
-  const web = usePlatform().web!;
+export function Onboarding({ state, pairPrefill, onSkip }: {
+  state: string; pairPrefill?: { account?: string; code?: string }; onSkip?: () => void;
+}) {
+  const platform = usePlatform();
+  const desktop = Boolean(platform.desktop);
   const [step, setStep] = useState<Step>(pairPrefill?.code ? 'code' : 'welcome');
+  const [relay, setRelay] = useState('https://relay.ormi.codes');
+  const [changeRelay, setChangeRelay] = useState(false);
   const [account, setAccount] = useState(pairPrefill?.account ?? '');
   const [code, setCode] = useState(digitsOf(pairPrefill?.code ?? ''));
   const [busy, setBusy] = useState(false);
+  const [sawConnecting, setSawConnecting] = useState(false);
   const [error, setError] = useState<string>();
   useEffect(() => {
     if (pairPrefill?.account) setAccount(pairPrefill.account);
     if (pairPrefill?.code) { setCode(digitsOf(pairPrefill.code)); setStep('code'); }
   }, [pairPrefill?.account, pairPrefill?.code]);
   useEffect(() => {
-    if (state === 'unpaired' && step === 'connecting') setStep('welcome');
-    else if (state !== 'unpaired' && step !== 'connecting') setStep('connecting');
-  }, [state, step]);
-  const ready = account.trim() !== '' && code.length === 12 && !busy;
+    if (step !== 'connecting') return;
+    if (state === 'connecting') setSawConnecting(true);
+    else if (state === 'unpaired' && sawConnecting) { setSawConnecting(false); setStep('welcome'); }
+  }, [state, step, sawConnecting]);
+  const ready = account.trim() !== '' && code.length === 12 && !busy && (!desktop || relay.trim() !== '');
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!ready) return;
-    setBusy(true); setError(undefined);
-    try { await web.pair({ account: account.trim(), code }); setStep('connecting'); }
+    setBusy(true); setError(undefined); setSawConnecting(false);
+    try {
+      if (platform.web) await platform.web.pair({ account: account.trim(), code });
+      else await platform.desktop!.pair({ relay: relay.trim(), account: account.trim(), code, name: 'desktop' });
+      setStep('connecting');
+    }
     catch (err) { setError(String(err instanceof Error ? err.message : err)); }
     finally { setBusy(false); }
   };
@@ -59,16 +67,27 @@ export function Onboarding({ state, pairPrefill }: { state: string; pairPrefill?
   let body: ReactNode;
   if (step === 'welcome') body = <>
     <h1 style={title}>Welcome to ormicode</h1>
-    <p style={sub}>Connect this browser to your hub to see and steer your sessions.</p>
+    <p style={sub}>Connect this {desktop ? 'app' : 'browser'} to your hub to see and steer your sessions.</p>
+    {desktop ? <p style={sub}>Or start the daemon on this machine with <code style={mono}>ormi daemon</code>.</p> : null}
     <Button variant="primary" onClick={() => setStep('code')} style={{ width: '100%', height: 40, marginTop: 10 }}>Get started</Button>
+    {desktop && onSkip ? <Button variant="ghost" onClick={onSkip} style={{ width: '100%' }}>Skip for now</Button> : null}
   </>;
   else if (step === 'code') body = <form onSubmit={e => void submit(e)} style={{ display: 'grid', gap: 12 }}>
     <button type="button" onClick={() => { setStep('welcome'); setError(undefined); }} aria-label="Back" style={{
       justifySelf: 'start', display: 'flex', alignItems: 'center', gap: 6, padding: 0, marginBottom: 6,
       font: 'inherit', fontSize: 12.5, color: 'var(--text-hint)', background: 'none', border: 'none', cursor: 'pointer',
     }}><ArrowLeft size={14} /> Back</button>
-    <h1 style={title}>Pair this browser</h1>
+    <h1 style={title}>Pair this {desktop ? 'app' : 'browser'}</h1>
     <p style={{ ...sub, marginBottom: 6 }}>Run <code style={mono}>ormi pair</code> on your hub and enter what it shows.</p>
+    {desktop ? <>
+      <button type="button" onClick={() => setChangeRelay(value => !value)} style={{
+        justifySelf: 'start', padding: 0, font: 'inherit', fontSize: 11, color: 'var(--text-hint)',
+        background: 'none', border: 'none', cursor: 'pointer',
+      }}>{changeRelay ? 'Use default relay' : 'Change relay'}</button>
+      {changeRelay ? <label style={{ display: 'grid', gap: 5, fontSize: 11, color: 'var(--text-secondary)' }}>Relay URL
+        <input value={relay} onChange={e => setRelay(e.target.value)} aria-label="Relay URL" autoComplete="url" style={input} />
+      </label> : null}
+    </> : null}
     <input value={account} onChange={e => setAccount(e.target.value)} placeholder="Account" aria-label="Account"
       autoComplete="off" autoCapitalize="off" spellCheck={false} autoFocus={!account} style={input} />
     <input value={grouped(code)} onChange={e => { setCode(digitsOf(e.target.value)); setError(undefined); }}
@@ -79,6 +98,7 @@ export function Onboarding({ state, pairPrefill }: { state: string; pairPrefill?
     <Button type="submit" variant="primary" disabled={!ready} style={{ width: '100%', height: 40, marginTop: 4 }}>
       {busy ? 'Pairing…' : 'Pair'}
     </Button>
+    {desktop && onSkip ? <Button type="button" variant="ghost" onClick={onSkip} style={{ width: '100%' }}>Skip for now</Button> : null}
   </form>;
   else body = <>
     <LoaderCircle size={28} className="animate-spin" style={{ color: 'var(--text-secondary)', marginBottom: 6 }} />

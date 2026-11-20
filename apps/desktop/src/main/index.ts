@@ -351,6 +351,7 @@ app.whenReady().then(async () => {
     void connectDaemon();
   });
   ipcMain.on('ormi:remote:get', e => { const remote = loadRemoteFile(); e.returnValue = remote ? { ...remote, active: linkIsRemote } : null; });
+  ipcMain.on('ormi:link:local', e => { e.returnValue = Boolean(link) && !linkIsRemote; });
   ipcMain.on('ormi:storageBackend', e => {
     // getSelectedStorageBackend is newer; fall back to the availability probe.
     const b = safeStorage as unknown as { getSelectedStorageBackend?: () => string };

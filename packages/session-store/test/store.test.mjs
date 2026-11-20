@@ -3,22 +3,40 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import Database from 'better-sqlite3';
 import { openStore, createSession, getSession, listSessions, sessionsInStates, setState, setTitle, archiveSession, setNativeId,
   addDevice, getDeviceByHash, listDevices, renameDevice, revokeDevice, listNotes, setNote, deleteNote, getPinnedPrice, pinPrice,
   addQueuedPrompt, listQueuedPrompts, moveQueuedPrompt, removeQueuedPrompt, updateQueuedPrompt,
   setQueuedPromptError, getSessionPorts, assignSessionPorts, releaseSessionPorts,
-  setPendingPromptData, getPendingPromptData, getDraft, setDraft } from '../src/index.ts';
+  setPendingPromptData, getPendingPromptData, getDraft, setDraft, addProject, listProjects, removeProject } from '../src/index.ts';
 
 test('openStore applies migrations and is idempotent on reopen', () => {
   const path = join(mkdtempSync(join(tmpdir(), 'ormi-store-')), 'nested', 'store.db');
   const db = openStore(path);
   const version = db.pragma('user_version', { simple: true });
-  assert.ok(version >= 7);
+  assert.ok(version >= 8);
   assert.equal(db.pragma('journal_mode', { simple: true }), 'wal');
   db.close();
   const again = openStore(path);
   assert.equal(again.pragma('user_version', { simple: true }), version);
   again.close();
+});
+
+test('projects migration preserves the unused legacy table and its rows', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ormi-project-migration-'));
+  const path = join(dir, 'store.db');
+  const legacy = new Database(path);
+  legacy.exec(`CREATE TABLE projects(id TEXT PRIMARY KEY, machine TEXT, path TEXT, remote TEXT, default_branch TEXT);
+    INSERT INTO projects VALUES ('old', 'm_old', '/old/repo', 'https://example.test/repo', 'main');
+    PRAGMA user_version = 7;`);
+  legacy.close();
+  const db = openStore(path);
+  assert.deepEqual(
+    db.prepare('SELECT id, machine, path, remote, default_branch FROM projects_legacy').get(),
+    { id: 'old', machine: 'm_old', path: '/old/repo', remote: 'https://example.test/repo', default_branch: 'main' },
+  );
+  db.close();
+  rmSync(dir, { recursive: true, force: true });
 });
 
 test('session port blocks persist, reject duplicate bases, and release independently', () => {
@@ -150,5 +168,19 @@ test('session and home drafts persist across a store restart', () => {
   assert.equal(getDraft(db, 'home'), 'new session draft');
   assert.equal(getDraft(db, 's_draft'), 'reply draft');
   assert.equal(getDraft(db, 's_missing'), '');
+  db.close();
+});
+
+test('projects persist, order by added time, and add idempotently', () => {
+  const db = openStore(':memory:');
+  const first = { machine: 'm_local', path: '/repo/first', name: 'first', addedAt: 10 };
+  const second = { machine: 'm_local', path: '/repo/second', name: 'second', addedAt: 20 };
+  assert.deepEqual(addProject(db, first), first);
+  assert.deepEqual(addProject(db, { ...first, name: 'changed', addedAt: 30 }), first);
+  assert.deepEqual(addProject(db, second), second);
+  assert.deepEqual(listProjects(db), [second, first]);
+  assert.equal(removeProject(db, 'm_local', first.path), true);
+  assert.equal(removeProject(db, 'm_local', first.path), false);
+  assert.deepEqual(listProjects(db), [second]);
   db.close();
 });

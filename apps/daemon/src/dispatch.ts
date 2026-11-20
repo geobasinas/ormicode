@@ -46,7 +46,7 @@ import { serviceMethod } from './service-methods.ts';
 import type { Services } from './services.ts';
 import type { AgentBrowser } from './agent-browser.ts';
 import { browserMethod } from './browser-methods.ts';
-import { shouldResetUiCheckFollowups } from './ui-check.ts';
+import { shouldResetUiCheckFollowups } from './ui-check.ts'; import { machineMethod } from './machine-methods.ts';
 
 /** What a client transport must do: send frames and answer requests. */
 export interface ClientLink {
@@ -105,6 +105,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
     switch (method) {
       case 'agents.list':
         return client.link.reply(id, { agents: agentList() });
+      case 'machine.list': case 'fs.browse': case 'project.list': case 'project.add': case 'project.remove': return await machineMethod(ctx, client, id, method, body);
       case 'models.list':
         return client.link.reply(id, await listModels(body as { agent?: string; transport?: string; refresh?: boolean }));
       case 'project.branches': return projectBranches(ctx, client, id, body);

@@ -107,6 +107,8 @@ class HubSimulator {
       const body = message.method === 'daemon.status'
         ? { version: '0.0.0', proto: 1, uptimeMs: 1000, liveWorkers: 0, relay: 'connected', lastError: null }
         : message.method === 'session.list' ? { sessions: [] }
+        : message.method === 'project.list' ? { projects: [] }
+          : message.method === 'machine.list' ? { machines: [{ id: 'm_local', name: 'web-test', kind: 'local', status: 'online', heartbeat: Date.now() }] }
         : message.method === 'agents.list' ? { agents: [] }
         : message.method === 'session.draft.get' ? { text: '' } : {};
       this.send({ v: 1, type: 'res', id: message.id, ok: true, body });

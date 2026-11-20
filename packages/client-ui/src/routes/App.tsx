@@ -7,7 +7,7 @@ import { PlatformContext } from '../lib/platform.ts';
 import { applyTheme, themeByName } from '../lib/theme.ts';
 import { defaultLayout, applyLayout, validateLayout } from '../lib/layout.ts';
 import type { LayoutDescriptor } from '../lib/layout.ts';
-import { PanelLeft, Minus, Square, X, Search, SquarePen, Settings, GitBranch, FolderOpen, SquareTerminal, NotebookPen, Globe, type LucideIcon } from 'lucide-react';
+import { PanelLeft, Minus, Square, X, Search, SquarePen, Settings, FolderPlus, GitBranch, FolderOpen, SquareTerminal, NotebookPen, Globe, type LucideIcon } from 'lucide-react';
 import { SessionList } from '../features/session/SessionList.tsx';
 import { useSession } from '../features/session/useSession.ts';
 import { Now } from './Now.tsx';
@@ -21,6 +21,7 @@ import { Toaster } from '../components/ui/sonner.tsx';
 import { agoText } from '../lib/format.ts';
 import { Button } from '../components/Button.tsx';
 import { Onboarding } from '../features/pair/Onboarding.tsx';
+import { AddProjectDialog } from '../features/projects/AddProjectDialog.tsx';
 import { useIsMobile } from '../hooks/use-mobile.ts';
 
 const MAX_TABS = 8;
@@ -134,17 +135,31 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
   const [toastBottomOffset, setToastBottomOffset] = useState(16);
   const [state, setState] = useState<string>('connecting');
   const [onboarding, setOnboarding] = useState(false);
-  const [booted, setBooted] = useState(!platform.web);
+  const [onboardingSkipped, setOnboardingSkipped] = useState(false);
+  const [onlineOnce, setOnlineOnce] = useState(false);
+  const [booted, setBooted] = useState(false);
   const mobile = useIsMobile();
   useEffect(() => {
-    if (state !== 'connecting') setBooted(true);
-    if (platform.web && state === 'unpaired') setOnboarding(true);
-    else if (state === 'online') setOnboarding(false);
-  }, [platform, state]);
+    if (state === 'connecting') return;
+    setBooted(true);
+    if (state === 'online') {
+      setOnlineOnce(true);
+      setOnboarding(false);
+      return;
+    }
+    if (platform.web) {
+      if (state === 'unpaired') setOnboarding(true);
+      return;
+    }
+    if (platform.desktop && !onlineOnce && !onboardingSkipped
+      && (state === 'unpaired' || (state === 'offline' && !platform.desktop.remote())))
+      setOnboarding(true);
+  }, [platform, state, onlineOnce, onboardingSkipped]);
   const [, setClock] = useState(0);
   const [query, setQuery] = useState('');
   const [rail, setRail] = useState<RailPane>(() => storedLayout.regions.rightRail?.collapsed === false ? 'files' : 'none');
   const [handoffOpen, setHandoffOpen] = useState(false);
+  const [addProjectOpen, setAddProjectOpen] = useState(false);
   useLayoutEffect(() => {
     if (PAGES[route]) {
       setToastBottomOffset(16);
@@ -299,7 +314,7 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
                 <span style={{ fontSize: 10, color: 'var(--text-hint)' }}>Ctrl N</span>
               </button>
               <div style={{ height: 4 }} />
-              <div style={{ display: 'flex', padding: '0 2px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '0 2px' }}>
                 <div style={{ flex: 1, display: 'flex', gap: 2, padding: 2, background: 'var(--bg-inset)', borderRadius: 9 }}>
                   {FILTER_TABS.map(f => (
                     <button key={f} onClick={() => setFilter(f)} style={{
@@ -310,6 +325,10 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
                     }}>{f}</button>
                   ))}
                 </div>
+                {!onboarding ? <button className="hv-sub" aria-label="Add project folder" title="Add project folder"
+                  onClick={() => setAddProjectOpen(true)} style={{ width: 30, height: 30, display: 'grid', placeItems: 'center', border: 'none', borderRadius: 8, background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                  <FolderPlus size={15} />
+                </button> : null}
               </div>
               <div style={{ height: 8 }} />
               <div style={{ flex: 1, overflow: 'auto' }}>
@@ -341,8 +360,9 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
               flex: 1, minHeight: 0, overflow: onboarding ? 'auto' : 'hidden', background: 'var(--bg-main)',
               borderRadius: route === 'now' && !onboarding ? '0 12px 12px 12px' : 12,
             }}>
-              {onboarding ? <Onboarding state={state} pairPrefill={pairPrefill} />
-                : route === 'now' ? <Now onOpen={open} state={state} layout={resolved} pairPrefill={pairPrefill} />
+              {onboarding ? <Onboarding state={state} pairPrefill={pairPrefill}
+                  onSkip={platform.desktop ? () => { setOnboardingSkipped(true); setOnboarding(false); } : undefined} />
+                : route === 'now' ? <Now onOpen={open} layout={resolved} />
                 : route === 'settings' ? <SettingsView prefs={prefs} onPrefs={setPrefs} connection={state} />
                 : <SessionView key={route} session={route} rail={rail} onRail={setRail} onOpen={open} handoffOpen={handoffOpen} onHandoffChange={setHandoffOpen} layout={resolved}
                   onLayoutChange={descriptor => window.dispatchEvent(new CustomEvent('ormi-layout-change', { detail: descriptor }))} />}
@@ -353,6 +373,7 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
           {onboarding ? null : <Rail route={route} rail={rail} onRail={setRail} />}
         </div>
       </div>
+      {!onboarding ? <AddProjectDialog open={addProjectOpen} onClose={() => setAddProjectOpen(false)} /> : null}
       <Toaster className="toaster group ormi-toast-toaster" position="bottom-center" duration={3000} visibleToasts={1} closeButton={false}
         offset={{ top: 16, right: 16, bottom: toastBottomOffset, left: 16 }}
         mobileOffset={{ top: 16, right: 16, bottom: toastBottomOffset, left: 16 }} />
