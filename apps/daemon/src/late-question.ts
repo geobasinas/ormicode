@@ -1,4 +1,4 @@
-import { addQueuedPrompt, getSession, type Store } from '@ormicode/session-store';
+import { addQueuedPrompt, getSession, pendingQuestions, type Store } from '@ormicode/session-store';
 import { newId } from '@ormicode/protocol';
 import type { Client, DispatchCtx } from './dispatch.ts';
 import { handoffTargetError } from './handoff-transition.ts';
@@ -9,10 +9,7 @@ export function validQuestionAnswer(question: string, options: string[], answers
 }
 
 export function hasUnansweredUserQuestion(db: Store, session: string): boolean {
-  return Boolean(db.prepare(`SELECT 1 FROM events q WHERE q.session = ? AND q.kind = 'question_request'
-    AND json_extract(q.payload, '$.daemonInteraction') = 1 AND NOT EXISTS (
-      SELECT 1 FROM events a WHERE a.session = q.session AND a.kind = 'question_answer'
-      AND json_extract(a.payload, '$.request') = json_extract(q.payload, '$.request')) LIMIT 1`).get(session));
+  return pendingQuestions(db, session, { daemonOnly: true }).length > 0;
 }
 
 export function lateQuestionAnswer(ctx: DispatchCtx, client: Client, id: string, session: string, request: string, answers: Record<string, string>): boolean {

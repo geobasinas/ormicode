@@ -37,7 +37,7 @@ export class UserInteractions {
     pending.done = true;
     clearTimeout(pending.timer);
     this.pending.delete(request);
-    ctx.record(pending.session, kind, { request, ...payload, ...(kind === 'interaction_expired' && pending.kind === 'question' ? { answerable: true } : {}), daemonInteraction: true });
+    ctx.record(pending.session, kind, { request, ...payload, ...(kind === 'interaction_expired' && pending.kind === 'question' ? { answerable: payload.reason !== 'handed_off' } : {}), daemonInteraction: true });
     const row = getSession(ctx.db, pending.session);
     if (row && !row.archived && ['awaiting_approval', 'awaiting_input', 'running'].includes(row.state))
       ctx.record(row.id, 'state', { state: pending.previous });
@@ -121,10 +121,10 @@ export class UserInteractions {
     }
     client.link.replyError(id, 'team.invalid', 'wrong interaction response method');
   }
-  unavailable(session: string): void {
+  unavailable(session: string, reason = 'session_unavailable'): void {
     if (this.closed) return;
     for (const [request, pending] of this.pending)
-      if (!pending.done && (pending.session === session || pending.target === session)) this.finish(request, pending, 'interaction_expired', { reason: 'session_unavailable' });
+      if (!pending.done && (pending.session === session || pending.target === session)) this.finish(request, pending, 'interaction_expired', { reason });
   }
   close(): void {
     for (const [request, pending] of this.pending) if (!pending.done) this.finish(request, pending, 'interaction_expired', { reason: 'daemon_shutdown' });

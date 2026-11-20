@@ -7,6 +7,7 @@ import { resumable } from './registry.ts';
 import { readdirSync, statSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { ormicodeDir } from './socket.ts';
+import { expireHandoffQuestions } from './handoff-questions.ts';
 
 /** Raw session logs are kept 7 days; called once at boot. */
 export function sweepLogs(root = join(ormicodeDir(), 'logs', 'sessions'), maxAgeMs = 7 * 24 * 3600 * 1000): number {
@@ -52,6 +53,8 @@ export interface Recovery { autoResume: ResumeCandidate[]; rateLimited: { id: st
 
 export function recoverSessions(db: Store, policy: ResumePolicy): Recovery {
   db.exec('DELETE FROM leases');
+  for (const s of listSessions(db).filter(s => s.handed_off))
+    expireHandoffQuestions({ db, record: (session, kind, payload) => { append(db, session, { kind, payload }); } }, s.id);
   for (const s of listSessions(db).filter(s => !s.handed_off && [...inFlight, 'interrupted'].includes(s.state))) {
     checkTail(db, s.id);
     const team = s.team ? getTeam(db, s.team) : undefined;
