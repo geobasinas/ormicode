@@ -45,6 +45,15 @@ for await (const line of lines) {
       notify('error', { threadId: 'thread-1', turnId, error: { message: retry ? 'Reconnecting stream' : 'Unrecoverable error' }, willRetry: retry });
       if (text === 'retry fails') notify('turn/completed', { threadId: 'thread-1', turn: { id: turnId, status: 'failed', error: { message: 'Retries exhausted' } } });
       else finishTurn('thread-1', turnId);
+    } else if (text.startsWith('profile ')) {
+      const rid = ++nextRequest;
+      pending.set(rid, response => {
+        const granted = text === 'profile accept' || text === 'profile acceptForSession';
+        const expected = { permissions: granted ? { network: { enabled: true } } : {}, scope: text === 'profile acceptForSession' ? 'session' : 'turn' };
+        if (JSON.stringify(response.result) !== JSON.stringify(expected)) process.exit(11);
+        if (text !== 'profile interrupt') finishTurn('thread-1', turnId);
+      });
+      out({ id: rid, method: 'item/permissions/requestApproval', params: { threadId: 'thread-1', turnId, itemId: 'permission-1', permissions: { network: { enabled: true }, fileSystem: null } } });
     } else if (text === 'approve write' || text === 'decline write') {
       const rid = ++nextRequest;
       pending.set(rid, response => {
