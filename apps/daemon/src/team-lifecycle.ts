@@ -6,6 +6,7 @@ import {
 } from '@ormicode/session-store';
 import type { Client, DispatchCtx } from './dispatch.ts';
 import { hasUnansweredUserQuestion } from './late-question.ts';
+import { expireHandoffApprovals } from './handoff-dispatch.ts';
 
 export function silenceInterval(value: unknown): number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : 600_000;
@@ -50,6 +51,7 @@ export class TeamLifecycle {
   unavailable(parent: string): void {
     if (this.closed) return;
     const ctx = this.context();
+    expireHandoffApprovals(ctx, parent);
     for (const child of setChildrenParentless(ctx.db, parent, true))
       ctx.record(child, 'team_parent_changed', { parent, parentless: true });
     ctx.teamApprovals.unavailable(parent);

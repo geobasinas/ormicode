@@ -154,6 +154,24 @@ for (const escalate of [false, true]) test(`confirmation-required handoffs remai
   assert.equal((await result).code, 'handoff.declined');
 });
 
+for (const escalate of [false, true]) for (const method of ['session.abort', 'team.cancel']) test(`${escalate ? 'escalated' : 'delegated'} handoffs cannot start a replacement after ${method}`, async t => {
+  const { daemon, client, req, parent, spawn, approve, credentials } = await fixture(t);
+  const child = await spawn();
+  await approve(child, 'allow');
+  await eventually(() => getSession(daemon.db, child.session).state === 'idle');
+  const pending = client.request('session.handoff', { session: child.session, to: { vendor: 'fake', model: 'unknown-price' }, mode: 'rehydrate', agentApproval: true }, 30_000, credentials.proof(child.session));
+  await eventually(() => events(daemon.db, child.session, 'team_approval_request').some(e => e.approvalKind === 'handoff'));
+  const request = events(daemon.db, child.session, 'team_approval_request').find(e => e.approvalKind === 'handoff').request;
+  if (escalate) await req('team.escalate', { actor: parent, session: child.session, request });
+  const aborted = await req(method, { ...(method === 'team.cancel' ? { actor: parent } : {}), session: child.session });
+  assert.equal(aborted.type, 'res', JSON.stringify(aborted));
+  assert.equal((await pending).code, 'handoff.declined');
+  assert.equal(events(daemon.db, child.session, 'interaction_expired').find(e => e.request === request).reason, 'cancelled');
+  assert.equal((await req('session.decide', { session: child.session, request, option: 'approve' })).type, 'err');
+  assert.equal(daemon.db.prepare('SELECT COUNT(*) AS n FROM sessions WHERE parent = ?').get(child.session).n, 0);
+  assert.equal(getSession(daemon.db, child.session).handed_off, 0);
+});
+
 test('destructive commands, including custom patterns, stay in the user queue', async t => {
   const { daemon, req, parent, spawn, approve, dir } = await fixture(t);
   for (const command of ['rm -rf disposable-test-path', 'custom-danger']) {
