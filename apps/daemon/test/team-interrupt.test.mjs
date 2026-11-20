@@ -16,7 +16,7 @@ test('cancel succeeds when the adapter has finished but turn_end is still being 
   assert.equal((await stream.next()).value.kind, 'text_delta');
   assert.equal((await stream.next()).value.kind, 'text');
   let rejected = false;
-  await interrupt({ db, teamApprovals: { waiting: () => false }, toWorker: async () => {
+  await interrupt({ db, teamApprovals: { waiting: () => true }, toWorker: async () => {
     try { await adapter.interrupt(handle); }
     catch (error) { rejected = true; assert.match(error.message, /no active turn/); }
     assert.equal((await stream.next()).value.kind, 'turn_end');
@@ -38,15 +38,10 @@ test('cancel is an idle no-op and still rejects an abort that leaves the child b
   await assert.rejects(interrupt(ctx, 'child', 0), /did not finish interrupting/);
 });
 
-test('cancel interrupts an idle child with a delegated approval still pending', async t => {
+test('cancel does not treat stale delegated approvals as an active turn', async t => {
   const db = openStore(':memory:'); t.after(() => db.close());
   createSession(db, { id: 'child', machine: 'local', project: '/repo', vendor: 'fake', transport: 'cli', cwd: '/repo' });
-  let waiting = true;
-  let calls = 0;
-  await interrupt({ db, teamApprovals: { waiting: () => waiting }, toWorker: async (session, method) => {
-    assert.equal(session, 'child'); assert.equal(method, 'worker.abort');
-    calls++; waiting = false;
-    return { type: 'res' };
+  await interrupt({ db, teamApprovals: { waiting: () => true }, toWorker: async () => {
+    assert.fail('an ended turn must not be interrupted');
   } }, 'child');
-  assert.equal(calls, 1);
 });

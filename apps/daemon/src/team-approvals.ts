@@ -57,6 +57,13 @@ export class TeamApprovals {
   }
   event(session: string, kind: string, payload: Payload): [string, Payload] {
     const ctx = this.context(), id = key(session, payload.request), pending = this.pending.get(id);
+    if (kind === 'turn_end') {
+      for (const [id, pending] of this.pending) {
+        if (pending.session !== session || pending.payload.approvalKind === 'handoff') continue;
+        this.pending.delete(id);
+        ctx.record(session, 'interaction_expired', { request: pending.payload.request, reason: 'turn_ended' });
+      }
+    }
     if (['approval_decision', 'interaction_expired'].includes(kind)) {
       const user = this.userAnswers.get(id); this.userAnswers.delete(id);
       this.pending.delete(id);
