@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { browserPlatform, closeBrowserPlatform } from '../src/index.ts';
+import { WsLink } from '@ormicode/relay-client';
+import { newId } from '@ormicode/protocol';
+import { bindBrowserLifecycle } from '../../../apps/web/src/lifecycle.ts';
 
 class MemoryLocks {
   queue = [];
@@ -46,7 +49,7 @@ function memoryStore() {
   };
 }
 
-function environment({ proto = 1, rejectConnect } = {}) {
+function environment({ proto = 1, rejectConnect, history } = {}) {
   const store = memoryStore();
   const locks = new MemoryLocks();
   const links = [];
@@ -54,6 +57,24 @@ function environment({ proto = 1, rejectConnect } = {}) {
   const connect = async config => {
     connectCalls.push(config);
     if (rejectConnect) throw rejectConnect;
+    if (history) {
+      const calls = [];
+      const socket = {
+        send(raw) {
+          const frame = JSON.parse(raw);
+          if (frame.type !== 'req') return;
+          calls.push([frame.method, frame.body]);
+          queueMicrotask(() => {
+            if (frame.method === 'session.subscribe') for (const event of history)
+              if (event.session === frame.body.session && event.seq > (frame.body.after ?? 0)) socket.onmessage({ data: JSON.stringify(event) });
+            socket.onmessage({ data: JSON.stringify({ v: 1, type: 'res', id: frame.id, ok: true, body: frame.method === 'daemon.status' ? { proto } : {} }) });
+          });
+        },
+        close() { socket.onclose({ code: 1000 }); },
+      };
+      const link = new WsLink(socket); link.calls = calls;
+      links.push(link); return link;
+    }
     const link = {
       calls: [],
       request: async (method, body) => {
@@ -134,7 +155,7 @@ test('a follower request is answered through the leader link', async t => {
   assert.ok(env.links[0].calls.some(([method, body]) => method === 'session.list' && body.archived === false));
 });
 
-test('two tabs share one upstream subscription until both unsubscribe', async t => {
+test('two tabs share a live subscription, replay each tab and unsubscribe only after both leave', async t => {
   const env = environment();
   t.after(() => env.close());
   const first = env.create();
@@ -146,13 +167,36 @@ test('two tabs share one upstream subscription until both unsubscribe', async t 
   const second = env.create();
   first.transport.subscribe('s_1', 3);
   second.transport.subscribe('s_1', 3);
-  await until(() => env.links[0].calls.filter(([method]) => method === 'session.subscribe').length === 1);
+  await until(() => env.links[0].calls.filter(([method]) => method === 'session.subscribe').length === 2);
   await new Promise(resolve => setTimeout(resolve, 20));
   first.transport.unsubscribe('s_1');
   await new Promise(resolve => setTimeout(resolve, 20));
   assert.equal(env.links[0].calls.filter(([method]) => method === 'session.unsubscribe').length, 0);
   second.transport.unsubscribe('s_1');
   await until(() => env.links[0].calls.filter(([method]) => method === 'session.unsubscribe').length === 1);
+});
+
+test('new tabs and reopened sessions receive full history through real WsLink dedup without duplicating existing subscribers', async t => {
+  const session = newId('s');
+  const history = [1, 2, 3].map(seq => ({ v: 1, type: 'evt', session, seq, ts: seq, body: { kind: 'text', text: String(seq) } }));
+  const env = environment({ history }); t.after(() => env.close());
+  const first = env.create(), received = [[], []];
+  first.transport.onEvent = frame => { if (frame.type === 'evt') received[0].push(frame.seq); };
+  await until(() => env.connectCalls.length === 0);
+  await first.web.pair({ account: 'demo', code: 'history' });
+  await until(() => env.links.length === 1);
+  first.transport.subscribe(session);
+  await until(() => received[0].length === 3);
+  const second = env.create(); second.transport.onEvent = frame => { if (frame.type === 'evt') received[1].push(frame.seq); };
+  second.transport.subscribe(session);
+  await until(() => received[1].length === 3);
+  assert.deepEqual(received, [[1, 2, 3], [1, 2, 3]]);
+  first.transport.unsubscribe(session); second.transport.unsubscribe(session);
+  await until(() => env.links[0].calls.some(([method]) => method === 'session.unsubscribe'));
+  received[0] = []; first.transport.subscribe(session, 0);
+  await until(() => received[0].length === 3);
+  assert.deepEqual(received[0], [1, 2, 3]); assert.deepEqual(received[1], [1, 2, 3]);
+  assert.ok(env.links[0].calls.filter(([method]) => method === 'session.subscribe').every(([, body]) => body.after === undefined));
 });
 
 test('the waiting tab takes over and restores its subscriptions after leader close', async t => {
@@ -170,6 +214,83 @@ test('the waiting tab takes over and restores its subscriptions after leader clo
   closeBrowserPlatform(first);
   await until(() => env.links.length === 2 && env.links[1].calls.some(([method]) => method === 'session.subscribe'));
   assert.equal(env.connectCalls.length, 2);
+});
+
+test('relay reconnect and leader takeover resume from delivered events, not the initial cursor', async t => {
+  const session = newId('s');
+  const event = seq => ({ v: 1, type: 'evt', session, seq, ts: seq, body: { kind: 'text', text: String(seq) } });
+  const history = [event(1), event(2)];
+  const env = environment({ history }); t.after(() => env.close());
+  const first = env.create(), received = [];
+  first.transport.onEvent = frame => { if (frame.type === 'evt') received.push(frame.seq); };
+  await first.web.pair({ account: 'demo', code: 'resume' });
+  await until(() => env.links.length === 1);
+  first.transport.subscribe(session);
+  await until(() => received.length === 2);
+  history.push(event(3)); env.links[0].close();
+  await until(() => received.length === 3);
+  assert.deepEqual(env.links[1].calls.find(([method]) => method === 'session.subscribe')[1], { session, after: 2 });
+  assert.deepEqual(received, [1, 2, 3]);
+  const second = env.create(), follower = [];
+  second.transport.onEvent = frame => { if (frame.type === 'evt') follower.push(frame.seq); };
+  second.transport.subscribe(session);
+  await until(() => follower.length === 3);
+  closeBrowserPlatform(first);
+  await until(() => env.links[2]?.calls.some(([method]) => method === 'session.subscribe'));
+  assert.deepEqual(env.links[2].calls.find(([method]) => method === 'session.subscribe')[1], { session, after: 3 });
+  assert.deepEqual(follower, [1, 2, 3]); assert.deepEqual(received, [1, 2, 3]);
+});
+
+test('reconnect uses the least advanced subscriber cursor', async t => {
+  const env = environment(); t.after(() => env.close());
+  const first = env.create();
+  await first.web.pair({ account: 'demo', code: 'minimum' });
+  await until(() => env.links.length === 1);
+  first.transport.subscribe('s_minimum', 10);
+  const second = env.create(), received = [];
+  second.transport.onEvent = frame => received.push(frame.seq);
+  second.transport.subscribe('s_minimum');
+  await until(() => env.links[0].calls.filter(([method]) => method === 'session.subscribe').length === 2);
+  env.links[0].onFrame({ v: 1, type: 'evt', session: 's_minimum', seq: 1, ts: 1, body: { kind: 'text', text: 'first' } });
+  await until(() => received.length === 1);
+  env.links[0].close();
+  await until(() => env.links[1]?.calls.some(([method]) => method === 'session.subscribe'));
+  assert.deepEqual(env.links[1].calls.find(([method]) => method === 'session.subscribe')[1], { session: 's_minimum', after: 1 });
+});
+
+test('persisted pageshow reconnects the same platform and listeners on every bfcache restore', async t => {
+  const env = environment(); t.after(() => env.close());
+  const platform = env.create(), target = new EventTarget(), states = [], received = [];
+  t.after(bindBrowserLifecycle(platform, target));
+  const transport = platform.transport;
+  const design = [];
+  const unsubscribe = transport.subscribeEvents(frame => design.push(frame.seq));
+  transport.onState = state => states.push(state);
+  transport.onEvent = frame => received.push(frame.seq);
+  target.dispatchEvent(new Event('pageshow'));
+  await platform.web.pair({ account: 'demo', code: 'bfcache' });
+  await until(() => env.links.length === 1 && states.at(-1) === 'online');
+  transport.subscribe('s_cache');
+  env.links[0].onFrame({ v: 1, type: 'evt', session: 's_cache', seq: 1, ts: 1, body: { kind: 'text', text: 'before' } });
+  for (let cycle = 1; cycle <= 2; cycle++) {
+    target.dispatchEvent(new Event('pagehide'));
+    target.dispatchEvent(new Event('pageshow'));
+    assert.equal(env.links.length, cycle);
+    const restore = new Event('pageshow'); Object.defineProperty(restore, 'persisted', { value: true });
+    target.dispatchEvent(restore);
+    await until(() => env.links[cycle]?.calls.some(([method]) => method === 'session.subscribe'));
+    assert.equal(platform.transport, transport);
+    assert.deepEqual(env.links[cycle].calls.find(([method]) => method === 'session.subscribe')[1], { session: 's_cache', after: cycle });
+    env.links[cycle].onFrame({ v: 1, type: 'evt', session: 's_cache', seq: cycle + 1, ts: 1, body: { kind: 'text', text: 'after' } });
+    target.dispatchEvent(restore);
+    assert.equal(env.links.length, cycle + 1);
+    assert.equal((await transport.request('session.list', {})).type, 'res');
+  }
+  assert.deepEqual(received, [1, 2, 3]); assert.equal(states.at(-1), 'online');
+  assert.deepEqual(design, [1, 2, 3]);
+  unsubscribe();
+  env.links[2].onFrame({ v: 1, type: 'evt', session: 's_cache', seq: 4, ts: 1, body: { kind: 'text', text: 'unsubscribed' } });
+  assert.deepEqual(received, [1, 2, 3, 4]); assert.deepEqual(design, [1, 2, 3]);
 });
 
 test('an unknown or revoked token clears the store and returns to unpaired', async t => {

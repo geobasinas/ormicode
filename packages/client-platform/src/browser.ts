@@ -20,22 +20,25 @@ export interface WebPlatformOptions {
 }
 
 const leaders = new WeakMap<ClientPlatform, WebLeader>();
+const resumes = new WeakMap<ClientPlatform, () => void>();
 
 export function browserPlatform(opts: WebPlatformOptions): ClientPlatform {
   const store = opts.deps?.store ?? new IndexedDbWebStore();
-  const leader = new WebLeader(opts.relay, {
+  const createLeader = () => new WebLeader(opts.relay, {
     store,
     locks: opts.deps?.locks ?? navigator.locks,
     channel: opts.deps?.channel ?? (() => new BroadcastChannel('ormicode')),
     connect: opts.deps?.connect,
     join: opts.deps?.join,
   });
+  let leader = createLeader();
+  const subscriptions = new Map<string, number>();
   let stateListener: ((state: string) => void) | undefined;
   const listeners = new Set<(frame: import('@ormicode/protocol').Frame) => void>();
   const transport: ProtocolTransport = {
     request: (method, body) => leader.request(method, body),
-    subscribe: (session, after) => leader.subscribe(session, after),
-    unsubscribe: session => leader.unsubscribe(session),
+    subscribe: (session, after = 0) => { subscriptions.set(session, after); leader.subscribe(session, after); },
+    unsubscribe: session => { subscriptions.delete(session); leader.unsubscribe(session); },
     onEvent: undefined,
     get onState() { return stateListener; },
     set onState(listener) {
@@ -44,8 +47,16 @@ export function browserPlatform(opts: WebPlatformOptions): ClientPlatform {
     },
     subscribeEvents: listener => { listeners.add(listener); return () => { listeners.delete(listener); }; },
   };
-  leader.onEvent = frame => { transport.onEvent?.(frame); for (const listener of listeners) listener(frame); };
-  leader.onState = state => stateListener?.(state);
+  const listen = () => {
+    leader.onEvent = frame => {
+      if (frame.type === 'evt' && typeof frame.seq === 'number' && subscriptions.has(frame.session))
+        subscriptions.set(frame.session, frame.seq);
+      transport.onEvent?.(frame);
+      for (const listener of listeners) listener(frame);
+    };
+    leader.onState = state => stateListener?.(state);
+  };
+  listen();
   const tokens: TokenStore = {
     get: async () => (await store.getToken()) ?? undefined,
     set: token => store.setToken(token),
@@ -67,7 +78,18 @@ export function browserPlatform(opts: WebPlatformOptions): ClientPlatform {
     },
   };
   leaders.set(platform, leader);
+  resumes.set(platform, () => {
+    if (leaders.has(platform)) return;
+    leader = createLeader();
+    listen();
+    for (const [session, after] of subscriptions) leader.subscribe(session, after);
+    leaders.set(platform, leader);
+  });
   return platform;
+}
+
+export function resumeBrowserPlatform(platform: ClientPlatform): void {
+  resumes.get(platform)?.();
 }
 
 export function closeBrowserPlatform(platform: ClientPlatform): void {

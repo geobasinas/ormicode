@@ -245,7 +245,6 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
   }, [searchRef, route]);
   useEffect(() => {
     platform.transport.onState = setState;
-    if (platform.kind === 'desktop') platform.transport.onState?.(state);
   }, [platform]);
   useEffect(() => {
     if (!platform.web || state !== 'offline') return;

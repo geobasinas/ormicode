@@ -107,7 +107,7 @@ export const requestBodies = {
   'session.askUser': z.object({ ...session, ...userQuestion }),
   'daemon.status': z.object({}),
   'session.start': z.object({
-    machine: idSchema('m'), project: nonEmpty, vendor: nonEmpty, transport: nonEmpty,
+    machine: z.union([idSchema('m'), z.literal('m_local')]), project: nonEmpty, vendor: nonEmpty, transport: nonEmpty,
     model: nonEmpty, effort: nonEmpty, mode: nonEmpty, workspace: workspaceSchema,
     workspaceName: z.optional(nonEmpty), agentCommand: z.optional(nonEmpty),
     agentArgs: z.optional(z.array(z.string())),

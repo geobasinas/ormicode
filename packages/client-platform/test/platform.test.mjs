@@ -68,8 +68,10 @@ test('browserPlatform exposes web metadata and backs tokens with its store', asy
     const frame = { v: 1, type: 'evt', session: 's_design', seq: 1, ts: 1, body: { kind: 'design_changed', slug: 'board', revision: 1 } };
     onMessage({ data: { t: 'evt', frame } });
     assert.deepEqual([primary, design, other], [[frame], [frame], [frame]]);
-    unsubscribe();
     onMessage({ data: { t: 'evt', frame } });
+    assert.deepEqual([primary.length, design.length, other.length], [1, 1, 1]);
+    unsubscribe();
+    onMessage({ data: { t: 'evt', frame: { ...frame, seq: 2 } } });
     assert.deepEqual([primary.length, design.length, other.length], [2, 1, 2]);
   } finally { closeBrowserPlatform(p); }
 });

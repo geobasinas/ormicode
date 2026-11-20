@@ -3,13 +3,15 @@ import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:net';
-import { accessSync, constants, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
-import { delimiter, dirname, join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
 import { BRIDGE_SCRIPT } from '../../../packages/client-ui/src/features/design/bridge.ts';
 import { checkDesignCsp } from './design-csp-check.mjs';
+import { browseResult, registerProjectTests } from './project-tests.mjs';
+import { findBrowser } from './browser-path.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '../../..');
 const relayRoot = join(root, 'apps/relay');
@@ -26,22 +28,6 @@ let browser;
 let hub;
 let version;
 const commit = 'e2e-commit';
-
-function findBrowser() {
-  const candidates = [process.env.UI_BROWSER];
-  if (process.platform === 'win32') {
-    for (const base of [process.env.PROGRAMFILES, process.env['PROGRAMFILES(X86)'], process.env.LOCALAPPDATA]) {
-      if (base) candidates.push(join(base, 'Google/Chrome/Application/chrome.exe'), join(base, 'Microsoft/Edge/Application/msedge.exe'));
-    }
-  }
-  for (const name of ['google-chrome', 'chromium', 'chromium-browser', 'microsoft-edge', 'msedge']) {
-    for (const path of (process.env.PATH ?? '').split(delimiter)) candidates.push(join(path, name));
-  }
-  return candidates.find(path => {
-    if (!path) return false;
-    try { accessSync(path, constants.X_OK); return true; } catch { return false; }
-  });
-}
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -63,8 +49,11 @@ class HubSimulator {
     this.counter = 0;
     this.onlineNotices = 0;
     this.statusRequests = 0;
+    this.projects = [];
+    this.projectAdds = [];
+    this.browseRequests = [];
+    this.failBrowse = false;
   }
-
   async start() {
     this.socket = new WebSocket(`${relayOrigin.replace(/^http/, 'ws')}/connect?account=${account}`);
     this.socket.addEventListener('message', event => this.onMessage(String(event.data)));
@@ -76,7 +65,6 @@ class HubSimulator {
     this.send({ type: 'auth', token: hubToken });
     await authed;
   }
-
   send(message) { this.socket.send(JSON.stringify(message)); }
 
   waitFor(predicate) {
@@ -106,11 +94,33 @@ class HubSimulator {
     if (message.type === 'device.online') this.onlineNotices++;
     if (message.type === 'req') {
       if (message.method === 'daemon.status') this.statusRequests++;
+      if (message.method === 'fs.browse') {
+        this.browseRequests.push(message.body);
+        if (this.failBrowse) {
+          this.failBrowse = false;
+          this.send({ v: 1, type: 'err', id: message.id, code: 'fs.denied', message: 'permission denied' });
+          return;
+        }
+      }
+      if (message.method === 'project.add') {
+        this.projectAdds.push(message.body);
+        const { machine, path } = message.body;
+        if (path.endsWith('/denied')) {
+          this.send({ v: 1, type: 'err', id: message.id, code: 'fs.denied', message: 'permission denied' });
+          return;
+        }
+        const project = { machine, path, name: path.split('/').at(-1), git: true, addedAt: Date.now() };
+        this.projects.push(project);
+        this.send({ v: 1, type: 'res', id: message.id, ok: true, body: { project } });
+        return;
+      }
       const body = message.method === 'daemon.status'
         ? { version: '0.0.0', proto: 1, uptimeMs: 1000, liveWorkers: 0, relay: 'connected', lastError: null }
         : message.method === 'session.list' ? { sessions: [] }
-        : message.method === 'project.list' ? { projects: [] }
+        : message.method === 'session.digest' ? { computedAt: Date.now(), entries: [] }
+        : message.method === 'project.list' ? { projects: this.projects }
           : message.method === 'machine.list' ? { machines: [{ id: 'm_local', name: 'web-test', kind: 'local', status: 'online', heartbeat: Date.now() }] }
+        : message.method === 'fs.browse' ? browseResult(message.body)
         : message.method === 'agents.list' ? { agents: [] }
         : message.method === 'session.draft.get' ? { text: '' } : {};
       this.send({ v: 1, type: 'res', id: message.id, ok: true, body });
@@ -133,7 +143,6 @@ class HubSimulator {
 
   close() { this.socket?.close(); }
 }
-
 async function waitForWeb() {
   const until = Date.now() + 30_000;
   while (Date.now() < until) {
@@ -239,6 +248,7 @@ test('static assets have exact CSP, cache, and security headers', async t => {
   const bridgeHash = createHash('sha256').update(BRIDGE_SCRIPT).digest('base64');
   const csp = `default-src 'self'; script-src 'self' 'sha256-${bridgeHash}'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src ${relayOrigin} ${relayOrigin.replace(/^http/, 'ws')}; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; object-src 'none'`;
   assert.equal(response.headers()['content-security-policy'], csp);
+  assert.equal(await page.locator('meta[http-equiv="Content-Security-Policy" i]').count(), 0);
   assert.equal(response.headers()['x-content-type-options'], 'nosniff');
   assert.equal(response.headers()['referrer-policy'], 'no-referrer');
   assert.equal(response.headers()['cache-control'], 'no-cache');
@@ -310,6 +320,8 @@ test('good pairing stores the token only in IndexedDB and shows an online connec
     assert.equal(registrations.length, 0);
   } finally { await context.close(); }
 });
+
+registerProjectTests(() => ({ browser, hub, webOrigin, enterCode, waitUntil }));
 
 test('bad and burned pairing codes are rejected', async t => {
   if (!browser) return t.skip('no chromium found');
