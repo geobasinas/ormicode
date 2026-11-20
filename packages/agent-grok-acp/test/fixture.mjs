@@ -11,13 +11,15 @@ for await (const line of lines) {
  else if (message.method === 'session/load') reply({});
  else if (message.method === 'session/prompt') {
   promptId = message.id;
-  const ask = message.params.prompt[0].text === 'approval-test';
-  expectedOutcome = ask ? 'selected' : 'cancelled';
+  const ask = ['approval-test', 'approval-allow'].includes(message.params.prompt[0].text);
+  const choice = message.params.prompt[0].text === 'approval-allow' ? 'allow' : 'deny';
+  expectedOutcome = ask ? `selected:${choice}` : 'cancelled';
   process.stdout.write(JSON.stringify({ jsonrpc: '2.0', method: 'session/update', params: { sessionId: message.params.sessionId, update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'hello' } } } }) + '\n');
   process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: 'permission-1', method: 'session/request_permission', params: { sessionId: message.params.sessionId, toolCall: { toolCallId: 't1', title: 'Edit file' }, options: ask ? [{ optionId: 'allow', name: 'Allow once', kind: 'allow_once' }, { optionId: 'deny', name: 'Deny', kind: 'reject_once' }] : [] } }) + '\n');
  }
  else if (message.id === 'permission-1') {
-  if (message.result?.outcome?.outcome !== expectedOutcome || (expectedOutcome === 'selected' && message.result?.outcome?.optionId !== 'deny')) process.exit(5);
+  const actual = message.result?.outcome;
+  if ((actual?.outcome === 'selected' ? `selected:${actual.optionId}` : actual?.outcome) !== expectedOutcome) process.exit(5);
   process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: promptId, result: { stopReason: 'end_turn' } }) + '\n');
  }
 }

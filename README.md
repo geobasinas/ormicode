@@ -976,7 +976,7 @@ Optional methods = optional features. No `steer` means the client queues instead
 | Codex | `sandbox_mode` + `approval_policy`, or its auto-review | yes (joins turn) | thread id | yes | yes | yes |
 | OpenCode | permission rules, `ask` | yes (async prompt) | session id | yes | model-dependent | no |
 | pi | none, by design | yes, `steer()` | JSONL session file | yes | yes (thinking level) | no |
-| Grok CLI | `--always-approve`; no prompt path in `-p` | no | `-s`/`-r` | `-m` per run | not documented | no |
+| Grok CLI | `agent stdio` permission requests through Ormicode, never `dontAsk`/auto-approve | no | native ACP session | ACP config | ACP config | no |
 | Grok ACP | permission modes + `session/request_permission` | no | `loadSession` | `configOptions` model | yes (`reasoning_effort`) | no |
 | Vibe CLI | none headless; `--auto-approve` or deny | no | `--resume` | `--model` new sessions | no | yes (`--worktree`) |
 | Vibe ACP | 4 modes + `session/request_permission` | no | `loadSession`, fork | `configOptions` model | no | no |
