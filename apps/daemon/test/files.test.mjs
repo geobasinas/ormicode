@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, statSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, statSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startDaemon, connect } from '../src/index.ts';
@@ -69,6 +69,20 @@ test('file.write journals a manual checkpoint and file_edit event', async t => {
   assert.deepEqual(JSON.parse(edited.payload), {
     kind: 'file_edit', path: 'note.txt', size: 5, checkpoint: result.body.checkpoint,
   });
+  writeFileSync(join(root, 'note.txt'), 'changed again');
+  const restored = await client.request('checkpoint.restore', { session, id: result.body.checkpoint, mode: 'files' });
+  assert.equal(restored.type, 'res');
+  assert.equal(readFileSync(join(root, 'note.txt'), 'utf8'), 'after');
+  const empty = await client.request('file.write', { session, path: 'note.txt', content: '' });
+  assert.equal(empty.type, 'res'); assert.ok(empty.body.checkpoint);
+  writeFileSync(join(root, 'note.txt'), 'not empty');
+  assert.equal((await client.request('checkpoint.restore', { session, id: empty.body.checkpoint, mode: 'files' })).type, 'res');
+  assert.equal(readFileSync(join(root, 'note.txt'), 'utf8'), '');
+  const count = replay(daemon.db, session).filter(event => event.kind === 'checkpoint').length;
+  const rejected = await client.request('file.write', { session, path: 'note.txt', content: 'conflict', baseMtime: 1 });
+  assert.equal(rejected.code, 'file.conflict');
+  assert.equal(readFileSync(join(root, 'note.txt'), 'utf8'), '');
+  assert.equal(replay(daemon.db, session).filter(event => event.kind === 'checkpoint').length, count);
 });
 
 test('project.searchFiles returns folders and files before a session exists', async t => {
