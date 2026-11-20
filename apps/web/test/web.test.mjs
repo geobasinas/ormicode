@@ -160,9 +160,9 @@ function requestOrigin(value) {
 }
 
 async function enterCode(page, code) {
-  await page.getByPlaceholder('account', { exact: true }).fill(account);
-  await page.getByPlaceholder('pairing code (xxxx xxxx xxxx)').fill(code);
-  await page.getByRole('button', { name: 'pair', exact: true }).click();
+  await page.getByLabel('Account').fill(account);
+  await page.getByLabel('Pairing code').fill(code);
+  await page.getByRole('button', { name: 'Pair', exact: true }).click();
 }
 
 async function openAbout(page) {
@@ -251,12 +251,12 @@ test('SPA serves /pair and scrubs pairing fragments before browser requests', as
     await page.goto(`${webOrigin}/pair#a=${account}&c=${code}`);
     assert.equal(new URL(page.url()).pathname, '/');
     assert.equal(new URL(page.url()).hash, '');
-    await page.waitForSelector('input[placeholder="account"]');
-    assert.equal(await page.getByPlaceholder('account').inputValue(), account);
-    assert.equal(await page.getByPlaceholder('pairing code (xxxx xxxx xxxx)').inputValue(), code);
+    await page.getByLabel('Account').waitFor();
+    assert.equal(await page.getByLabel('Account').inputValue(), account);
+    assert.equal((await page.getByLabel('Pairing code').inputValue()).replace(/\s/g, ''), code);
     assert.ok(requests.every(request => !request.url.includes(code) && !request.headers.referer?.includes(code)));
     await hub.issue(code);
-    await page.getByRole('button', { name: 'pair', exact: true }).click();
+    await page.getByRole('button', { name: 'Pair', exact: true }).click();
     await page.getByRole('button', { name: 'Settings' }).waitFor();
     await openAbout(page);
     await page.getByText('online', { exact: true }).waitFor();
@@ -311,7 +311,7 @@ test('bad and burned pairing codes are rejected', async t => {
     await enterCode(first, '000000000000');
     await first.getByText(/pairing\.invalid_code|pairing\.rejected/).waitFor();
     await enterCode(first, code);
-    await first.getByText('pair this browser').waitFor({ state: 'detached' });
+    await first.getByText('Pair this browser').waitFor({ state: 'detached' });
     await openAbout(first);
     await first.getByText('online', { exact: true }).waitFor();
     await second.goto(webOrigin);
@@ -337,8 +337,7 @@ test('revocation clears the browser token and returns to pairing', async t => {
       body: JSON.stringify({ device }),
     });
     assert.equal(response.status, 200);
-    await page.getByText('Home', { exact: true }).click();
-    await page.getByText('pair this browser').waitFor();
+    await page.getByText('Pair this browser').waitFor();
   } finally { await page.close(); }
 });
 

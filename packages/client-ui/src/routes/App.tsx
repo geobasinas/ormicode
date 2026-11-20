@@ -20,6 +20,7 @@ import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panel
 import { Toaster } from '../components/ui/sonner.tsx';
 import { agoText } from '../lib/format.ts';
 import { Button } from '../components/Button.tsx';
+import { PairScreen } from '../features/pair/PairScreen.tsx';
 
 const MAX_TABS = 8;
 const drag = { WebkitAppRegion: 'drag' } as const;
@@ -242,6 +243,14 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
     if (route === id) setRoute(next[next.length - 1] ?? 'now');
     return next;
   });
+
+  if (platform.web && state === 'unpaired') return (
+    <PlatformContext.Provider value={platform}>
+      <div style={{ height: '100vh', overflow: 'auto', background: 'var(--bg-window)', color: 'var(--text-label)', fontFamily: 'var(--font-ui)', fontSize: 14 }}>
+        <PairScreen pairPrefill={pairPrefill} />
+      </div>
+    </PlatformContext.Provider>
+  );
 
   return (
     <PlatformContext.Provider value={platform}>
