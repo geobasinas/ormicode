@@ -67,10 +67,13 @@ export class CodexCliAdapter implements AgentAdapter {
     const handle = Object.freeze({ id: `codex-cli-${++this.serial}` });
     session.log = spec.logDir ? new RawLog(spec.logDir) : undefined;
     session.server = await this.openServer(session);
+    // `workspace-write` + `on-request` edits the workspace without asking. The default keeps the
+    // sandbox read-only so every write escalates as a fileChange/commandExecution approval.
+    const sandbox = spec.mode ?? 'read-only';
     try {
       const id = nativeId
-        ? await session.server.resumeThread({ threadId: nativeId, cwd: spec.cwd, model: spec.model, sandbox: spec.mode ?? 'workspace-write', approvalPolicy: 'on-request' })
-        : await session.server.startThread({ cwd: spec.cwd, model: spec.model, sandbox: spec.mode ?? 'workspace-write', approvalPolicy: 'on-request' });
+        ? await session.server.resumeThread({ threadId: nativeId, cwd: spec.cwd, model: spec.model, sandbox, approvalPolicy: 'on-request' })
+        : await session.server.startThread({ cwd: spec.cwd, model: spec.model, sandbox, approvalPolicy: 'on-request' });
       session.nativeId = id;
       this.onNativeId?.(handle, id);
     } catch (error) { session.server.close(); throw error; }

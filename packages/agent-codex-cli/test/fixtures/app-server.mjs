@@ -7,6 +7,7 @@ let nextRequest = 1000;
 let nextTurn = 0;
 let failInterrupt = false;
 let workspace;
+let sandbox;
 const pending = new Map();
 const finishTurn = (threadId, turnId) => {
   notify('item/started', { threadId, turnId, item: { type: 'agent_message', id: 'msg-1', text: 'ok' } });
@@ -24,9 +25,9 @@ for await (const line of lines) {
   if (message.method === 'initialize') out({ id: message.id, result: { userAgent: 'fixture', codexHome: '/tmp', platformFamily: 'test', platformOs: 'test' } });
   else if (message.method === 'test/echo') out({ id: message.id, result: message.params });
   else if (message.method === 'thread/start' || message.method === 'thread/resume') {
-    workspace = message.params.cwd;
-    if (message.params.sandbox !== 'workspace-write' || message.params.approvalPolicy !== 'on-request') process.exit(9);
-    if (!['never', 'on-request'].includes(message.params.approvalPolicy) || !['read-only', 'workspace-write'].includes(message.params.sandbox)) process.exit(4);
+    workspace = message.params.cwd; sandbox = message.params.sandbox;
+    if (message.params.approvalPolicy !== 'on-request') process.exit(9);
+    if (!['read-only', 'workspace-write'].includes(message.params.sandbox)) process.exit(4);
     out({ id: message.id, result: { thread: { id: message.params.threadId ?? 'thread-1' } } });
   }
   else if (message.method === 'model/list') out({ id: message.id, result: { data: [{ id: 'gpt-test-1', displayName: 'GPT Test', supportedReasoningEfforts: [{ reasoningEffort: 'low' }, { reasoningEffort: 'high' }] }, { id: 'hidden-model', hidden: true }], nextCursor: null } });
@@ -54,6 +55,10 @@ for await (const line of lines) {
         if (text !== 'profile interrupt') finishTurn('thread-1', turnId);
       });
       out({ id: rid, method: 'item/permissions/requestApproval', params: { threadId: 'thread-1', turnId, itemId: 'permission-1', permissions: { network: { enabled: true }, fileSystem: null } } });
+    } else if ((text === 'approve write' || text === 'decline write') && sandbox === 'workspace-write') {
+      // Like Codex, workspace-write applies in-workspace patches without an approval request.
+      writeFileSync(join(workspace, 'approved.txt'), 'approved');
+      finishTurn('thread-1', turnId);
     } else if (text === 'approve write' || text === 'decline write') {
       const rid = ++nextRequest;
       pending.set(rid, response => {
