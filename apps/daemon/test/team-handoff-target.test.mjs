@@ -48,7 +48,7 @@ test('team_wait reports a retired child as done without waking, waiting or bypas
     if (errors.length) throw new Error(errors.at(-1).code);
     return replies.at(-1);
   };
-  for (const until of [undefined, 'done']) {
+  for (const until of [undefined, 'idle', 'done', 'approval']) {
     const result = JSON.parse(await callTeamTool('team_wait', { session: 'old', until }, 'parent', req, () => assert.fail('retired child is already done')));
     assert.equal(result.session, 'old'); assert.equal(result.state, 'done');
   }
