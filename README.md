@@ -2372,7 +2372,7 @@ Each has `order`, `size`, `collapsed`, `visible`. Unknown ids are kept but ignor
 
 ## Web app
 
-> **Status:** next (after desktop) · **Needs:** [Relay](#relay), [Pairing](#pairing)
+> **Status:** in progress — Vite/Worker static-assets shell, browser pairing, IndexedDB device storage, relay CORS, security headers, multi-tab leader/follower transport, and web About/connection states are implemented. · **Needs:** [Relay](#relay), [Pairing](#pairing)
 
 **`apps/web`: a Vite single-page app served as Cloudflare Worker static assets.** Same `client-ui` as desktop; only the platform layer differs. Talks to the hub through the relay — no server API, no secrets in the Worker.
 
@@ -2383,9 +2383,11 @@ Each has `order`, `size`, `collapsed`, `visible`. Unknown ids are kept but ignor
 - Worker `ormicode-web`, SPA routing, immutable hashed assets, `index.html` not cached.
 - Shows its deployed version and commit. Custom domain `app.<domain>` set after deploy.
 - Deploy with wrangler for now; Worker versions give one-click rollback without touching the relay or daemon. (Automated deploys come later.)
-- Checks `hello.proto` against its own protocol and says which side to reload/upgrade on mismatch.
+- Checks `daemon.status.proto` against its own protocol. `protocol-old-client` asks to reload; `protocol-old-hub` asks to upgrade the hub.
 
-**Device token:** pair with the code, QR, or `https://app.<domain>/pair#c=<digits>`. Token stored in IndexedDB (database `ormicode`, store `token`) — never `localStorage` or a URL. Cleared storage = pair again.
+**Pairing:** enter the account and code in the app, or open `https://app.<domain>/pair#a=<account>&c=<digits>`. The fragment is scrubbed before rendering or network requests. Browser `/join` CORS is restricted to relay `ALLOWED_ORIGINS`.
+
+**Device token:** stored in IndexedDB (database `ormicode`, `token` store keyed by `device`); its `remote` store holds `{account, device, name}`. Never put tokens in `localStorage` or a URL. Cleared storage = pair again.
 
 **Strict CSP** (a hacked tab = stolen token): self-hosted assets only, no third-party scripts or remote content, no `eval`, `connect-src` only the relay, `frame-ancestors 'none'`.
 
@@ -2400,12 +2402,17 @@ Each has `order`, `size`, `collapsed`, `visible`. Unknown ids are kept but ignor
 | Updates | daemon updater | new deploy + refresh |
 | Window & notifications | OS | browser tab (web notifications later) |
 | Files & shells | local file dialogs | protocol/blobs; terminal via stream |
-| Layout | `layout.json` | IndexedDB |
+| Layout | `layout.json` | `localStorage` |
 | Offline | cached list with age | error + last known age |
 
 **Failures:** Worker down → static error page. Relay down → app loads and shows the link failing with the hub's last heartbeat age. Storage cleared → pair again. Never show stale data as live.
 
 **Tests:** CSP/headers; pairing fragment never in requests/logs/referrers; pairing (good, bad, burned code, revoke); leader tab and takeover; version display and rollback; no service worker, no requests outside the relay.
+
+**Deploy (owner)**
+1. In `apps/web`, run `ORMI_RELAY_URL=https://relay.ormi.codes pnpm --filter @ormicode/web build && wrangler deploy`.
+2. Set the relay Worker variable `ALLOWED_ORIGINS=https://app.<domain>`.
+3. Add the custom domain `app.<domain>` to the web Worker.
 
 ## Views
 
@@ -2498,7 +2505,7 @@ Network denied unless a domain is listed (requests go through a logging host pro
 
 ## First screens
 
-> **Status:** now — base scaffold built: `apps/desktop` (Electron main + CJS preload + restricted `window.ormi` IPC, `safeStorage` token store, daemon socket via `@ormicode/daemon/socket`), `packages/client-ui` (App shell, Now + session routes, SessionList/Transcript/Approvals/Composer skeletons, layout descriptor), `packages/client-platform` (Electron + browser `ClientPlatform`), `packages/ui-tokens` (dark theme from the source palette). The screens exist and render; they are not yet at the full spec below. · **Needs:** [CLI](#cli), [Relay](#relay)
+> **Status:** now — base scaffold built: `apps/desktop` (Electron main + CJS preload + restricted `window.ormi` IPC, `safeStorage` token store, daemon socket via `@ormicode/daemon/socket`), `apps/web` (Worker static-assets shell), `packages/client-ui` (App shell, Now + session routes, SessionList/Transcript/Approvals/Composer skeletons, layout descriptor), `packages/client-platform` (Electron + IndexedDB-backed browser `ClientPlatform`), `packages/ui-tokens` (dark theme from the source palette). The screens exist and render; they are not yet at the full spec below. · **Needs:** [CLI](#cli), [Relay](#relay)
 
 **The first screens to build, for desktop and web: Now, Sessions, transcript, approvals, layout.** Both shells render them from `client-ui`.
 
@@ -3289,7 +3296,7 @@ There are no per-package root scripts and no `lint:js`-style variants. A script 
 - `idx` = the per-device session summary ([Relay](#relay)). `hook` = a verified GitHub delivery ([GitHub](#github)).
 - **Long-running methods** return once the daemon has accepted the work, not when the turn ends: `session.prompt`, `session.steer`, `session.handoff`, `session.fork`, `session.digest`. Follow the turn through events.
 
-**Versioning:** `v` = envelope version, bumped only on breaking shape changes. `hello.proto` = feature level. A peer that sees a newer `proto` than it supports refuses and says so once. New fields are optional, never repurposed, and unknown fields are ignored.
+**Versioning:** `v` = envelope version, bumped only on breaking shape changes. `hello.proto` = feature level; `daemon.status` reports the daemon's `proto` as well. A peer that sees a newer `proto` than it supports refuses and says so once. The web app reports `protocol-old-client` when it must reload and `protocol-old-hub` when the daemon must be upgraded. New fields are optional, never repurposed, and unknown fields are ignored.
 
 **No UI on the wire** ([Layering](#layering)). The one exception: `extension` and `layout` artifacts carry an opaque body the daemon stores but never parses.
 
