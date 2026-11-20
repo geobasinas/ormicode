@@ -95,6 +95,33 @@ test('MCP wait accepts a completed task from replay even if it finished before s
   assert.deepEqual(JSON.parse(await waitFor(link, 'child', 'idle', 100, proof)), { state: 'idle' });
 });
 
+test('approval decisions refresh the timeout state while the turn keeps running', async () => {
+  for (const team of [false, true]) {
+    let state = 'awaiting_approval';
+    const { link, calls } = fixture(method => {
+      if (method === (team ? 'team.status' : 'session.get')) return { type: 'res', body: { state, turnCompleted: false } };
+    });
+    const waiting = waitFor(link, 'child', 'idle', 50, proof, team).then(JSON.parse);
+    await new Promise(resolve => setImmediate(resolve));
+    state = 'running'; link.onFrame(event('approval_decision'));
+    assert.deepEqual(await waiting, { timedOut: true, state: 'running' });
+    assert.equal(calls.filter(method => method === (team ? 'team.status' : 'session.get')).length, 2);
+  }
+});
+
+test('every session journal event re-evaluates authoritative status without event-specific inference', async () => {
+  for (const kind of ['approval_decision', 'question_answer', 'interaction_expired', 'team_message', 'handoff_completed', 'future_event']) {
+    let state = 'running';
+    const { link } = fixture(method => {
+      if (method === 'team.status') return { type: 'res', body: { state, turnCompleted: false } };
+    });
+    const waiting = waitFor(link, 'child', 'approval', 1000, proof, true).then(JSON.parse);
+    await new Promise(resolve => setImmediate(resolve));
+    state = 'awaiting_input'; link.onFrame(event(kind));
+    assert.deepEqual(await waiting, { state });
+  }
+});
+
 test('MCP wait cleans up on subscription/status errors and restores the existing listener', async () => {
   for (const failure of ['session.subscribe', 'session.get']) {
     for (const throws of [false, true]) {

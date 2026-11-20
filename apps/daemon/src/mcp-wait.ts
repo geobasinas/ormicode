@@ -47,10 +47,8 @@ export async function waitFor(link: Pick<Link, 'request' | 'onFrame'>, session: 
   link.onFrame = frame => {
     previous?.(frame);
     if (frame.type !== 'evt' || frame.session !== session) return;
-    const body = frame.body as Record<string, unknown>;
     if (!live) return;
-    if (['turn_end', 'done', 'error', 'state', 'interrupted', 'approval_request', 'team_approval_request', 'question_request'].includes(String(body.kind)))
-      void checkState().catch(fail);
+    void checkState().catch(fail);
   };
   const setup = async () => {
     subscriptionRequested = true;
