@@ -12,6 +12,8 @@ export function transcriptTurns(events: TranscriptEvent[]): TranscriptPart[] {
       promptSeen = current?.kind === 'events' && current.events.some(event => event.kind === 'prompt');
       if (current?.kind === 'turn' && !current.end) current.end = event;
       current = { kind: 'turn', start: event, events: [] }; parts.push(current);
+    } else if (event.kind === 'conversation_rewound') {
+      current = { kind: 'events', events: [event] }; parts.push(current);
     } else if (event.kind === 'prompt') {
       if (current?.kind === 'turn' && !current.end) {
         if (!promptSeen && event.body.steer !== true) { current.prompt = event; promptSeen = true; }

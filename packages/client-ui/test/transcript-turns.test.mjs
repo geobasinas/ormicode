@@ -68,7 +68,7 @@ test('prompts at either position stay above ticking live activity and completed 
     await act(() => steeredTool.querySelector('.ormi-tool-line').click());
     assert.match(steeredTool.textContent, /steered write completed/);
     const live = [event(1, 'turn_start'), event(2, 'tool_call', { callId: 'live', name: 'Bash', input: { command: 'find /' } })];
-    const renderLive = events => act(() => root.render(createElement(Transcript, { key: 'live', events, session: 's', scratch: true, busy: false })));
+    const renderLive = events => act(() => root.render(createElement(Transcript, { key: 'live', events, session: 's', scratch: true, busy: false, activity: { state: 'idle', lastSeq: 0 } })));
     await renderLive(live);
     const turn = document.querySelector('section[aria-label="Agent turn"]');
     const button = turn.firstElementChild;
@@ -88,6 +88,43 @@ test('prompts at either position stay above ticking live activity and completed 
     assert.equal(button.textContent, 'Worked for 15s');
     assert.equal(button.getAttribute('aria-expanded'), 'false');
     assert.equal(turn.querySelector('[data-turn-activity]'), null);
+    const original = [event(1, 'turn_start'),
+      event(2, 'tool_call', { callId: 'rewind', name: 'Write', input: { file_path: '/a', content: 'saved' } }),
+      event(3, 'tool_result', { callId: 'rewind', status: 'completed' }), event(4, 'checkpoint', { id: 'cp', seq: 3, files: [] }),
+      event(5, 'text', { text: 'hidden final answer' }), event(6, 'turn_end')];
+    const rewound = [...original, { ...event(7, 'conversation_rewound', { to: 4 }), ts: 15000 }];
+    const renderRewind = (events, activity) => act(() => root.render(createElement(Transcript, { key: 'rewind', events, session: 's', scratch: true, activity })));
+    await renderRewind(rewound, { state: 'idle', lastSeq: 7 });
+    const retained = document.querySelector('section[aria-label="Agent turn"]');
+    const disclosure = retained.firstElementChild;
+    assert.equal(disclosure.textContent, 'Worked for 3s');
+    assert.equal(disclosure.disabled, false);
+    assert.equal(disclosure.getAttribute('aria-expanded'), 'false');
+    assert.equal(retained.querySelector('[data-turn-activity]'), null);
+    assert.doesNotMatch(document.body.textContent, /hidden final answer/);
+    await act(() => t.mock.timers.tick(5000));
+    assert.equal(disclosure.textContent, 'Worked for 3s');
+    await act(() => disclosure.click());
+    assert.ok(retained.querySelector('[data-turn-activity]'));
+    await act(() => disclosure.click());
+    assert.equal(retained.querySelector('[data-turn-activity]'), null);
+    const resumed = [...rewound, { ...event(8, 'turn_start'), ts: Date.now() }, { ...event(9, 'tool_call', { callId: 'next', name: 'Bash', input: { command: 'pwd' } }), ts: Date.now() }];
+    await renderRewind(resumed, { state: 'running', lastSeq: 9 });
+    const resumedTurns = document.querySelectorAll('section[aria-label="Agent turn"]');
+    assert.equal(resumedTurns.length, 2);
+    assert.equal(resumedTurns[0].firstElementChild.textContent, 'Worked for 3s');
+    assert.equal(resumedTurns[1].firstElementChild.textContent, 'Working for 0s');
+    await act(() => t.mock.timers.tick(5000));
+    assert.equal(resumedTurns[0].firstElementChild.textContent, 'Worked for 3s');
+    assert.equal(resumedTurns[1].firstElementChild.textContent, 'Working for 5s');
+    for (const state of [undefined, 'idle', 'interrupted', 'failed']) {
+      await act(() => root.render(createElement(Transcript, { key: `orphan-${state}`, events: original.slice(0, 4), session: 's', scratch: true,
+        activity: state ? { state, lastSeq: 4 } : undefined })));
+      const orphan = document.querySelector('section[aria-label="Agent turn"]').firstElementChild;
+      assert.equal(orphan.textContent, 'Worked for 3s');
+      assert.equal(orphan.disabled, false);
+      assert.equal(orphan.getAttribute('aria-expanded'), 'false');
+    }
   } finally {
     await act(() => root.unmount());
     t.mock.timers.reset();

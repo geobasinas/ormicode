@@ -74,7 +74,7 @@ export function SessionView({ session, rail = 'none', onRail, onOpen, handoffOpe
         </div>
       </div> : null}
       {approvalsAtTop ? <Approvals session={session} pending={approvals} events={events} /> : null}
-      {details ? <Transcript header={details.team ? <TeamPanel details={details} onOpen={onOpen} /> : undefined} events={events} session={session} scratch={scratch} busy={['starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying', 'paused_rate_limited'].includes(details.state)} onHandoff={() => onHandoffChange?.(true)} onOpenSession={onOpen} onEditPrompt={setEditedPrompt} /> : null}
+      {details ? <Transcript header={details.team ? <TeamPanel details={details} onOpen={onOpen} /> : undefined} events={events} session={session} scratch={scratch} activity={details} busy={['starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying', 'paused_rate_limited'].includes(details.state)} onHandoff={() => onHandoffChange?.(true)} onOpenSession={onOpen} onEditPrompt={setEditedPrompt} /> : null}
       {!approvalsAtTop ? <Approvals session={session} pending={approvals} events={events} /> : null}
       {composer}
       <HandoffDialog session={session} details={details} open={handoffOpen}

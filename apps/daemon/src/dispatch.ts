@@ -215,7 +215,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         if (!s) return client.link.replyError(id, 'session.not_found', String(body.session));
         const base = getSessionPorts(db, s.id);
         return client.link.reply(id, {
-          id: s.id, title: s.title, ...sessionStatus(ctx, s), parentless: Boolean(s.parentless), project: s.project, vendor: s.vendor,
+          id: s.id, title: s.title, ...sessionStatus(ctx, s), lastSeq: s.last_seq, parentless: Boolean(s.parentless), project: s.project, vendor: s.vendor,
           cwd: s.cwd, ...(s.project === 'scratch' ? { scratchFiles: countScratchFiles(s.cwd) } : {}),
           transport: s.transport, updatedAt: s.updated_at, branch: s.branch, worktree: Boolean(s.worktree),
           ...(base === undefined ? {} : { ports: { base, count: SESSION_PORT_COUNT } }),
