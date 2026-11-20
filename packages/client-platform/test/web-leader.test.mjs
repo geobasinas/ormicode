@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { browserPlatform, closeBrowserPlatform } from '../src/index.ts';
+import { WsLink } from '@ormicode/relay-client';
+import { newId } from '@ormicode/protocol';
 
 class MemoryLocks {
   queue = [];
@@ -46,7 +48,7 @@ function memoryStore() {
   };
 }
 
-function environment({ proto = 1, rejectConnect } = {}) {
+function environment({ proto = 1, rejectConnect, history } = {}) {
   const store = memoryStore();
   const locks = new MemoryLocks();
   const links = [];
@@ -54,6 +56,24 @@ function environment({ proto = 1, rejectConnect } = {}) {
   const connect = async config => {
     connectCalls.push(config);
     if (rejectConnect) throw rejectConnect;
+    if (history) {
+      const calls = [];
+      const socket = {
+        send(raw) {
+          const frame = JSON.parse(raw);
+          if (frame.type !== 'req') return;
+          calls.push([frame.method, frame.body]);
+          queueMicrotask(() => {
+            if (frame.method === 'session.subscribe') for (const event of history)
+              if (event.session === frame.body.session && event.seq > (frame.body.after ?? 0)) socket.onmessage({ data: JSON.stringify(event) });
+            socket.onmessage({ data: JSON.stringify({ v: 1, type: 'res', id: frame.id, ok: true, body: frame.method === 'daemon.status' ? { proto } : {} }) });
+          });
+        },
+        close() { socket.onclose({ code: 1000 }); },
+      };
+      const link = new WsLink(socket); link.calls = calls;
+      links.push(link); return link;
+    }
     const link = {
       calls: [],
       request: async (method, body) => {
@@ -134,7 +154,7 @@ test('a follower request is answered through the leader link', async t => {
   assert.ok(env.links[0].calls.some(([method, body]) => method === 'session.list' && body.archived === false));
 });
 
-test('two tabs share one upstream subscription until both unsubscribe', async t => {
+test('two tabs share a live subscription, replay each tab and unsubscribe only after both leave', async t => {
   const env = environment();
   t.after(() => env.close());
   const first = env.create();
@@ -146,13 +166,36 @@ test('two tabs share one upstream subscription until both unsubscribe', async t 
   const second = env.create();
   first.transport.subscribe('s_1', 3);
   second.transport.subscribe('s_1', 3);
-  await until(() => env.links[0].calls.filter(([method]) => method === 'session.subscribe').length === 1);
+  await until(() => env.links[0].calls.filter(([method]) => method === 'session.subscribe').length === 2);
   await new Promise(resolve => setTimeout(resolve, 20));
   first.transport.unsubscribe('s_1');
   await new Promise(resolve => setTimeout(resolve, 20));
   assert.equal(env.links[0].calls.filter(([method]) => method === 'session.unsubscribe').length, 0);
   second.transport.unsubscribe('s_1');
   await until(() => env.links[0].calls.filter(([method]) => method === 'session.unsubscribe').length === 1);
+});
+
+test('new tabs and reopened sessions receive full history through real WsLink dedup without duplicating existing subscribers', async t => {
+  const session = newId('s');
+  const history = [1, 2, 3].map(seq => ({ v: 1, type: 'evt', session, seq, ts: seq, body: { kind: 'text', text: String(seq) } }));
+  const env = environment({ history }); t.after(() => env.close());
+  const first = env.create(), received = [[], []];
+  first.transport.onEvent = frame => { if (frame.type === 'evt') received[0].push(frame.seq); };
+  await until(() => env.connectCalls.length === 0);
+  await first.web.pair({ account: 'demo', code: 'history' });
+  await until(() => env.links.length === 1);
+  first.transport.subscribe(session);
+  await until(() => received[0].length === 3);
+  const second = env.create(); second.transport.onEvent = frame => { if (frame.type === 'evt') received[1].push(frame.seq); };
+  second.transport.subscribe(session);
+  await until(() => received[1].length === 3);
+  assert.deepEqual(received, [[1, 2, 3], [1, 2, 3]]);
+  first.transport.unsubscribe(session); second.transport.unsubscribe(session);
+  await until(() => env.links[0].calls.some(([method]) => method === 'session.unsubscribe'));
+  received[0] = []; first.transport.subscribe(session, 0);
+  await until(() => received[0].length === 3);
+  assert.deepEqual(received[0], [1, 2, 3]); assert.deepEqual(received[1], [1, 2, 3]);
+  assert.ok(env.links[0].calls.filter(([method]) => method === 'session.subscribe').every(([, body]) => body.after === undefined));
 });
 
 test('the waiting tab takes over and restores its subscriptions after leader close', async t => {

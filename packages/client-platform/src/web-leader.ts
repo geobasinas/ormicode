@@ -152,7 +152,7 @@ export class WebLeader {
         }
         break;
       case 'evt':
-        if (!this.leader && message.frame) this.onEvent?.(message.frame as Frame);
+        if (!this.leader && message.frame && (!message.tab || message.tab === this.tab)) this.onEvent?.(message.frame as Frame);
         break;
       case 'res': {
         if (this.leader || typeof message.id !== 'string' || !message.frame) break;
@@ -205,7 +205,7 @@ export class WebLeader {
     if (tabs.has(tab)) return;
     tabs.set(tab, after);
     this.subscribers.set(session, tabs);
-    if (tabs.size === 1) this.subscribeUpstream(session, after);
+    this.subscribeUpstream(session, after, true);
   }
 
   private removeSubscriber(tab: string, session: string): void {
@@ -217,11 +217,11 @@ export class WebLeader {
     }
   }
 
-  private subscribeUpstream(session: string, after: number): void {
+  private subscribeUpstream(session: string, after: number, replay = false): void {
     const link = this.link;
-    if (!link || this.upstreamSubs.has(session)) return;
+    if (!link || this.upstreamSubs.has(session) && !replay) return;
     this.upstreamSubs.add(session);
-    void link.request('session.subscribe', { session, after }).catch(() => {
+    void link.request('session.subscribe', { session, ...(after ? { after } : {}) }).catch(() => {
       if (this.link === link) this.upstreamSubs.delete(session);
     });
   }
@@ -255,6 +255,15 @@ export class WebLeader {
         if (!this.leader) { link.close(); return; }
         this.link = link;
         link.onFrame = frame => {
+          if (frame.type === 'evt' && typeof frame.seq === 'number') {
+            for (const [tab, after] of this.subscribers.get(frame.session) ?? []) {
+              if (frame.seq <= after) continue;
+              this.subscribers.get(frame.session)!.set(tab, frame.seq);
+              if (tab === this.tab) this.onEvent?.(frame);
+              else this.channel.postMessage({ t: 'evt', tab, frame });
+            }
+            return;
+          }
           this.onEvent?.(frame);
           this.channel.postMessage({ t: 'evt', frame });
         };
