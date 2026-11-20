@@ -98,6 +98,7 @@ export function createPromptDelivery(options: PromptDeliveryOptions) {
       });
       if (opts?.journal !== false) options.record(session, 'prompt', {
         text: deliveredText,
+        ...(deliveredText !== text ? { retryText: text } : {}),
         ...(opts?.actor ? { actor: opts.actor } : {}),
         ...(opts?.context?.length ? { context: opts.context } : {}),
         ...(prepared.attachments.length ? { attachments: prepared.attachments } : {}),

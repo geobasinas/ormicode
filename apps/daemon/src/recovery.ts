@@ -32,13 +32,19 @@ export const resumePolicy = (): ResumePolicy => {
 
 const inFlight = ['starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying', 'paused_rate_limited'];
 
-/** Expire the last unanswered approval/question so clients can clear it. */
+/** Expire native interactions whose processes cannot survive a host restart. */
 function expirePending(db: Store, session: string): void {
-  const row = db.prepare(
-    "SELECT kind, payload FROM events WHERE session = ? AND kind IN ('approval_request','question_request') ORDER BY seq DESC LIMIT 1",
-  ).get(session) as { kind: string; payload: string } | undefined;
-  const payload = row ? JSON.parse(row.payload) as Record<string, unknown> : {};
-  append(db, session, { kind: 'interaction_expired', payload: { kind: 'interaction_expired', reason: 'host_restart', request: payload.request ?? payload.id, answerable: row?.kind === 'question_request' && payload.daemonInteraction === true, ...(payload.id ? { id: payload.id } : {}) } });
+  const rows = db.prepare("SELECT kind, payload FROM events WHERE session = ? AND kind IN ('approval_request','question_request','approval_decision','question_answer','interaction_expired') ORDER BY seq").all(session) as { kind: string; payload: string }[];
+  const pending = new Map<string, { kind: string; payload: Record<string, unknown> }>();
+  for (const row of rows) {
+    const payload = JSON.parse(row.payload) as Record<string, unknown>;
+    const request = payload.request ?? payload.id;
+    if (typeof request !== 'string') continue;
+    if (row.kind === 'approval_request' || row.kind === 'question_request') pending.set(request, { kind: row.kind, payload });
+    else pending.delete(request);
+  }
+  for (const [request, { kind, payload }] of pending)
+    append(db, session, { kind: 'interaction_expired', payload: { kind: 'interaction_expired', reason: 'host_restart', request, answerable: kind === 'question_request' && payload.daemonInteraction === true, ...(payload.id ? { id: payload.id } : {}) } });
 }
 
 /**
@@ -57,6 +63,7 @@ export function recoverSessions(db: Store, policy: ResumePolicy): Recovery {
     expireHandoffQuestions({ db, record: (session, kind, payload) => { append(db, session, { kind, payload }); } }, s.id);
   for (const s of listSessions(db).filter(s => !s.handed_off && [...inFlight, 'interrupted'].includes(s.state))) {
     checkTail(db, s.id);
+    expirePending(db, s.id);
     const team = s.team ? getTeam(db, s.team) : undefined;
     if (team && team.parent !== s.id && team.closed_at === null && ['starting', 'running', 'retrying'].includes(s.state)
       && !listQueuedPrompts(db, s.id).length)
@@ -64,7 +71,6 @@ export function recoverSessions(db: Store, policy: ResumePolicy): Recovery {
     // paused_rate_limited sessions keep their schedule: the timer is re-armed
     // from the last error event's resetAt instead of interrupting the session.
     if (inFlight.includes(s.state) && s.state !== 'paused_rate_limited') {
-      if (s.state === 'awaiting_approval' || s.state === 'awaiting_input') expirePending(db, s.id);
       append(db, s.id, { kind: 'interrupted', payload: { reason: 'host_restart' } });
       setState(db, s.id, 'interrupted', 'host_restart');
     }
