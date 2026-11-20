@@ -41,7 +41,7 @@ import { expandPrompt, PromptInvalidError, validatePrompt } from './prompt-conte
 import { retryPrompt } from './prompt-methods.ts';
 import { listModels } from './models.ts';
 import { startSession } from './session-start.ts';
-import { copyOutMethod, countScratchFiles } from './scratch-methods.ts';
+import { copyOutMethod, countScratchFiles, scratchWorkspaceInUse } from './scratch-methods.ts';
 import { SESSION_PORT_COUNT } from './session-ports.ts';
 import { serviceMethod } from './service-methods.ts';
 import type { Services } from './services.ts';
@@ -281,10 +281,10 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         archiveSession(db, session);
         ctx.teamLifecycle.unavailable(session);
         releaseForSession(db, session);
-        // Scratch sessions own their folder; delete removes it (archive keeps it).
+        // Only the scratch folder owner may remove it, never while teammates still use it.
         const row = getSession(db, session);
         const scratchRoot = join(ormicodeDir(), 'scratch');
-        if (method === 'session.delete' && row?.cwd.startsWith(scratchRoot)) {
+        if (method === 'session.delete' && row?.cwd === join(scratchRoot, session) && !scratchWorkspaceInUse(db, row.cwd, session)) {
           try { rmSync(row.cwd, { recursive: true, force: true }); } catch { /* best effort */ }
         }
         if (method === 'session.delete') {

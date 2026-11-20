@@ -1,10 +1,15 @@
 import { copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, realpathSync, rmSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep, win32 } from 'node:path';
-import { getSession } from '@ormicode/session-store';
+import { getSession, type Store } from '@ormicode/session-store';
 import type { Client, DispatchCtx } from './dispatch.ts';
 import { ormicodeDir } from './socket.ts';
 
 type CopyOutCode = 'session.not_scratch' | 'copy_out.invalid_project' | 'copy_out.invalid_path' | 'copy_out.conflict' | 'copy_out.failed';
+
+export function scratchWorkspaceInUse(db: Store, cwd: string, excluding: string): boolean {
+  return Boolean(db.prepare(`SELECT 1 FROM sessions WHERE cwd = ? AND id != ? AND
+    (archived = 0 OR state IN ('starting', 'running', 'retrying', 'awaiting_approval', 'awaiting_input', 'paused_rate_limited')) LIMIT 1`).get(cwd, excluding));
+}
 
 class CopyOutError extends Error {
   readonly code: CopyOutCode;
@@ -110,7 +115,9 @@ export function copyOutMethod(ctx: DispatchCtx, client: Client, id: string, body
 
   try {
     const scratchRoot = resolve(join(ormicodeDir(), 'scratch'));
-    if (!existsSync(scratchRoot) || resolve(row.cwd) !== resolve(scratchRoot, session))
+    const parent = row.parent ? getSession(ctx.db, row.parent) : undefined;
+    const owner = parent?.project === 'scratch' && parent.cwd === row.cwd ? parent.id : session;
+    if (!existsSync(scratchRoot) || resolve(row.cwd) !== resolve(scratchRoot, owner))
       throw new CopyOutError('copy_out.invalid_path', 'scratch folder is unavailable');
     const realScratchRoot = realpathSync(scratchRoot);
     const sourceRoot = realpathSync(row.cwd);

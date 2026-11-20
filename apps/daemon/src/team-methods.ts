@@ -31,6 +31,7 @@ async function handle(ctx: DispatchCtx, client: Client, id: string, method: stri
   if (actor.archived) return fail('team.closed', 'caller is archived');
   if (method === 'team.spawn') return spawnTeamChild(ctx, client, id, body, actor);
   const team = ownedTeam(ctx.db, actor.id) ?? (actor.team ? getTeam(ctx.db, actor.team) : undefined);
+  if (!team && method === 'team.tree') return client.link.reply(id, { team: null, parent: actor.id, children: [] });
   if (!team) return fail('team.not_found', 'session has no team');
   if (team.closed_at !== null) return fail('team.closed', 'team is closed');
   const target = body.session === undefined ? undefined : getSession(ctx.db, String(body.session));

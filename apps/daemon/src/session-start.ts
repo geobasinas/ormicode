@@ -14,7 +14,7 @@ import { allocateSessionPorts } from './session-ports.ts';
 import { sessionEnvironment } from './session-env.ts';
 
 export async function startSession(
-  ctx: DispatchCtx, client: Client, id: string, body: Record<string, unknown>,
+  ctx: DispatchCtx, client: Client, id: string, body: Record<string, unknown>, scratchCwd?: string,
 ): Promise<void> {
   if (body.parent && !body.team && (ownedTeam(ctx.db, String(body.parent)) || getSession(ctx.db, String(body.parent))?.team))
     return client.link.replyError(id, 'team.forbidden', 'team members must start children through team.spawn');
@@ -23,10 +23,12 @@ export async function startSession(
   const sessionId = newId('s');
   const project = String(body.project);
   const workspace = body.workspace as WorkspaceChoice | { kind: 'scratch' };
-  if (workspace.kind !== 'scratch') {
+  const sharedScratch = workspace.kind === 'scratch' && scratchCwd !== undefined;
+  const directory = workspace.kind === 'scratch' ? scratchCwd : project;
+  if (directory !== undefined) {
     let isDirectory = false;
-    try { isDirectory = statSync(project).isDirectory(); } catch { /* missing project */ }
-    if (!isDirectory) return client.link.replyError(id, 'workspace.not_found', `project directory not found: ${project}`);
+    try { isDirectory = statSync(directory).isDirectory(); } catch { /* missing directory */ }
+    if (!isDirectory) return client.link.replyError(id, 'workspace.not_found', `${sharedScratch ? 'workspace' : 'project'} directory not found: ${directory}`);
   }
   const missing = ctx.secrets.missing(project);
   if (missing.length) return client.link.replyError(id, 'secrets.missing', `missing secrets: ${missing.join(', ')} (ormi secret set NAME --project ${project})`);
@@ -35,7 +37,7 @@ export async function startSession(
   catch (error) { return client.link.replyError(id, 'session.ports_unavailable', String(error)); }
   let resolved: ResolvedWorkspace;
   if (workspace.kind === 'scratch') {
-    resolved = { cwd: join(ormicodeDir(), 'scratch', sessionId) };
+    resolved = { cwd: scratchCwd ?? join(ormicodeDir(), 'scratch', sessionId) };
     try { mkdirSync(resolved.cwd, { recursive: true }); }
     catch (error) { releaseSessionPorts(ctx.db, sessionId); throw error; }
   } else {
@@ -77,7 +79,7 @@ export async function startSession(
     return client.link.replyError(id, 'prompt.invalid', error instanceof Error ? error.message : String(error));
   }
   const machine = String(body.machine ?? 'm_local');
-  const lease = acquireWorkspace(ctx.db, cwd, sessionId, machine);
+  const lease = sharedScratch ? {} : acquireWorkspace(ctx.db, cwd, sessionId, machine);
   if (lease.conflict) {
     releaseSessionPorts(ctx.db, sessionId);
     return client.link.replyError(id, 'lease.conflict', `workspace held by ${lease.conflict}`);

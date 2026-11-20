@@ -32,6 +32,7 @@ test('team contracts validate actors, targets, board actions and journal events'
   assert.equal(parseResponseBody('team.escalate', { escalated: true }).success, true);
   assert.equal(parseRequestBody('team.approve', { actor, session: child, request: newId('req'), option: 'allow', reason: '' }).success, false);
   assert.equal(parseResponseBody('team.spawn', { team, session: child }).success, true);
+  assert.equal(parseResponseBody('team.tree', { team: null, parent: actor, children: [] }).success, true);
   assert.equal(parseResponseBody('team.report', { text: '' }).success, true);
   assert.equal(parseResponseBody('team.inbox', { messages: [] }).success, true);
   assert.equal(parseResponseBody('team.status', { session: child, state: 'idle', lastActivity: 0, tokens: null }).success, true);

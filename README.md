@@ -1394,6 +1394,8 @@ secrets:
 
 **A session can own child sessions. Together they're a team.** Same session type, plus a parent and a team id.
 
+`team_roster` (`team.tree`) also works before a team exists: it returns `{team: null, parent: <lead session>, children: []}` without creating a team. The first spawn creates the team lazily. Project teams get isolated worktrees; no-project (`scratch`) teammates instead share the lead's existing scratch cwd, without taking its workspace lease. Deleting a teammate never deletes the lead's workspace; deleting the lead keeps the folder while teammates still use it. Copy to project accepts the shared scratch folder too.
+
 **Talking**
 - Mesh: children can message the parent and any sibling; the parent reaches everyone.
 - Messages arrive at the recipient's next step, never mid-edit. One **urgent** flag can interrupt a turn (for "stop, wrong branch").
