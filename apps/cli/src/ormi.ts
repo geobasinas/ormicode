@@ -14,6 +14,7 @@ import { withDaemon } from './daemon.ts';
 import { newId } from '@ormicode/protocol';
 import { flag } from './usage.ts';
 import { serviceCommand, previewCommand } from './service.ts';
+import { designCommand } from './design.ts';
 import { browserCommand } from './browser.ts';
 
 const [group, command, ...rest] = process.argv.slice(2);
@@ -37,6 +38,8 @@ if (group === 'agent' && command === 'smoke') {
   process.exit(await checkpointCommand(command, rest));
 } else if (group === 'file') {
   process.exit(await fileCommand(command, rest));
+} else if (group === 'design') {
+  process.exit(await designCommand(command, rest));
 } else if (group === 'project') {
   process.exit(await projectCommand(command, rest));
 } else if (group === 'service') {

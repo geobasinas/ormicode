@@ -2,6 +2,7 @@ import { newId, PROTOCOL_VERSION, type Frame } from '@ormicode/protocol';
 import { connectRemote, joinRemote, RelayAuthError } from '@ormicode/relay-client';
 import type { RemoteEndpoint, WsLink } from '@ormicode/relay-client';
 import type { WebRemote, WebStore } from './web-store.ts';
+import { clearAccountStorage } from './account-storage.ts';
 
 type Connect = typeof connectRemote;
 type Join = typeof joinRemote;
@@ -122,6 +123,7 @@ export class WebLeader {
   }
 
   async unpair(): Promise<void> {
+    clearAccountStorage();
     await this.deps.store.clear();
     this.channel.postMessage({ t: 'unpaired' });
     if (this.leader) this.handlePairChange();
@@ -182,7 +184,10 @@ export class WebLeader {
         }
         break;
       case 'paired':
+        if (this.leader) this.handlePairChange();
+        break;
       case 'unpaired':
+        clearAccountStorage();
         if (this.leader) this.handlePairChange();
         break;
     }
@@ -302,6 +307,7 @@ export class WebLeader {
           continue;
         }
         if (link.closeCode === 4001 || link.closeCode === 4004) {
+          clearAccountStorage();
           await this.deps.store.clear();
           this.setState('unpaired');
           continue;
@@ -321,6 +327,7 @@ export class WebLeader {
           continue;
         }
         if (error instanceof RelayAuthError || (error && typeof error === 'object' && 'code' in error && [4001, 4004].includes(Number(error.code)))) {
+          clearAccountStorage();
           await this.deps.store.clear();
           this.setState('unpaired');
           await this.waitForWake();

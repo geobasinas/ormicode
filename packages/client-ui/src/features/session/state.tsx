@@ -1,5 +1,6 @@
 /** Session state glyphs, colours and labels shared by the sidebar, Now and header. */
 import { Play, LoaderCircle, Hand, MessageCircleQuestion, Pause, CircleX, Moon, Check, Archive, RotateCw, type LucideIcon } from 'lucide-react';
+import { branchLabel } from './team-presentation.ts';
 
 export interface StateGlyph { icon: LucideIcon; color: string; fill?: boolean }
 
@@ -31,7 +32,7 @@ export function StateIcon({ state, size = 13 }: { state: string; size?: number }
 }
 
 /** Mono sub-line under a session title. */
-export function whereLine(s: { project: string; branch?: string | null }, withProject?: string): string {
+export function whereLine(s: { project: string; branch?: string | null; worktree?: boolean }, withProject?: string): string {
   if (s.project === 'scratch' || !s.branch) return s.project === 'scratch' ? 'No project' : withProject ?? 'no branch';
-  return withProject ? `${withProject} · ${s.branch}` : s.branch;
+  return withProject ? `${withProject} · ${branchLabel(s)}` : branchLabel(s);
 }

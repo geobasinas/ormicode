@@ -6,6 +6,7 @@ import { ShieldQuestion, ShieldAlert, CircleHelp, ChevronRight, ChevronDown, Loa
 import { usePlatform } from '../../lib/platform.ts';
 import { shape, Detail } from './ToolRow.tsx';
 import type { TranscriptEvent } from './useTranscript.ts';
+import { questionAnswers } from './question-answers.ts';
 
 const mono = { fontFamily: 'var(--font-mono)' };
 type Option = { id: string; label: string; kind?: string };
@@ -98,6 +99,9 @@ function ApprovalLine({ session, req, events }: { session: string; req: Transcri
       </Line>
       {typeof b.title === 'string' || typeof b.description === 'string' || typeof b.reason === 'string'
         ? <div style={{ fontSize: 11.5, color: 'var(--text-hint)', padding: '0 0 2px 19px' }}>{String(b.description ?? b.title ?? b.reason)}</div> : null}
+      {typeof b.escalatedBy === 'string' ? <div style={{ fontSize: 11.5, color: 'var(--text-hint)', padding: '0 0 2px 19px', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+        Escalated by parent{typeof b.escalationReason === 'string' && b.escalationReason.trim() ? `: ${b.escalationReason}` : ''}
+      </div> : null}
       {error ? <div style={{ fontSize: 11.5, color: 'var(--accent-red)', padding: '0 0 2px 19px' }}>{error}</div> : null}
       {open && sub ? <div style={{ margin: '2px 0 6px 19px', padding: '6px 9px', borderRadius: 6, background: 'var(--bg-inset)', ...mono, fontSize: 11, color: 'var(--text-label)', maxHeight: 200, overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
         <Detail name={sub.name} input={sub.input} raw={sub.raw} />
@@ -113,9 +117,9 @@ function QuestionLine({ session, req }: { session: string; req: TranscriptEvent 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const send = async (answers: Record<string, string[]>) => {
-    if (busy || questions.some(q => !answers[q.question]?.length)) return;
+    const body = questionAnswers(questions, answers);
+    if (busy || !body) return;
     setBusy(true); setError(undefined);
-    const body = Object.fromEntries(questions.map(q => [q.question, answers[q.question]!.join(', ')]));
     try {
       const r = await transport.request('session.answer', { session, request: req.body.request, answers: body });
       if (r.type === 'err') { setBusy(false); setError(String((r as { message?: string }).message ?? r.code)); }
@@ -127,9 +131,9 @@ function QuestionLine({ session, req }: { session: string; req: TranscriptEvent 
     const cur = picked[q.question] ?? [];
     const next = { ...picked, [q.question]: q.multiSelect ? (cur.includes(label) ? cur.filter(l => l !== label) : [...cur, label]) : [label] };
     setPicked(next);
-    if (!questions.some(x => x.multiSelect)) void send(next);
+    if (!questions.some(x => x.multiSelect || !x.options.length)) void send(next);
   };
-  const multi = questions.some(q => q.multiSelect);
+  const multi = questions.some(q => q.multiSelect || !q.options.length);
   return (
     <div>
       {questions.map((q, i) => (
@@ -146,6 +150,9 @@ function QuestionLine({ session, req }: { session: string; req: TranscriptEvent 
         <Line icon={<CircleHelp size={12} style={{ color: 'var(--accent-amber)', flexShrink: 0 }} />}
           actions={<>
             {q.options.map(o => <Choice key={o.label} label={o.label} title={o.description} busy={busy} picked={(picked[q.question] ?? []).includes(o.label)} onClick={() => pick(q, o.label)} />)}
+            {!q.options.length ? <input aria-label={`Answer: ${q.question}`} disabled={busy} value={picked[q.question]?.[0] ?? ''}
+              onChange={event => setPicked(current => ({ ...current, [q.question]: [event.target.value] }))}
+              onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); void send(picked); } }} /> : null}
             {multi && i === questions.length - 1 ? <Choice label="Send" primary busy={busy} onClick={() => void send(picked)} /> : null}
           </>}>
           <span style={{ color: 'var(--text-secondary)', fontWeight: 500, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={q.question}>{q.question}</span>

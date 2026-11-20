@@ -19,6 +19,7 @@ import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panel
 import { usePlatform } from '../lib/platform.ts';
 import { HandoffDialog } from '../features/session/HandoffDialog.tsx';
 import type { LayoutDescriptor } from '../lib/layout.ts';
+import { TeamPanel } from '../features/session/TeamPanel.tsx';
 
 interface SessionCost {
   input: number; output: number; cacheRead: number; cacheWrite: number; turns: number;
@@ -59,6 +60,11 @@ export function SessionView({ session, rail = 'none', onRail, onOpen, handoffOpe
   const costTitle = cost
     ? `Input ${cost.input.toLocaleString('en-US')} · Output ${cost.output.toLocaleString('en-US')} · Cache read ${cost.cacheRead.toLocaleString('en-US')} · Cache write ${cost.cacheWrite.toLocaleString('en-US')} · ${cost.turns} turns · model ${cost.model ?? '—'} · prices ${cost.priceVersion ?? '—'}${cost.source === 'estimate' ? ' (estimate)' : ''}`
     : '';
+  const composer = <div data-session-composer style={{ minHeight: layout?.regions.composer?.size ?? 0 }}>
+    <Composer session={session} details={details} onGit={scratch ? undefined : onRail ? () => onRail('git') : undefined}
+      onOpenRail={onRail ? pane => onRail(pane) : undefined} onHandoff={() => onHandoffChange?.(true)}
+      prefill={editedPrompt} onPrefillApplied={() => setEditedPrompt(undefined)} />
+  </div>;
   const chat = (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minWidth: 0, overflow: 'hidden' }}>
       {details ? <div style={{ display: 'flex', justifyContent: 'center', flexShrink: 0 }}>
@@ -68,13 +74,9 @@ export function SessionView({ session, rail = 'none', onRail, onOpen, handoffOpe
         </div>
       </div> : null}
       {approvalsAtTop ? <Approvals session={session} pending={approvals} events={events} /> : null}
-      <Transcript events={events} session={session} scratch={scratch} busy={Boolean(details && ['starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying', 'paused_rate_limited'].includes(details.state))} onHandoff={() => onHandoffChange?.(true)} onOpenSession={onOpen} onEditPrompt={setEditedPrompt} />
+      {details ? <Transcript header={details.team ? <TeamPanel details={details} onOpen={onOpen} /> : undefined} events={events} session={session} scratch={scratch} busy={['starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying', 'paused_rate_limited'].includes(details.state)} onHandoff={() => onHandoffChange?.(true)} onOpenSession={onOpen} onEditPrompt={setEditedPrompt} /> : null}
       {!approvalsAtTop ? <Approvals session={session} pending={approvals} events={events} /> : null}
-      <div data-session-composer style={{ minHeight: layout?.regions.composer?.size ?? 0 }}>
-      <Composer session={session} details={details} onGit={scratch ? undefined : onRail ? () => onRail('git') : undefined}
-        onOpenRail={onRail ? pane => onRail(pane) : undefined} onHandoff={() => onHandoffChange?.(true)}
-        prefill={editedPrompt} onPrefillApplied={() => setEditedPrompt(undefined)} />
-      </div>
+      {composer}
       <HandoffDialog session={session} details={details} open={handoffOpen}
         onClose={() => onHandoffChange?.(false)} onOpenSession={onOpen} />
     </div>

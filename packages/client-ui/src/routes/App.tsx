@@ -5,35 +5,40 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ClientPlatform } from '@ormicode/client-platform';
 import { PlatformContext } from '../lib/platform.ts';
 import { applyTheme, themeByName } from '../lib/theme.ts';
-import { defaultLayout, applyLayout, validateLayout } from '../lib/layout.ts';
-import type { LayoutDescriptor } from '../lib/layout.ts';
-import { PanelLeft, Minus, Square, X, Search, SquarePen, Settings, FolderPlus, GitBranch, FolderOpen, SquareTerminal, NotebookPen, Globe, type LucideIcon } from 'lucide-react';
+import { defaultLayout, applyLayout, validateLayout, type LayoutDescriptor } from '../lib/layout.ts';
+import { PanelLeft, Minus, Square, X, Search, SquarePen, Settings, FolderPlus, GitBranch, FolderOpen, SquareTerminal, NotebookPen, Globe, PenTool, type LucideIcon } from 'lucide-react';
 import { SessionList } from '../features/session/SessionList.tsx';
 import { useSession } from '../features/session/useSession.ts';
 import { Now } from './Now.tsx';
 import { SessionView } from './SessionView.tsx';
+import { DesignPage } from './DesignPage.tsx';
 import { OPEN_FILE } from '../lib/openFile.ts';
 import { SettingsView, loadPrefs, type Prefs } from './Settings.tsx';
 import { SessionHeader } from '../features/session/SessionHeader.tsx';
 import { NEEDS_YOU } from '../features/session/state.tsx';
+import { branchLabel } from '../features/session/team-presentation.ts';
 import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels';
 import { Toaster } from '../components/ui/sonner.tsx';
+import { WorkspaceSwitcher, type Workspace } from './WorkspaceSwitcher.tsx';
+import { codeWorkspaceRoute } from '../lib/workspace-route.ts';
 import { agoText } from '../lib/format.ts';
 import { Button } from '../components/Button.tsx';
 import { Onboarding } from '../features/pair/Onboarding.tsx';
 import { AddProjectDialog } from '../features/projects/AddProjectDialog.tsx';
 import { useIsMobile } from '../hooks/use-mobile.ts';
-
 const MAX_TABS = 8;
 const drag = { WebkitAppRegion: 'drag' } as const;
 const noDrag = { WebkitAppRegion: 'no-drag' } as const;
-
-function Titlebar({ platform }: { platform: ClientPlatform }) {
+function Titlebar({ platform, workspace, onWorkspaceChange, sidebarOpen, onSidebarToggle }: {
+  platform: ClientPlatform; workspace: Workspace; onWorkspaceChange(workspace: Workspace): void; sidebarOpen: boolean; onSidebarToggle(): void;
+}) {
   const d = platform.desktop;
   const btn = { ...noDrag, width: 46, height: 40, font: 'inherit', fontSize: 13, border: 'none', cursor: 'default', background: 'transparent', color: 'var(--text-secondary)' };
   return (
-    <div style={{ ...drag, height: 40, display: 'flex', alignItems: 'center', paddingLeft: 14, background: 'var(--bg-window)', flexShrink: 0 }}>
-      <PanelLeft size={15} style={{ ...noDrag, color: 'var(--text-secondary)' }} />
+    <div className="app-titlebar" style={{ ...drag, height: 40, display: 'flex', alignItems: 'center', paddingLeft: 14, background: 'var(--bg-window)', flexShrink: 0 }}>
+      <button type="button" className="hv" title="Toggle sidebar" aria-label="Toggle sidebar" aria-expanded={sidebarOpen} onClick={onSidebarToggle}
+        style={{ ...noDrag, display: 'grid', placeItems: 'center', padding: 4, borderRadius: 5, marginLeft: -4, marginRight: -4, color: 'var(--text-secondary)' }}><PanelLeft size={15} /></button>
+      <WorkspaceSwitcher workspace={workspace} onChange={onWorkspaceChange} />
       <span style={{ flex: 1 }} />
       {d ? (
         <span style={{ display: 'flex' }}>
@@ -46,7 +51,7 @@ function Titlebar({ platform }: { platform: ClientPlatform }) {
   );
 }
 
-const PAGES: Record<string, string> = { now: 'Home', settings: 'Settings' };
+const PAGES: Record<string, string> = { now: 'Home', settings: 'Settings', design: 'Design' };
 
 function Tab({ id, n, active, onSelect, onClose }: { id: string; n?: number; active: boolean; onSelect: () => void; onClose?: () => void }) {
   const details = useSession(PAGES[id] ? undefined : id);
@@ -70,7 +75,7 @@ function Tab({ id, n, active, onSelect, onClose }: { id: string; n?: number; act
       <span className={active ? undefined : 'hv-tab'} style={{ position: 'relative', zIndex: 2, display: 'inline-flex', alignItems: 'center', gap: 8, padding: '4px 11px', borderRadius: 8 }}>
         {n !== undefined ? <span style={{ width: 18, height: 18, borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: needsYou ? 'var(--tint-amber)' : 'var(--bg-chip)', color: needsYou ? 'var(--accent-amber)' : 'var(--text-label)', fontSize: 10, fontWeight: 700 }}>{n}</span> : null}
         <span style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
-        {active && details?.project !== 'scratch' && details?.branch ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'var(--font-mono)', fontSize: 10.5, fontWeight: 400, color: 'var(--text-secondary)' }}><GitBranch size={10} />{details.branch}</span> : null}
+        {active && details?.project !== 'scratch' && details?.branch ? <span title={details.branch} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'var(--font-mono)', fontSize: 10.5, fontWeight: 400, color: 'var(--text-secondary)' }}><GitBranch size={10} />{branchLabel(details)}</span> : null}
         {onClose ? <X size={12} className="hv-x" style={{ color: 'var(--text-hint)', borderRadius: 4 }} onClick={e => { e.stopPropagation(); onClose(); }} /> : null}
       </span>
       {active ? fillet('right') : null}
@@ -87,13 +92,14 @@ const RAIL_ICONS: { id: string; icon: LucideIcon; label: string; soon?: boolean 
   { id: 'terminal', icon: SquareTerminal, label: 'terminal' },
   { id: 'notes', icon: NotebookPen, label: 'notes' },
   { id: 'browser', icon: Globe, label: 'browser' },
+  { id: 'design', icon: PenTool, label: 'design' },
 ];
 
 export type RailPane = 'none' | 'notes' | 'git' | 'terminal' | 'files' | 'browser';
-const PANES: string[] = ['notes', 'git', 'terminal', 'files', 'browser'];
+const PANES: string[] = ['notes', 'git', 'terminal', 'files', 'browser', 'design'];
 
-function Rail({ route, rail, onRail }: { route: string; rail: RailPane; onRail: (r: RailPane) => void }) {
-  const isSession = route !== 'now';
+function Rail({ route, rail, onRail, onDesign }: { route: string; rail: RailPane; onRail: (r: RailPane) => void; onDesign(): void }) {
+  const isSession = !PAGES[route];
   const details = useSession(isSession && route !== 'settings' ? route : undefined);
   return (
     <div style={{
@@ -101,11 +107,11 @@ function Rail({ route, rail, onRail }: { route: string; rail: RailPane; onRail: 
       padding: '12px 0 0', gap: 4, background: 'var(--bg-window)', alignSelf: 'flex-start',
     }}>
       {RAIL_ICONS.filter(item => !(details?.project === 'scratch' && item.id === 'git')).map(({ id, icon: Icon, label, soon }) => {
-        const enabled = PANES.includes(id) ? isSession : !soon;
-        const active = id === rail;
+        const enabled = id === 'design' || (PANES.includes(id) ? isSession : !soon);
+        const active = id === 'design' ? route === 'design' : isSession && id === rail;
         return (
           <button key={id} className={enabled && !active ? 'hv' : undefined} title={enabled ? label : `${label} — soon`} aria-disabled={!enabled}
-            onClick={() => enabled && PANES.includes(id) && onRail(rail === id ? 'none' : id as RailPane)}
+            onClick={() => id === 'design' ? onDesign() : enabled && PANES.includes(id) && onRail(rail === id ? 'none' : id as RailPane)}
             style={{
               width: 32, height: 32, border: 'none', borderRadius: 8, cursor: enabled ? 'pointer' : 'default',
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
@@ -132,6 +138,11 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
   });
   const [tabs, setTabs] = useState<string[]>([]);
   const [route, setRoute] = useState<string>('now');
+  const [designSession, setDesignSession] = useState<string>();
+  const [designSidebarOpen, setDesignSidebarOpen] = useState(() => !window.matchMedia('(max-width: 850px)').matches);
+  const [codeSidebarOverride, setCodeSidebarOverride] = useState<boolean>();
+  const lastCodeRoute = useRef('now');
+  useEffect(() => { if (route !== 'design' && route !== 'settings') lastCodeRoute.current = route; }, [route]);
   const [toastBottomOffset, setToastBottomOffset] = useState(16);
   const [state, setState] = useState<string>('connecting');
   const [onboarding, setOnboarding] = useState(false);
@@ -223,6 +234,7 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!e.ctrlKey && !e.metaKey) return;
+      if (route === 'design' && e.key !== ',') return;
       if (e.key === 'k' || e.key === 'K') { e.preventDefault(); searchRef.current?.focus(); }
       if (e.key === 'n' || e.key === 'N') { e.preventDefault(); setRoute('now'); }
       if (e.key === '1') { e.preventDefault(); setRoute('now'); }
@@ -230,7 +242,7 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [searchRef]);
+  }, [searchRef, route]);
   useEffect(() => {
     platform.transport.onState = setState;
   }, [platform]);
@@ -241,6 +253,8 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
   }, [platform, state]);
 
   const sidebar = resolved.regions.sidebar;
+  const codeSidebarOpen = codeSidebarOverride ?? (sidebar?.visible !== false && sidebar?.collapsed !== true);
+  const inDesign = route === 'design' && !onboarding;
   const openRef = useRef((id: string) => { void id; });
   const shellLayout = useDefaultLayout({ id: 'ormi.shell', storage: globalThis.localStorage });
   const onShellLayoutChanged: typeof shellLayout.onLayoutChanged = (panelLayout, meta) => {
@@ -257,6 +271,8 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
     window.dispatchEvent(new CustomEvent('ormi-layout-change', { detail: descriptor }));
   };
   const open = (id: string) => {
+    if (!PAGES[id]) setDesignSession(id);
+    if (id === 'design') { if (!PAGES[route]) setDesignSession(route); setRoute(id); return; }
     setTabs(ts => ts.includes(id) ? ts : [...ts.slice(-(MAX_TABS - 1)), id]);
     setRoute(id);
   };
@@ -272,7 +288,8 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
   return (
     <PlatformContext.Provider value={platform}>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-window)', color: 'var(--text-label)', fontFamily: 'var(--font-ui)', fontSize: 14, borderRadius: 14, overflow: 'hidden' }}>
-        <Titlebar platform={platform} />
+        <Titlebar platform={platform} workspace={inDesign ? 'design' : 'code'} onWorkspaceChange={workspace => workspace === 'design' ? open('design') : setRoute(codeWorkspaceRoute(lastCodeRoute.current, tabs))}
+          sidebarOpen={inDesign ? designSidebarOpen : codeSidebarOpen} onSidebarToggle={() => inDesign ? setDesignSidebarOpen(value => !value) : setCodeSidebarOverride(!codeSidebarOpen)} />
         {platform.web && !onboarding && state === 'offline' ? (
           <div role="status" style={{ padding: '8px 14px', borderBottom: '1px solid var(--line-card)', background: 'var(--bg-card)', color: 'var(--text-active)', fontSize: 12 }}>
             Relay unreachable · {platform.web.lastOnline() ? `last online ${agoText(platform.web.lastOnline()!)}` : 'never connected'}
@@ -289,9 +306,9 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
             Your hub runs an older protocol — upgrade the hub
           </div>
         ) : null}
-        <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+        {inDesign ? <DesignPage initialSession={designSession} onSessionChange={setDesignSession} onOpen={open} sidebarOpen={designSidebarOpen} onShowSidebar={() => setDesignSidebarOpen(true)} connection={state} /> : <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         <Group id="ormi.shell" orientation="horizontal" defaultLayout={shellLayout.defaultLayout} onLayoutChanged={onShellLayoutChanged} style={{ flex: 1, minWidth: 0 }}>
-          {sidebar?.visible !== false && sidebar?.collapsed !== true && !(onboarding && mobile) ? <>
+          {codeSidebarOpen && !(onboarding && mobile) ? <>
             <Panel id="sidebar" defaultSize={sidebar?.size ?? 268} minSize={220} maxSize={420}>
             <aside style={{
               width: '100%', height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column',
@@ -369,8 +386,8 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
           </main>
           </Panel>
         </Group>
-          {onboarding ? null : <Rail route={route} rail={rail} onRail={setRail} />}
-        </div>
+          {onboarding ? null : <Rail route={route} rail={rail} onRail={setRail} onDesign={() => open('design')} />}
+        </div>}
       </div>
       {!onboarding ? <AddProjectDialog open={addProjectOpen} onClose={() => setAddProjectOpen(false)} /> : null}
       <Toaster className="toaster group ormi-toast-toaster" position="bottom-right" duration={3000} visibleToasts={1} closeButton={false}

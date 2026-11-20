@@ -36,6 +36,7 @@ test('electronPlatform fails clearly without the bridge', () => {
 
 test('browserPlatform exposes web metadata and backs tokens with its store', async () => {
   const values = { token: undefined, remote: null };
+  let onMessage;
   const store = {
     getToken: async () => values.token,
     setToken: async token => { values.token = token; },
@@ -46,7 +47,9 @@ test('browserPlatform exposes web metadata and backs tokens with its store', asy
   };
   const p = browserPlatform({
     relay: 'https://relay.example', version: '1.2.3', commit: 'abc123',
-    deps: { store, locks: { request: () => new Promise(() => undefined) }, channel: () => new BroadcastChannel(`platform-${Math.random()}`) },
+    deps: { store, locks: { request: () => new Promise(() => undefined) }, channel: () => ({
+      addEventListener: (_type, listener) => { onMessage = listener; }, postMessage: () => undefined, close: () => undefined,
+    }) },
   });
   try {
     assert.deepEqual([p.kind, p.hubLabel], ['web', 'https://relay.example']);
@@ -57,5 +60,18 @@ test('browserPlatform exposes web metadata and backs tokens with its store', asy
     assert.equal(await p.tokens.get(), 'secret-token');
     await p.tokens.clear();
     assert.equal(values.token, undefined);
+    const primary = [], design = [], other = [];
+    p.transport.onEvent = frame => primary.push(frame);
+    const unsubscribe = p.transport.subscribeEvents(frame => design.push(frame));
+    p.transport.subscribeEvents(frame => other.push(frame));
+    p.transport.subscribe('s_design', 0);
+    const frame = { v: 1, type: 'evt', session: 's_design', seq: 1, ts: 1, body: { kind: 'design_changed', slug: 'board', revision: 1 } };
+    onMessage({ data: { t: 'evt', frame } });
+    assert.deepEqual([primary, design, other], [[frame], [frame], [frame]]);
+    onMessage({ data: { t: 'evt', frame } });
+    assert.deepEqual([primary.length, design.length, other.length], [1, 1, 1]);
+    unsubscribe();
+    onMessage({ data: { t: 'evt', frame: { ...frame, seq: 2 } } });
+    assert.deepEqual([primary.length, design.length, other.length], [2, 1, 2]);
   } finally { closeBrowserPlatform(p); }
 });

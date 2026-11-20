@@ -26,7 +26,7 @@ export class Link {
   private buffer = '';
   private queue: Frame[] = [];
   private waiting: ((frame: Frame | undefined) => void) | undefined;
-  private pending = new Map<string, { resolve: (frame: Frame) => void; timer: NodeJS.Timeout }>();
+  private pending = new Map<string, { resolve: (frame: Frame) => void; reject: (error: Error) => void; timer?: NodeJS.Timeout }>();
   closed = false;
   onFrame: ((frame: Frame) => void) | undefined;
   onClose: (() => void) | undefined;
@@ -37,7 +37,11 @@ export class Link {
     this.socket = socket;
     socket.setEncoding('utf8');
     socket.on('data', chunk => this.feed(String(chunk)));
-    socket.on('close', () => { this.closed = true; this.onClose?.(); this.wake(undefined); });
+    socket.on('close', () => {
+      this.closed = true;
+      for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject(new Error('connection closed')); }
+      this.pending.clear(); this.onClose?.(); this.wake(undefined);
+    });
     socket.on('error', () => { this.closed = true; });
   }
 
@@ -46,12 +50,13 @@ export class Link {
   }
 
   /** req -> res/err round trip with an id we mint here. */
-  request(method: string, body: Record<string, unknown>, timeoutMs = 30_000): Promise<Frame> {
+  request(method: string, body: Record<string, unknown>, timeoutMs = 30_000, mcp?: { session: string; token: string }): Promise<Frame> {
+    if (this.closed) return Promise.reject(new Error('connection closed'));
     const id = newId('req');
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`${method}: timed out`)); }, timeoutMs);
-      this.pending.set(id, { resolve, timer });
-      this.send({ v: 1, type: 'req', id, method, body, ts: Date.now() });
+      const timer = timeoutMs > 0 ? setTimeout(() => { this.pending.delete(id); reject(new Error(`${method}: timed out`)); }, timeoutMs) : undefined;
+      this.pending.set(id, { resolve, reject, timer });
+      this.send({ v: 1, type: 'req', id, method, body, ts: Date.now(), ...(mcp ? { mcp } : {}) });
     });
   }
 

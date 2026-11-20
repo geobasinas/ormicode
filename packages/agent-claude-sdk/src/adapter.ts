@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { mapSdkMessage } from './map.ts';
 
 type QueryFactory = (params: { prompt: string | AsyncIterable<SDKUserMessage>; options?: Options }) => Query;
-interface PendingApproval { finish: (result: PermissionResult) => void; input: Record<string, unknown>; questions?: string[] }
+interface PendingApproval { finish: (result: PermissionResult, reason?: string) => void; input: Record<string, unknown>; questions?: string[] }
 /** Pushable async input for streaming-input mode: initial prompt + steered messages. */
 interface TurnInput { push(text: string): void; close(): void; iterable: AsyncIterable<SDKUserMessage> }
 interface Session {
@@ -160,10 +160,11 @@ export class ClaudeSdkAdapter implements AgentAdapter {
         session.queue.push([{ kind: 'approval_request', request, options, tool: name, input, toolUseId: context.toolUseID, ...(hit ? { destructive: true, rule: hit.rule } : {}), ...(context.title ? { title: context.title } : {}), ...(context.description ? { description: context.description } : {}), ...(context.decisionReason ? { decisionReason: context.decisionReason } : {}), ...(context.blockedPath ? { blockedPath: context.blockedPath } : {}) }]);
         }
         return new Promise<PermissionResult>((resolve) => {
-          const onAbort = () => finish({ behavior: 'deny', message: 'Approval interrupted', interrupt: true });
-          const finish = (result: PermissionResult) => {
+          const onAbort = () => finish({ behavior: 'deny', message: 'Approval interrupted', interrupt: true }, 'cancelled');
+          const finish = (result: PermissionResult, reason?: string) => {
             context.signal.removeEventListener('abort', onAbort);
-            session.approvals.delete(request);
+            if (!session.approvals.delete(request)) return;
+            if (reason && !session.disposed) session.queue.push([{ kind: 'interaction_expired', request, reason }]);
             resolve(result);
           };
           session.approvals.set(request, { finish, input, questions });
@@ -217,7 +218,7 @@ export class ClaudeSdkAdapter implements AgentAdapter {
         catch { session.queue.close(); }
       }
     } finally {
-      for (const pending of session.approvals.values()) pending.finish({ behavior: 'deny', message: 'Session ended', interrupt: true });
+      for (const pending of session.approvals.values()) pending.finish({ behavior: 'deny', message: 'Session ended', interrupt: true }, 'turn_ended');
       session.active = false;
       session.abort = undefined;
       session.stream = undefined;
@@ -279,7 +280,7 @@ export class ClaudeSdkAdapter implements AgentAdapter {
     const session = this.get(handle);
     if (!session.active || !session.abort) throw new Error('Claude session has no active turn');
     session.abort.abort();
-    for (const pending of session.approvals.values()) pending.finish({ behavior: 'deny', message: 'Turn interrupted', interrupt: true });
+    for (const pending of session.approvals.values()) pending.finish({ behavior: 'deny', message: 'Turn interrupted', interrupt: true }, 'cancelled');
     session.stream?.close?.();
     await session.running;
   }

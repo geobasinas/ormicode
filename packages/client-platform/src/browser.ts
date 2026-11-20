@@ -34,6 +34,7 @@ export function browserPlatform(opts: WebPlatformOptions): ClientPlatform {
   let leader = createLeader();
   const subscriptions = new Map<string, number>();
   let stateListener: ((state: string) => void) | undefined;
+  const listeners = new Set<(frame: import('@ormicode/protocol').Frame) => void>();
   const transport: ProtocolTransport = {
     request: (method, body) => leader.request(method, body),
     subscribe: (session, after = 0) => { subscriptions.set(session, after); leader.subscribe(session, after); },
@@ -44,12 +45,14 @@ export function browserPlatform(opts: WebPlatformOptions): ClientPlatform {
       stateListener = listener;
       if (listener) listener(leader.currentState);
     },
+    subscribeEvents: listener => { listeners.add(listener); return () => { listeners.delete(listener); }; },
   };
   const listen = () => {
     leader.onEvent = frame => {
       if (frame.type === 'evt' && typeof frame.seq === 'number' && subscriptions.has(frame.session))
         subscriptions.set(frame.session, frame.seq);
       transport.onEvent?.(frame);
+      for (const listener of listeners) listener(frame);
     };
     leader.onState = state => stateListener?.(state);
   };

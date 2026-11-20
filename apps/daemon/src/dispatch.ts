@@ -1,25 +1,24 @@
-import type { Frame, PromptAttachment, PromptContext } from '@ormicode/protocol';
-import { parseRequestBody, newId, PROTOCOL_VERSION } from '@ormicode/protocol';
+import { parseRequestBody, newId, PROTOCOL_VERSION, type Frame, type PromptAttachment, type PromptContext } from '@ormicode/protocol';
+import type { UserInteractions } from './user-interactions.ts';
+import { resumeSession } from './team-resume.ts';
+import { sessionTeamView } from './session-team-view.ts';
+import { sessionStatus } from './session-status.ts';
 import {
   getSession, listSessions, setState, setTitle, listNotes, setNote, deleteNote, archiveSession, releaseSessionPorts,
-  getPendingPromptData, deletePendingPromptData, getSessionPorts, type Store,
+  getPendingPromptData, deletePendingPromptData, getSessionPorts, listDevices, renameDevice, revokeDevice, type Store,
 } from '@ormicode/session-store';
 import { replay, setCursor } from '@ormicode/journal';
-import { listDevices, renameDevice, revokeDevice } from '@ormicode/session-store';
 import { handleJoin, type Pairing } from './pair.ts';
 import { handoffMethod } from './handoff-methods.ts';
-import { handoffRequest, resolveHandoffApproval } from './handoff-dispatch.ts';
+import { handoffRequest } from './handoff-dispatch.ts';
+import { rejectHandoffRequest } from './handoff-transition.ts';
 import type { RelayClient } from './relay.ts';
 import { join } from 'node:path';
 import { rmSync } from 'node:fs';
-
 import { ormicodeDir, sessionLogDir } from './socket.ts';
 import { releaseForSession } from '@ormicode/leases';
 import { agentList } from './registry.ts';
-import {
-  diffPatch, DiffStatCache,
-} from '@ormicode/git-core';
-
+import { diffPatch, DiffStatCache } from '@ormicode/git-core';
 const diffStats = new DiffStatCache();
 const PATCH_INLINE = 256 * 1024;
 import type { Checkpoints } from '@ormicode/checkpoints';
@@ -33,6 +32,7 @@ import { costMethod } from './cost-methods.ts';
 import { gitMethod, projectBranches, projectFetch } from './git-methods.ts';
 import { projectBranchMethod } from './project-branch-methods.ts';
 import { fileMethod } from './file-methods.ts';
+import { designMethod } from './design-methods.ts';
 import { projectSearchFiles } from './project-search.ts';
 import { queueMethod } from './queue-methods.ts';
 import { composerMethod } from './composer-methods.ts';
@@ -46,8 +46,12 @@ import { serviceMethod } from './service-methods.ts';
 import type { Services } from './services.ts';
 import type { AgentBrowser } from './agent-browser.ts';
 import { browserMethod } from './browser-methods.ts';
-import { shouldResetUiCheckFollowups } from './ui-check.ts'; import { machineMethod } from './machine-methods.ts';
-
+import { teamMethod } from './team-methods.ts';
+import { authorizeMcp, type McpCredentials } from './mcp-auth.ts';
+import type { TeamApprovals } from './team-approvals.ts';
+import type { TeamLifecycle } from './team-lifecycle.ts';
+import { shouldResetUiCheckFollowups } from './ui-check.ts';
+import { machineMethod } from './machine-methods.ts';
 /** What a client transport must do: send frames and answer requests. */
 export interface ClientLink {
   send(frame: Frame | Record<string, unknown>): void;
@@ -58,6 +62,10 @@ export interface ClientLink {
 }
 export interface Client { link: ClientLink; subscriptions: Set<string>; device: string }
 export interface DispatchCtx {
+  mcpCredentials: McpCredentials;
+  teamApprovals: TeamApprovals;
+  teamLifecycle: TeamLifecycle;
+  interactions: UserInteractions;
   db: Store;
   notesDir: string;
   startedAt: number;
@@ -86,7 +94,6 @@ export interface DispatchCtx {
   prices: PriceBook;
   record(session: string, kind: string, payload: Record<string, unknown>): void;
 }
-
 /** Client-facing session.* / daemon.* request dispatch. */
 export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Frame): Promise<void> {
   const { db } = ctx;
@@ -101,7 +108,12 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
   const parsed = parseRequestBody(method, frame.body);
   if (!parsed.success) return client.link.replyError(id, parsed.error, method);
   const body = parsed.data as Record<string, unknown>;
+  const authError = authorizeMcp(ctx, method, body, frame.mcp);
+  if (authError) return client.link.replyError(id, authError, 'MCP session proof is missing, invalid, expired or does not authorize this actor');
+  if (rejectHandoffRequest(db, client, id, method, body)) return;
   try {
+    if (['session.askUser', 'session.answer', 'session.decide'].includes(method)) return await ctx.interactions.method(client, id, method, body);
+    if (method.startsWith('team.')) return await teamMethod(ctx, client, id, method, body);
     switch (method) {
       case 'agents.list':
         return client.link.reply(id, { agents: agentList() });
@@ -144,9 +156,9 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         const sessions = listSessions(db, Boolean(body.archived)).map(s => {
           const base = getSessionPorts(db, s.id);
           return {
-            id: s.id, title: s.title, state: s.state, project: s.project, vendor: s.vendor,
+            id: s.id, title: s.title, state: sessionStatus(ctx, s).state, parentless: Boolean(s.parentless), project: s.project, vendor: s.vendor,
             transport: s.transport, updatedAt: s.updated_at, branch: s.branch,
-            worktree: Boolean(s.worktree),
+            worktree: Boolean(s.worktree), ...sessionTeamView(db, s), delegatedApproval: ctx.teamApprovals.delegatedOnly(s.id),
             ...(base === undefined ? {} : { ports: { base, count: SESSION_PORT_COUNT } }),
             ...(s.base_commit && !s.archived ? { diff: diffStats.get(s.cwd, s.base_commit) } : {}),
           };
@@ -202,13 +214,12 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         if (!s) return client.link.replyError(id, 'session.not_found', String(body.session));
         const base = getSessionPorts(db, s.id);
         return client.link.reply(id, {
-          id: s.id, title: s.title, state: s.state, project: s.project, vendor: s.vendor,
-          cwd: s.cwd,
-          ...(s.project === 'scratch' ? { scratchFiles: countScratchFiles(s.cwd) } : {}),
+          id: s.id, title: s.title, ...sessionStatus(ctx, s), parentless: Boolean(s.parentless), project: s.project, vendor: s.vendor,
+          cwd: s.cwd, ...(s.project === 'scratch' ? { scratchFiles: countScratchFiles(s.cwd) } : {}),
           transport: s.transport, updatedAt: s.updated_at, branch: s.branch, worktree: Boolean(s.worktree),
           ...(base === undefined ? {} : { ports: { base, count: SESSION_PORT_COUNT } }),
           model: s.model, effort: s.effort, mode: s.mode,
-          nativeId: s.native_id, acpVersion: s.acp_version, parent: s.parent,
+          nativeId: s.native_id, acpVersion: s.acp_version, ...sessionTeamView(db, s), teamApprovals: ctx.teamApprovals.forParent(s.id),
         });
       }
       case 'session.copyOut': return copyOutMethod(ctx, client, id, body);
@@ -257,8 +268,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         return client.link.reply(id, { paused: true });
       case 'session.resume': {
         const session = String(body.session);
-        ctx.paused.delete(session);
-        if (!await ctx.drainQueue(session)) return client.link.replyError(id, 'agent.failed', 'held or queued prompt rejected');
+        if (!await resumeSession(ctx, session)) return client.link.replyError(id, 'agent.failed', 'held or queued prompt rejected');
         return client.link.reply(id, { resumed: true });
       }
       case 'session.retry': return await retryPrompt(ctx, client, id, body);
@@ -268,6 +278,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         else await ctx.agentBrowser.closeSession(session);
         await ctx.services.stopSession(session);
         archiveSession(db, session);
+        ctx.teamLifecycle.unavailable(session);
         releaseForSession(db, session);
         // Scratch sessions own their folder; delete removes it (archive keeps it).
         const row = getSession(db, session);
@@ -291,10 +302,6 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         if (res?.type !== 'res') return client.link.replyError(id, 'agent.unsupported', kind);
         if (column) db.prepare(`UPDATE sessions SET ${column} = ? WHERE id = ?`).run(String(body[column] ?? ''), session);
         return client.link.reply(id, { updated: true });
-      }
-      case 'session.answer': {
-        const res = await ctx.toWorker(String(body.session), 'worker.answer', { request: body.request, answers: body.answers });
-        return res?.type === 'res' ? client.link.reply(id, { answered: true }) : client.link.replyError(id, 'agent.unsupported', 'answer');
       }
       case 'session.getNotes':
         return client.link.reply(id, { notes: listNotes(ctx.notesDir, String(body.session)) });
@@ -331,19 +338,11 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         const res = await ctx.toWorker(String(body.session), 'worker.abort', {});
         return res?.type === 'res' ? client.link.reply(id, { interrupted: true }) : client.link.replyError(id, 'agent.unsupported', 'abort');
       }
-      case 'session.decide': {
-        const session = String(body.session);
-        const request = String(body.request);
-        if (resolveHandoffApproval(ctx, session, request, String(body.option)))
-          return client.link.reply(id, { decided: true });
-        const res = await ctx.toWorker(session, 'worker.decide', { request, option: body.option });
-        return res?.type === 'res' ? client.link.reply(id, { decided: true }) : client.link.replyError(id, 'agent.unsupported', 'decide');
-      }
       case 'session.subscribe': {
         const session = String(body.session);
         client.subscriptions.add(session);
         for (const row of replay(db, session, Number(body.after ?? 0))) {
-          client.link.send(JSON.parse(JSON.stringify({ v: 1, type: 'evt', session, seq: row.seq, ts: row.ts, body: JSON.parse(row.payload) })));
+          client.link.send(JSON.parse(JSON.stringify({ v: 1, type: 'evt', session, seq: row.seq, ts: row.ts, body: { kind: row.kind, ...JSON.parse(row.payload) } })));
         }
         return client.link.reply(id, { subscribed: true });
       }
@@ -381,6 +380,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         return client.link.reply(id, { revoked: true, relaySynced: relay?.connected() ?? false });
       }
       default:
+        if (method.startsWith('design.')) return designMethod(ctx, client, id, method, body);
         if (method === 'session.handoffEstimate' || method === 'session.handoffBrief')
           return await handoffMethod(ctx, client, id, method, body);
         if (method === 'session.draft.get' || method === 'session.draft.set' || method === 'session.commands' || method === 'prompts.history')

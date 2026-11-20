@@ -22,7 +22,7 @@ function translateItem(item: unknown): unknown {
 }
 const APPROVAL_OPTIONS = [{ id: 'accept', label: 'Approve' }, { id: 'acceptForSession', label: 'Approve for session' }, { id: 'decline', label: 'Decline' }, { id: 'cancel', label: 'Cancel turn' }];
 
-interface Pending { resolve: (result: unknown) => void }
+interface Pending { resolve: (result: unknown) => void; turnId?: string }
 interface Session {
   server: CodexAppServer; queue: EventQueue; log?: RawLog;
   nativeId?: string; turnId?: string; active: boolean; disposed: boolean;
@@ -117,9 +117,15 @@ export class CodexCliAdapter implements AgentAdapter {
     session.queue.push([{ kind: 'config_option', id, value }]);
   }
   async approve(handle: Handle, requestId: string, optionId: string): Promise<void> {
-    const pending = this.get(handle).approvals.get(requestId);
+    const session = this.get(handle);
+    const pending = session.approvals.get(requestId);
     if (!pending) throw new Error(`Unknown approval request: ${requestId}`);
-    this.get(handle).approvals.delete(requestId);
+    session.approvals.delete(requestId);
+    if (!session.active || !session.turnId || pending.turnId !== session.turnId) {
+      session.queue.push([{ kind: 'interaction_expired', request: requestId, reason: 'turn_ended' }]);
+      throw new Error('Approval expired: its turn has ended');
+    }
+    session.queue.push([{ kind: 'approval_decision', request: requestId, option: optionId }]);
     pending.resolve({ decision: optionId });
   }
   async answerQuestion(handle: Handle, requestId: string, answers: Record<string, string>): Promise<void> {
@@ -131,7 +137,19 @@ export class CodexCliAdapter implements AgentAdapter {
   async interrupt(handle: Handle): Promise<void> {
     const session = this.get(handle);
     if (!session.active || !session.turnId) throw new Error('Codex session has no active turn');
-    await session.server.interruptTurn(session.nativeId as string, session.turnId);
+    const turnId = session.turnId;
+    await session.server.interruptTurn(session.nativeId as string, turnId);
+    this.expireTurnInteractions(session, turnId);
+  }
+  private expireTurnInteractions(session: Session, turnId: string): void {
+    for (const [pending, result] of [[session.approvals, { decision: 'cancel' }], [session.questions, { answers: {} }]] as const) {
+      for (const [request, entry] of pending) {
+        if (entry.turnId !== turnId) continue;
+        pending.delete(request);
+        session.queue.push([{ kind: 'interaction_expired', request, reason: 'cancelled' }]);
+        entry.resolve(result);
+      }
+    }
   }
   events(handle: Handle) { return this.get(handle).queue.subscribe(); }
   async dispose(handle: Handle): Promise<void> {
@@ -162,7 +180,8 @@ export class CodexCliAdapter implements AgentAdapter {
     else if (method === 'item/completed') feed({ type: 'item.completed', item: translateItem(p.item) });
     else if (method === 'turn/started') { session.turnId = (p.turn as { id: string }).id; feed({ type: 'turn.started' }); }
     else if (method === 'turn/completed') {
-      const turn = p.turn as { status?: string; error?: { message?: string } | null };
+      const turn = p.turn as { id?: string; status?: string; error?: { message?: string } | null };
+      if (turn?.status === 'interrupted' && (turn.id ?? session.turnId)) this.expireTurnInteractions(session, (turn.id ?? session.turnId)!);
       if (turn?.status === 'failed' || turn?.error?.message) feed({ type: 'turn.failed', error: { message: turn.error?.message ?? 'turn failed' } });
       else feed({ type: 'turn.completed', usage: session.lastUsage ?? { input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_write_input_tokens: 0 } });
       session.lastUsage = undefined;
@@ -175,19 +194,23 @@ export class CodexCliAdapter implements AgentAdapter {
     else if (method === 'item/agentMessage/delta') session.queue.push([{ kind: 'text_delta', text: (p.delta as string) ?? '' }]);
     else if (method === 'item/reasoning/textDelta') session.queue.push([{ kind: 'thinking_delta', text: (p.delta as string) ?? '' }]);
     else if (method === 'item/plan/delta') session.queue.push([{ kind: 'text_delta', text: (p.delta as string) ?? '' }]);
-    else if (method === 'error') session.queue.push([{ kind: 'error', code: 'unknown', message: String((p as { message?: string }).message ?? 'Codex app-server error') }]);
+    else if (method === 'error') {
+      const error = p as { message?: string; error?: { message?: string }; willRetry?: boolean };
+      const message = String(error.error?.message ?? error.message ?? 'Codex app-server error');
+      session.queue.push([error.willRetry === true ? { kind: 'state', state: 'retrying', reason: message } : { kind: 'error', code: 'unknown', message }]);
+    }
   }
   private onRequest(session: Session, method: string, params: unknown): Promise<unknown> {
-    const p = params as { approvalId?: string; itemId?: string; command?: string; reason?: string; questions?: { id: string; question: string; header: string; options?: { label: string; description?: string }[] | null }[] };
+    const p = params as { turnId?: string; approvalId?: string; itemId?: string; command?: string; reason?: string; questions?: { id: string; question: string; header: string; options?: { label: string; description?: string }[] | null }[] };
     const id = `req_${ulid()}`;
     if (method === 'item/commandExecution/requestApproval' || method === 'item/fileChange/requestApproval' || method === 'item/permissions/requestApproval') {
       const hit = classifyCommand(String(p.command ?? ''));
       session.queue.push([{ kind: 'approval_request', request: id, options: APPROVAL_OPTIONS, ...(hit ? { destructive: true, rule: hit.rule } : {}) }]);
-      return new Promise((resolve) => { session.approvals.set(id, { resolve }); });
+      return new Promise((resolve) => { session.approvals.set(id, { resolve, turnId: p.turnId ?? session.turnId }); });
     }
     if (method === 'item/tool/requestUserInput') {
       session.queue.push([{ kind: 'question_request', request: id, questions: (p.questions ?? []).map((q) => ({ question: q.question, header: q.header, options: (q.options ?? []).map((o) => ({ label: o.label, description: o.description ?? '' })), multiSelect: false })) }]);
-      return new Promise((resolve) => { session.questions.set(id, { resolve }); });
+      return new Promise((resolve) => { session.questions.set(id, { resolve, turnId: p.turnId ?? session.turnId }); });
     }
     throw new Error(`Unsupported app-server request: ${method}`);
   }

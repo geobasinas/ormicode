@@ -8,6 +8,9 @@
 @import "@xterm/xterm/css/xterm.css";
 @import "@mdxeditor/editor/style.css";
 @import "./components/markdown-editor.css";
+@import "./features/design/design.css";
+@import "./features/design/design-agent.css";
+@import "./features/session/teams.css";
 
 /*
  * shadcn theme bound to our design tokens. applyTheme() sets the

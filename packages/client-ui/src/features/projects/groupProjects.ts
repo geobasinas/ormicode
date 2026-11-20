@@ -1,5 +1,6 @@
 import type { SessionSummary } from '../session/useSessions.ts';
 import type { ProjectSummary } from './useProjects.ts';
+import { sessionForest } from '../session/team-tree.ts';
 
 export interface ProjectGroup {
   project: string;
@@ -12,6 +13,15 @@ const needsYou = new Set(['awaiting_approval', 'awaiting_input', 'interrupted', 
 const live = new Set(['running', 'starting', 'retrying']);
 const rank = (session: SessionSummary) => needsYou.has(session.state) ? 0 : live.has(session.state) ? 1 : 2;
 const projectMatch = (project: ProjectSummary, query: string) => `${project.name} ${project.path}`.toLowerCase().includes(query);
+
+export function groupSessionProjects(sessions: SessionSummary[], projects: ProjectSummary[], query?: string) {
+  return groupProjects(sessions, projects, query).map(group => {
+    const project = projects.find(project => project.path === group.project);
+    const projectMatches = project && projectMatch(project, query?.trim().toLowerCase() ?? '');
+    const nodes = sessionForest(sessions.filter(session => session.project === group.project), projectMatches ? '' : query);
+    return { ...group, nodes };
+  });
+}
 
 export function groupProjects(sessions: SessionSummary[], projects: ProjectSummary[], query?: string): ProjectGroup[] {
   const q = query?.trim().toLowerCase() ?? '';

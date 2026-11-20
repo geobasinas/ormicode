@@ -1,0 +1,5 @@
+.design-pages { padding: 12px; border-bottom: 1px solid var(--design-border); color: var(--text-title); }
+.design-pages select, .design-pages input, .design-pages button { max-width: 100%; color: inherit; background: var(--bg-main); border: 1px solid var(--design-border); border-radius: 4px; padding: 4px; }
+.design-pages select { width: 100%; }
+.design-pages summary { cursor: pointer; padding-top: 8px; }
+.design-pages fieldset { display: flex; flex-direction: column; gap: 6px; border: 0; padding: 8px 0; }

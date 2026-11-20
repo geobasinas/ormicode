@@ -556,7 +556,7 @@ bot_memory(bot TEXT, key TEXT, value TEXT, updated_at INTEGER, PRIMARY KEY(bot, 
 - Indexes: `sessions(machine, updated_at)`, `sessions(project, state)`, `events(session, seq)`, `tool_calls(session, started_at)`, `leases(session)`, `replay_frames(session, seq)`, `eval_runs(suite, started_at)`, `bot_memory(bot)`, `blobs(session)`.
 - Teams, automations, MCP, views and plugins add tables when they land. Never reuse a column; never edit a shipped migration.
 
-**Event kinds:** `turn_start`, `turn_end`, `text`, `thinking`, `plan`, `tool_call`, `tool_result`, `approval_request`, `approval_decision`, `question_request`, `question_answer`, `interaction_expired`, `state`, `model_changed`, `effort_changed`, `mode_changed`, `config_option`, `usage`, `rate_limited`, `retry_scheduled`, `error`, `interrupted`, `resumed`, `workspace_step`, `evicted`, `compacted`, `terminal_open`, `terminal_close`, `team_message`, `agent_spawned`, `agent_state`, `board_entry`, `automation_run`, `artifact_published`, `artifact_rejected`, `lease_conflict`, `lease_drift`, `digest_ready`, `handoff_brief`, `plugin_hook`, `bot_message`, `bot_started_session`, `bot_memory_changed`.
+**Event kinds:** `turn_start`, `turn_end`, `text`, `thinking`, `plan`, `tool_call`, `tool_result`, `approval_request`, `approval_decision`, `question_request`, `question_answer`, `interaction_expired`, `state`, `model_changed`, `effort_changed`, `mode_changed`, `config_option`, `usage`, `rate_limited`, `retry_scheduled`, `error`, `interrupted`, `resumed`, `workspace_step`, `evicted`, `compacted`, `terminal_open`, `terminal_close`, `team_message`, `team_pr_result`, `agent_spawned`, `agent_state`, `board_entry`, `automation_run`, `artifact_published`, `artifact_rejected`, `lease_conflict`, `lease_drift`, `digest_ready`, `handoff_brief`, `plugin_hook`, `bot_message`, `bot_started_session`, `bot_memory_changed`.
 - Text deltas are merged into blocks before writing (no per-token rows).
 - **Live streaming is separate from the journal.** While a turn runs, the worker sends text and thinking deltas, which the supervisor forwards straight to subscribed clients as **ephemeral** frames (`evt` with `kind: "text_delta"` / `"thinking_delta"`, no `seq`, never journaled, never stored on the relay). When a block completes, the merged `text` / `thinking` event is journaled with a `seq` and sent normally. A client that missed deltas (offline, reconnecting) just gets the merged block. Clients replace provisional deltas with the durable block and discard unconfirmed deltas on reconnect. Deltas are throttled to the 50 frames/s cap.
 
@@ -1386,7 +1386,7 @@ secrets:
 
 ## Teams
 
-> **Status:** later · **Needs:** [Sessions](#sessions), [Approvals](#approvals)
+> **Status:** now (orchestration and desktop/client UI implemented) · **Needs:** [Sessions](#sessions), [Approvals](#approvals)
 
 **A session can own child sessions. Together they're a team.** Same session type, plus a parent and a team id.
 
@@ -1409,25 +1409,41 @@ secrets:
 | `team_send` | Message parent or sibling |
 | `team_reply` | Answer a message |
 | `team_inbox` | Read unread messages |
+| `team_approve` | Parent: answer a child's offered once-only approval option with a reason |
+| `team_escalate` | Parent: forward a delegated child approval to the user, with an optional reason |
 | `team_cancel` | Cancel a child's turn |
 | `team_reassign` | Cancel and give a new task |
 | `team_close` | End the child |
 | `team_diff` | Child's worktree diff |
 | `team_report` | Child's final report |
 | `team_board_read` / `team_board_write` | Read / append to the board |
-| `ask_user` | Parent only: ask you a question |
-| `open_pr` | Parent (or you): push and open a PR |
+| `team_ask_user` | Parent only: ask you a question and return the answer |
+| `team_open_pr` | Parent only: request your approval to push a child or team branch and open a PR |
 
 Parent-only except `team_send`, `team_reply`, `team_inbox`, `team_board_read`, `team_board_write`, `team_close`.
 
+`session.get` and team status expose `turnCompleted`, reset by prompt dispatch or turn start and set by turn end. Completed turns containing an agent error report `failed` rather than `idle`; a new prompt resets that outcome. Codex app-server errors marked `willRetry` journal `state: retrying`, not a failed-turn error; a later terminal error still fails the turn. MCP waits use this authoritative status, including approval/input waits, rather than inferring completion from event arrival order.
+
 **Inheritance:** children get the parent's MCP servers, skills and permission mode. The parent picks agent, model, effort, mode and tool allowlist per child. Children never see the parent's transcript — just their task and the board.
 
-**Approvals:** the parent answers nearly all children's approvals (only offered options, never "always"). Destructive ones come to you. Each is journaled as parent-decided with a reason. Children can't approve for each other.
+**Approvals:** the parent approves or denies routine child requests itself (only offered once-only options, never "always"), including costly handoffs. Very dangerous or fundamental choices go to the user: irreversible/destructive actions, security-sensitive changes, major architecture/design decisions and large spend. Existing destructive checks stay user-only; the parent forwards other such approvals with `team_escalate` and asks fundamental questions with `team_ask_user`. Children can't approve for each other.
+
+**Escalation (implemented):** `team_escalate {session, request, reason?}` wraps authenticated, parent-only `team.escalate`. It accepts only a currently delegated approval belonging to that parent, removes delegation and journals the original `approval_request` with `userOnly`, `escalatedBy` and optional `escalationReason`. The original permission enters Needs You; the user answers it directly through `session.decide`, with a user-attributed decision rather than a parent decision. Repeated, already-decided and undelegated escalations are rejected. Costly handoffs remain delegated unless the parent escalates them; there is no automatic fundamental-design classifier.
+
+**Approval routing (implemented):** safe child approvals arrive as JSON team inbox messages with the request id, child, tool details and offered once-only options. `team_approve {session, request, option, reason}` wraps authenticated, parent-only `team.approve`; unoffered, always/session-wide and repeat decisions are rejected. Delegated requests are journaled as `team_approval_request`, not user approvals, and do not enter Needs You; `team_status` / `team_wait` still report the child's approval wait. The decision records the parent actor, `parentDecided` and reason. Existing destructive flags and the shared command classifier (including `destructive.json`) keep dangerous requests with the user. Unknown option scopes, an unavailable/archived parent or failed parent delivery also use the user path; losing the parent returns its outstanding requests to the user. No session-wide permission is granted.
+
+**User questions (implemented):** `team_ask_user {question, options?}` wraps `team.askUser`; `ormi_ask_user` wraps self-only `session.askUser` and uses the same path. Teams keep the parent-only rule, including for the plain tool: children ask their parent instead. A journaled `question_request` enters Needs You; choose an offered option or write free text when options are omitted. `session.answer` journals the answer and returns `{request, answers}` to the waiting tool call, not a mid-turn prompt. Blank, unoffered and repeat answers are rejected. The blocking call expires after ten minutes, worker loss, archive or daemon restart; it is never retried. The unanswered question remains in Needs You. Answers after expiry or asker restart are journaled once and durably queued to the asker's next step instead of lost; busy/paused sessions wait, archived sessions retain the queue without waking. Existing parentless-child message replies also use queued next-step delivery. Expired PR approvals remain non-replayable.
+
+**PR opening (implemented):** `team_open_pr {session?, title, body, base?, draft?}` wraps parent-only `team.openPr`. Omit `session` for the parent's branch, or select a team child. Children must be stopped/idle and changes committed. The user-only `approval_request` shows the push destination, branch, exact commit, base and PR text in Needs You. Only the user can approve or deny once; `team_approve` cannot answer it, including for nested teams. Nothing is pushed before approval. Denial/expiry does nothing. The daemon revalidates the repository, pushes the approved commit without force, then uses the existing `gh pr create` integration; commit/branch/remote changes require fresh approval. Base defaults to the session's recorded base; supply it when absent. Decisions and `team_pr_result` success/failure are journaled. The call waits for the resulting PR number/URL or an explicit Git/forge error; a successful push is not rolled back if PR creation fails. Uses the same expiry rules as questions. Never automatically retry a lost response: inspect the journal/remote before requesting approval again. `gh` must already be installed/authenticated; remote URLs must not embed credentials.
 
 **Control**
 - The parent can cancel and reassign a child.
 - Killing the parent doesn't kill children — they keep running, marked parentless, and you decide.
 - A child silent for 10 minutes nudges the parent (status check or cancel). Never auto-killed.
+
+**Silence and parent loss (implemented):** `team.silenceMs` is a positive integer setting in milliseconds (default `600000`). A running child with no new events, including streamed deltas, sends one journaled `team_message` nudge per silent stretch. The parent gets an inbox item, delivered at its next step; no timer kills a child. New activity resets the nudge.
+
+Parent worker loss, eviction, failure or archive persists `parentless` on its children without stopping them. `team.tree` / `team.status` and `session.get` / `session.list` expose the boolean; `team_parent_changed` journals transitions. A live parent's new turn, worker reattachment or explicit `session.resume` clears it (archived parents remain unavailable). Parent-directed messages, including urgent ones, become durable user-facing questions rather than waking the missing parent. The existing question action acknowledges them; `session.answer` also accepts a reply, queued back to the child at its next step. Session summaries show `awaiting_input` until answered, without changing the child's running worker state. Approvals use the user path. Already user-routed requests stay with the user after reattachment; no duplicate parent delivery.
 
 **Worktrees and merging:** one worktree per child. The parent reviews each diff, merges the child branch with `git.merge`, and fixes conflicts itself (or applies parts by hand if a merge doesn't fit). Child worktrees are kept after merging; a cleanup action in settings lists them by age and size.
 
@@ -1440,6 +1456,14 @@ Parent-only except `team_send`, `team_reply`, `team_inbox`, `team_board_read`, `
 - No combined feed or diff.
 
 **Resuming:** a team is one carry-over item. Resuming wakes the parent, then children as needed (or all at once if you ask).
+
+**Resume ordering (implemented):** `session.resume` on the parent resumes the team. Daemon recovery also wakes live team parents first (unless `ORMICODE_RESUME_POLICY=wait`); idle children stay dormant, even with `all`. A parent message, `team_wait` or reassign wakes its target; ordinary status/roster reads do not. Durable queued prompts, unread inbox messages and interrupted in-flight child work are demand, resumed after parent readiness. Fresh interrupted workers receive a recap of their own task, not the parent's transcript. Child starts and turns respect `team.concurrent`; excess work stays queued until a slot opens. Archived/closed children do not resume. An explicit wake-all action remains deferred.
+
+**Retired sessions:** a successful rehydrate/fork handoff retires the outgoing session. It no longer accepts worker actions, but status reads and `team_wait` report completion without waking it. Children of a retired team parent remain parentless: messages to that parent become user questions, and startup recovers their queued/inbox/interrupted work under the usual concurrency cap without restarting the parent (`wait` still disables automatic recovery). Questions belonging to the retired session itself are permanently expired and journaled closed, including parentless-message questions; answers are not redirected to a different agent. Failed handoffs retain late-answerable questions on the original session.
+
+**Teams implementation status:** migrations `0008-teams.sql` / `0009-team-parentless.sql` + `session-store` persist teams, messages, parentless flags and user-routed message requests; `team-core` owns limits, permissions and the board. The daemon's `team.*` methods and 18 `team_*` MCP tools ship isolated-worktree spawn, roster/status/wait, send/reply/inbox (idle delivery, next-prompt delivery while busy, urgent interrupt), board append/current state, cancel/reassign/close, diff, journal report, parent approval delegation with destructive/parentless fallback to the user, configurable silence nudges, parentless lifecycle/recovery, parent-first demand-driven resume, user questions with durable late answers and user-approved PR opening. Limits read the account settings table; child tools are permission-checked in the daemon. Per-child tool allowlists return `agent.unsupported` (no portable adapter contract yet); MCP and skills use the existing session configuration path. The shared desktop/client UI nests children in collapsible teams, shows cache-inclusive team totals and per-session tokens (totals retain archived children's usage), marks parentless children, and displays a read-only parent approval inbox without putting delegated requests in Needs You. Parents answer through authenticated `team_approve` or forward approvals with `team_escalate`. Child navigation/back restores per-session scroll/follow state; transcripts, diffs and terminals stay session-specific, with no combined feed or diff. Existing question UI supports free-text replies and retains unanswered daemon questions after blocking expiry. Still deferred: explicit wake-all and the controller server.
+
+**Actor proof:** every `team.*` call requires its actor's worker MCP credential, verified by the daemon before actor lookup. Self-asserted session ids, including from socket/relay clients, are not proof. See [MCP](#mcp) for credential lifetime and ownership checks.
 
 ## Automations
 
@@ -2009,12 +2033,26 @@ services:
 | `ormi_handoff` | `session.handoff` | Hand this task to another agent ([Handoff](#handoff)) |
 | `ormi_publish` | `artifact.publish` | Publish an [artifact](#artifacts) |
 | `ormi_notes` | `session.getNotes` / `session.setNotes` | Read or write this session's notes |
-| `ormi_ask_user` | approval path | Ask you a question and wait for the answer |
-| Team tools | `team.*` | The `team_*` tools, when the session is a team parent ([Teams](#teams)) |
+| `ormi_ask_user` | `session.askUser` | Ask you a question (choices or free text) and return the answer; self-only, team parent only |
+| Team tools | `team.*` | The `team_*` tools, with parent/child permissions enforced by the daemon ([Teams](#teams)) |
 
 **Limits:** a session can only message, wait on or hand off sessions it started (plus itself). Sessions started by an agent count toward the pool and team caps. A session started through `ormi_start` records which session asked. Nothing here can touch settings, devices, secrets or the destructive list.
 
-**Built-in server implementation status:** `apps/daemon/src/mcp.ts` + `mcp-serve.ts` implement the `ormi` stdio MCP server (newline-delimited JSON-RPC: `initialize`, `ping`, `tools/list`, `tools/call`). The daemon injects it into every worker via `StartSpec.mcpServers` (`worker-main.ts` builds `{command: node, args: [mcp-serve.ts], env: {ORMICODE_SOCKET, ORMI_SESSION}}` when `ORMICODE_MCP=1`, which `supervisor.ts` sets on every spawn). Shipping tools: `ormi_sessions`, `ormi_start`, `ormi_message`, `ormi_wait`, `ormi_handoff`, `ormi_notes` — the ownership rule is enforced by checking `session.parent` before message/wait, and `session.start` accepts `parent` for the same reason. `ormi_publish`, `ormi_ask_user` and the team tools wait on [Artifacts](#artifacts)/[Teams](#teams) (both *later*). `StartSpec.mcpServers` is honored by `agent-claude-sdk` (`mcpServers` option), `agent-claude-cli` (`--mcp-config` file), and generic/vendor ACP (`session/new|load|resume` via each package's own `acpMcpServers` in `src/options.ts`); adapters without an MCP channel ignore the field.
+**Session authentication:** the daemon mints a random 256-bit credential on each worker spawn. The worker removes `ORMI_MCP_TOKEN` from its inherited environment and passes it only in the built-in server's MCP environment alongside `ORMI_SESSION`. The server sends `{session, token}` as request-envelope `mcp` metadata, never tool arguments; the daemon checks the token with `timingSafeEqual`. Credentials rotate on respawn and expire on stop, eviction, exit or daemon restart; they are never journaled or included in events or daemon logs. Missing/invalid/expired proof returns `mcp.unauthorized`; actor/ownership mismatches return `mcp.forbidden`. All `team.*`, `session.start` with `parent`, and agent-approval handoffs require proof. Authenticated MCP calls enforce self/child ownership in the daemon for prompt/wait, self-only handoff/notes/browser, and cannot call settings, devices or secrets. Ordinary non-agent desktop/CLI operations keep their existing paths.
+
+**Controller server (`ormi mcp serve`)** — *later*
+
+A stdio MCP server added to any outside MCP client (Claude Desktop, Cursor, VS Code, or Claude Code run by hand) to orchestrate ormicode. Talks to the local daemon socket, or a remote hub through `ormi connect` / the relay.
+
+**Identity:** a paired device with its own token, not a session. Pairing an MCP client = pairing a device; revoke it in the device list. Not bound by the "only sessions it started" rule, but still can't touch settings, devices, secrets or the destructive list.
+
+**Tools:** list/get/start/prompt/wait/cancel sessions; read the Needs You queue; answer approvals and questions (off by default, a per-device setting; destructive approvals never); hand off; read transcript summary and diff; use the team tools (it can be a team's parent from outside).
+
+Every call is journaled with the device as actor, goes through normal approvals, and counts toward pool and team caps. Same thin-wrapper rule: each tool maps to an existing protocol method.
+
+**Built-in server implementation status:** `apps/daemon/src/mcp.ts` + `mcp-serve.ts` implement the `ormi` stdio MCP server (newline-delimited JSON-RPC: `initialize`, `ping`, `tools/list`, `tools/call`). The daemon injects it into every worker via `StartSpec.mcpServers` (`worker-main.ts` builds `{command: node, args: [mcp-serve.ts], env: {ORMICODE_SOCKET, ORMI_SESSION, ORMI_MCP_TOKEN}}` when `ORMICODE_MCP=1`, which `supervisor.ts` sets on every spawn). Shipping tools: `ormi_sessions`, `ormi_start`, `ormi_message`, `ormi_wait`, `ormi_handoff`, `ormi_notes`, `ormi_ask_user` — worker MCP proof and ownership are checked in the daemon, not just the wrappers. The `team_*` tools wrap the daemon's `team.*` methods, including user questions and user-approved PR opening ([Teams](#teams)); `ormi_publish` still waits on Artifacts. `StartSpec.mcpServers` is honored by `agent-claude-sdk` (`mcpServers` option), `agent-claude-cli` (`--mcp-config` file), and generic/vendor ACP (`session/new|load|resume` via each package's own `acpMcpServers` in `src/options.ts`); adapters without an MCP channel ignore the field.
+
+The built-in server also ships `ormi_design_list`, `ormi_design_get`, `ormi_design_create`, `ormi_design_update`, `ormi_design_history`, `ormi_design_restore`, `ormi_design_frame_versions`, `ormi_design_mentionable` and `ormi_design_activity` for the [Design workspace](#design-use). They always derive the session from `ORMI_SESSION`; a caller cannot route a design tool to another session. Updates and restores use the same revision-checked operations as the canvas and CLI.
 
 ## Review
 
@@ -2132,7 +2170,7 @@ Anything else is stored as a file attachment with a download link.
 - `ormi approvals`, `ormi approve <id>`, `ormi deny <id> --reason`.
 - `ormi logs -f` (NDJSON).
 - `ormi checkpoint list|diff|restore|fork`, `ormi artifacts ls|open`.
-- `ormi mcp list|test|auth`, `ormi skills install|update`, `ormi secret set|list`.
+- `ormi mcp list|test|auth`, `ormi mcp serve`, `ormi skills install|update`, `ormi secret set|list`.
 - `ormi automation list|run|toggle`, `ormi workflow list|run|validate`.
 - `ormi device list|boot|install|ui|tap|type|logcat|record`, `ormi computer screenshot|click|type|find`, `ormi chrome tabs|open|click|read`.
 - `ormi chat setup|send`, `ormi tracker list|link`.
@@ -2293,21 +2331,35 @@ CLI is for you and scripts; the built-in MCP server is for models. Both use the 
 
 ## Design use
 
-> **Status:** later · **Needs:** [Themes](#themes), [Browser preview](#browser-preview)
+> **Status:** implemented on `design-workspace` · **Needs:** [Themes](#themes), [Browser preview](#browser-preview)
 
-**The agent designs as well as codes — layout, type, colour — then implements it.** This is a feature for *your* projects.
+**A repository-backed canvas where people and Ormicode agents arrange frames and edit rendered screen elements.** Enter Design through the titlebar workspace switcher. Design fills the window with its own board and layer sidebar, canvas, and inspector. Each sidebar can be hidden to make room for the canvas. The linked-session dock determines which working tree supplies the boards and where the Design composer sends messages. Switch back to Code to return to the last session or Home, or open the linked session directly from the dock.
 
-- **Design tab** next to Now, Sessions and Teams, listing design sessions and their canvases. A design session is a normal session with a design folder. Ships after themes and the preview.
-- **Where designs live:** `designs/<slug>/` in the repo, versioned with the code. The agent can commit a design or leave it uncommitted until you decide.
-- **Directions:** as many as the prompt asks ("three takes" → three). Vague brief → one, and the agent asks once before making variants. Each direction has its own name, render and checkpoint.
-- **Canvas:** every direction rendered side by side at the same width with tokens applied. Pick one to make it the working design, or compare. Not an editor. Annotations reach the agent with the element attached (like the [browser preview](#browser-preview)).
-- **Output:** rendered HTML or JSX using the repo's real theme tokens — no flat images, no free-form hex.
-- **Fidelity:** mid by default (real spacing, type, colour; placeholder content). High only if asked.
-- **Implementing:** the same agent continues into code by default ([handoff](#handoff) available).
-- **Assets:** HTML and SVG first. Photos and illustrations from the web, chosen and attributed by the agent, never AI-generated. Downloaded into the design folder with source URL and licence recorded.
-- **Every design renders at desktop and phone widths.**
-- **Accessibility:** contrast and tap-target size checked on every render; failures shown first.
-- **Done** = you approve it. A checkpoint per iteration so earlier directions can be restored.
+- **Storage:** `designs/<slug>/workspace.json` in the session's canonical working directory (including worktrees). Boards contain versioned documents, stable frame ids, geometry, HTML/CSS, working direction, comments and up to 20 revision restore points. Board writes are atomic and size/count bounded; malformed, oversized and symlinked board files are rejected.
+- **Canvas:** pan and zoom across a board, toggle rulers and the grid, and drag guides from either ruler. Frames snap to guides, edges and centers. Hold Alt (Option on Mac) to bypass snapping. Fit a page or the current selection from the zoom menu.
+- **Pages and frames:** create, reorder and duplicate pages, set a page background, and mark a prototype start frame. Use Shift selection or marquee to arrange several frames at once. Frames support rotation, grouping, stacking order, locking, visibility, copy/paste, duplication and HTML or text drops. Undo and redo check for conflicting changes before writing a new revision.
+- **Drawing:** add rectangle, ellipse and line frames, draw freehand or with the Bézier pen, import SVG markup, or create rich text. Edit supported paths with anchor and handle controls. Compound SVG paths can be edited in source.
+- **Screen elements:** use Insert element to add headings, text, buttons, containers, rectangles or local images inside the selected frame. Select an HTML element to drag its move or resize handles. Hold Shift to preserve its proportions while resizing. Double-click a text element to edit it in place. The inspector can duplicate and delete elements, replace an image in its existing box, edit its alt text and adjust its fit and crop. Inserted images are embedded in the frame and larger still images are optimized to fit its storage budget.
+- **Inspector:** use Layers or the preview to select an element. The inspector shows rendered style values when a field has no inline override, including values from the frame stylesheet. Edit position, size, layout, appearance, borders and typography. Reset a field to remove its inline override, or use the Source tab to edit the frame HTML/CSS. Download the selected layer and its rendered styles as standalone HTML.
+- **Clickable prototypes:** select an element and use the Prototype inspector to link it to a frame, open an overlay, go back or close an overlay. **Play prototype** opens a full-window player at the page's start frame or the first visible frame from the top left. The player has Back, Restart and hotspot hints. Links can cross pages, and duplicating a page retargets links between its copied frames. Interactions are inert while editing the canvas.
+- **Design tokens:** bind a supported inspector field to a board token or create one from the field's current value. `design.update` accepts `{type: "token.set", token: {name, kind, value}}` to create or change a token's value. The board holds up to 32 tokens and frame markup refers to them as `var(--ormi-design-<name>)`.
+- **HTML boundary:** HTML is data, never JSX execution. DOMPurify removes scripts, event handlers, forms, navigation and embedding. The preview is an opaque sandboxed iframe with a hash-authorized fixed bridge and restrictive CSP. Initial support is inline markup/styles and embedded data images/fonts; external asset loads, arbitrary scripts and JSX compilation are unsupported.
+- **Feedback:** leave comments on a frame, a selected element or a canvas point. Threads support replies, resolution and mentions of sessions in the same working tree. “Add to chat” prefills the linked session composer.
+- **Review:** people can approve a frame. A content change marks it as needing review. Inspect and restore individual frame content versions or restore an entire board revision.
+- **Concurrency and activity:** mutations require `expectedRevision`. A stale write returns `design.conflict`. The open canvas receives live updates from sessions in the same canonical working directory. Unsaved source stays available to copy or discard when a conflicting edit arrives. The session dock shows live agent state, recent edits and the prompt queue.
+- **CLI:** `ormi design list|get|create|update|history|restore|versions|mentionable`. `ormi design update <session> <slug> <revision> -` reads operation JSON from stdin (or use a file).
+- **Built-in MCP:** `ormi_design_*` tools operate on the agent's own session. The tool schema lists the same operations the canvas and CLI use. Agents can inspect frame versions, find mentionable sessions, and fetch recent board edits.
+- **Later:** presence, external asset importing, image editing and accessibility analysis.
+
+Agents can use `frame.update` to add `data-ormi-prototype="frame:<frameId>"`, `data-ormi-prototype="overlay:<frameId>"`, `data-ormi-prototype="back"` or `data-ormi-prototype="close-overlay"` to an element in frame HTML. Set a page's entry point with `{type: "page.start", pageId, frameId}` in the same revisioned update.
+
+**Example:** create `home` with `ormi design create "$SESSION" home "Home screen"`, then put this operation array in `operations.json` and run `ormi design update "$SESSION" home 1 operations.json` (or pipe it to the same command with `-`). The equivalent MCP call is `ormi_design_update` with `{ "slug": "home", "expectedRevision": 1, "operations": [...] }`; no session argument is accepted for routing.
+
+```json
+[{"type":"frame.add","name":"Phone","x":0,"y":0,"width":390,"height":844,"html":"<main><h1>Hello</h1><p>Select text to edit it.</p></main>","styles":"main { padding: 24px; color: var(--text-title); background: var(--bg-main); }"}]
+```
+
+**Ordering and errors:** request schemas are checked before session lookup, then the session cwd is resolved, stored data is validated, and CAS is checked before applying an operation. Synchronous read/check/atomic-replace runs in one daemon event-loop turn; events and the response follow a successful save. CLI requests use the normal 30-second request timeout; MCP uses 120 seconds. Read-only calls may be retried, but mutations must not be retried after a lost response: read the current document and reconcile. Errors are `session.not_found`, `design.not_found`, `design.conflict`, `design.invalid`, `design.outside`, `design.too_large` and `design.failed`; schema failures use `protocol.invalid_frame`. The current document is capped at 96 KiB, storage at 224 KiB, with 24 frames and 100 feedback comments. Source HTML is sanitized on render/save; source CSS is subject to the iframe CSP, and inspector CSS values use a small property/value allowlist. Pan with the empty canvas or scroll; Ctrl/Meta+wheel zooms; frame headers and resize handles also support arrow keys.
 
 ## Voice
 
@@ -3301,6 +3353,7 @@ There are no per-package root scripts and no `lint:js`-style variants. A script 
 - Bodies are plain JSON; the relay link is protected by TLS and token auth ([Tokens and transport](#tokens-and-transport)). Clients order by `seq`, never by `ts`.
 - `idx` = the per-device session summary ([Relay](#relay)). `hook` = a verified GitHub delivery ([GitHub](#github)).
 - **Long-running methods** return once the daemon has accepted the work, not when the turn ends: `session.prompt`, `session.steer`, `session.handoff`, `session.fork`, `session.digest`. Follow the turn through events.
+- `design.activity {session, slug}` returns recent journaled board revisions in the session's canonical working tree. New `design_changed` events include the originating session, an edit summary, and `source: "mcp"` for the built-in MCP connection.
 
 **Versioning:** `v` = envelope version, bumped only on breaking shape changes. `hello.proto` = feature level; `daemon.status` reports the daemon's `proto` as well. A peer that sees a newer `proto` than it supports refuses and says so once. The web app reports `protocol-old-client` when it must reload and `protocol-old-hub` when the daemon must be upgraded. New fields are optional, never repurposed, and unknown fields are ignored.
 
@@ -3309,6 +3362,8 @@ There are no per-package root scripts and no `lint:js`-style variants. A script 
 **Schemas:** Before implementing a method, define request and response schemas, errors, authorization, timeout, ordering and retry behavior. Include worked examples for start, prompt, subscribe, approval and reconnect. A response can be lost after success: side-effecting methods need an idempotency key with defined scope, retention, replay result and conflicting-body error, or must explicitly reject automatic retries. `packages/protocol` has a zod schema for every method and event body. The schema is the definition and this section is the index. No schema = not implemented. Bodies that don't parse are refused before reaching the daemon.
 
 **Current protocol foundation:** envelope and ID validation, a UTF-8 JSON frame parser with a 256 KB cap, core session request/response schemas, and initial agent and lifecycle event schemas live in the isolated protocol package. The registered schemas are listed in `packages/protocol/src/methods.ts` and `packages/protocol/src/events.ts`. The daemon implements `machine.list`, `fs.browse`, and the project registry methods; many later-feature schemas, replay behavior and transport integration still need implementation. An envelope passing validation is not sufficient: the receiver also validates the body against its registered method or event schema. Unregistered methods and event kinds return `protocol.unknown_method` and `protocol.unknown_event` respectively. No method is exposed to a client until its complete request, response and error semantics are defined.
+
+**Design workspace protocol index:** `packages/protocol/src/design.ts` defines bounded document, operation and history schemas. `design.list/get/create/update/history/restore` are registered in `methods.ts`; `design_changed` is registered in `events.ts`. `design.update` and `design.restore` require the exact current `expectedRevision`; conflict responses are not retried. Restore creates a new, monotonic revision. Daemon methods resolve the session's working directory and authorize through the ordinary session protocol; built-in MCP tools inject only their own session id. The CLI and shared canvas call the same methods. Boards are atomically stored in `designs/<slug>/workspace.json`; request/document/storage limits remain below the 256 KB wire cap.
 
 For these initial contracts, the client must not automatically retry a side-effecting session operation after a lost response: the action may already have succeeded. Read-only lookups may be retried. A subscription is scoped to its connection; reconnect using `session.subscribe` with the last processed per-session cursor. The daemon must define an idempotency strategy before it offers automatic retries of side-effecting methods.
 
@@ -3352,14 +3407,14 @@ Example request and response bodies (inside their corresponding envelopes):
 | Models | `models.list`, `refresh`, `addManual`, `setDefault` |
 | Devices | `devices.list`, `revoke`, `rename` |
 | Settings | `settings.get`, `set` |
-| Teams | `team.tree`, `message`, `reply`, `board`, `policy`, `spawn`, `cancel`, `reassign` |
+| Teams | Built: `team.spawn`, `tree`, `status`, `message` (send/reply), `inbox`, `board` (read/append/setState), `approve`, `cancel`, `reassign`, `close`, `diff`, `report`, `askUser`, `openPr`. Calls carry the calling session as `actor` with worker MCP proof; child-targeted calls carry `session`. `session.askUser` exposes the shared self-only question path. Planned: `policy` |
 | Bots | `bot.list`, `get`, `create`, `update`, `delete`, `message`, `memory.get`, `memory.set`, `template.export`, `template.import` |
 | Automations | `automation.list`, `get`, `save`, `run`, `toggle`, `runs` |
 | MCP | `mcp.list`, `test`, `setScope`, `auth`, `tools` |
 | Skills | `skills.list`, `read`, `write`, `install`, `update`, `project` |
 | Daemon | `daemon.status`, `health`, `repair`, `logs`, `upgrade`, `restart` |
 
-**Events** (the same across every agent): `turn_start`, `turn_end`, `text`, `thinking`, `plan`, `tool_call`, `tool_result`, `approval_request`, `approval_decision`, `question_request`, `question_answer`, `interaction_expired`, `permission_denied`, `state`, `model_changed`, `effort_changed`, `mode_changed`, `config_option`, `usage`, `rate_limited`, `retry_scheduled`, `error`, `interrupted`, `resumed`, `queue_changed`, `evicted`, `compacted`, `agent_version`, `terminal_open`, `terminal_close`, `team_message`, `agent_spawned`, `agent_state`, `board_entry`, `automation_run`, `artifact_published`, `artifact_rejected`, `lease_conflict`, `lease_drift`, `digest_ready`, `handoff_brief`, `plugin_hook`, `bot_message`, `bot_started_session`, `bot_memory_changed`.
+**Events** (the same across every agent): `turn_start`, `turn_end`, `text`, `thinking`, `plan`, `tool_call`, `tool_result`, `approval_request`, `approval_decision`, `question_request`, `question_answer`, `interaction_expired`, `permission_denied`, `state`, `model_changed`, `effort_changed`, `mode_changed`, `config_option`, `usage`, `rate_limited`, `retry_scheduled`, `error`, `interrupted`, `resumed`, `queue_changed`, `evicted`, `compacted`, `agent_version`, `terminal_open`, `terminal_close`, `team_message`, `team_parent_changed`, `team_pr_result`, `agent_spawned`, `agent_state`, `board_entry`, `automation_run`, `artifact_published`, `artifact_rejected`, `lease_conflict`, `lease_drift`, `digest_ready`, `handoff_brief`, `plugin_hook`, `bot_message`, `bot_started_session`, `bot_memory_changed`.
 - Each has `seq`, `ts`, `kind` and a body. Vendor-specific data goes in `body.raw` and never leaks into the shared shape.
 - Exception: the live-only `text_delta` and `thinking_delta` frames have no `seq`, aren't journaled, and aren't acked. They only exist for streaming ([Journal](#journal)).
 

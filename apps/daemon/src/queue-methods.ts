@@ -6,6 +6,7 @@ import type { PromptAttachment, PromptContext } from '@ormicode/protocol';
 import type { Client, DispatchCtx } from './dispatch.ts';
 import { validatePrompt } from './prompt-context.ts';
 import { shouldResetUiCheckFollowups } from './ui-check.ts';
+import { handoffTargetError } from './handoff-transition.ts';
 
 export function queueMethod(
   ctx: DispatchCtx,
@@ -17,6 +18,8 @@ export function queueMethod(
   const session = String(body.session);
   const row = getSession(ctx.db, session);
   if (!row) return client.link.replyError(id, 'session.not_found', session);
+  const error = handoffTargetError(ctx.db, session);
+  if (error && method !== 'session.queue.list') return client.link.replyError(id, 'session.busy', error);
   switch (method) {
     case 'session.queue.add': {
       try {

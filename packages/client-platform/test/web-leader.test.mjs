@@ -126,6 +126,31 @@ test('empty IndexedDB store reports unpaired', async t => {
   assert.equal(await p.tokens.get(), undefined);
 });
 
+test('unpair clears app-owned localStorage for leader and follower sign-out', async t => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  const data = new Map([['ormicode.design.frameClipboard', 'private frame']]);
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
+    get length() { return data.size; }, key: index => [...data.keys()][index], removeItem: key => data.delete(key),
+  } });
+  t.after(() => { if (original) Object.defineProperty(globalThis, 'localStorage', original); else delete globalThis.localStorage; });
+  const env = environment(); t.after(() => env.close());
+  const leader = env.create();
+  let state;
+  leader.transport.onState = value => { state = value; };
+  await leader.web.pair({ account: 'demo', code: 'signout' });
+  await until(() => env.links.length === 1);
+  const follower = env.create();
+  await follower.web.unpair();
+  assert.equal(data.size, 0);
+  await until(() => state === 'unpaired');
+  assert.equal(await leader.tokens.get(), undefined);
+  await leader.web.pair({ account: 'demo', code: 'again' });
+  await until(() => env.links.length === 2);
+  data.set('ormicode.design.frameClipboard', 'another private frame');
+  await leader.web.unpair();
+  assert.equal(data.size, 0);
+});
+
 test('pairing stores the token and connects the leader online', async t => {
   const env = environment();
   t.after(() => env.close());
@@ -289,6 +314,8 @@ test('persisted pageshow reconnects the same platform and listeners on every bfc
   const platform = env.create(), target = new EventTarget(), states = [], received = [];
   t.after(bindBrowserLifecycle(platform, target));
   const transport = platform.transport;
+  const design = [];
+  const unsubscribe = transport.subscribeEvents(frame => design.push(frame.seq));
   transport.onState = state => states.push(state);
   transport.onEvent = frame => received.push(frame.seq);
   target.dispatchEvent(new Event('pageshow'));
@@ -311,6 +338,10 @@ test('persisted pageshow reconnects the same platform and listeners on every bfc
     assert.equal((await transport.request('session.list', {})).type, 'res');
   }
   assert.deepEqual(received, [1, 2, 3]); assert.equal(states.at(-1), 'online');
+  assert.deepEqual(design, [1, 2, 3]);
+  unsubscribe();
+  env.links[2].onFrame({ v: 1, type: 'evt', session: 's_cache', seq: 4, ts: 1, body: { kind: 'text', text: 'unsubscribed' } });
+  assert.deepEqual(received, [1, 2, 3, 4]); assert.deepEqual(design, [1, 2, 3]);
 });
 
 test('an unknown or revoked token clears the store and returns to unpaired', async t => {
