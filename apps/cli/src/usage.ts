@@ -4,6 +4,8 @@ export function usage(code: number): never {
   ormi agent smoke <vendor> --command <acp-cmd> [--args "..."]   (third-party ACP agent)
   ormi daemon                                     run the supervisor in the foreground
   ormi status                                     daemon.status
+  ormi export [file]                              tar of store, config and daemon log (no tokens, no session logs)
+  ormi wipe [--confirm wipe]                      delete store, logs, cache and keys (hub must be stopped)
   ormi session start <vendor> [--transport t] [--checkout <branch> | --worktree <base> [--branch-name <name>] [--include-dirty] | --existing <path>]
   ormi session list [--archived]
   ormi session get <id>

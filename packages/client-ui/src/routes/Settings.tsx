@@ -1,6 +1,6 @@
 /** Settings tab (Settings-2 mockup): inner nav + one section at a time. Only
  * client-side prefs and existing daemon methods are wired; the rest say so. */
-import { useEffect, useLayoutEffect, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { Settings as Gear, Palette, SlidersHorizontal, Bell, Keyboard, Smartphone, Laptop, Shield, Info, Coins, KeyRound, Globe, type LucideIcon } from 'lucide-react';
 import { usePlatform } from '../lib/platform.ts';
 import { applyTheme, themeByName } from '../lib/theme.ts';
@@ -9,6 +9,8 @@ import { useSessions } from '../features/session/useSessions.ts';
 import { LayoutSettings } from './LayoutSettings.tsx';
 import { BrowserSettings } from './BrowserSettings.tsx';
 import { SettingsSwitch } from './SettingsSwitch.tsx';
+import { Group, Row, ctl, label } from './SettingsRows.tsx';
+import { PrivacySettings } from './PrivacySettings.tsx';
 
 export interface Prefs { theme: string; defaultVendor: string; defaultProject: string; worktreeBranchPrefix?: string; projects?: string[]; safeMode?: boolean; screenshotAtCheckpoint?: boolean }
 const KEY = 'ormi.prefs';
@@ -51,27 +53,6 @@ const TITLES: Record<string, [string, string]> = {
   about: ['About', 'Versions and connection'],
 };
 
-const label = { fontSize: 10, fontWeight: 500, color: 'var(--text-label)', letterSpacing: 1 };
-const card = { background: 'var(--bg-card)', border: '1px solid var(--line-card)', borderRadius: 10, overflow: 'hidden' as const };
-const ctl = {
-  font: 'inherit', fontSize: 11.5, color: 'var(--text-title)', background: 'transparent', border: '1px solid var(--line-card)',
-  borderRadius: 7, padding: '0 10px', height: 26, outline: 'none', boxSizing: 'border-box' as const,
-};
-
-function Group({ title, children }: { title: string; children: ReactNode }) {
-  return <div style={{ marginTop: 18 }}><div style={{ ...label, margin: '0 0 7px' }}>{title}</div><div style={card}>{children}</div></div>;
-}
-function Row({ title, hint, children, mono, monoTitle }: { title: string; hint?: string; children?: ReactNode; mono?: boolean; monoTitle?: boolean }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 44, padding: '7px 14px', boxSizing: 'border-box', borderTop: '1px solid var(--line-card)', marginTop: -1 }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, color: 'var(--text-title)', fontFamily: monoTitle ? 'var(--font-mono)' : undefined }}>{title}</div>
-        {hint ? <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2, fontFamily: mono ? 'var(--font-mono)' : undefined }}>{hint}</div> : null}
-      </div>
-      {children}
-    </div>
-  );
-}
 const Soon = ({ what }: { what: string }) => <span style={{ fontSize: 10.5, color: 'var(--text-hint)' }}>{what}</span>;
 
 interface CostBucket { tokens: number; usd: number | null; unpriced: number; estimate: boolean }
@@ -384,7 +365,7 @@ export function SettingsView({ prefs, onPrefs, connection }: { prefs: Prefs; onP
           {section === 'machines' ? <Group title="THIS MACHINE"><Row title="local" hint="Other machines appear here once multi-machine hubs ship"><Soon what="soon" /></Row></Group> : null}
           {section === 'usage' ? <Usage /> : null}
           {section === 'secrets' ? <Secrets /> : null}
-          {section === 'privacy' ? <Group title="STORAGE"><Row title="Sessions and journals" hint="~/.ormicode/ on this machine. The relay only forwards encrypted frames." mono /></Group> : null}
+          {section === 'privacy' ? <PrivacySettings /> : null}
           {section === 'about' ? <About connection={connection} /> : null}
         </div>
       </div>

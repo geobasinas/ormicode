@@ -22,6 +22,7 @@ const PATCH_INLINE = 256 * 1024;
 import type { Checkpoints } from '@ormicode/checkpoints';
 import type { SecretBroker } from './secrets.ts';
 import { secretMethod } from './secret-methods.ts';
+import { dataMethod, type DataExports, type StopHub } from './data-methods.ts';
 import type { TerminalHub } from './terminal-methods.ts';
 import { priceFor, type PriceBook } from '@ormicode/pricing';
 import { summarize as digestOf, rank as rankDigest } from '@ormicode/digest';
@@ -93,6 +94,9 @@ export interface DispatchCtx {
   record(session: string, kind: string, payload: Record<string, unknown>): void;
   /** Tells every client the session list changed (archive, unarchive) so sidebars refresh now. */
   sessionsChanged(): void;
+  storePath: string;
+  dataExports: DataExports;
+  stopHub: StopHub;
 }
 /** Client-facing session.* / daemon.* request dispatch. */
 export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Frame): Promise<void> {
@@ -368,6 +372,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         if (method === 'terminal.open') return await ctx.terminals.open(db, client, id, body);
         if (method.startsWith('terminal.')) return await ctx.terminals.method(client, id, method, body);
         if (method.startsWith('secret.')) return secretMethod(ctx, client, id, method, body);
+        if (method.startsWith('data.')) return await dataMethod(ctx, client, id, method, body);
         if (method.startsWith('checkpoint.')) return await checkpointMethod(ctx, client, id, method, body);
         if (method.startsWith('file.')) return await fileMethod(ctx, client, id, method, body);
         return client.link.replyError(id, 'protocol.unimplemented', method);

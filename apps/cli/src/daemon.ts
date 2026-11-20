@@ -36,6 +36,7 @@ export async function daemonMain(): Promise<number> {
   console.log(`ormicode daemon listening on ${daemon.socketPath}`);
   await new Promise<void>(resolve => {
     process.on('SIGINT', resolve); process.on('SIGTERM', resolve);
+    void daemon.stopped.then(resolve);
   });
   await daemon.close();
   return 0;

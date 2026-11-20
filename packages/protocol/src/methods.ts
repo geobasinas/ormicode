@@ -1,6 +1,6 @@
 import * as z from 'zod/mini';
 import { cursorSchema, jsonObjectSchema, requestIdSchema, sessionIdSchema, idSchema, timestampSchema } from './schema.ts';
-import { portBlock, serviceRequests, serviceResponses, browserRequests, browserResponses } from './service-contracts.ts';
+import { portBlock, serviceRequests, serviceResponses, browserRequests, browserResponses, dataRequests, dataResponses } from './service-contracts.ts';
 import { promptContextSchema } from './prompt-context-schema.ts';
 import { designRequests, designResponses } from './design.ts';
 import { projectRequests, projectResponses } from './project-methods.ts';
@@ -197,7 +197,7 @@ export const requestBodies = {
   'terminal.resize': z.object({ terminal: nonEmpty, cols: cursorSchema, rows: cursorSchema }),
   'terminal.close': z.object({ terminal: nonEmpty }),
   'terminal.list': z.object({}),
-  ...serviceRequests,
+  ...serviceRequests, ...dataRequests,
   ...browserRequests,
   'checkpoint.list': z.object(session),
   // Without `to`: what `from` changed since the checkpoint before it.
@@ -241,7 +241,7 @@ export const responseBodies = {
   'session.rename': z.object({ renamed: z.literal(true), title: nonEmpty }),
   'session.export': z.object({ text: z.string() }),
   'session.list': z.object({ sessions: z.array(summarySchema) }),
-  ...serviceResponses,
+  ...serviceResponses, ...dataResponses,
   ...browserResponses,
   'session.prompt': z.object({ accepted: z.literal(true) }),
   'session.draft.get': z.object({ text: z.string() }),

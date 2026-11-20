@@ -40,6 +40,7 @@ import { stateFor } from './supervisor-state.ts';
 import { shouldRecordResume } from './resume-marker.ts';
 import { closeInterruptedTools } from './interrupted-tools.ts';
 import { stopWorkerProcess } from './stop-worker.ts';
+import { DataExports, stopSignal, type StopHub } from './data-methods.ts';
 const WORKER_MAIN = join(dirname(fileURLToPath(import.meta.url)), 'worker-main.ts');
 const startedAt = Date.now();
 interface Worker { proc: ChildProcess; session: string; pid: number | undefined; ready: boolean; stopping?: boolean }
@@ -305,6 +306,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     return last ? sendPrompt(session, last.text, last.images, { journal: false, context: last.context, attachments: last.attachments, actor: last.actor }) : undefined;
   });
   const pairing = new Pairing();
+  const dataExports = new DataExports(), { stopped, markStopped } = stopSignal(); let stopping: Promise<void> | undefined;
   const handoffsInTurn = new Map<string, number>();
   let relay: RelayClient | undefined;
   dispatchCtx = {
@@ -315,7 +317,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     lastError: () => lastError, liveWorkers: () => workers.size,
     spawnWorker, ensureWorker, stopWorker, setRecapPending: (session, uptoSeq) => recapPending.set(session, uptoSeq), toWorker, sendPrompt, drainQueue,
     resetUiCheckFollowups: session => uiCheckFollowups.reset(session),
-    pairing, relay: () => relay, checkpoints, record, secrets, terminals, services, agentBrowser,
+    pairing, relay: () => relay, checkpoints, record, secrets, terminals, services, agentBrowser, storePath, dataExports, stopHub: keep => shutdown(keep),
     sessionsChanged: () => { for (const c of clients) if (!c.link.closed) c.link.send({ v: 1, type: 'idx', to: '*', ts: Date.now(), body: { sessions: idxSessions() } }); idxSoon(); },
     prices: new PriceBook({
       cachePath: join(ormicodeDir(), 'cache', 'prices.json'), overridesPath: join(ormicodeDir(), 'prices.json'),
@@ -382,9 +384,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   for (const c of recovery.autoResume) { resuming.add(c.s.id); if (c.recapOnly) recapPending.set(c.s.id, Number.MAX_SAFE_INTEGER); void resumeSession(dispatchCtx, c.s.id).catch(error => { lastError = String(error); }); }
   for (const parent of recovery.retiredTeamParents) resumeQueuedChildren(dispatchCtx, parent);
   for (const r of recovery.rateLimited) retries.schedule(r.id, r.resetAt);
-  return {
-    socketPath, storePath, db, workers,
-    async close() {
+  const shutdown = (keep?: Parameters<StopHub>[0]): Promise<void> => stopping ??= (async () => {
       await agentBrowser.closeAll();
       await services.shutdown();
       await previewProxy.close();
@@ -400,12 +400,13 @@ export async function startDaemon(opts: DaemonOptions = {}) {
         try { await link?.request('worker.evict', { session: w.session }, 5_000); } catch { /* kill below */ }
         try { killTree(w.proc); } catch { /* already dead */ }
       }
-      for (const c of clients) c.link.close();
+      for (const c of clients) if (c.link !== keep?.link) c.link.close();
       for (const link of workerLinks.values()) link.close();
       mcpCredentials.clear();
       relay?.close();
       server.close();
-      db.close();
-    },
-  };
+      db.close(); dataExports.clear();
+      try { await keep?.after(); } finally { if (keep) { await new Promise(r => setTimeout(r, 100)); keep.link.close(); } markStopped(); }
+    })();
+  return { socketPath, storePath, db, workers, stopped, close: () => shutdown() };
 }

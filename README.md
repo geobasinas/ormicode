@@ -732,9 +732,9 @@ An uncertain in-flight tool call is marked interrupted, never automatically repl
 
 **Migration:** `config.json` has `schemaVersion`; small forward-only migrations on start, with a `.bak.1` copy first. The store uses SQL migrations.
 
-**Export/import:** `ormi export` → tar of store, config and daemon log (no tokens, no session logs). `ormi import` merges into a new machine, refusing id collisions unless forced.
+**Export/import:** `ormi export [file]` → tar of store, config and daemon log (no tokens, no session logs). The store is a `VACUUM INTO` snapshot, so export works while the hub runs; device token hashes are cleared in the copy, keys that look like credentials are dropped from `config.json`, and a `manifest.json` lists what was included. Settings → Data and privacy downloads the same tar through `data.export` / `data.exportChunk` (local socket only, never over the relay). `ormi import` merges into a new machine, refusing id collisions unless forced (not built yet).
 
-**Wipe:** `ormi wipe` deletes store, logs, cache and keys after a typed confirmation.
+**Wipe:** `ormi wipe [--confirm wipe]` deletes store, logs, cache and keys after a typed confirmation (the word `wipe`). It also deletes `blobs/`, `notes/`, `checkpoints/`, `terminals/`, `recordings/` and `artifacts/`, which only make sense with the store. It keeps `config.json`, `scratch/`, `skills/`, `teams/`, `automations.json`, `destructive.json`, `mcp/`, `versions/` and keyring secrets (delete those in Settings → Secrets). The CLI refuses while the hub is running or the store is open. Settings → Data and privacy uses `data.wipe {confirm}` instead (local socket only): the hub shuts down, closes the store, wipes, replies and exits; it does not restart by itself. Every target is first moved into one `.wipe-*` folder inside `~/.ormicode`, and the moves are undone if one fails, so a wipe never stops half way. Nothing outside `~/.ormicode` is touched, and symlinks are removed, not followed.
 
 **Housekeeping:** nightly prune; `VACUUM` monthly or when free pages > 20%; daemon log rotates at 20 MB × 5; two old versions kept; `ormi status` shows total disk use. Test restoring a backup on a throwaway hub now and then.
 

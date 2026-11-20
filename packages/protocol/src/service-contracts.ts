@@ -1,4 +1,5 @@
 import * as z from 'zod/mini';
+export { dataRequests, dataResponses } from './data-contracts.ts';
 import { cursorSchema, sessionIdSchema, timestampSchema } from './schema.ts';
 
 const count = z.number().check(z.int(), z.gte(0));

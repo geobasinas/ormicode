@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -97,4 +97,47 @@ test('ormi agent smoke fake rejects an unknown script', () => {
 test('unknown command exits 2', () => {
   const { status } = run(['bogus']);
   assert.equal(status, 2);
+});
+
+test('ormi export and ormi wipe work on ORMICODE_HOME and wipe needs the typed word', async () => {
+  const { mkdtempSync, readdirSync, readFileSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const net = await import('node:net');
+  const { seedHome, untar } = await import('../../daemon/test/home-data-fixture.mjs');
+  const base = mkdtempSync(join(tmpdir(), 'ormi-cli-data-'));
+  const home = join(base, 'home');
+  const env = { ...process.env, ORMICODE_HOME: home, ORMICODE_SOCKET: join(base, 'hub.sock'), ORMICODE_REMOTE: '0' };
+  const runIn = (args, input) => spawnSync(process.execPath, [ormi, ...args], { encoding: 'utf8', env, input });
+  try {
+    assert.match(run([]).stdout, /ormi export \[file\][\s\S]*ormi wipe \[--confirm wipe\]/);
+    seedHome(home);
+    const before = readdirSync(home).sort();
+    const exported = runIn(['export', join(base, 'out.tar')]);
+    assert.equal(exported.status, 0, exported.stderr);
+    assert.deepEqual(Object.keys(untar(readFileSync(join(base, 'out.tar')))).sort(), ['config.json', 'logs/daemon.log', 'logs/daemon.log.1', 'manifest.json', 'store.db']);
+    assert.equal(runIn(['export', '--all']).status, 2);
+    assert.equal(runIn(['wipe', 'now']).status, 2);
+    for (const [args, input] of [[['wipe', '--confirm', 'yes']], [['wipe'], 'wipe\n'], [['wipe', '--confirm', 'WIPE']]]) {
+      const refused = runIn(args, input);
+      assert.equal(refused.status, 1, `${args.join(' ')} should refuse`);
+      assert.match(refused.stderr, /nothing was deleted/);
+    }
+    assert.deepEqual(readdirSync(home).sort(), before, 'a wrong or missing confirmation deletes nothing');
+    const hub = net.createServer(socket => socket.destroy());
+    await new Promise(resolve => hub.listen(env.ORMICODE_SOCKET, resolve));
+    try {
+      const running = await new Promise(resolve => {
+        const child = spawn(process.execPath, [ormi, 'wipe', '--confirm', 'wipe'], { env });
+        let stderr = ''; child.stderr.on('data', d => { stderr += d; });
+        child.on('close', status => resolve({ status, stderr }));
+      });
+      assert.equal(running.status, 1);
+      assert.match(running.stderr, /hub is running/);
+    } finally { await new Promise(resolve => hub.close(resolve)); }
+    assert.deepEqual(readdirSync(home).sort(), before, 'a running hub blocks the wipe');
+    const wiped = runIn(['wipe', '--confirm', 'wipe']);
+    assert.equal(wiped.status, 0, wiped.stderr);
+    assert.match(wiped.stdout, /deleted store\.db/);
+    assert.deepEqual(readdirSync(home).sort(), ['config.json', 'desktop', 'scratch', 'secrets-index.json', 'skills']);
+  } finally { rmSync(base, { recursive: true, force: true }); }
 });
