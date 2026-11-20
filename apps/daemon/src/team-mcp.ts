@@ -46,7 +46,7 @@ export async function callTeamTool(
     const until = String(args.until ?? 'idle');
     const state = String(result.state);
     if (['done', 'failed', 'archived', 'interrupted'].includes(state)
-      || (until === 'approval' ? ['awaiting_approval', 'awaiting_input'].includes(state) : state === 'idle')) return JSON.stringify(result);
+      || until === 'approval' && ['awaiting_approval', 'awaiting_input'].includes(state)) return JSON.stringify(result);
     return wait(String(args.session), until, Number(args.timeoutMs ?? 120_000));
   }
   return JSON.stringify(result);

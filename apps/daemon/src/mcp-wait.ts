@@ -5,14 +5,19 @@ import type { McpProof } from './mcp-auth.ts';
 export async function waitFor(link: Pick<Link, 'request' | 'onFrame'>, session: string, until: string, timeoutMs: number, proof: McpProof): Promise<string> {
   let live = false;
   let subscribed = false;
+  let pendingTurn = false;
+  let completedTurn = false;
   let timer: NodeJS.Timeout | undefined;
   let finish!: (result: Record<string, unknown>) => void;
   const completed = new Promise<Record<string, unknown>>(resolve => { finish = resolve; });
   const previous = link.onFrame;
   link.onFrame = frame => {
     previous?.(frame);
-    if (!live || frame.type !== 'evt' || frame.session !== session) return;
+    if (frame.type !== 'evt' || frame.session !== session) return;
     const body = frame.body as Record<string, unknown>;
+    if (body.kind === 'turn_start' || body.kind === 'state' && body.reason === 'prompt_dispatch') pendingTurn = true;
+    if (body.kind === 'turn_end') { pendingTurn = false; completedTurn = true; }
+    if (!live) return;
     if (until === 'approval' && ['approval_request', 'team_approval_request', 'question_request'].includes(String(body.kind))) finish({ state: 'awaiting_approval' });
     if (body.kind === 'turn_end' && until !== 'approval') finish({ state: until === 'done' ? 'done' : 'idle' });
     if (body.kind === 'done') finish({ state: 'done' });
@@ -27,7 +32,7 @@ export async function waitFor(link: Pick<Link, 'request' | 'onFrame'>, session: 
     if (current.type === 'err') return JSON.stringify({ error: current.code });
     const state = String((current.body as Record<string, unknown>).state);
     if (['done', 'failed', 'archived', 'interrupted'].includes(state)
-      || (until === 'approval' ? ['awaiting_approval', 'awaiting_input'].includes(state) : state === 'idle')) finish({ state });
+      || (until === 'approval' ? ['awaiting_approval', 'awaiting_input'].includes(state) : state === 'idle' && completedTurn && !pendingTurn)) finish({ state });
     timer = setTimeout(() => { finish({ timedOut: true }); }, timeoutMs);
     const result = await completed;
     if (result.timedOut) {
