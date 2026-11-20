@@ -20,7 +20,9 @@ export function lateQuestionAnswer(ctx: DispatchCtx, client: Client, id: string,
   if (unavailable) { client.link.replyError(id, 'session.busy', unavailable); return true; }
   const answered = ctx.db.prepare(`SELECT 1 FROM events WHERE session = ? AND kind = 'question_answer'
     AND json_extract(payload, '$.request') = ? LIMIT 1`).get(session, request);
-  if (answered) { client.link.replyError(id, 'session.already_decided', 'question already answered'); return true; }
+  if (answered || !pendingQuestions(ctx.db, session, { daemonOnly: true }).includes(request)) {
+    client.link.replyError(id, 'session.already_decided', 'question already answered or cancelled'); return true;
+  }
   const question = (JSON.parse(row.payload) as { questions: { question: string; options: { label: string }[] }[] }).questions[0];
   if (!question || !validQuestionAnswer(question.question, question.options.map(o => o.label), answers)) {
     client.link.replyError(id, 'team.invalid', 'answer the offered question with one offered choice or non-empty text'); return true;

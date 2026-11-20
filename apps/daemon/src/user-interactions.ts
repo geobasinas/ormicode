@@ -37,7 +37,7 @@ export class UserInteractions {
     pending.done = true;
     clearTimeout(pending.timer);
     this.pending.delete(request);
-    ctx.record(pending.session, kind, { request, ...payload, ...(kind === 'interaction_expired' && pending.kind === 'question' ? { answerable: payload.reason !== 'handed_off' } : {}), daemonInteraction: true });
+    ctx.record(pending.session, kind, { request, ...payload, ...(kind === 'interaction_expired' && pending.kind === 'question' ? { answerable: !['handed_off', 'user_abort'].includes(String(payload.reason)) } : {}), daemonInteraction: true });
     const row = getSession(ctx.db, pending.session);
     if (row && !row.archived && ['awaiting_approval', 'awaiting_input', 'running'].includes(row.state))
       ctx.record(row.id, 'state', { state: pending.previous });
