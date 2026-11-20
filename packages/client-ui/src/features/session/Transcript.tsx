@@ -1,7 +1,7 @@
 /** Transcript view: prompts as right-aligned bubbles, assistant text left,
  * tool calls as compact expandable rows (result folded in, checkpoint as a
  * hover-only icon), system events as muted lines. */
-import { useMemo, useState, type ReactNode } from 'react';
+import { Fragment, useMemo, useState, type ReactNode } from 'react';
 import { Pencil, CircleAlert, RotateCw, Pause, ChevronRight, History, CircleCheck, MessageCircle, Clock3, Search, Cpu, Gauge } from 'lucide-react';
 import { ToolRow, ThinkingRow, CheckpointMark } from './ToolRow.tsx';
 import type { TranscriptEvent } from './useTranscript.ts';
@@ -358,10 +358,12 @@ function renderTurns(events: TranscriptEvent[], ctx: Ctx) {
     const { activity, visible } = turnContents(part.events);
     const start = part.start.ts ?? part.events.find(event => event.ts !== undefined)?.ts ?? 0;
     const end = part.end?.ts ?? part.events.findLast(event => event.ts !== undefined)?.ts ?? start;
-    return <TurnActivity key={`turn-${part.start.seq}`} start={start} end={end} running={!part.end && Boolean(ctx.busy)} activity={renderEvents(activity, ctx)}>
-      {renderEvents(visible, ctx)}
+    return <Fragment key={`turn-${part.start.seq}`}>
+    {renderEvents(visible.filter(event => event.kind === 'prompt'), ctx)}
+    <TurnActivity start={start} end={end} running={!part.end && Boolean(ctx.busy)} activity={renderEvents(activity, ctx)}>
+      {renderEvents(visible.filter(event => event.kind !== 'prompt'), ctx)}
       {part.end?.kind === 'turn_end' ? <ChangedFilesCard session={ctx.session} events={part.events} allowDiff={!ctx.scratch} /> : null}
-    </TurnActivity>;
+    </TurnActivity></Fragment>;
   });
 }
 

@@ -11,6 +11,10 @@ export function transcriptTurns(events: TranscriptEvent[]): TranscriptPart[] {
       if (current?.kind === 'turn' && !current.end) current.end = event;
       current = { kind: 'turn', start: event, events: [] }; parts.push(current);
     } else if (event.kind === 'prompt') {
+      if (current?.kind === 'turn' && !current.end && !current.events.length) {
+        current.events.push(event);
+        continue;
+      }
       if (current?.kind === 'turn' && !current.end) current.end = event;
       current = { kind: 'events', events: [event] }; parts.push(current);
     } else {

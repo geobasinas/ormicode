@@ -3,6 +3,18 @@ import assert from 'node:assert/strict';
 import { transcriptTurns, turnContents } from '../src/features/session/turns.ts';
 
 const event = (seq, kind, body = {}) => ({ seq, kind, body, ts: seq * 1000 });
+test('worker acceptance journals turn_start before its prompt without splitting the turn', () => {
+  const events = [event(1, 'turn_start'), event(2, 'prompt', { text: 'write a file' }),
+    event(3, 'tool_call', { callId: 'call-1', name: 'Write', input: { file_path: '/a', content: 'hello' } }),
+    event(4, 'tool_result', { callId: 'call-1', status: 'completed' }), event(5, 'text', { text: 'done' }), event(6, 'turn_end')];
+  const parts = transcriptTurns(events);
+  assert.equal(parts.length, 1);
+  assert.equal(parts[0].start.seq, 1);
+  assert.equal(parts[0].end.seq, 6);
+  assert.equal(parts[0].end.ts - parts[0].start.ts, 5000);
+  assert.deepEqual(turnContents(parts[0].events).activity.map(e => e.seq), [3, 4]);
+  assert.deepEqual(turnContents(parts[0].events).visible.map(e => e.seq), [2, 5, 6]);
+});
 test('completed and interrupted turns retain their boundaries and stay separate from prompts', () => {
   const events = [event(1, 'prompt'), event(2, 'turn_start'), event(3, 'thinking'), event(4, 'tool_call'),
     event(5, 'text', { text: 'final' }), event(6, 'turn_end'), event(7, 'prompt'), event(8, 'turn_start'), event(9, 'interrupted', { reason: 'user_abort' })];
