@@ -1928,6 +1928,10 @@ The daemon methods for this pane are built. The UI can use the status, history, 
 
 **Embedded preview (default):** a tab next to the session showing the dev server, proxied through the hub with an authenticated URL, so it works on the phone too. Local preview proxies HTTP and websockets (live reload works).
 
+**Desktop web browsing:** the Browser rail address bar works even with no services running. Enter an HTTP(S) URL, a bare domain (`example.com` → `https://example.com/`), or search terms (DuckDuckGo, `https://duckduckgo.com/?q=…`). Back, Forward and Reload operate inside the embedded browser. `/paths`, `?queries` and `#fragments` resolve against the current page; local service ports and portals still use the authenticated preview proxy. Web links and HTTP(S) popup links stay in the pane; Open externally remains available. Browsing uses the project's existing preview partition and Keep sign-ins setting. Public web requests go directly from the desktop, including when connected to a remote hub; local service previews continue through the relay.
+
+Guests are sandboxed with context isolation, web security enabled, no Node integration (including workers/subframes), no preload or nested webviews, and denied device permissions. Addresses, initial embeds, frame navigations, redirects and popup targets are limited to HTTP(S); `file:`, `javascript:`, `data:` and other schemes are blocked. Inspector/console integration remains a local-preview feature; arbitrary sites may not support it. This is a session browser, not an agent permission to browse arbitrary sites.
+
 **Relay status:** Desktop preview works over the relay without HMR; web preview needs a dedicated preview origin (see Open questions).
 
 Services are declared in `.ormi/services.yaml` (no port guessing):
@@ -1961,7 +1965,7 @@ services:
 
 **Security:** preview URLs are token-protected and rotate on service restart. The proxy only serves declared portals. Previews can't reach app IPC or the relay control channel.
 
-**Not:** a general browser or computer use.
+**Not:** a full browser replacement or general computer use. Agent browser tools remain restricted to session previews.
 
 ## GitHub
 

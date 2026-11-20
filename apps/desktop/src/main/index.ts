@@ -7,7 +7,7 @@
  * (~/.ormicode/desktop/remote.json + safeStorage token), fall back to
  * the relay WebSocket. Pairing goes through `ormi:pair` IPC.
  */
-import { app, BrowserWindow, dialog, ipcMain, net, safeStorage, screen, session as electronSession, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, safeStorage, screen, session as electronSession, shell } from 'electron';
 import { isAbsolute, join } from 'node:path';
 import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, statSync } from 'node:fs';
 import * as daemonSocket from '@ormicode/daemon/socket';
@@ -15,6 +15,7 @@ import { connectRemote, joinRemote } from '@ormicode/relay-client';
 import type { WsLink } from '@ormicode/relay-client';
 import type { Link } from '@ormicode/daemon/socket';
 import type { Frame } from '@ormicode/protocol';
+import { allowBrowserGuest, browserPartition as previewPartition, hardenBrowserPreferences, installBrowserNavigation } from './browser-security.ts';
 
 const socketPath = () => process.env.ORMICODE_SOCKET ?? daemonSocket.defaultSocketPath();
 const desktopDir = join(daemonSocket.ormicodeDir(), 'desktop');
@@ -22,7 +23,6 @@ const tokenFile = join(desktopDir, 'device.token');
 const remoteFile = join(desktopDir, 'remote.json');
 const layoutFile = join(desktopDir, 'layout.json');
 const layoutRegions = new Set(['sidebar', 'main', 'composer', 'rightRail', 'now.widgets', 'session.panel', 'approval']);
-const previewPartition = /^(persist:)?ormi-preview-[a-z0-9]{1,32}$/;
 
 app.commandLine.appendSwitch('host-resolver-rules', 'MAP *.localhost 127.0.0.1');
 
@@ -72,11 +72,15 @@ function rememberPreview(session: string, value: unknown): void {
 function installPreviewProtocol(partition: string): void {
   if (previewHandlers.has(partition)) return;
   previewHandlers.add(partition);
-  void electronSession.fromPartition(partition).protocol.handle('http', async request => {
-    if (!linkIsRemote || !link) return net.fetch(request);
+  const guestSession = electronSession.fromPartition(partition);
+  guestSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+  guestSession.setPermissionCheckHandler(() => false);
+  void guestSession.protocol.handle('http', async request => {
+    if (!linkIsRemote || !link) return guestSession.fetch(request, { bypassCustomProtocolHandlers: true });
     let parsed: URL;
     try { parsed = new URL(request.url); } catch { return new Response('Invalid preview URL', { status: 400 }); }
     const match = previewHost.exec(parsed.hostname);
+    if (!match) return guestSession.fetch(request, { bypassCustomProtocolHandlers: true });
     const sessions = match ? previewSessions.get(match[1]!) : undefined;
     if (!match || !sessions || sessions.size !== 1) return new Response('Preview host is not registered', { status: 403 });
     const session = [...sessions][0]!;
@@ -240,17 +244,9 @@ function createWindow(): void {
     },
   });
   win.webContents.on('will-attach-webview', (event, preferences, params) => {
-    let allowedSource = false;
-    try {
-      const source = new URL(params.src);
-      allowedSource = source.protocol === 'http:' && (source.hostname.endsWith('.localhost') || source.hostname === '127.0.0.1');
-    } catch { /* rejected below */ }
-    if (!allowedSource || !previewPartition.test(params.partition ?? '')) { event.preventDefault(); return; }
+    if (!allowBrowserGuest(params.src, params.partition ?? '')) { event.preventDefault(); return; }
     installPreviewProtocol(params.partition!);
-    delete preferences.preload;
-    preferences.nodeIntegration = false;
-    preferences.contextIsolation = true;
-    preferences.sandbox = true;
+    hardenBrowserPreferences(preferences);
   });
   win.on('restore', () => { const w = win; if (w) void tween(200, e => w.setOpacity(e)); });
   const devUrl = process.env.ELECTRON_RENDERER_URL;
@@ -261,22 +257,7 @@ function createWindow(): void {
 app.whenReady().then(async () => {
   app.on('web-contents-created', (_event, contents) => {
     if (contents.getType() !== 'webview') return;
-    contents.setWindowOpenHandler(({ url }) => {
-      try {
-        const parsed = new URL(url);
-        if (parsed.protocol === 'http:' || parsed.protocol === 'https:') void shell.openExternal(url);
-      } catch { /* deny invalid URLs */ }
-      return { action: 'deny' };
-    });
-    contents.on('will-navigate', (event, url) => {
-      let allowed = false;
-      try {
-        const parsed = new URL(url);
-        allowed = parsed.protocol === 'http:' && (parsed.hostname.endsWith('.localhost') || parsed.hostname === '127.0.0.1');
-        if (!allowed && (parsed.protocol === 'http:' || parsed.protocol === 'https:')) void shell.openExternal(url);
-      } catch { /* deny invalid URLs */ }
-      if (!allowed) event.preventDefault();
-    });
+    installBrowserNavigation(contents);
   });
   encryption = safeStorage.isEncryptionAvailable();
   ipcMain.handle('ormi:request', async (_e, method: string, body?: Record<string, unknown>) => {
