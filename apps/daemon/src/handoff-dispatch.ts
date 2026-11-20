@@ -1,5 +1,5 @@
 import { newId } from '@ormicode/protocol';
-import { createSession, getSession, releaseSessionPorts, setState, transferQueuedPrompts } from '@ormicode/session-store';
+import { createSession, getSession, releaseSessionPorts, setState } from '@ormicode/session-store';
 import { acquireWorkspace, releaseForSession } from '@ormicode/leases';
 import { hasTransport } from './registry.ts';
 import { handoffBrief } from './handoff.ts';
@@ -11,7 +11,7 @@ import { sessionEnvironment } from './session-env.ts';
 import { runSessionHook } from './workspace-hooks.ts';
 import { restoreHandoffState } from './handoff-state.ts';
 import { reserveHandoff } from './handoff-transition.ts';
-import { queueEventItems } from './prompt-delivery.ts';
+import { transferHandoffPrompts } from './handoff-prompts.ts';
 
 const pendingApprovals = new Map<string, { ctx: DispatchCtx; session: string; expire(reason: string): void; resolve(approved: boolean): void }>();
 
@@ -152,9 +152,7 @@ async function runHandoff(ctx: DispatchCtx, client: Client, id: string, body: Re
     if (lease.conflict) throw new Error(`workspace held by ${lease.conflict}`);
     const sent = await ctx.sendPrompt(child, `You are taking over this task${reason ? ` — ${reason}` : ''}. Handoff brief:\n${brief}\nContinue where the previous session left off.`, undefined, { journal: false });
     if (!sent) throw new Error('new worker rejected the handoff brief');
-    if (transferQueuedPrompts(db, session, child)) {
-      for (const target of [session, child]) ctx.record(target, 'queue_changed', { items: queueEventItems(db, target) });
-    }
+    transferHandoffPrompts(ctx, session, child);
     ctx.record(session, 'handoff_started', { child, target: targetVendor, mode });
     ctx.record(child, 'handoff_continued', { parent: session, parentTitle: s.title ?? session });
     ctx.handoffsInTurn.set(session, (ctx.handoffsInTurn.get(session) ?? 0) + 1);
