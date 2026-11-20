@@ -1,6 +1,7 @@
-import { Copy, Globe, LoaderCircle, Play } from 'lucide-react';
+import { Copy, Globe, LoaderCircle, Play, RotateCw, TriangleAlert } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { BrowserListed, BrowserService } from './browser-types.ts';
+import type { BrowserLoadError } from './browser-load-error.ts';
 import { SERVICES_YAML } from './browser-types.ts';
 import { browserPrimaryButton } from './browser-ui.tsx';
 
@@ -46,6 +47,15 @@ export function StoppedPreview({ service, onStart, starting = false }: {
       <Play size={13} />Start {service.name}
     </button> : null}
   </NoticeCard>;
+}
+
+export function LoadFailed({ error, onRetry }: { error: BrowserLoadError; onRetry: () => void }) {
+  return <div role="status" style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', background: 'var(--bg-main)' }}>
+    <NoticeCard title={error.title} description={error.description} icon={<TriangleAlert size={18} />}>
+      <div style={{ marginTop: 10, color: 'var(--text-hint)', fontFamily: 'var(--font-mono)', fontSize: 10.5, overflowWrap: 'anywhere' }}>{error.target}</div>
+      {error.kind !== 'invalid' ? <button type="button" onClick={onRetry} style={{ ...browserPrimaryButton, marginTop: 16 }}><RotateCw size={13} />Try again</button> : null}
+    </NoticeCard>
+  </div>;
 }
 
 export function RemotePreview() {

@@ -10,7 +10,8 @@ import { BrowserAnnotator } from './BrowserAnnotator.tsx';
 import { annotationStorageKey, useBrowserInspector } from './useBrowserInspector.ts';
 import { usePreviewConsole } from './usePreviewConsole.ts';
 import { pushToComposer } from '../../lib/composer-inbox.ts';
-import { ChoosePreview, EmptyPreview, RemotePreview, StoppedPreview } from './BrowserNotice.tsx';
+import { ChoosePreview, EmptyPreview, LoadFailed, RemotePreview, StoppedPreview } from './BrowserNotice.tsx';
+import { browserLoadError, isLoadFailure, type BrowserLoadError } from './browser-load-error.ts';
 import type { BrowserListed, BrowserPage, DevicePreset } from './browser-types.ts';
 import { TooltipProvider } from '../../components/ui/tooltip.tsx';
 
@@ -49,6 +50,7 @@ export function BrowserPane({ session }: { session: string }) {
   const [canBack, setCanBack] = useState(false);
   const [canForward, setCanForward] = useState(false);
   const [actionError, setActionError] = useState('');
+  const [loadError, setLoadError] = useState<BrowserLoadError>();
   const [busyService, setBusyService] = useState('');
   const [paneSize, setPaneSize] = useState([0, 0]);
   const [overlaysOpen, setOverlaysOpen] = useState(false);
@@ -98,7 +100,7 @@ export function BrowserPane({ session }: { session: string }) {
   }, []);
   useEffect(() => {
     setAddress(current?.path ?? '');
-    setCanBack(false); setCanForward(false); setReadyId(''); setWebviewReady(false);
+    setCanBack(false); setCanForward(false); setReadyId(''); setWebviewReady(false); setLoadError(undefined);
     setLoading(Boolean(current));
     if (!current) return;
     if (current.port === undefined) {
@@ -140,14 +142,14 @@ export function BrowserPane({ session }: { session: string }) {
     const navigate = (event: any) => {
       if (!isBrowserUrl(event.url)) return;
       const { path, port } = browserLocation(event.url, current);
-      setAddress(path); setCanBack(view.canGoBack()); setCanForward(view.canGoForward());
+      setAddress(path); setCanBack(view.canGoBack()); setCanForward(view.canGoForward()); setLoadError(undefined);
       setPages(previous => previous.map((page, index) => index === active ? { ...page, path, port } : page));
       setHistory(previous => [path, ...previous.filter(item => item !== path)].slice(0, 50));
     };
     const navigateInPage = navigate;
     const titleUpdated = (event: any) => setPages(previous => previous.map((page, index) => index === active ? { ...page, title: event.title } : page));
-    const started = () => { setLoading(true); setActionError(''); };
-    const failed = (event: any) => { if (event.isMainFrame !== false && event.errorCode !== -3) { setLoading(false); setActionError(event.errorDescription || 'Could not load this page.'); } };
+    const started = () => { setLoading(true); setActionError(''); setLoadError(undefined); };
+    const failed = (event: any) => { if (event.isMainFrame !== false) fail(event); };
     const stopped = () => { setLoading(false); setCanBack(view.canGoBack()); setCanForward(view.canGoForward()); };
     const domReady = () => { setWebviewReady(true); setLoading(false); };
     view.addEventListener('did-start-loading', started);
@@ -255,8 +257,10 @@ export function BrowserPane({ session }: { session: string }) {
     setHistory(previous => [normalized, ...previous.filter(item => item !== normalized)].slice(0, 50));
   };
   const openPortal = (port: number, path: string, title: string) => void navigate(port, path, title);
+  const fail = (error: unknown, url?: string) => { const failure = browserLoadError(error, url); if (failure) { setLoading(false); setLoadError(failure); } };
+  const retry = () => loadError?.url ? void webview.current?.loadURL(loadError.url).catch((error: unknown) => fail(error, loadError.url)) : webview.current?.reload();
   const addressSubmit = async () => {
-    setActionError('');
+    setActionError(''); setLoadError(undefined);
     try {
       const target = browserDestination(address, current, listed?.ports);
       if (target.port !== undefined) return await navigateCurrent(target.port, target.path);
@@ -268,7 +272,7 @@ export function BrowserPane({ session }: { session: string }) {
         setPages(previous => [...previous, page]); setActive(pages.length);
       }
       setAddress(target.url);
-    } catch (error) { setActionError(error instanceof Error ? error.message : String(error)); }
+    } catch (error) { if (isLoadFailure(error)) fail(error, address); else setActionError(error instanceof Error ? error.message : String(error)); }
   };
   const serviceAction = async (action: 'service.start' | 'service.stop' | 'service.restart', name: string) => {
     if (busyService) return;
@@ -320,8 +324,9 @@ export function BrowserPane({ session }: { session: string }) {
     ? <>
       {createElement('webview' as any, {
         key: `${current.id}:${partition}`, ref: webview, src: current.url, partition,
-        style: { background: 'var(--bg-main)', visibility: snapshotVisible || Boolean(inspector.frame) ? 'hidden' : 'visible', ...style },
+        style: { background: 'var(--bg-main)', visibility: snapshotVisible || inspector.frame || loadError ? 'hidden' : 'visible', ...style },
       })}
+      {loadError ? <LoadFailed error={loadError} onRetry={retry} /> : null}
       {snapshotVisible ? <img src={snapshot} alt="" aria-hidden="true" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', pointerEvents: 'none' }} /> : null}
       {inspector.frame && current ? <BrowserAnnotator key={current.id} frame={inspector.frame} storageKey={annotationStorageKey(session, current.id)}
         onSubmit={inspector.submitAnnotations} onDiscard={() => inspector.setFrame(undefined)} /> : null}
@@ -332,7 +337,7 @@ export function BrowserPane({ session }: { session: string }) {
 
   return <TooltipProvider delayDuration={250}><div style={{ height: '100%', minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--bg-main)', color: 'var(--text-label)' }}>
     {!remote ? <BrowserControls
-      pages={pages} active={active} listed={listed} current={current} canBack={canBack} canForward={canForward} loading={loading}
+      pages={loadError ? pages.map((page, index) => index === active ? { ...page, title: loadError.tabTitle } : page) : pages} active={active} listed={listed} current={current} canBack={canBack} canForward={canForward} loading={loading}
       address={address} history={history} device={device} fixed={Boolean(deviceSize)}
       busyService={busyService} actionError={actionError} keepSignins={keepSignins}
       onSelectPage={setActive} onClosePage={index => {
@@ -341,7 +346,7 @@ export function BrowserPane({ session }: { session: string }) {
         setActive(Math.max(0, Math.min(index === active ? Math.max(0, active - 1) : active - (index < active ? 1 : 0), next.length - 1)));
       }}
       onOpenPortal={openPortal} onBack={() => webview.current?.goBack()} onForward={() => webview.current?.goForward()}
-      onReload={() => webview.current?.reload()} onAddressChange={setAddress} onAddressSubmit={() => void addressSubmit()}
+      onReload={retry} onAddressChange={setAddress} onAddressSubmit={() => void addressSubmit()}
       pickActive={inspector.pickActive} annotateActive={Boolean(inspector.frame)}
       consoleUnread={previewConsole.unread} consoleErrors={previewConsole.unreadErrors} onPick={() => void inspector.pick()}
       onAnnotate={() => void inspector.annotate()} onConsole={() => setDrawerTab('console')}
@@ -375,6 +380,7 @@ export function BrowserPane({ session }: { session: string }) {
             : <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
               {renderWebview({ position: 'absolute', inset: 0, width: '100%', height: '100%' })}
             </div>
+          : loadError ? <LoadFailed error={loadError} onRetry={() => void addressSubmit()} />
           : !listed || (!listed.services.length && !listed.detected.length) ? (listed ? <EmptyPreview listed={listed} /> : null)
             : displayedStopped ? <StoppedPreview service={displayedStopped} starting={displayedStopped.state === 'starting'} onStart={() => void serviceAction('service.start', displayedStopped.name)} />
               : <ChoosePreview listed={listed} onOpenPortal={openPortal} />}
