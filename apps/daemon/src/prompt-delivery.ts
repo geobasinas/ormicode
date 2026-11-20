@@ -64,10 +64,18 @@ export function createPromptDelivery(options: PromptDeliveryOptions) {
         throw new PromptInvalidError(error instanceof Error ? error.message : String(error));
       }
       const wireImages = (images as { data: string; mimeType: string }[] | undefined)?.map(({ data, mimeType }) => ({ data, mimeType }));
-      const res = await options.toWorker(session, 'worker.prompt', {
-        text: prepared.text,
-        ...(wireImages ? { images: wireImages } : {}),
-      });
+      const previousState = getSession(options.db, session)!.state;
+      options.record(session, 'state', { state: 'starting', reason: 'prompt_dispatch' });
+      let res: Frame | undefined;
+      try {
+        res = await options.toWorker(session, 'worker.prompt', {
+          text: prepared.text,
+          ...(wireImages ? { images: wireImages } : {}),
+        });
+      } finally {
+        if ((!res || res.type === 'err') && getSession(options.db, session)?.state === 'starting')
+          options.record(session, 'state', { state: previousState, reason: 'prompt_rejected' });
+      }
       if (!res || res.type === 'err') return false;
       markTeamMessagesRead(options.db, messages.map(m => m.id));
       options.lastPrompt.set(session, {

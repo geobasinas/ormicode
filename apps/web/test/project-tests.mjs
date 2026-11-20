@@ -9,6 +9,27 @@ export function browseResult(body) {
 }
 
 export function registerProjectTests(environment) {
+  test('project picker retains case-distinct paths and removes exact duplicates', async t => {
+    const { browser, hub, webOrigin, enterCode } = environment();
+    if (!browser) return t.skip('no chromium found');
+    const code = '910000000008'; await hub.issue(code);
+    const context = await browser.newContext(), page = await context.newPage();
+    hub.projects = ['/home/web/repo', '/home/web/Repo', '/home/web/repo'].map(path => ({ machine: 'm_local', path, name: path.split('/').at(-1), git: true, addedAt: 1 }));
+    try {
+      await page.goto(webOrigin); await enterCode(page, code);
+      await page.getByRole('button', { name: 'No project', exact: true }).click();
+      const upper = page.getByRole('menuitem').and(page.locator('[title="/home/web/Repo"]'));
+      const lower = page.getByRole('menuitem').and(page.locator('[title="/home/web/repo"]'));
+      await upper.waitFor();
+      assert.equal(await lower.count(), 1);
+      assert.equal(await upper.count(), 1);
+      await upper.click();
+      await page.getByRole('button', { name: 'Repo', exact: true }).click();
+      await lower.click();
+      await page.getByRole('button', { name: 'repo', exact: true }).waitFor();
+    } finally { hub.projects = []; await context.close(); }
+  });
+
   test('adding a folder updates the already mounted Home composer project picker', async t => {
     const { browser, hub, webOrigin, enterCode, waitUntil } = environment();
     if (!browser) return t.skip('no chromium found');

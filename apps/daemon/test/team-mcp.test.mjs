@@ -34,7 +34,7 @@ test('team_wait returns terminal states in every mode and only waits for unresol
       const status = { session: 'child', ...(state ? { state } : {}) };
       const mode = until ?? 'idle';
       const settled = ['done', 'failed', 'archived', 'interrupted'].includes(state)
-        || (mode === 'approval' ? ['awaiting_approval', 'awaiting_input'].includes(state) : state === 'idle');
+        || mode === 'approval' && ['awaiting_approval', 'awaiting_input'].includes(state);
       let waited = false;
       const result = await callTeamTool('team_wait', { session: 'child', until, timeoutMs: 50 }, 'parent', async (method, body) => {
         assert.equal(method, 'team.status'); assert.equal(body.wake, true);

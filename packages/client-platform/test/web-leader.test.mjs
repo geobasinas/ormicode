@@ -73,6 +73,7 @@ function environment({ proto = 1, rejectConnect, history } = {}) {
         close() { socket.onclose({ code: 1000 }); },
       };
       const link = new WsLink(socket); link.calls = calls;
+      link.emit = frame => socket.onmessage({ data: JSON.stringify(frame) });
       links.push(link); return link;
     }
     const link = {
@@ -281,6 +282,31 @@ test('reconnect uses the least advanced subscriber cursor', async t => {
   env.links[0].close();
   await until(() => env.links[1]?.calls.some(([method]) => method === 'session.subscribe'));
   assert.deepEqual(env.links[1].calls.find(([method]) => method === 'session.subscribe')[1], { session: 's_minimum', after: 1 });
+});
+
+test('relay gaps recover approvals in order for every tab before advancing reconnect cursors', async t => {
+  const session = newId('s');
+  const event = seq => ({ v: 1, type: 'evt', session, seq, ts: seq, body: { kind: seq === 2 ? 'approval_request' : 'text', text: String(seq) } });
+  const history = [event(1)];
+  const env = environment({ history }); t.after(() => env.close());
+  const first = env.create(), received = [[], []];
+  first.transport.onEvent = frame => received[0].push(frame.seq);
+  await first.web.pair({ account: 'demo', code: 'gap' });
+  await until(() => env.links.length === 1);
+  first.transport.subscribe(session);
+  await until(() => received[0].length === 1);
+  const second = env.create(); second.transport.onEvent = frame => received[1].push(frame.seq);
+  second.transport.subscribe(session);
+  await until(() => received[1].length === 1);
+  history.push(event(2), event(3));
+  env.links[0].emit(event(3));
+  assert.deepEqual(received, [[1], [1]]);
+  await until(() => received[0].length === 3 && received[1].length === 3);
+  assert.deepEqual(received, [[1, 2, 3], [1, 2, 3]]);
+  assert.deepEqual(env.links[0].calls.at(-1), ['session.subscribe', { session, after: 1 }]);
+  env.links[0].close();
+  await until(() => env.links[1]?.calls.some(([method]) => method === 'session.subscribe'));
+  assert.deepEqual(env.links[1].calls.find(([method]) => method === 'session.subscribe')[1], { session, after: 3 });
 });
 
 test('persisted pageshow reconnects the same platform and listeners on every bfcache restore', async t => {
