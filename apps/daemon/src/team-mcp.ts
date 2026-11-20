@@ -44,8 +44,9 @@ export async function callTeamTool(
   const result = await req(spec.method, { ...body, actor });
   if (name === 'team_wait') {
     const until = String(args.until ?? 'idle');
-    if ((until !== 'approval' && ['idle', 'done', 'failed', 'archived', 'interrupted'].includes(String(result.state)))
-      || (until === 'approval' && ['awaiting_approval', 'awaiting_input'].includes(String(result.state)))) return JSON.stringify(result);
+    const state = String(result.state);
+    if (['done', 'failed', 'archived', 'interrupted'].includes(state)
+      || (until === 'approval' ? ['awaiting_approval', 'awaiting_input'].includes(state) : state === 'idle')) return JSON.stringify(result);
     return wait(String(args.session), until, Number(args.timeoutMs ?? 120_000));
   }
   return JSON.stringify(result);

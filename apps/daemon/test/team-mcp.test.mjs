@@ -27,3 +27,28 @@ test('team MCP wrappers pin actor, map every tool and authorize wait through tea
     return { escalated: true };
   });
 });
+
+test('team_wait returns terminal states in every mode and only waits for unresolved nonterminal states', async () => {
+  for (const until of [undefined, 'idle', 'done', 'approval']) {
+    for (const state of ['done', 'failed', 'archived', 'interrupted', 'idle', 'awaiting_approval', 'awaiting_input', 'running', undefined]) {
+      const status = { session: 'child', ...(state ? { state } : {}) };
+      const mode = until ?? 'idle';
+      const settled = ['done', 'failed', 'archived', 'interrupted'].includes(state)
+        || (mode === 'approval' ? ['awaiting_approval', 'awaiting_input'].includes(state) : state === 'idle');
+      let waited = false;
+      const result = await callTeamTool('team_wait', { session: 'child', until, timeoutMs: 50 }, 'parent', async (method, body) => {
+        assert.equal(method, 'team.status'); assert.equal(body.wake, true);
+        return status;
+      }, async (session, requested, timeout) => {
+        assert.equal(settled, false, `${state} must return immediately in ${mode} mode`);
+        assert.equal(session, 'child'); assert.equal(requested, mode); assert.equal(timeout, 50);
+        waited = true; return 'waiting';
+      });
+      assert.equal(waited, !settled, `${state} in ${mode} mode`);
+      assert.equal(result, settled ? JSON.stringify(status) : 'waiting');
+    }
+    await assert.rejects(callTeamTool('team_wait', { session: 'child', until }, 'parent', async () => {
+      throw new Error('team.forbidden');
+    }, () => assert.fail('must authorize before waiting')), /team.forbidden/);
+  }
+});
