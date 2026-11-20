@@ -1,10 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startDaemon, connect } from '../src/index.ts';
 import { newId } from '@ormicode/protocol';
+import { createSession } from '@ormicode/session-store';
 import { createDesign, listDesigns } from '../src/design-store.ts';
 
 test('design boards persist, use CAS, retain restore points and emit events', async () => {
@@ -84,6 +85,64 @@ test('design boards persist, use CAS, retain restore points and emit events', as
     assert.deepEqual(readFileSync(join(outside, 'workspace.json')), original);
     symlinkSync(outside, join(project, 'designs', 'escape'), 'dir');
     assert.equal((await client.request('design.get', { session, slug: 'escape' })).code, 'design.outside');
+  } finally {
+    client.close(); await daemon.close(); rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('worktree sessions keep the project design canvas', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ormi-design-canvas-'));
+  const project = join(dir, 'project');
+  const worktree = join(project, '.ormi', 'worktrees', 'task');
+  const other = join(dir, 'other');
+  mkdirSync(worktree, { recursive: true });
+  mkdirSync(other);
+  const daemon = await startDaemon({ socketPath: '127.0.0.1:0', storePath: join(dir, 'store.db') });
+  const client = await connect(daemon.socketPath);
+  const main = newId('s');
+  const linked = newId('s');
+  const foreign = newId('s');
+  try {
+    createDesign(worktree, 'local-only', 'Worktree only');
+    for (const [id, cwd, projectPath] of [[main, project, project], [linked, worktree, project], [foreign, other, other]]) {
+      createSession(daemon.db, { id, machine: newId('m'), project: projectPath, cwd, ...(cwd === worktree ? { worktree: cwd } : {}), vendor: 'fake', transport: 'cli' });
+    }
+    const created = await client.request('design.create', { session: main, slug: 'retest', name: 'Retest Board' });
+    assert.equal(created.type, 'res');
+    const frame = await client.request('design.update', {
+      session: main, slug: 'retest', expectedRevision: 1,
+      operations: [{ type: 'frame.add', name: 'Desktop', x: 0, y: 0, width: 1440, height: 900, html: '<main>Home</main>', styles: '' }],
+    });
+    assert.equal(frame.type, 'res');
+    const listed = await client.request('design.list', { session: linked });
+    assert.deepEqual(listed.body.boards.map(board => board.slug), ['retest']);
+    assert.equal(listed.body.boards[0].name, 'Retest Board');
+    assert.equal((await client.request('design.get', { session: linked, slug: 'retest' })).body.document.frames[0].name, 'Desktop');
+    assert.equal(existsSync(join(project, 'designs', 'retest', 'workspace.json')), true);
+    assert.equal(existsSync(join(worktree, 'designs', 'retest', 'workspace.json')), false);
+    assert.deepEqual((await client.request('design.list', { session: foreign })).body.boards, []);
+    const mentionable = await client.request('design.mentionable', { session: linked });
+    assert.deepEqual(mentionable.body.sessions.map(item => item.id).sort(), [linked, main].sort());
+    const changed = [];
+    const both = new Promise(resolve => {
+      const timer = setTimeout(() => resolve(changed), 3000);
+      client.onFrame = event => {
+        if (event.type !== 'evt' || event.body.kind !== 'design_changed') return;
+        changed.push(event.session);
+        if (changed.includes(main) && changed.includes(linked)) { clearTimeout(timer); resolve(changed); }
+      };
+    });
+    await client.request('session.subscribe', { session: main });
+    await client.request('session.subscribe', { session: linked });
+    await client.request('session.subscribe', { session: foreign });
+    const renamed = await client.request('design.update', { session: linked, slug: 'retest', expectedRevision: 2, operations: [{ type: 'board.rename', name: 'Shared' }] });
+    assert.equal(renamed.type, 'res');
+    await both;
+    assert.equal(changed.includes(main), true);
+    assert.equal(changed.includes(linked), true);
+    assert.equal(changed.includes(foreign), false);
+    assert.equal((await client.request('design.get', { session: main, slug: 'retest' })).body.document.name, 'Shared');
+    assert.equal(existsSync(join(worktree, 'designs', 'retest', 'workspace.json')), false);
   } finally {
     client.close(); await daemon.close(); rmSync(dir, { recursive: true, force: true });
   }

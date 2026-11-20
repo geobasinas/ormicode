@@ -3,6 +3,7 @@ import { Composer } from '../session/Composer.tsx';
 import type { SessionDetails } from '../session/useSession.ts';
 import { projectName } from '../../lib/format.ts';
 import { designTaskContext, type DesignAgentContext } from './design-agent-context.ts';
+import { sessionsForDesignProject } from './design-sessions.ts';
 import { useDesignAgent } from './useDesignAgent.ts';
 
 const LABELS: Record<string, string> = {
@@ -18,9 +19,10 @@ export function DesignAgentDock({ details, sessions, online, board, sourceDirty,
   onChange(session: string): void; onOpen(session: string): void;
 }) {
   const live = useDesignAgent(details, online, board);
-  const { id, state, title, cwd, branch, vendor, transport } = live.details;
-  const sameWorkspace = sessions.filter(item => item.cwd === cwd);
-  const otherWorkspaces = sessions.filter(item => item.cwd !== cwd);
+  const { id, state, title, cwd, branch, vendor, transport, project } = live.details;
+  const projectSessions = sessionsForDesignProject(sessions, project);
+  const sameWorkspace = projectSessions.filter(item => item.id === id || item.cwd === cwd);
+  const otherWorkspaces = projectSessions.filter(item => item.id !== id && item.cwd !== cwd);
   const sessionChoice = (item: SessionDetails) => <option key={item.id} value={item.id}>
     {item.title ?? item.id} · {projectName(item.project)}{item.branch ? ` · ${item.branch}` : ''}
   </option>;

@@ -1,9 +1,8 @@
-import { realpathSync } from 'node:fs';
 import { getSession } from '@ormicode/session-store';
 import type { DesignOperation } from '@ormicode/protocol';
 import type { Client, DispatchCtx } from './dispatch.ts';
 import { createDesign, designResult, DesignError, getDesign, listDesigns, updateDesign } from './design-store.ts';
-import { recentDesignEdits, worktreeDesignSessions } from './design-activity.ts';
+import { designCanvasRoot, projectDesignSessions, recentDesignEdits } from './design-activity.ts';
 import { actorFor, frameVersions } from './design-review.ts';
 
 export function designMethod(ctx: DispatchCtx, client: Client, id: string, method: string, body: Record<string, unknown>): void {
@@ -11,8 +10,8 @@ export function designMethod(ctx: DispatchCtx, client: Client, id: string, metho
   const row = getSession(ctx.db, session);
   if (!row) return client.link.replyError(id, 'session.not_found', session);
   try {
-    const root = realpathSync(row.cwd);
-    const peers = worktreeDesignSessions(ctx.db, root);
+    const root = designCanvasRoot(row);
+    const peers = projectDesignSessions(ctx.db, root);
     if (method === 'design.mentionable') return client.link.reply(id, { sessions: peers.slice(0, 100).map(other => ({ id: other.id, ...(other.title === null ? {} : { title: other.title }), vendor: other.vendor })) });
     if (method === 'design.list') return client.link.reply(id, { boards: listDesigns(root) });
     const slug = String(body.slug);

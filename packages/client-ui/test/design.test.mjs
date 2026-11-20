@@ -160,8 +160,48 @@ test('trusted bridge edits only leaf text, validates commands and omits runtime 
     assert.ok(window.document.querySelector('section p'));
     command({ type: 'addElement', kind: 'button', id: selected().id });
     assert.equal(window.document.querySelector('#root > section > button').type, 'button');
+    assert.equal(window.document.querySelector('#root > section > button').style.fontSize, '18px');
     const serialized = sent.findLast(message => message.type === 'serialized').html;
     assert.match(serialized, /Updated/);
     assert.doesNotMatch(serialized, /data-ormi-node|script|2147483647/);
+  } finally { window.close(); }
+});
+
+test('inserted heading, button, and rectangle are readable and do not share one corner', () => {
+  const dom = new JSDOM('<!doctype html><div id="root"></div>', { runScripts: 'outside-only' });
+  const window = dom.window;
+  const sent = [];
+  window.postMessage = message => { sent.push(message); };
+  window.CSS ??= {};
+  window.CSS.escape = value => value;
+  new Script(BRIDGE_SCRIPT).runInContext(dom.getInternalVMContext());
+  const channel = 'a-test-channel-with-enough-characters';
+  const command = body => window.dispatchEvent(new window.MessageEvent('message', { source: window, origin: 'https://host.invalid', data: { channel, ...body } }));
+  try {
+    command({ type: 'init', editable: true, html: '<main style="min-height:100%;padding:32px"></main>', styles: '' });
+    const selected = () => sent.findLast(message => message.type === 'selected');
+    command({ type: 'addElement', kind: 'heading' });
+    command({ type: 'addElement', kind: 'button', id: selected().id });
+    command({ type: 'addElement', kind: 'rectangle', id: selected().id });
+    const heading = window.document.querySelector('h2');
+    const button = window.document.querySelector('button');
+    const rectangle = [...window.document.querySelectorAll('div')].find(element => element.style.width === '320px');
+    assert.equal(heading.textContent, 'Heading');
+    assert.equal(heading.style.fontSize, '48px');
+    assert.equal(heading.style.fontWeight, '700');
+    assert.equal(button.type, 'button');
+    assert.equal(button.style.fontSize, '18px');
+    assert.equal(button.style.padding, '14px 22px');
+    assert.equal(rectangle.style.width, '320px');
+    assert.equal(rectangle.style.height, '200px');
+    assert.equal(window.document.querySelector('main').style.position, 'relative');
+    const boxes = [heading, button, rectangle].map(element => ({ left: parseFloat(element.style.left), top: parseFloat(element.style.top) }));
+    for (const box of boxes) {
+      assert.equal(box.left >= 48, true);
+      assert.equal(box.top >= 48, true);
+    }
+    assert.equal(new Set(boxes.map(box => `${box.left},${box.top}`)).size, 3);
+    assert.equal(boxes[1].top > boxes[0].top || boxes[1].left > boxes[0].left, true);
+    assert.equal(boxes[2].top > boxes[1].top || boxes[2].left > boxes[1].left, true);
   } finally { window.close(); }
 });
