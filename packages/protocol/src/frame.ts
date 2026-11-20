@@ -13,7 +13,8 @@ const event = z.looseObject({ ...base, type: z.literal('evt'), session: sessionI
 const delta = z.looseObject({ ...base, type: z.literal('evt'), session: sessionIdSchema, ts: timestampSchema, body: z.looseObject({ kind: z.enum(['text_delta', 'thinking_delta']), text: z.string() }) }).check(z.refine((frame) => !Object.hasOwn(frame, 'seq')));
 const ack = z.looseObject({ ...base, type: z.literal('ack'), session: sessionIdSchema, seq: sequenceSchema });
 const hello = z.looseObject({ ...base, type: z.literal('hello'), role: z.enum(['hub', 'node', 'client', 'worker']), proto: sequenceSchema, daemon: z.optional(z.string()), device: z.optional(z.string()) });
-const index = z.looseObject({ ...base, type: z.literal('idx'), to: deviceIdSchema, ts: timestampSchema, body: jsonObjectSchema });
+// Session-list summary for one device, or '*' for every device and local client.
+const index = z.looseObject({ ...base, type: z.literal('idx'), to: z.union([deviceIdSchema, z.literal('*')]), ts: timestampSchema, body: jsonObjectSchema });
 const hook = z.looseObject({ ...base, type: z.literal('hook'), account: z.string(), delivery: z.string(), body: jsonObjectSchema });
 // Terminal stream (not journaled): base64 output chunks at a byte offset, then an exit marker.
 const term = z.looseObject({ ...base, type: z.literal('term'), terminal: terminalIdSchema, body: z.union([

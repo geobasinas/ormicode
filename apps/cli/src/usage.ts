@@ -9,7 +9,7 @@ export function usage(code: number): never {
   ormi session get <id>
   ormi session prompt <id> <text>
   ormi session steer <id> <text>                  steer mid-turn
-  ormi session abort|pause|resume|retry|delete|archive <id>
+  ormi session abort|pause|resume|retry|delete|archive|unarchive <id>
   ormi session decide <id> <requestId> <optionId>
   ormi session answer <id> <requestId> '<json>'
   ormi session set <id> model|effort|mode|option <value>

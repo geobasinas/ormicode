@@ -139,7 +139,7 @@ export const requestBodies = {
   'session.resume': z.object(session),
   'session.abort': z.object(session),
   'session.retry': z.object(session),
-  'session.archive': z.object(session),
+  'session.archive': z.object(session), 'session.unarchive': z.object(session),
   'session.delete': z.object(session),
   // Hand this task to another agent/config; in_place adjusts the same session.
   'session.handoff': handoffSchema,
@@ -260,7 +260,7 @@ export const responseBodies = {
   'session.resume': z.object({ resumed: z.literal(true) }),
   'session.abort': z.object({ interrupted: z.literal(true) }),
   'session.retry': z.object({ accepted: z.literal(true) }),
-  'session.archive': z.object({ archived: z.literal(true) }),
+  'session.archive': z.object({ archived: z.literal(true) }), 'session.unarchive': z.object({ archived: z.literal(false) }),
   'session.delete': z.object({ deleted: z.literal(true) }),
   'session.handoff': z.object({ session: sessionIdSchema, brief: z.string(), parent: sessionIdSchema }),
   'session.handoffEstimate': z.object({

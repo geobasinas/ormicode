@@ -29,6 +29,16 @@ test('validates per-session acknowledgements and cursors', () => {
   assert.equal(parseRequestBody('session.subscribe', { session: s, after: -1 }).success, false);
 });
 
+test('idx frames go to one device or broadcast with *, and session.unarchive takes a session', () => {
+  const idx = { v: 1, type: 'idx', ts: 1, body: { sessions: [] } };
+  assert.equal(parseFrame({ ...idx, to: 'd_01J8Z3K4M5N6P7Q8R9S0T1V2W3' }).success, true);
+  assert.equal(parseFrame({ ...idx, to: '*' }).success, true);
+  assert.equal(parseFrame({ ...idx, to: 'desktop' }).success, false);
+  assert.equal(parseRequestBody('session.unarchive', { session: s }).success, true);
+  assert.equal(parseRequestBody('session.unarchive', {}).success, false);
+  assert.equal(parseResponseBody('session.unarchive', { archived: false }).success, true);
+});
+
 test('preserves durable event data and validates ephemeral deltas', () => {
   const event = { v: 1, type: 'evt', session: s, seq: 3, ts: 1, body: { kind: 'text', text: 'hello' }, vendor: 'fake' };
   const parsed = parseFrame(event);

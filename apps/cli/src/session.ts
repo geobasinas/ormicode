@@ -69,7 +69,7 @@ export async function sessionCommand(verb: string, args: string[]): Promise<numb
         const res = await link.request(`session.${verb}`, { session, text: words.join(' ') });
         return fail(res);
       }
-      case 'abort': case 'pause': case 'resume': case 'retry': case 'delete': case 'archive': {
+      case 'abort': case 'pause': case 'resume': case 'retry': case 'delete': case 'archive': case 'unarchive': {
         const res = await link.request(`session.${verb}`, { session: args[0] });
         return fail(res);
       }

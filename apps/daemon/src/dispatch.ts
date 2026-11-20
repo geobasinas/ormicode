@@ -3,9 +3,9 @@ import type { UserInteractions } from './user-interactions.ts';
 import { resumeSession } from './team-resume.ts';
 import { sessionTeamView } from './session-team-view.ts';
 import { sessionStatus } from './session-status.ts';
-import { abortSession, stopSessionWorker } from './abort-session.ts';
+import { abortSession } from './abort-session.ts';
 import {
-  getSession, listSessions, setState, setTitle, listNotes, setNote, deleteNote, archiveSession, releaseSessionPorts,
+  getSession, listSessions, setState, setTitle, listNotes, setNote, deleteNote,
   getPendingPromptData, deletePendingPromptData, getSessionPorts, listDevices, renameDevice, revokeDevice, type Store,
 } from '@ormicode/session-store';
 import { replay, setCursor } from '@ormicode/journal';
@@ -14,10 +14,7 @@ import { handoffMethod } from './handoff-methods.ts';
 import { handoffRequest } from './handoff-dispatch.ts';
 import { rejectHandoffRequest } from './handoff-transition.ts';
 import type { RelayClient } from './relay.ts';
-import { join } from 'node:path';
-import { rmSync } from 'node:fs';
-import { ormicodeDir, sessionLogDir } from './socket.ts';
-import { releaseForSession } from '@ormicode/leases';
+import { archiveMethod } from './archive-methods.ts';
 import { agentList } from './registry.ts';
 import { diffPatch, DiffStatCache } from '@ormicode/git-core';
 const diffStats = new DiffStatCache();
@@ -41,7 +38,7 @@ import { expandPrompt, PromptInvalidError, promptBusy, validatePrompt } from './
 import { retryPrompt } from './prompt-methods.ts';
 import { listModels } from './models.ts';
 import { startSession } from './session-start.ts';
-import { copyOutMethod, countScratchFiles, scratchWorkspaceInUse } from './scratch-methods.ts';
+import { copyOutMethod, countScratchFiles } from './scratch-methods.ts';
 import { SESSION_PORT_COUNT } from './session-ports.ts';
 import { serviceMethod } from './service-methods.ts';
 import type { Services } from './services.ts';
@@ -94,6 +91,8 @@ export interface DispatchCtx {
   agentBrowser: AgentBrowser;
   prices: PriceBook;
   record(session: string, kind: string, payload: Record<string, unknown>): void;
+  /** Tells every client the session list changed (archive, unarchive) so sidebars refresh now. */
+  sessionsChanged(): void;
 }
 /** Client-facing session.* / daemon.* request dispatch. */
 export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Frame): Promise<void> {
@@ -273,27 +272,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         return client.link.reply(id, { resumed: true });
       }
       case 'session.retry': return await retryPrompt(ctx, client, id, body);
-      case 'session.delete': case 'session.archive': {
-        const session = String(body.session);
-        if (method === 'session.delete') await ctx.agentBrowser.deleteSession(session);
-        else await ctx.agentBrowser.closeSession(session);
-        await ctx.services.stopSession(session); await stopSessionWorker(ctx, session);
-        archiveSession(db, session);
-        ctx.teamLifecycle.unavailable(session);
-        releaseForSession(db, session);
-        // Only the scratch folder owner may remove it, never while teammates still use it.
-        const row = getSession(db, session);
-        const scratchRoot = join(ormicodeDir(), 'scratch');
-        if (method === 'session.delete' && row?.cwd === join(scratchRoot, session) && !scratchWorkspaceInUse(db, row.cwd, session)) {
-          try { rmSync(row.cwd, { recursive: true, force: true }); } catch { /* best effort */ }
-        }
-        if (method === 'session.delete') {
-          releaseSessionPorts(db, session);
-          try { rmSync(sessionLogDir(session), { recursive: true, force: true }); } catch { /* best effort */ }
-          void ctx.checkpoints.remove(session).catch(() => undefined);
-        }
-        return client.link.reply(id, method === 'session.delete' ? { deleted: true } : { archived: true });
-      }
+      case 'session.delete': case 'session.archive': case 'session.unarchive': return await archiveMethod(ctx, client, id, method, body);
       case 'session.handoff': return await handoffRequest(ctx, client, id, body);
       case 'session.setModel': case 'session.setEffort': case 'session.setMode': case 'session.setOption': {
         const session = String(body.session);

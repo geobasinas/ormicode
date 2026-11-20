@@ -76,3 +76,8 @@ export function setBranch(db: Store, id: string, branch: string | null): void {
 export function archiveSession(db: Store, id: string): void {
   db.prepare('UPDATE sessions SET archived = 1, updated_at = ? WHERE id = ?').run(Date.now(), id);
 }
+
+/** Brings an archived session back to the default list; false when it was not archived. */
+export function unarchiveSession(db: Store, id: string): boolean {
+  return db.prepare('UPDATE sessions SET archived = 0, updated_at = ? WHERE id = ? AND archived = 1').run(Date.now(), id).changes > 0;
+}

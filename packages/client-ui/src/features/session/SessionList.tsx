@@ -10,6 +10,7 @@ import { branchLabel, isTeamRunning, teamState } from './team-presentation.ts';
 import { TeamStateIcon, TeamStatus } from './TeamStatus.tsx';
 import { useProjects } from '../projects/useProjects.ts';
 import { groupSessionProjects } from '../projects/groupProjects.ts';
+import { ArchivedSessionList } from './ArchivedSessionList.tsx';
 
 const DAY = 24 * 3600 * 1000;
 const isDone = (s: SessionSummary) => s.state === 'done';
@@ -108,6 +109,7 @@ export function SessionList({ active, onSelect, query }: { active?: string; onSe
         );
       })}
       {!groups.length && !error ? <div style={{ padding: '0 13px', color: 'var(--text-hint)', fontSize: 12 }}>{query ? 'no matches' : 'no sessions yet'}</div> : null}
+      {query?.trim() ? <div style={{ marginTop: 10 }}><ArchivedSessionList active={active} onSelect={onSelect} query={query} heading /></div> : null}
     </div>
   );
 }

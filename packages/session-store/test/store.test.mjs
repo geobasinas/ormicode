@@ -4,7 +4,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Database from 'better-sqlite3';
-import { openStore, createSession, getSession, listSessions, sessionsInStates, setState, setTitle, archiveSession, setNativeId,
+import { openStore, createSession, getSession, listSessions, sessionsInStates, setState, setTitle, archiveSession, unarchiveSession, setNativeId,
   addDevice, getDeviceByHash, listDevices, renameDevice, revokeDevice, listNotes, setNote, deleteNote, getPinnedPrice, pinPrice,
   addQueuedPrompt, listQueuedPrompts, moveQueuedPrompt, removeQueuedPrompt, updateQueuedPrompt,
   setQueuedPromptError, getSessionPorts, assignSessionPorts, releaseSessionPorts,
@@ -81,6 +81,21 @@ test('sessions: create, read, list order, state, title, archive', () => {
   assert.deepEqual(listSessions(db).map(s => s.id), ['s_1']);
   assert.deepEqual(listSessions(db, true).map(s => s.id), ['s_2']);
   assert.equal(getSession(db, 's_missing'), undefined);
+});
+
+test('sessions: unarchive restores only an archived session to the default list', () => {
+  const db = openStore(':memory:');
+  const base = { machine: 'm', project: '/p', vendor: 'fake', transport: 'cli', cwd: '/p' };
+  createSession(db, { ...base, id: 's_1', now: 1 });
+  assert.equal(unarchiveSession(db, 's_1'), false, 'a live session is not unarchived');
+  assert.equal(unarchiveSession(db, 's_missing'), false);
+  archiveSession(db, 's_1');
+  assert.deepEqual(listSessions(db).map(s => s.id), []);
+  assert.equal(unarchiveSession(db, 's_1'), true);
+  assert.equal(getSession(db, 's_1').archived, 0);
+  assert.deepEqual(listSessions(db).map(s => s.id), ['s_1']);
+  assert.deepEqual(listSessions(db, true).map(s => s.id), []);
+  assert.equal(unarchiveSession(db, 's_1'), false);
 });
 
 test('devices: add, lookup by hash, rename, revoke hides them', () => {

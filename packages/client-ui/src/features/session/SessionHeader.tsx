@@ -10,9 +10,10 @@ import type { SessionDetails } from './useSession.ts';
 import { CopyOutDialog } from './CopyOutDialog.tsx';
 import { feedback } from '../../lib/feedback.ts';
 import { OpenCodePermissionNotice } from './OpenCodePermissionNotice.tsx';
+import { sessionsChanged, setSessionArchived } from './session-archive.ts';
 
 
-export function SessionHeader({ session, details, onOpen, onHandoff }: { session: string; details: SessionDetails | undefined; onOpen?: (session: string) => void; onHandoff?(): void }) {
+export function SessionHeader({ session, details, onOpen, onHandoff, onArchived }: { session: string; details: SessionDetails | undefined; onOpen?: (session: string) => void; onHandoff?(): void; onArchived?(): void }) {
   const { transport, desktop } = usePlatform();
   const [copied, setCopied] = useState(false);
   const [machine, setMachine] = useState('local');
@@ -37,6 +38,18 @@ export function SessionHeader({ session, details, onOpen, onHandoff }: { session
   const canResume = state === 'interrupted' || state === 'paused_rate_limited';
   const canStop = ['running', 'starting', 'retrying', 'awaiting_approval', 'awaiting_input', 'paused_rate_limited'].includes(state);
   const act = (m: string) => void transport.request(m, { session });
+  const archive = async () => {
+    const error = await setSessionArchived(transport, session, true);
+    if (error) { feedback.error(error); return; }
+    onArchived?.();
+    feedback.success('Session archived', { label: 'Undo', onClick: () => void restore().then(ok => { if (ok) onOpen?.(session); }) });
+  };
+  const restore = async () => {
+    const error = await setSessionArchived(transport, session, false);
+    if (error) feedback.error(error);
+    else feedback.success('Session restored');
+    return !error;
+  };
   const rename = async () => {
     if (renameBusy) return;
     setRenameBusy(true); setRenameError('');
@@ -88,6 +101,7 @@ export function SessionHeader({ session, details, onOpen, onHandoff }: { session
       const result = await transport.request('session.delete', { session });
       if (result.type === 'res') {
         setConfirmDelete(false);
+        sessionsChanged(); onArchived?.();
         feedback.success('Scratch session deleted');
       } else {
         setDeleteError(String(result.message ?? result.code));
@@ -135,7 +149,9 @@ export function SessionHeader({ session, details, onOpen, onHandoff }: { session
             setCopied(true); setTimeout(() => setCopied(false), 1200);
           }}>{copied ? 'Copied!' : 'Copy session id'}</DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => act('session.archive')}>Archive session</DropdownMenuItem>
+          {state === 'archived'
+            ? <DropdownMenuItem onClick={() => void restore()}>Restore session</DropdownMenuItem>
+            : <DropdownMenuItem onClick={() => void archive()}>Archive session</DropdownMenuItem>}
           {details?.project === 'scratch' ? <DropdownMenuItem onSelect={event => { event.preventDefault(); setConfirmDelete(true); }}>Delete session…</DropdownMenuItem> : null}
           {confirmDelete && details?.project === 'scratch' ? <div style={{ padding: '7px 10px', width: 240 }}>
             <div style={{ fontSize: 11, color: 'var(--accent-amber)', marginBottom: 7 }}>

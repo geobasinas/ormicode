@@ -8,6 +8,7 @@ import { applyTheme, themeByName } from '../lib/theme.ts';
 import { defaultLayout, applyLayout, validateLayout, type LayoutDescriptor } from '../lib/layout.ts';
 import { PanelLeft, Minus, Square, X, Search, SquarePen, Settings, FolderPlus, GitBranch, FolderOpen, SquareTerminal, NotebookPen, Globe, PenTool, type LucideIcon } from 'lucide-react';
 import { SessionList } from '../features/session/SessionList.tsx';
+import { ArchivedSessionList } from '../features/session/ArchivedSessionList.tsx';
 import { useSession } from '../features/session/useSession.ts';
 import { Now } from './Now.tsx';
 import { SessionView } from './SessionView.tsx';
@@ -84,7 +85,7 @@ function Tab({ id, n, active, onSelect, onClose }: { id: string; n?: number; act
   );
 }
 
-const FILTER_TABS = ['All', 'Sessions', 'Bots'] as const;
+const FILTER_TABS = ['All', 'Sessions', 'Bots', 'Archived'] as const;
 
 const RAIL_ICONS: { id: string; icon: LucideIcon; label: string; soon?: boolean }[] = [
   { id: 'git', icon: GitBranch, label: 'git' },
@@ -124,9 +125,9 @@ function Rail({ route, rail, onRail, onDesign }: { route: string; rail: RailPane
   );
 }
 
-function ActiveHeader({ session, onOpen, onHandoff }: { session: string; onOpen: (session: string) => void; onHandoff(): void }) {
+function ActiveHeader({ session, onOpen, onHandoff, onArchived }: { session: string; onOpen: (session: string) => void; onHandoff(): void; onArchived(): void }) {
   const details = useSession(session);
-  return <SessionHeader session={session} details={details} onOpen={onOpen} onHandoff={onHandoff} />;
+  return <SessionHeader session={session} details={details} onOpen={onOpen} onHandoff={onHandoff} onArchived={onArchived} />;
 }
 
 export function App({ platform, theme: initialTheme, layout, pairPrefill }: { platform: ClientPlatform; theme?: string; layout?: LayoutDescriptor; pairPrefill?: { account?: string; code?: string } }) {
@@ -351,7 +352,7 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
               </div>
               <div style={{ height: 8 }} />
               <div style={{ flex: 1, overflow: 'auto' }}>
-                {onboarding ? null : filter !== 'Bots' ? <SessionList active={route !== 'now' ? route : undefined} onSelect={open} query={query} /> : (
+                {onboarding ? null : filter === 'Archived' ? <ArchivedSessionList active={route !== 'now' ? route : undefined} onSelect={open} query={query} /> : filter !== 'Bots' ? <SessionList active={route !== 'now' ? route : undefined} onSelect={open} query={query} /> : (
                   <div style={{ padding: '0 var(--space-3)', color: 'var(--text-hint)', fontSize: 13 }}>no bots yet</div>
                 )}
               </div>
@@ -373,7 +374,7 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
               <Tab id="now" active={route === 'now'} onSelect={() => setRoute('now')} />
               {tabs.map((t, i) => <Tab key={t} id={t} n={PAGES[t] ? undefined : tabs.filter(x => !PAGES[x]).indexOf(t) + 1} active={route === t} onSelect={() => setRoute(t)} onClose={() => close(t)} />)}
               <span style={{ flex: 1 }} />
-              {!PAGES[route] ? <div style={{ ...noDrag, minWidth: 0, display: 'flex' }}><ActiveHeader key={route} session={route} onOpen={open} onHandoff={() => setHandoffOpen(true)} /></div> : null}
+              {!PAGES[route] ? <div style={{ ...noDrag, minWidth: 0, display: 'flex' }}><ActiveHeader key={route} session={route} onOpen={open} onHandoff={() => setHandoffOpen(true)} onArchived={() => close(route)} /></div> : null}
             </div>}
             <div style={{
               flex: 1, minHeight: 0, overflow: onboarding ? 'auto' : 'hidden', background: 'var(--bg-main)',

@@ -316,6 +316,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     spawnWorker, ensureWorker, stopWorker, setRecapPending: (session, uptoSeq) => recapPending.set(session, uptoSeq), toWorker, sendPrompt, drainQueue,
     resetUiCheckFollowups: session => uiCheckFollowups.reset(session),
     pairing, relay: () => relay, checkpoints, record, secrets, terminals, services, agentBrowser,
+    sessionsChanged: () => { for (const c of clients) if (!c.link.closed) c.link.send({ v: 1, type: 'idx', to: '*', ts: Date.now(), body: { sessions: idxSessions() } }); idxSoon(); },
     prices: new PriceBook({
       cachePath: join(ormicodeDir(), 'cache', 'prices.json'), overridesPath: join(ormicodeDir(), 'prices.json'),
       url: process.env.ORMICODE_PRICES_URL === 'off' ? null : process.env.ORMICODE_PRICES_URL,
@@ -325,9 +326,10 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   dispatchCtx.teamLifecycle.start();
   // idx summaries keep remote session lists fresh without streaming transcripts.
   let idxTimer: NodeJS.Timeout | undefined;
+  const idxSessions = () => listSessions(db).map(s => ({ id: s.id, state: s.state, title: s.title, updatedAt: s.updated_at }));
   const pushIdx = (to: string) => {
     if (!relay || closing) return;
-    relay.sendIdx(to, listSessions(db).map(s => ({ id: s.id, state: s.state, title: s.title, updatedAt: s.updated_at })));
+    relay.sendIdx(to, idxSessions());
   };
   const idxSoon = () => {
     if (idxTimer) return;
