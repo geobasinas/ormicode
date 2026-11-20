@@ -38,7 +38,7 @@
   --destructive-foreground: var(--text-onAccent);
   --border: var(--line-card);
   --input: var(--line-card);
-  --ring: var(--line-mint);
+  --ring: var(--line-card);
   --radius: 0.5rem;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -57,7 +57,7 @@
   --sidebar-accent-foreground: var(--text-active);
   --sidebar-border: var(--line-pane);
   --sidebar-ring: var(--line-mint);
-  --focus-ring: var(--line-mint);
+  --focus-ring: var(--line-card);
   --modal-scrim: var(--bg-scrim);
   --image-badge: var(--bg-chip);
 }
