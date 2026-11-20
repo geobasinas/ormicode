@@ -70,7 +70,7 @@ function TeamRow({ node, active, onSelect, query }: { node: SessionNode; active?
           <span className="team-group-meta">{node.children.length} children · {running} running</span>
           {!expanded ? <span className="team-state-dots" aria-label="Child states">{node.children.map(child => <span key={child.session.id} className={`team-state-dot team-tone-${teamState(child.session).tone}`} title={`${child.session.title || 'Child'} · ${teamState(child.session).label}`} />)}</span> : null}
         </button>
-        <span className="team-token-total" title="Team tokens, including parent and archived children">{compactTokens(node.tokens)}<small>tokens</small></span>
+        <span className="team-token-total" title="Team tokens, including parent and archived children">{compactTokens(node.tokens)}</span>
       </div>
       {expanded ? <div className="team-rail">{node.children.map(child => <TeamRow key={child.session.id} node={child} active={active} onSelect={onSelect} query={query} />)}</div> : null}
     </> : <Row s={node.session} active={active} onSelect={onSelect} />}

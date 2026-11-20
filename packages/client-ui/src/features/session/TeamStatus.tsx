@@ -10,5 +10,5 @@ export function TeamStateIcon({ session }: { session: State }) {
 }
 export function TeamStatus({ session }: { session: State }) {
   const state = teamState(session);
-  return <span className={`team-status team-tone-${state.tone}`} title={state.help}>{state.label}</span>;
+  return <span className="team-status" title={state.help}>{state.label}</span>;
 }

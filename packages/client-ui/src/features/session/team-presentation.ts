@@ -23,3 +23,18 @@ export function approvalInput(input: unknown): string {
   if (input && typeof input === 'object' && 'command' in input && typeof input.command === 'string') return input.command;
   return input === undefined ? '' : JSON.stringify(input, null, 2);
 }
+
+export function approvalPreview(input: unknown, tool: string): string {
+  if (typeof input !== 'string' && !(input && typeof input === 'object' && 'command' in input && typeof input.command === 'string')) return tool;
+  return approvalInput(input).split(/\r?\n/).find(line => line.trim())?.trim() || tool;
+}
+
+export function visibleTeamChips(width: number, chips: number[]): number {
+  let used = 0;
+  for (let index = 0; index < chips.length; index++) {
+    const next = used + chips[index]! + (index ? 6 : 0);
+    if (next + (index < chips.length - 1 ? 38 : 0) > width) return index;
+    used = next;
+  }
+  return chips.length;
+}

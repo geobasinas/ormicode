@@ -1,10 +1,31 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { approvalInput, branchLabel, isTeamRunning, teamState } from '../src/features/session/team-presentation.ts';
+import { approvalInput, approvalPreview, branchLabel, isTeamRunning, teamState, visibleTeamChips } from '../src/features/session/team-presentation.ts';
 import { needsAttention, attentionReason } from '../src/features/session/attention.ts';
 
 const session = (state = 'running', extra = {}) => ({ id: 'child', project: 'demo', state, ...extra });
 const entry = (rank, wants = null) => ({ session: 'child', rank, wants });
+
+test('compact approval previews use the first nonempty command line with safe fallbacks', () => {
+  assert.equal(approvalPreview({ command: 'echo inspect release checks\n\nnext step' }, 'Bash'), 'echo inspect release checks');
+  assert.equal(approvalPreview('\r\n  echo check\r\nnext', 'Bash'), 'echo check');
+  assert.equal(approvalPreview(undefined, 'Read'), 'Read');
+  assert.equal(approvalPreview('', 'Read'), 'Read');
+  assert.equal(approvalPreview({ path: 'README.md' }, 'Read'), 'Read');
+  assert.equal(approvalPreview(null, 'Read'), 'Read');
+});
+
+test('roster overflow reserves room for +N and adapts from empty to narrow and wide rows', () => {
+  assert.equal(visibleTeamChips(400, []), 0);
+  assert.equal(visibleTeamChips(0, [100]), 0);
+  assert.equal(visibleTeamChips(99, [100]), 0);
+  assert.equal(visibleTeamChips(100, [100]), 1);
+  assert.equal(visibleTeamChips(137, [100, 100]), 0);
+  assert.equal(visibleTeamChips(138, [100, 100]), 1);
+  assert.equal(visibleTeamChips(206, [100, 100]), 2);
+  assert.equal(visibleTeamChips(244, [100, 100, 100]), 2);
+  assert.equal(visibleTeamChips(1000, [100, 100, 100]), 3);
+});
 
 test('team states distinguish independent work, parent waits, parent loss, failures and completion', () => {
   const states = [session(), session('awaiting_approval', { delegatedApproval: true }), session('running', { parentless: true }), session('failed'), session('done')].map(teamState);
