@@ -194,7 +194,11 @@ export class CodexCliAdapter implements AgentAdapter {
     else if (method === 'item/agentMessage/delta') session.queue.push([{ kind: 'text_delta', text: (p.delta as string) ?? '' }]);
     else if (method === 'item/reasoning/textDelta') session.queue.push([{ kind: 'thinking_delta', text: (p.delta as string) ?? '' }]);
     else if (method === 'item/plan/delta') session.queue.push([{ kind: 'text_delta', text: (p.delta as string) ?? '' }]);
-    else if (method === 'error') session.queue.push([{ kind: 'error', code: 'unknown', message: String((p as { message?: string }).message ?? 'Codex app-server error') }]);
+    else if (method === 'error') {
+      const error = p as { message?: string; error?: { message?: string }; willRetry?: boolean };
+      const message = String(error.error?.message ?? error.message ?? 'Codex app-server error');
+      session.queue.push([error.willRetry === true ? { kind: 'state', state: 'retrying', reason: message } : { kind: 'error', code: 'unknown', message }]);
+    }
   }
   private onRequest(session: Session, method: string, params: unknown): Promise<unknown> {
     const p = params as { turnId?: string; approvalId?: string; itemId?: string; command?: string; reason?: string; questions?: { id: string; question: string; header: string; options?: { label: string; description?: string }[] | null }[] };

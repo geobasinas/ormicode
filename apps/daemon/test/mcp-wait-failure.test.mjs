@@ -75,3 +75,33 @@ test('authoritative turn outcome resets for new work and preserves non-idle stat
   record({ kind: 'turn_start' }); record({ kind: 'turn_end' });
   assert.deepEqual(status(), { state: 'idle', turnCompleted: true });
 });
+
+test('terminal and persistent activity states take precedence over outstanding input and approval overlays', t => {
+  const { db } = fixture(t);
+  const ctx = { db, teamApprovals: { waiting: () => true }, teamLifecycle: { state: () => 'awaiting_input' } };
+  for (const state of ['interrupted', 'failed', 'done', 'archived', 'paused_rate_limited']) {
+    setState(db, 'child', state);
+    assert.equal(sessionStatus(ctx, getSession(db, 'child')).state, state);
+  }
+  setState(db, 'child', 'running');
+  assert.equal(sessionStatus(ctx, getSession(db, 'child')).state, 'awaiting_approval');
+  ctx.teamApprovals.waiting = () => false;
+  assert.equal(sessionStatus(ctx, getSession(db, 'child')).state, 'awaiting_input');
+});
+
+for (const scenario of ['retry succeeds', 'retry fails', 'fatal error']) {
+  test(`Codex ${scenario} preserves the authoritative turn outcome`, async t => {
+    const { record, status } = fixture(t);
+    const adapter = adapters.codex(), handle = await adapter.start({ cwd: '/repo' });
+    t.after(() => adapter.dispose(handle));
+    await adapter.prompt(handle, { text: scenario });
+    const events = [];
+    for await (const event of adapter.events(handle)) {
+      events.push(event); record(event);
+      if (event.kind === 'turn_end') break;
+    }
+    assert.deepEqual(status(), { state: scenario === 'retry succeeds' ? 'idle' : 'failed', turnCompleted: true });
+    if (scenario === 'fatal error') assert.ok(events.some(e => e.kind === 'error' && e.message === 'Unrecoverable error'));
+    else assert.ok(events.some(e => e.kind === 'state' && e.state === 'retrying' && e.reason === 'Reconnecting stream'));
+  });
+}

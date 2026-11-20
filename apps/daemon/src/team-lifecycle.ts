@@ -1,7 +1,7 @@
 import { newId } from '@ormicode/protocol';
 import {
   addQueuedPrompt, addTeamMessage, addTeamUserMessage, answerTeamUserMessage, getSession, getTeam,
-  getTeamUserMessage, hasTeamUserMessages, listSessions, setChildrenParentless, settingValue,
+  getTeamUserMessage, hasTeamUserMessages, listSessions, pendingQuestions, setChildrenParentless, settingValue,
   type SessionRow, type TeamMessage,
 } from '@ormicode/session-store';
 import type { Client, DispatchCtx } from './dispatch.ts';
@@ -66,6 +66,15 @@ export class TeamLifecycle {
   event(session: string, kind: string, payload: Record<string, unknown>, now = Date.now()): void {
     if (this.closed) return;
     if (kind !== 'team_parent_changed' && !payload.nudge) this.activity.set(session, { at: now, nudged: false });
+    if (kind === 'interrupted' || kind === 'state' && payload.state === 'interrupted') {
+      const ctx = this.context();
+      for (const request of pendingQuestions(ctx.db, session)) {
+        const message = getTeamUserMessage(ctx.db, session, request);
+        if (message?.answered_at !== null) continue;
+        answerTeamUserMessage(ctx.db, request);
+        ctx.record(session, 'interaction_expired', { request, reason: 'interrupted', answerable: false, teamMessage: message.message });
+      }
+    }
     if (['error', 'interrupted', 'evicted'].includes(kind)
       || kind === 'state' && ['failed', 'interrupted', 'archived'].includes(String(payload.state)))
       this.unavailable(session, this.handoffInterruptions.has(session) && (kind === 'interrupted' || kind === 'state' && payload.state === 'interrupted'));
