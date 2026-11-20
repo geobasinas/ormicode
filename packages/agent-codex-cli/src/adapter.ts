@@ -3,6 +3,7 @@ import { EventQueue, NO_CAPABILITIES, RawLog, classifyCommand } from '@ormicode/
 import type { AgentAdapter, Handle, ModelList, NativeRef, PromptInput, StartSpec } from '@ormicode/agent-core';
 import type { AgentEvent } from '@ormicode/protocol';
 import { ulid } from 'ulid';
+import * as z from 'zod/mini';
 import { CodexEventMapper } from '@ormicode/agent-codex-sdk';
 import { CodexAppServer } from './app-server.ts';
 
@@ -208,7 +209,7 @@ export class CodexCliAdapter implements AgentAdapter {
       if (!p.permissions || typeof p.permissions !== 'object' || Array.isArray(p.permissions)) throw new Error('Invalid permissions request');
       const permissions = Object.fromEntries(Object.entries(p.permissions).filter(([key, value]) => ['network', 'fileSystem'].includes(key) && value != null));
       const options = APPROVAL_OPTIONS.filter(option => option.id !== 'cancel');
-      session.queue.push([{ kind: 'approval_request', request: id, options, reason: p.reason, target: p.permissions }]);
+      session.queue.push([{ kind: 'approval_request', request: id, options, reason: p.reason, target: z.parse(z.json(), p.permissions) }]);
       return new Promise(resolve => { session.approvals.set(id, {
         resolve, turnId: p.turnId ?? session.turnId, options: options.map(option => option.id),
         respond: option => ({ permissions: option === 'accept' || option === 'acceptForSession' ? permissions : {}, scope: option === 'acceptForSession' ? 'session' : 'turn' }),
