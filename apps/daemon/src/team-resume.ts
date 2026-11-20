@@ -3,6 +3,7 @@ import { addQueuedPrompt, getSession, getTeam, listQueuedPrompts, ownedTeam, set
 import { teamLimits } from '@ormicode/team-core';
 import { newId } from '@ormicode/protocol';
 import type { DispatchCtx } from './dispatch.ts';
+import { handoffTargetError } from './handoff-transition.ts';
 
 const busy = ['starting', 'running', 'retrying', 'awaiting_input', 'awaiting_approval'];
 const reservations = new WeakMap<DispatchCtx, Set<string>>();
@@ -33,7 +34,7 @@ export function resumeQueuedChildren(ctx: DispatchCtx, parent: string): void {
   const team = ownedTeam(ctx.db, parent);
   if (!team || team.closed_at !== null || getSession(ctx.db, parent)?.archived) return;
   for (const child of teamChildren(ctx.db, team.id)) {
-    if (child.archived || child.state === 'paused_rate_limited') continue;
+    if (child.archived || child.state === 'paused_rate_limited' || handoffTargetError(ctx.db, child.id)) continue;
     if (!listQueuedPrompts(ctx.db, child.id).length && unreadTeamMessages(ctx.db, child.id).length)
       addQueuedPrompt(ctx.db, child.id, { id: newId('q'), text: 'Resume and read your team inbox.', createdAt: Date.now() });
     if (listQueuedPrompts(ctx.db, child.id).length) void ctx.drainQueue(child.id).catch(() => undefined);
@@ -42,6 +43,8 @@ export function resumeQueuedChildren(ctx: DispatchCtx, parent: string): void {
 
 export async function resumeSession(ctx: DispatchCtx, session: string): Promise<boolean> {
   const row = getSession(ctx.db, session);
+  const unavailable = handoffTargetError(ctx.db, session);
+  if (unavailable) throw new Error(unavailable);
   if (!row || row.archived) throw new Error('session is unavailable');
   ctx.paused.delete(session);
   await ctx.ensureWorker(session);

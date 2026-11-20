@@ -19,7 +19,7 @@ function fixture(t, route, state = 'idle') {
   if (route !== 'user') {
     const team = newId('t'); createTeam(db, { id: team, parent, project: 'p' }); setSessionTeam(db, session, team);
   }
-  const replies = [], drains = [], ctx = { db, handoffsInTurn: new Map(), prices: { table: () => EMPTY },
+  const replies = [], drains = [], ctx = { db, paused: new Set(), heldPrompts: new Map(), handoffsInTurn: new Map(), prices: { table: () => EMPTY },
     drainQueue: async s => { drains.push({ session: s, state: getSession(db, s).state }); return true; },
     spawnWorker: () => assert.fail('expired handoff must not spawn'),
     record(s, kind, payload) {

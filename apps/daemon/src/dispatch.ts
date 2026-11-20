@@ -10,6 +10,7 @@ import { replay, setCursor } from '@ormicode/journal';
 import { handleJoin, type Pairing } from './pair.ts';
 import { handoffMethod } from './handoff-methods.ts';
 import { handoffRequest } from './handoff-dispatch.ts';
+import { rejectHandoffRequest } from './handoff-transition.ts';
 import type { RelayClient } from './relay.ts';
 import { join } from 'node:path';
 import { rmSync } from 'node:fs';
@@ -110,6 +111,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
   const body = parsed.data as Record<string, unknown>;
   const authError = authorizeMcp(ctx, method, body, frame.mcp);
   if (authError) return client.link.replyError(id, authError, 'MCP session proof is missing, invalid, expired or does not authorize this actor');
+  if (rejectHandoffRequest(db, client, id, method, body)) return;
   try {
     if (['session.askUser', 'session.answer', 'session.decide'].includes(method)) return await ctx.interactions.method(client, id, method, body);
     if (method.startsWith('team.')) return await teamMethod(ctx, client, id, method, body);

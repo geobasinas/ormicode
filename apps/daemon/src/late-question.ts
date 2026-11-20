@@ -1,6 +1,7 @@
 import { addQueuedPrompt, getSession, type Store } from '@ormicode/session-store';
 import { newId } from '@ormicode/protocol';
 import type { Client, DispatchCtx } from './dispatch.ts';
+import { handoffTargetError } from './handoff-transition.ts';
 
 export function validQuestionAnswer(question: string, options: string[], answers: Record<string, string>): boolean {
   const answer = Object.hasOwn(answers, question) ? answers[question] : undefined;
@@ -18,6 +19,8 @@ export function lateQuestionAnswer(ctx: DispatchCtx, client: Client, id: string,
   const row = ctx.db.prepare(`SELECT payload FROM events WHERE session = ? AND kind = 'question_request'
     AND json_extract(payload, '$.request') = ? AND json_extract(payload, '$.daemonInteraction') = 1 LIMIT 1`).get(session, request) as { payload: string } | undefined;
   if (!row) return false;
+  const unavailable = handoffTargetError(ctx.db, session);
+  if (unavailable) { client.link.replyError(id, 'session.busy', unavailable); return true; }
   const answered = ctx.db.prepare(`SELECT 1 FROM events WHERE session = ? AND kind = 'question_answer'
     AND json_extract(payload, '$.request') = ? LIMIT 1`).get(session, request);
   if (answered) { client.link.replyError(id, 'session.already_decided', 'question already answered'); return true; }

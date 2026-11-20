@@ -28,13 +28,16 @@ export function addQueuedPrompt(db: Store, session: string, item: StoredQueueIte
     .run(id, session, position, text, createdAt, JSON.stringify(payload));
 }
 
-export function transferQueuedPrompts(db: Store, from: string, to: string): number {
+export function transferQueuedPrompts(db: Store, from: string, to: string, prepare?: (item: StoredQueueItem) => Pick<StoredQueueItem, 'text' | 'context'>): number {
   if (from === to) return 0;
   return db.transaction(() => {
     const items = listQueuedPrompts(db, from);
     const offset = (db.prepare('SELECT COALESCE(MAX(position), -1) + 1 AS next FROM session_queue WHERE session = ?').get(to) as { next: number }).next;
-    const move = db.prepare('UPDATE session_queue SET session = ?, position = ? WHERE session = ? AND id = ?');
-    items.forEach((item, index) => move.run(to, offset + index, from, item.id));
+    const move = db.prepare('UPDATE session_queue SET session = ?, position = ?, text = ?, payload = ? WHERE session = ? AND id = ?');
+    items.forEach((item, index) => {
+      const { id, text, createdAt, ...payload } = { ...item, ...prepare?.(item) };
+      move.run(to, offset + index, text, JSON.stringify(payload), from, id);
+    });
     return items.length;
   })();
 }

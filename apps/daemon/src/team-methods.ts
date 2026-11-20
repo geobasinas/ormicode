@@ -11,6 +11,7 @@ import type { Client, DispatchCtx } from './dispatch.ts';
 import { ormicodeDir } from './socket.ts';
 import { spawnTeamChild } from './team-spawn.ts';
 import { interrupt } from './team-interrupt.ts';
+import { handoffTargetError } from './handoff-transition.ts';
 
 const locks = new WeakMap<DispatchCtx, Promise<void>>();
 export async function teamMethod(ctx: DispatchCtx, client: Client, id: string, method: string, body: Record<string, unknown>): Promise<void> {
@@ -24,6 +25,8 @@ async function handle(ctx: DispatchCtx, client: Client, id: string, method: stri
   const actor = getSession(ctx.db, String(body.actor));
   const fail = (code: string, message: string) => client.link.replyError(id, code, message);
   if (!actor) return fail('session.not_found', String(body.actor));
+  const actorError = handoffTargetError(ctx.db, actor.id);
+  if (actorError) return fail('team.invalid', actorError);
   if (actor.archived) return fail('team.closed', 'caller is archived');
   if (method === 'team.spawn') return spawnTeamChild(ctx, client, id, body, actor);
   const team = ownedTeam(ctx.db, actor.id) ?? (actor.team ? getTeam(ctx.db, actor.team) : undefined);
@@ -34,6 +37,9 @@ async function handle(ctx: DispatchCtx, client: Client, id: string, method: stri
     return fail('team.forbidden', 'only the team parent may perform this action (children may close only themselves)');
   if (body.session !== undefined && (!target || (target.team !== team.id && target.id !== team.parent)))
     return fail('team.not_member', 'target is not in this team');
+  const targetError = target && handoffTargetError(ctx.db, target.id);
+  if (targetError && !['team.diff', 'team.report'].includes(method) && !(method === 'team.status' && !body.wake))
+    return fail('team.invalid', targetError);
   const reply = (result: Record<string, unknown>) => client.link.reply(id, result);
   switch (method) {
     case 'team.askUser': return ctx.interactions.ask(client, id, actor.id, body);
@@ -109,6 +115,8 @@ async function message(ctx: DispatchCtx, client: Client, id: string, body: Recor
   const toUser = Boolean(actor.parentless) && to === team.parent;
   if (!recipient || recipient.archived && !toUser || (recipient.team !== team.id && recipient.id !== team.parent))
     return client.link.replyError(id, 'team.not_member', 'recipient is not a live member of this team');
+  const recipientError = handoffTargetError(ctx.db, to);
+  if (recipientError) return client.link.replyError(id, 'team.invalid', recipientError);
   const messageId = newId('q');
   addTeamMessage(ctx.db, { id: messageId, team: team.id, from_session: actor.id, to_session: to,
     reply_to: original?.id ?? null, body: String(body.text), urgent: body.urgent ? 1 : 0, created_at: Date.now() });
