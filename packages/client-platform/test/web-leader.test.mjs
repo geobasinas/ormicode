@@ -215,6 +215,48 @@ test('the waiting tab takes over and restores its subscriptions after leader clo
   assert.equal(env.connectCalls.length, 2);
 });
 
+test('relay reconnect and leader takeover resume from delivered events, not the initial cursor', async t => {
+  const session = newId('s');
+  const event = seq => ({ v: 1, type: 'evt', session, seq, ts: seq, body: { kind: 'text', text: String(seq) } });
+  const history = [event(1), event(2)];
+  const env = environment({ history }); t.after(() => env.close());
+  const first = env.create(), received = [];
+  first.transport.onEvent = frame => { if (frame.type === 'evt') received.push(frame.seq); };
+  await first.web.pair({ account: 'demo', code: 'resume' });
+  await until(() => env.links.length === 1);
+  first.transport.subscribe(session);
+  await until(() => received.length === 2);
+  history.push(event(3)); env.links[0].close();
+  await until(() => received.length === 3);
+  assert.deepEqual(env.links[1].calls.find(([method]) => method === 'session.subscribe')[1], { session, after: 2 });
+  assert.deepEqual(received, [1, 2, 3]);
+  const second = env.create(), follower = [];
+  second.transport.onEvent = frame => { if (frame.type === 'evt') follower.push(frame.seq); };
+  second.transport.subscribe(session);
+  await until(() => follower.length === 3);
+  closeBrowserPlatform(first);
+  await until(() => env.links[2]?.calls.some(([method]) => method === 'session.subscribe'));
+  assert.deepEqual(env.links[2].calls.find(([method]) => method === 'session.subscribe')[1], { session, after: 3 });
+  assert.deepEqual(follower, [1, 2, 3]); assert.deepEqual(received, [1, 2, 3]);
+});
+
+test('reconnect uses the least advanced subscriber cursor', async t => {
+  const env = environment(); t.after(() => env.close());
+  const first = env.create();
+  await first.web.pair({ account: 'demo', code: 'minimum' });
+  await until(() => env.links.length === 1);
+  first.transport.subscribe('s_minimum', 10);
+  const second = env.create(), received = [];
+  second.transport.onEvent = frame => received.push(frame.seq);
+  second.transport.subscribe('s_minimum');
+  await until(() => env.links[0].calls.filter(([method]) => method === 'session.subscribe').length === 2);
+  env.links[0].onFrame({ v: 1, type: 'evt', session: 's_minimum', seq: 1, ts: 1, body: { kind: 'text', text: 'first' } });
+  await until(() => received.length === 1);
+  env.links[0].close();
+  await until(() => env.links[1]?.calls.some(([method]) => method === 'session.subscribe'));
+  assert.deepEqual(env.links[1].calls.find(([method]) => method === 'session.subscribe')[1], { session: 's_minimum', after: 1 });
+});
+
 test('an unknown or revoked token clears the store and returns to unpaired', async t => {
   const env = environment({ rejectConnect: Object.assign(new Error('unknown token'), { code: 4004 }) });
   t.after(() => env.close());

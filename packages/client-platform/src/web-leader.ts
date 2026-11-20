@@ -152,7 +152,7 @@ export class WebLeader {
         }
         break;
       case 'evt':
-        if (!this.leader && message.frame && (!message.tab || message.tab === this.tab)) this.onEvent?.(message.frame as Frame);
+        if (!this.leader && message.frame && (!message.tab || message.tab === this.tab)) this.deliverLocal(message.frame as Frame);
         break;
       case 'res': {
         if (this.leader || typeof message.id !== 'string' || !message.frame) break;
@@ -200,6 +200,15 @@ export class WebLeader {
     this.channel.postMessage({ t: 'res', id, frame });
   }
 
+  private deliverLocal(frame: Frame): void {
+    if (frame.type === 'evt' && typeof frame.seq === 'number') {
+      const after = this.localSubs.get(frame.session);
+      if (after === undefined || frame.seq <= after) return;
+      this.localSubs.set(frame.session, frame.seq);
+    }
+    this.onEvent?.(frame);
+  }
+
   private addSubscriber(tab: string, session: string, after: number): void {
     const tabs = this.subscribers.get(session) ?? new Map<string, number>();
     if (tabs.has(tab)) return;
@@ -221,7 +230,7 @@ export class WebLeader {
     const link = this.link;
     if (!link || this.upstreamSubs.has(session) && !replay) return;
     this.upstreamSubs.add(session);
-    void link.request('session.subscribe', { session, ...(after ? { after } : {}) }).catch(() => {
+    void link.request('session.subscribe', { session, ...(!replay && after ? { after } : {}) }).catch(() => {
       if (this.link === link) this.upstreamSubs.delete(session);
     });
   }
@@ -259,7 +268,7 @@ export class WebLeader {
             for (const [tab, after] of this.subscribers.get(frame.session) ?? []) {
               if (frame.seq <= after) continue;
               this.subscribers.get(frame.session)!.set(tab, frame.seq);
-              if (tab === this.tab) this.onEvent?.(frame);
+              if (tab === this.tab) this.deliverLocal(frame);
               else this.channel.postMessage({ t: 'evt', tab, frame });
             }
             return;
@@ -280,8 +289,7 @@ export class WebLeader {
           : proto > PROTOCOL_VERSION ? 'protocol-old-client' : 'online');
         }
         for (const [session, tabs] of this.subscribers) {
-          const after = tabs.values().next().value as number | undefined;
-          this.subscribeUpstream(session, after ?? 0);
+          this.subscribeUpstream(session, Math.min(...tabs.values()));
         }
         await Promise.race([closedPromise, this.waitForWake()]);
         this.link = undefined;
