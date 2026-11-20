@@ -3,7 +3,7 @@ import type { UserInteractions } from './user-interactions.ts';
 import { resumeSession } from './team-resume.ts';
 import { sessionTeamView } from './session-team-view.ts';
 import { sessionStatus } from './session-status.ts';
-import { abortSession } from './abort-session.ts';
+import { abortSession, stopSessionWorker } from './abort-session.ts';
 import {
   getSession, listSessions, setState, setTitle, listNotes, setNote, deleteNote, archiveSession, releaseSessionPorts,
   getPendingPromptData, deletePendingPromptData, getSessionPorts, listDevices, renameDevice, revokeDevice, type Store,
@@ -277,7 +277,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         const session = String(body.session);
         if (method === 'session.delete') await ctx.agentBrowser.deleteSession(session);
         else await ctx.agentBrowser.closeSession(session);
-        await ctx.services.stopSession(session);
+        await ctx.services.stopSession(session); await stopSessionWorker(ctx, session);
         archiveSession(db, session);
         ctx.teamLifecycle.unavailable(session);
         releaseForSession(db, session);

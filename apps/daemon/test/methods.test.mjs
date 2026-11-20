@@ -258,6 +258,60 @@ test('idle eviction frees the worker after the timeout', async () => {
   await cleanup();
 });
 
+const waitReady = async (daemon, session) => {
+  const deadline = Date.now() + 15_000;
+  while (daemon.workers.get(session)?.ready !== true) {
+    if (Date.now() > deadline) throw new Error('worker never ready');
+    await new Promise(r => setTimeout(r, 25));
+  }
+};
+
+test('a full pool keeps a running worker and the worker that just started', async () => {
+  const { daemon, client, cleanup } = await boot({ ORMICODE_POOL_MAX: '1', ORMICODE_FAKE_SCRIPT: 'tool' });
+  const other = mkdtempSync(join(tmpdir(), 'ormi-daemon-pool-'));
+  try {
+    const running = await startSession(client);
+    await waitReady(daemon, running);
+    assert.equal((await client.request('session.prompt', { session: running, text: 'hold tool' })).type, 'res');
+    const started = await client.request('session.start', { machine: newId('m'), project: other, vendor: 'fake', transport: 'cli', model: 'x', effort: 'x', mode: 'x', workspace: { kind: 'current' } });
+    const fresh = started.body.session;
+    await waitReady(daemon, fresh);
+    await new Promise(r => setTimeout(r, 200));
+    assert.ok(daemon.workers.has(running) && daemon.workers.has(fresh));
+    assert.equal(getSession(daemon.db, running).state, 'running');
+    assert.equal(replay(daemon.db, running).some(e => e.kind === 'evicted'), false);
+    assert.equal(replay(daemon.db, fresh).some(e => e.kind === 'evicted'), false);
+    assert.equal((await client.request('session.prompt', { session: fresh, text: 'second turn' })).type, 'res');
+  } finally { await cleanup(); rmSync(other, { recursive: true, force: true }); }
+});
+
+for (const method of ['session.archive', 'session.delete']) test(`${method} stops a running worker`, async () => {
+  const { daemon, client, cleanup } = await boot({ ORMICODE_FAKE_SCRIPT: 'tool' });
+  try {
+    const session = await startSession(client);
+    assert.equal((await client.request('session.prompt', { session, text: 'hold tool' })).type, 'res');
+    const until = Date.now() + 5000;
+    while (!replay(daemon.db, session).some(e => e.kind === 'tool_call') && Date.now() < until) await new Promise(r => setTimeout(r, 10));
+    const pid = daemon.workers.get(session).pid;
+    assert.equal((await client.request(method, { session })).type, 'res');
+    assert.equal(daemon.workers.has(session), false);
+    assert.equal(getSession(daemon.db, session).worker_pid, null);
+    assert.throws(() => process.kill(pid, 0));
+    assert.equal(JSON.parse(replay(daemon.db, session).find(e => e.kind === 'interrupted').payload).reason, 'user_abort');
+  } finally { await cleanup(); }
+});
+
+test('archiving an idle session stops its worker', async () => {
+  const { daemon, client, cleanup } = await boot();
+  try {
+    const session = await startSession(client);
+    await waitReady(daemon, session);
+    assert.equal((await client.request('session.archive', { session })).type, 'res');
+    assert.equal(daemon.workers.has(session), false);
+    assert.equal(getSession(daemon.db, session).worker_pid, null);
+  } finally { await cleanup(); }
+});
+
 test('setModel reaches the worker and persists on the session row', async () => {
   const { daemon, client, cleanup } = await boot();
   const session = await startSession(client);

@@ -20,3 +20,8 @@ export async function abortSession(ctx: DispatchCtx, session: string): Promise<b
   await ctx.drainQueue(session, true, true);
   return true;
 }
+
+/** An archived or deleted session keeps no worker: a live turn stops like Stop, an idle worker shuts down gracefully. */
+export async function stopSessionWorker(ctx: DispatchCtx, session: string): Promise<void> {
+  if (!await abortSession(ctx, session)) await ctx.stopWorker(session);
+}

@@ -166,7 +166,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
         const w = workers.get(session);
         let recap = false;
         if (w) {
-          w.ready = true; w.pid = Number(body.pid) || w.pid; setWorkerPid(db, session, w.pid ?? null); setState(db, session, 'idle'); armIdle(session, 'idle'); enforcePool();
+          w.ready = true; w.pid = Number(body.pid) || w.pid; setWorkerPid(db, session, w.pid ?? null); setState(db, session, 'idle'); armIdle(session, 'idle'); enforcePool(session);
           dispatchCtx.teamLifecycle.available(session);
           if (resuming.delete(session) && shouldRecordResume(db, session)) record(session, 'resumed', {});
           const uptoSeq = recapPending.get(session);
@@ -238,12 +238,11 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   };
   const evictWorker = async (session: string, reason: string) => {
     if (closing) return;
-    mcpCredentials.revoke(session); dispatchCtx.teamLifecycle.unavailable(session);
+    // Re-check at eviction time: a turn may have started since the pool or idle timer picked this worker.
+    const row = getSession(db, session);
     const w = workers.get(session);
-    const link = workerLinks.get(session);
-    if (link) { try { await link.request('worker.evict', { session }, 10_000); } catch { if (w) killTree(w.proc); } }
-    else if (w) killTree(w.proc);
-    workers.delete(session);
+    if (!w || w.stopping || !row || row.pinned || !['idle', 'done'].includes(row.state)) return;
+    await stopWorker(session);
     record(session, 'evicted', { reason, idleMs: 0 });
     setState(db, session, 'idle', reason);
   };
@@ -264,10 +263,11 @@ export async function startDaemon(opts: DaemonOptions = {}) {
       idleTimers.set(session, setTimeout(() => { void evictWorker(session, 'idle_timeout'); }, idleTimeoutMs).unref());
     }
   };
-  const enforcePool = () => {
+  /** `fresh` just became ready, usually because a prompt is waiting for it, so it is never the one evicted. */
+  const enforcePool = (fresh: string) => {
     const live = [...workers.entries()].filter(([, w]) => w.ready);
     if (live.length <= poolMax) return;
-    const idle = live.filter(([s]) => getSession(db, s)?.state === 'idle' && !(getSession(db, s)?.pinned));
+    const idle = live.filter(([s, w]) => s !== fresh && !w.stopping && getSession(db, s)?.state === 'idle' && !(getSession(db, s)?.pinned));
     if (idle.length) void evictWorker(idle[0]![0], 'pool_full');
   };
   const toWorker = async (session: string, method: string, body: Record<string, unknown>) => {
