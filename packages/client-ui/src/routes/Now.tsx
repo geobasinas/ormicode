@@ -78,7 +78,7 @@ function AttentionRow({ s, n, entry, onOpen }: { s: SessionSummary; n: number; e
   );
 }
 
-export function Now({ onOpen, state, layout }: { onOpen: (session: string) => void; state?: string; layout?: LayoutDescriptor }) {
+export function Now({ onOpen, state, layout, pairPrefill }: { onOpen: (session: string) => void; state?: string; layout?: LayoutDescriptor; pairPrefill?: { account?: string; code?: string } }) {
   const { sessions } = useSessions();
   const digest = useDigest(sessions);
   const sessionsById = new Map(sessions.map(s => [s.id, s]));
@@ -103,7 +103,7 @@ export function Now({ onOpen, state, layout }: { onOpen: (session: string) => vo
     <div style={{ overflow: 'auto', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
       <div style={{ width: '100%', maxWidth: 792, padding: '0 var(--space-5)' }}>
         <h1 style={{ fontSize: 22, color: 'var(--text-title)', margin: '0 0 15px', fontWeight: 600, letterSpacing: -0.3 }}>{greeting()}</h1>
-        {state === 'unpaired' ? <PairCard /> : null}
+        {state === 'unpaired' ? <PairCard pairPrefill={pairPrefill} /> : null}
         <NewSession onStarted={onOpen} />
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}>
           {widgets.map(widget => widget === 'needs' ? <div key="needs">

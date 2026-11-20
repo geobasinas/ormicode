@@ -8,6 +8,15 @@ import { newId, parseWireFrame, type Frame } from '@ormicode/protocol';
 
 export interface RemoteEndpoint { relayUrl: string; account: string; device: string; token: string }
 
+export class RelayAuthError extends Error {
+  readonly code: number;
+  constructor(code: number) {
+    super(code === 4001 ? 'device token revoked' : 'unknown device token');
+    this.name = 'RelayAuthError';
+    this.code = code;
+  }
+}
+
 /** Exchange a live pairing code for a device token (HTTPS POST to the relay). */
 export async function joinRemote(relayUrl: string, account: string, code: string, name: string): Promise<{ device: string; token: string }> {
   const res = await fetch(`${relayUrl.replace(/\/$/, '')}/join?account=${encodeURIComponent(account)}`, {
@@ -23,10 +32,11 @@ export class WsLink {
   private ws: WebSocket;
   private queue: Frame[] = [];
   private waiting: ((frame: Frame | undefined) => void) | undefined;
-  private pending = new Map<string, { resolve: (frame: Frame) => void; timer: NodeJS.Timeout }>();
+  private pending = new Map<string, { resolve: (frame: Frame) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
   private lastSeq = new Map<string, number>(); // dedupe DO-outbox vs hub-journal replays
   lastSub: { session: string; after: number } | undefined; // last subscribe for resync replay
   closed = false;
+  closeCode?: number;
   private _onFrame: ((frame: Frame) => void) | undefined;
   /** Late-assigned handler drains frames queued before it was set (e.g. subscribe replay). */
   set onFrame(fn: ((frame: Frame) => void) | undefined) {
@@ -41,7 +51,18 @@ export class WsLink {
   constructor(ws: WebSocket) {
     this.ws = ws;
     ws.onmessage = e => this.feed(String(e.data));
-    ws.onclose = () => { this.closed = true; this.onClose?.(); this.wake(undefined); };
+    ws.onclose = event => {
+      this.closed = true;
+      this.closeCode = event.code;
+      this.onClose?.();
+      this.wake(undefined);
+      const error = [4001, 4004].includes(event.code) ? new RelayAuthError(event.code) : new Error('relay connection closed');
+      for (const pending of this.pending.values()) {
+        clearTimeout(pending.timer);
+        pending.reject(error);
+      }
+      this.pending.clear();
+    };
     ws.onerror = () => { this.closed = true; };
   }
 
@@ -63,7 +84,7 @@ export class WsLink {
     if (method === 'session.unsubscribe') this.send({ type: 'unsubscribe', session: body.session });
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`${method}: timed out`)); }, timeoutMs);
-      this.pending.set(id, { resolve, timer });
+      this.pending.set(id, { resolve, reject, timer });
       this.send({ v: 1, type: 'req', id, method, body, ts: Date.now() });
     });
   }
@@ -115,7 +136,10 @@ export function connectRemote(config: RemoteEndpoint, onResyncError?: (msg: stri
     const ws = new WebSocket(url);
     const link = new WsLink(ws);
     ws.onopen = () => link.send({ type: 'auth', token: config.token });
-    ws.onclose = () => reject(new Error('relay connection closed'));
+    link.onClose = () => {
+      if (link.closeCode === 4001 || link.closeCode === 4004) reject(new RelayAuthError(link.closeCode));
+      else reject(new Error('relay connection closed'));
+    };
     link.onRelayMessage = msg => {
       if (msg.type === 'authed') {
         link.send({ v: 1, type: 'hello', role: 'client', proto: 1, device: config.device });

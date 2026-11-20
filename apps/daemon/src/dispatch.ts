@@ -1,5 +1,5 @@
 import type { Frame, PromptAttachment, PromptContext } from '@ormicode/protocol';
-import { parseRequestBody, newId } from '@ormicode/protocol';
+import { parseRequestBody, newId, PROTOCOL_VERSION } from '@ormicode/protocol';
 import {
   getSession, listSessions, setState, setTitle, listNotes, setNote, deleteNote, archiveSession, releaseSessionPorts,
   getPendingPromptData, deletePendingPromptData, getSessionPorts, type Store,
@@ -115,7 +115,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
       case 'project.deleteBranch':
         return await projectBranchMethod(ctx, client, id, method, body);
       case 'daemon.status':
-        return client.link.reply(id, { version: '0.0.0', uptimeMs: Date.now() - ctx.startedAt, liveWorkers: ctx.liveWorkers(), relay: ctx.relay()?.connected() ? 'connected' : 'disconnected', lastError: ctx.lastError() });
+        return client.link.reply(id, { version: '0.0.0', proto: PROTOCOL_VERSION, uptimeMs: Date.now() - ctx.startedAt, liveWorkers: ctx.liveWorkers(), relay: ctx.relay()?.connected() ? 'connected' : 'disconnected', lastError: ctx.lastError() });
       case 'session.start': return await startSession(ctx, client, id, body);
       case 'session.rename': {
         const session = String(body.session);

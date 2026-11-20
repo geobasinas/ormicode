@@ -18,6 +18,8 @@ import { SessionHeader } from '../features/session/SessionHeader.tsx';
 import { NEEDS_YOU } from '../features/session/state.tsx';
 import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels';
 import { Toaster } from '../components/ui/sonner.tsx';
+import { agoText } from '../lib/format.ts';
+import { Button } from '../components/Button.tsx';
 
 const MAX_TABS = 8;
 const drag = { WebkitAppRegion: 'drag' } as const;
@@ -118,7 +120,7 @@ function ActiveHeader({ session, onOpen, onHandoff }: { session: string; onOpen:
   return <SessionHeader session={session} details={details} onOpen={onOpen} onHandoff={onHandoff} />;
 }
 
-export function App({ platform, theme: initialTheme, layout }: { platform: ClientPlatform; theme?: string; layout?: LayoutDescriptor }) {
+export function App({ platform, theme: initialTheme, layout, pairPrefill }: { platform: ClientPlatform; theme?: string; layout?: LayoutDescriptor; pairPrefill?: { account?: string; code?: string } }) {
   const [prefs, setPrefs] = useState<Prefs>(() => loadPrefs(initialTheme));
   const theme = prefs.theme;
   const [storedLayout, setStoredLayout] = useState<LayoutDescriptor>(() => {
@@ -129,6 +131,7 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
   const [route, setRoute] = useState<string>('now');
   const [toastBottomOffset, setToastBottomOffset] = useState(16);
   const [state, setState] = useState<string>('connecting');
+  const [, setClock] = useState(0);
   const [query, setQuery] = useState('');
   const [rail, setRail] = useState<RailPane>(() => storedLayout.regions.rightRail?.collapsed === false ? 'files' : 'none');
   const [handoffOpen, setHandoffOpen] = useState(false);
@@ -205,8 +208,13 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
   }, [searchRef]);
   useEffect(() => {
     platform.transport.onState = setState;
-    platform.transport.onState?.(state);
+    if (platform.kind === 'desktop') platform.transport.onState?.(state);
   }, [platform]);
+  useEffect(() => {
+    if (!platform.web || state !== 'offline') return;
+    const timer = window.setInterval(() => setClock(value => value + 1), 30_000);
+    return () => window.clearInterval(timer);
+  }, [platform, state]);
 
   const sidebar = resolved.regions.sidebar;
   const openRef = useRef((id: string) => { void id; });
@@ -239,6 +247,22 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
     <PlatformContext.Provider value={platform}>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-window)', color: 'var(--text-label)', fontFamily: 'var(--font-ui)', fontSize: 14, borderRadius: 14, overflow: 'hidden' }}>
         <Titlebar platform={platform} />
+        {platform.web && state === 'offline' ? (
+          <div role="status" style={{ padding: '8px 14px', borderBottom: '1px solid var(--line-card)', background: 'var(--bg-card)', color: 'var(--text-active)', fontSize: 12 }}>
+            Relay unreachable · {platform.web.lastOnline() ? `last online ${agoText(platform.web.lastOnline()!)}` : 'never connected'}
+          </div>
+        ) : null}
+        {platform.web && state === 'protocol-old-client' ? (
+          <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 14px', borderBottom: '1px solid var(--line-card)', background: 'var(--bg-card)', color: 'var(--text-active)', fontSize: 12 }}>
+            <span>This page is older than your hub — reload</span>
+            <Button onClick={() => window.location.reload()}>Reload</Button>
+          </div>
+        ) : null}
+        {platform.web && state === 'protocol-old-hub' ? (
+          <div role="alert" style={{ padding: '8px 14px', borderBottom: '1px solid var(--line-card)', background: 'var(--bg-card)', color: 'var(--text-active)', fontSize: 12 }}>
+            Your hub runs an older protocol — upgrade the hub
+          </div>
+        ) : null}
         <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         <Group id="ormi.shell" orientation="horizontal" defaultLayout={shellLayout.defaultLayout} onLayoutChanged={onShellLayoutChanged} style={{ flex: 1, minWidth: 0 }}>
           {sidebar?.visible !== false && sidebar?.collapsed !== true ? <>
@@ -305,7 +329,7 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
               flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg-main)',
               borderRadius: route === 'now' ? '0 12px 12px 12px' : 12,
             }}>
-              {route === 'now' ? <Now onOpen={open} state={state} layout={resolved} />
+              {route === 'now' ? <Now onOpen={open} state={state} layout={resolved} pairPrefill={pairPrefill} />
                 : route === 'settings' ? <SettingsView prefs={prefs} onPrefs={setPrefs} connection={state} />
                 : <SessionView key={route} session={route} rail={rail} onRail={setRail} onOpen={open} handoffOpen={handoffOpen} onHandoffChange={setHandoffOpen} layout={resolved}
                   onLayoutChange={descriptor => window.dispatchEvent(new CustomEvent('ormi-layout-change', { detail: descriptor }))} />}
