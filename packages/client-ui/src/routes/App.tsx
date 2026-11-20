@@ -21,6 +21,7 @@ import { Toaster } from '../components/ui/sonner.tsx';
 import { agoText } from '../lib/format.ts';
 import { Button } from '../components/Button.tsx';
 import { Onboarding } from '../features/pair/Onboarding.tsx';
+import { useIsMobile } from '../hooks/use-mobile.ts';
 
 const MAX_TABS = 8;
 const drag = { WebkitAppRegion: 'drag' } as const;
@@ -134,6 +135,7 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
   const [state, setState] = useState<string>('connecting');
   const [onboarding, setOnboarding] = useState(false);
   const [booted, setBooted] = useState(!platform.web);
+  const mobile = useIsMobile();
   useEffect(() => {
     if (state !== 'connecting') setBooted(true);
     if (platform.web && state === 'unpaired') setOnboarding(true);
@@ -252,19 +254,12 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
   });
 
   if (!booted) return <div style={{ height: '100vh', background: 'var(--bg-window)' }} />;
-  if (onboarding) return (
-    <PlatformContext.Provider value={platform}>
-      <div style={{ height: '100vh', overflow: 'auto', background: 'var(--bg-window)', color: 'var(--text-label)', fontFamily: 'var(--font-ui)', fontSize: 14 }}>
-        <Onboarding state={state} pairPrefill={pairPrefill} />
-      </div>
-    </PlatformContext.Provider>
-  );
 
   return (
     <PlatformContext.Provider value={platform}>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-window)', color: 'var(--text-label)', fontFamily: 'var(--font-ui)', fontSize: 14, borderRadius: 14, overflow: 'hidden' }}>
         <Titlebar platform={platform} />
-        {platform.web && state === 'offline' ? (
+        {platform.web && !onboarding && state === 'offline' ? (
           <div role="status" style={{ padding: '8px 14px', borderBottom: '1px solid var(--line-card)', background: 'var(--bg-card)', color: 'var(--text-active)', fontSize: 12 }}>
             Relay unreachable · {platform.web.lastOnline() ? `last online ${agoText(platform.web.lastOnline()!)}` : 'never connected'}
           </div>
@@ -282,12 +277,12 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
         ) : null}
         <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         <Group id="ormi.shell" orientation="horizontal" defaultLayout={shellLayout.defaultLayout} onLayoutChanged={onShellLayoutChanged} style={{ flex: 1, minWidth: 0 }}>
-          {sidebar?.visible !== false && sidebar?.collapsed !== true ? <>
+          {sidebar?.visible !== false && sidebar?.collapsed !== true && !(onboarding && mobile) ? <>
             <Panel id="sidebar" defaultSize={sidebar?.size ?? 268} minSize={220} maxSize={420}>
             <aside style={{
               width: '100%', height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column',
               gap: 1, padding: '12px 8px 6px', background: 'var(--bg-window)',
-            }}>
+            }}>{onboarding ? null : <>
               <div style={{ height: 30, display: 'flex', alignItems: 'center', gap: 9, padding: '0 10px', background: 'var(--bg-card)', borderRadius: 8, border: '1px solid var(--line-divider)' }}>
                 <Search size={15} style={{ color: 'var(--text-label)', flexShrink: 0 }} />
                 <input ref={el => { searchRef.current = el; }} value={query} onChange={e => setQuery(e.target.value)} placeholder="Search"
@@ -330,23 +325,24 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
                 <Settings size={15} style={{ color: route === 'settings' ? 'var(--text-active)' : 'var(--text-label)', flexShrink: 0 }} />
                 <span style={{ fontSize: 12.5, color: route === 'settings' ? 'var(--text-active)' : 'var(--text-label)' }}>Settings</span>
               </button>
-            </aside>
+            </>}</aside>
             </Panel>
             <Separator className="ormi-handle" />
           </> : null}
           <Panel id="main" minSize={420}>
-          <main style={{ height: '100%', boxSizing: 'border-box', minWidth: 0, display: 'flex', flexDirection: 'column', padding: '12px 0 18px 12px' }}>
-            <div style={{ display: 'flex', gap: 10, flexShrink: 0, position: 'relative', zIndex: 1, marginBottom: -1 }}>
+          <main style={{ height: '100%', boxSizing: 'border-box', minWidth: 0, display: 'flex', flexDirection: 'column', padding: onboarding ? '12px 12px 18px' : '12px 0 18px 12px' }}>
+            {onboarding ? null : <div style={{ display: 'flex', gap: 10, flexShrink: 0, position: 'relative', zIndex: 1, marginBottom: -1 }}>
               <Tab id="now" active={route === 'now'} onSelect={() => setRoute('now')} />
               {tabs.map((t, i) => <Tab key={t} id={t} n={PAGES[t] ? undefined : tabs.filter(x => !PAGES[x]).indexOf(t) + 1} active={route === t} onSelect={() => setRoute(t)} onClose={() => close(t)} />)}
               <span style={{ flex: 1 }} />
               {!PAGES[route] ? <div style={{ ...noDrag, minWidth: 0, display: 'flex' }}><ActiveHeader key={route} session={route} onOpen={open} onHandoff={() => setHandoffOpen(true)} /></div> : null}
-            </div>
+            </div>}
             <div style={{
-              flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg-main)',
-              borderRadius: route === 'now' ? '0 12px 12px 12px' : 12,
+              flex: 1, minHeight: 0, overflow: onboarding ? 'auto' : 'hidden', background: 'var(--bg-main)',
+              borderRadius: route === 'now' && !onboarding ? '0 12px 12px 12px' : 12,
             }}>
-              {route === 'now' ? <Now onOpen={open} state={state} layout={resolved} pairPrefill={pairPrefill} />
+              {onboarding ? <Onboarding state={state} pairPrefill={pairPrefill} />
+                : route === 'now' ? <Now onOpen={open} state={state} layout={resolved} pairPrefill={pairPrefill} />
                 : route === 'settings' ? <SettingsView prefs={prefs} onPrefs={setPrefs} connection={state} />
                 : <SessionView key={route} session={route} rail={rail} onRail={setRail} onOpen={open} handoffOpen={handoffOpen} onHandoffChange={setHandoffOpen} layout={resolved}
                   onLayoutChange={descriptor => window.dispatchEvent(new CustomEvent('ormi-layout-change', { detail: descriptor }))} />}
@@ -354,7 +350,7 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
           </main>
           </Panel>
         </Group>
-          <Rail route={route} rail={rail} onRail={setRail} />
+          {onboarding ? null : <Rail route={route} rail={rail} onRail={setRail} />}
         </div>
       </div>
       <Toaster className="toaster group ormi-toast-toaster" position="bottom-center" duration={3000} visibleToasts={1} closeButton={false}

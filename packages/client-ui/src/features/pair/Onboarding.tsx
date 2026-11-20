@@ -1,6 +1,6 @@
 /**
- * Web onboarding (frames 1c–1e): replaces the shell until this browser has
- * paired and reached the hub. The token is stored by the platform, never here.
+ * Web onboarding (frames 1c–1e): fills the main pane, with an empty sidebar,
+ * until this browser has paired and reached the hub. The token is stored by the platform, never here.
  */
 import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { ArrowLeft, LoaderCircle } from 'lucide-react';
@@ -58,10 +58,6 @@ export function Onboarding({ state, pairPrefill }: { state: string; pairPrefill?
 
   let body: ReactNode;
   if (step === 'welcome') body = <>
-    <div aria-hidden style={{
-      width: 40, height: 40, borderRadius: 11, display: 'grid', placeItems: 'center', marginBottom: 6,
-      background: 'var(--text-title)', color: 'var(--text-onAccent)', fontWeight: 700, fontSize: 20,
-    }}>o</div>
     <h1 style={title}>Welcome to ormicode</h1>
     <p style={sub}>Connect this browser to your hub to see and steer your sessions.</p>
     <Button variant="primary" onClick={() => setStep('code')} style={{ width: '100%', height: 40, marginTop: 10 }}>Get started</Button>
@@ -93,7 +89,7 @@ export function Onboarding({ state, pairPrefill }: { state: string; pairPrefill?
 
   const index = ['welcome', 'code', 'connecting'].indexOf(step);
   return (
-    <main style={{ minHeight: '100%', boxSizing: 'border-box', display: 'grid', placeItems: 'center', padding: '40px 20px' }}>
+    <div style={{ minHeight: '100%', boxSizing: 'border-box', display: 'grid', placeItems: 'center', padding: '40px 20px' }}>
       <div style={{ width: '100%', maxWidth: 320, display: 'grid', gap: 28 }}>
         <div style={{ display: 'grid', gap: 8, justifyItems: step === 'code' ? 'stretch' : 'center', textAlign: step === 'code' ? 'left' : 'center' }}>{body}</div>
         <div aria-hidden style={{ display: 'flex', justifyContent: 'center', gap: 6 }}>
@@ -103,6 +99,6 @@ export function Onboarding({ state, pairPrefill }: { state: string; pairPrefill?
           }} />)}
         </div>
       </div>
-    </main>
+    </div>
   );
 }
