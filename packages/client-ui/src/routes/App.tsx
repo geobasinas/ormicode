@@ -20,7 +20,7 @@ import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panel
 import { Toaster } from '../components/ui/sonner.tsx';
 import { agoText } from '../lib/format.ts';
 import { Button } from '../components/Button.tsx';
-import { PairDialog } from '../features/pair/PairDialog.tsx';
+import { Onboarding } from '../features/pair/Onboarding.tsx';
 
 const MAX_TABS = 8;
 const drag = { WebkitAppRegion: 'drag' } as const;
@@ -132,6 +132,13 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
   const [route, setRoute] = useState<string>('now');
   const [toastBottomOffset, setToastBottomOffset] = useState(16);
   const [state, setState] = useState<string>('connecting');
+  const [onboarding, setOnboarding] = useState(false);
+  const [booted, setBooted] = useState(!platform.web);
+  useEffect(() => {
+    if (state !== 'connecting') setBooted(true);
+    if (platform.web && state === 'unpaired') setOnboarding(true);
+    else if (state === 'online') setOnboarding(false);
+  }, [platform, state]);
   const [, setClock] = useState(0);
   const [query, setQuery] = useState('');
   const [rail, setRail] = useState<RailPane>(() => storedLayout.regions.rightRail?.collapsed === false ? 'files' : 'none');
@@ -244,6 +251,15 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
     return next;
   });
 
+  if (!booted) return <div style={{ height: '100vh', background: 'var(--bg-window)' }} />;
+  if (onboarding) return (
+    <PlatformContext.Provider value={platform}>
+      <div style={{ height: '100vh', overflow: 'auto', background: 'var(--bg-window)', color: 'var(--text-label)', fontFamily: 'var(--font-ui)', fontSize: 14 }}>
+        <Onboarding state={state} pairPrefill={pairPrefill} />
+      </div>
+    </PlatformContext.Provider>
+  );
+
   return (
     <PlatformContext.Provider value={platform}>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-window)', color: 'var(--text-label)', fontFamily: 'var(--font-ui)', fontSize: 14, borderRadius: 14, overflow: 'hidden' }}>
@@ -341,7 +357,6 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
           <Rail route={route} rail={rail} onRail={setRail} />
         </div>
       </div>
-      {platform.web && state === 'unpaired' ? <PairDialog pairPrefill={pairPrefill} /> : null}
       <Toaster className="toaster group ormi-toast-toaster" position="bottom-center" duration={3000} visibleToasts={1} closeButton={false}
         offset={{ top: 16, right: 16, bottom: toastBottomOffset, left: 16 }}
         mobileOffset={{ top: 16, right: 16, bottom: toastBottomOffset, left: 16 }} />

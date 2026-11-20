@@ -106,7 +106,9 @@ class HubSimulator {
       if (message.method === 'daemon.status') this.statusRequests++;
       const body = message.method === 'daemon.status'
         ? { version: '0.0.0', proto: 1, uptimeMs: 1000, liveWorkers: 0, relay: 'connected', lastError: null }
-        : message.method === 'session.list' ? { sessions: [] } : {};
+        : message.method === 'session.list' ? { sessions: [] }
+        : message.method === 'agents.list' ? { agents: [] }
+        : message.method === 'session.draft.get' ? { text: '' } : {};
       this.send({ v: 1, type: 'res', id: message.id, ok: true, body });
       return;
     }
@@ -160,6 +162,9 @@ function requestOrigin(value) {
 }
 
 async function enterCode(page, code) {
+  const start = page.getByRole('button', { name: 'Get started' });
+  await start.or(page.getByLabel('Account')).first().waitFor();
+  if (await start.isVisible()) await start.click();
   await page.getByLabel('Account').fill(account);
   await page.getByLabel('Pairing code').fill(code);
   await page.getByRole('button', { name: 'Pair', exact: true }).click();
@@ -311,7 +316,7 @@ test('bad and burned pairing codes are rejected', async t => {
     await enterCode(first, '000000000000');
     await first.getByRole('alert').filter({ hasText: "That code didn't work." }).waitFor();
     await enterCode(first, code);
-    await first.getByText('Pair this browser').waitFor({ state: 'detached' });
+    await first.getByRole('button', { name: 'Settings' }).waitFor();
     await openAbout(first);
     await first.getByText('online', { exact: true }).waitFor();
     await second.goto(webOrigin);
@@ -337,7 +342,7 @@ test('revocation clears the browser token and returns to pairing', async t => {
       body: JSON.stringify({ device }),
     });
     assert.equal(response.status, 200);
-    await page.getByText('Pair this browser').waitFor();
+    await page.getByRole('button', { name: 'Get started' }).waitFor();
   } finally { await page.close(); }
 });
 
