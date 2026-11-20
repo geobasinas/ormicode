@@ -2095,7 +2095,7 @@ The built-in server also ships `ormi_design_list`, `ormi_design_get`, `ormi_desi
 - File history.
 - Open in external editor.
 
-**Ask about this file:** select lines, press one button, and a new session starts with the path and selection as context plus a prompt box.
+**Ask about this file:** select lines and send a comment with the path and selection as context to the session being viewed (queued if it is busy). Only callers without an active session start a new session in the same project.
 
 **Editing rules**
 - Plain text only. No format-on-save, LSP, refactors or multi-cursor — use your IDE for that.
