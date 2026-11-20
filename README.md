@@ -496,6 +496,8 @@ States with several causes carry a `reason` (e.g. `interrupted`: `host_restart`,
 
 **Display:** transcript is full while running, summarized when idle (adjustable per session and globally). Sort: carry-over and things waiting on you first, then most recent. Done sessions fade after a day.
 
+Each agent turn starts with a live “Working for …” duration above its visible activity. Completed and interrupted turns show an expandable “Worked for …” row containing the tool calls and thinking, collapsed by default, with the final assistant text below. Historical turns start collapsed too.
+
 **Waiting / Needs You:** only pending user approvals and questions count. Idle, user-stopped, failed (including expired authentication), and rate-limited sessions do not count as waiting; stopped sessions use a muted stopped indicator and failures keep their failed indicator. Stale digest entries cannot promote these sessions back into Needs You. Programmatic urgent-delivery interruptions use `urgent_delivery`, not `user_abort`, so their preserved user questions remain actionable.
 
 **Ending**

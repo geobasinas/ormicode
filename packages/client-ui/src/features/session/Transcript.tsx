@@ -18,6 +18,8 @@ import { UiCheckRow } from './UiCheckRow.tsx';
 import { TranscriptContextDetails } from './TranscriptContextDetails.tsx';
 import { collapseResumeMarkers } from './resume-markers.ts';
 import { transcriptToolResults } from './tool-results.ts';
+import { transcriptTurns, turnContents } from './turns.ts';
+import { TurnActivity } from './TurnActivity.tsx';
 
 const mono = { fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap' as const, wordBreak: 'break-word' as const };
 const small = { fontSize: 12 };
@@ -281,39 +283,14 @@ function retryLine(events: TranscriptEvent[], start: number, key: string | numbe
   };
 }
 
-function durationLabel(start: number, end: number) {
-  const seconds = Math.max(0, Math.floor((end - start) / 1000));
-  const minutes = Math.floor(seconds / 60);
-  return minutes ? `Worked for ${minutes}m ${seconds % 60}s` : `Worked for ${seconds}s`;
-}
-
 function renderEvents(events: TranscriptEvent[], ctx: Ctx, includeChildren = false): ReactNode[] {
   events = collapseResumeMarkers(events);
   const rows: ReactNode[] = [];
-  let turnStart: number | undefined;
-  let turnStartIndex: number | undefined;
-  let turnHadTool = false;
   let workspaceShown = false;
   for (let i = 0; i < events.length; i++) {
     const event = events[i]!;
     if (!includeChildren && parentOf(event)) continue;
-    if (event.kind === 'turn_start') {
-      turnStart = event.ts;
-      turnStartIndex = i;
-      turnHadTool = false;
-      continue;
-    }
-    if (event.kind === 'tool_call' && turnStart !== undefined) turnHadTool = true;
-    if (event.kind === 'turn_end') {
-      if (turnStart !== undefined && turnHadTool && event.ts !== undefined) {
-        rows.push(<div key={keyOf(event, i)}>{eventLine(null, durationLabel(turnStart, event.ts))}</div>);
-      }
-      rows.push(<ChangedFilesCard key={`changed-${keyOf(event, i)}`} session={ctx.session} events={events.slice((turnStartIndex ?? i) + 1, i)} allowDiff={!ctx.scratch} />);
-      turnStart = undefined;
-      turnStartIndex = undefined;
-      turnHadTool = false;
-      continue;
-    }
+    if (event.kind === 'turn_start' || event.kind === 'turn_end') continue;
     if (event.kind === 'workspace_step') {
       if (!workspaceShown) {
         rows.push(<WorkspaceStepsRow key={keyOf(event, i)} steps={events.filter(item => item.kind === 'workspace_step')} />);
@@ -375,6 +352,19 @@ function renderEvents(events: TranscriptEvent[], ctx: Ctx, includeChildren = fal
   return rows;
 }
 
+function renderTurns(events: TranscriptEvent[], ctx: Ctx) {
+  return transcriptTurns(events).map((part, index) => {
+    if (part.kind === 'events') return <div key={`events-${index}`}>{renderEvents(part.events, ctx)}</div>;
+    const { activity, visible } = turnContents(part.events);
+    const start = part.start.ts ?? part.events.find(event => event.ts !== undefined)?.ts ?? 0;
+    const end = part.end?.ts ?? part.events.findLast(event => event.ts !== undefined)?.ts ?? start;
+    return <TurnActivity key={`turn-${part.start.seq}`} start={start} end={end} running={!part.end && Boolean(ctx.busy)} activity={renderEvents(activity, ctx)}>
+      {renderEvents(visible, ctx)}
+      {part.end?.kind === 'turn_end' ? <ChangedFilesCard session={ctx.session} events={part.events} allowDiff={!ctx.scratch} /> : null}
+    </TurnActivity>;
+  });
+}
+
 export function Transcript({ events, session, onHandoff, onOpenSession, onEditPrompt, busy, scratch = false, header }: { events: TranscriptEvent[]; session: string; onHandoff?: () => void; onOpenSession?: (session: string) => void; onEditPrompt?: (text: string) => void; busy?: boolean; scratch?: boolean; header?: ReactNode }) {
   const [showHidden, setShowHidden] = useState(false);
   const rewind = [...events].reverse().find(event => event.kind === 'conversation_rewound');
@@ -394,5 +384,5 @@ export function Transcript({ events, session, onHandoff, onOpenSession, onEditPr
     for (const e of visibleEvents) if (e.kind === 'checkpoint' && resultSeqs.has(Number(e.body.seq))) { cpAfter.set(Number(e.body.seq), e); attached.add(e.seq); }
     return { session, results, calls, cpAfter, attached, children, hiddenCount, showHidden, toggleHidden: () => setShowHidden(value => !value), events, screenshots, onHandoff, onOpenSession, onEditPrompt, busy, scratch };
   }, [visibleEvents, events, session, hiddenCount, showHidden, onHandoff, onOpenSession, onEditPrompt, busy, scratch]);
-  return <TranscriptScroller session={session} count={events.length} header={header}>{renderEvents(visibleEvents, ctx)}</TranscriptScroller>;
+  return <TranscriptScroller session={session} count={events.length} header={header}>{renderTurns(visibleEvents, ctx)}</TranscriptScroller>;
 }
