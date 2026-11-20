@@ -1,9 +1,11 @@
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin } from 'vite';
+import { BRIDGE_SCRIPT } from '../../packages/client-ui/src/features/design/bridge.ts';
 
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string };
 const relay = process.env.ORMI_RELAY_URL ?? 'https://relay.ormi.codes';
@@ -15,7 +17,7 @@ function securityHeaders(): Plugin {
   const relayWs = `${relayUrl.protocol === 'https:' ? 'wss:' : 'ws:'}//${relayUrl.host}`;
   const csp = [
     "default-src 'self'",
-    "script-src 'self'",
+    `script-src 'self' 'sha256-${createHash('sha256').update(BRIDGE_SCRIPT).digest('base64')}'`,
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self'",
