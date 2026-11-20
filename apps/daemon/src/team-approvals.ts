@@ -45,7 +45,9 @@ export class TeamApprovals {
     };
     return walk(payload);
   }
-  waiting(session: string): boolean { return [...this.pending.values()].some(p => p.session === session); }
+  waiting(session: string, options: { includeHandoffs?: boolean } = {}): boolean {
+    return [...this.pending.values()].some(p => p.session === session && (options.includeHandoffs !== false || p.payload.approvalKind !== 'handoff'));
+  }
   delegatedOnly(session: string): boolean {
     return this.waiting(session) && !hasPendingApproval(this.context().db, session);
   }

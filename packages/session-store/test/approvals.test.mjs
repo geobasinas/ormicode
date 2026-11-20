@@ -26,3 +26,23 @@ test('pending user approvals are session-scoped and closed only by a later match
   assert.equal(hasPendingApproval(db, 'child'), false);
   assert.equal(hasPendingApproval(db, 'other'), false);
 });
+
+test('pending approval queries can exclude handoffs without excluding native permissions', t => {
+  const db = openStore(':memory:'); t.after(() => db.close());
+  const event = (seq, kind, payload) => db.prepare('INSERT INTO events(session, seq, kind, payload) VALUES (?, ?, ?, ?)')
+    .run('child', seq, kind, JSON.stringify(payload));
+  const options = { includeHandoffs: false };
+  assert.equal(hasPendingApproval(db, 'child', options), false);
+  event(1, 'approval_request', { request: 'handoff', approvalKind: 'handoff' });
+  assert.equal(hasPendingApproval(db, 'child'), true);
+  assert.equal(hasPendingApproval(db, 'child', options), false);
+  event(2, 'approval_request', { request: 'native' });
+  assert.equal(hasPendingApproval(db, 'child', options), true);
+  event(3, 'approval_decision', { request: 'native' });
+  assert.equal(hasPendingApproval(db, 'child', options), false);
+  event(4, 'approval_request', { request: 'permission', approvalKind: 'permission' });
+  assert.equal(hasPendingApproval(db, 'child', options), true);
+  event(5, 'interaction_expired', { request: 'permission' });
+  assert.equal(hasPendingApproval(db, 'child', options), false);
+  assert.equal(hasPendingApproval(db, 'child'), true);
+});

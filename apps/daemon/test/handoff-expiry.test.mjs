@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { openStore, createSession, createTeam, setSessionTeam, setState, getSession, listQueuedPrompts } from '@ormicode/session-store';
+import { openStore, createSession, createTeam, setSessionTeam, setState, getSession, listQueuedPrompts, unreadTeamMessages } from '@ormicode/session-store';
 import { newId } from '@ormicode/protocol';
 import { EMPTY } from '@ormicode/pricing';
 import { append, replay } from '@ormicode/journal';
@@ -8,6 +8,7 @@ import { handoffRequest, resolveHandoffApproval, expireHandoffApprovals } from '
 import { TeamApprovals } from '../src/team-approvals.ts';
 import { stateFor } from '../src/supervisor-state.ts';
 import { teamMethod } from '../src/team-methods.ts';
+import { interrupt } from '../src/team-interrupt.ts';
 
 function fixture(t, route, state = 'idle') {
   const db = openStore(':memory:'), session = newId('s'), parent = newId('s');
@@ -124,6 +125,39 @@ for (const anotherApproval of [false, true]) test(`handoff escalated after turn_
   if (anotherApproval) ctx.record(session, 'approval_request', { request: newId('req'), userOnly: true });
   t.mock.timers.tick(600_000); await pending;
   assert.equal(getSession(db, session).state, anotherApproval ? 'awaiting_approval' : 'idle');
+});
+
+for (const route of ['parent', 'escalated']) for (const other of ['none', 'user', 'delegated']) test(`urgent wake ignores ${route} handoff but respects ${other} other approvals`, async t => {
+  const { db, session, parent, ctx, client, drains } = fixture(t, route, 'running');
+  ctx.teamLifecycle = { preserveHandoffs: async (_session, action) => action() };
+  ctx.toWorker = async () => assert.fail('an idle worker must not be aborted');
+  const pending = handoffRequest(ctx, client, 'handoff', { session, to: {}, mode: 'rehydrate', agentApproval: true });
+  const request = JSON.parse(replay(db, session).find(e => e.kind === 'team_approval_request').payload).request;
+  ctx.record(session, 'turn_end', {});
+  if (route === 'escalated') ctx.teamApprovals.escalate(client, 'escalate', { actor: parent, session, request });
+  if (other !== 'none') ctx.record(session, 'approval_request', { request: newId('req'), userOnly: other === 'user', options: [{ id: 'allow', label: 'Allow once' }] });
+  await teamMethod(ctx, client, 'message', 'team.message', { actor: parent, to: session, text: 'wake up', urgent: true });
+  assert.equal(getSession(db, session).state, other === 'none' ? 'idle' : 'awaiting_approval');
+  assert.equal(drains.length, other === 'none' ? 1 : 0);
+  assert.equal(listQueuedPrompts(db, session).length, other === 'none' ? 1 : 0);
+  assert.equal(unreadTeamMessages(db, session).at(-1).body, 'wake up');
+  assert.equal(replay(db, session).some(e => e.kind === 'interaction_expired' && JSON.parse(e.payload).request === request), false);
+  assert.equal(resolveHandoffApproval(ctx, session, request, 'deny'), true);
+  await pending;
+});
+
+test('failed urgent interruption leaves its escalated handoff pending without waking the busy child', async t => {
+  const { db, session, parent, ctx, client, drains } = fixture(t, 'escalated', 'running');
+  ctx.teamLifecycle = { preserveHandoffs: async (_session, action) => action() };
+  ctx.toWorker = async () => ({ type: 'err', code: 'agent.unsupported' });
+  const pending = handoffRequest(ctx, client, 'handoff', { session, to: {}, mode: 'rehydrate', agentApproval: true });
+  const request = JSON.parse(replay(db, session).find(e => e.kind === 'team_approval_request').payload).request;
+  ctx.teamApprovals.escalate(client, 'escalate', { actor: parent, session, request });
+  await assert.rejects(interrupt(ctx, session, { timeoutMs: 0 }), /could not be interrupted/);
+  assert.equal(getSession(db, session).state, 'awaiting_approval');
+  assert.equal(drains.length, 0);
+  assert.equal(resolveHandoffApproval(ctx, session, request, 'deny'), true);
+  await pending;
 });
 
 for (const route of ['delegated', 'escalated_before_end', 'escalated_after_end']) for (const method of ['team.cancel', 'team.reassign']) {

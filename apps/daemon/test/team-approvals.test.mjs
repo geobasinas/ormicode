@@ -9,7 +9,7 @@ import { startDaemon, connect } from '../src/index.ts';
 import { onceOptions, TeamApprovals } from '../src/team-approvals.ts';
 import { TestMcpCredentials } from './mcp-fixture.mjs';
 import { newId } from '@ormicode/protocol';
-import { addQueuedPrompt, getSession, listQueuedPrompts } from '@ormicode/session-store';
+import { addQueuedPrompt, getSession, listQueuedPrompts, unreadTeamMessages } from '@ormicode/session-store';
 import { replay } from '@ormicode/journal';
 import { needsAttention } from '../../../packages/client-ui/src/features/session/attention.ts';
 
@@ -194,6 +194,8 @@ for (const active of [false, true]) for (const escalate of [false, true]) test(`
   if (escalate) await req('team.escalate', { actor: parent, ...target });
   const response = await req('team.message', { actor: parent, to: child.session, text: 'Urgent context, not a cancellation', urgent: true });
   assert.equal(response.type, 'res', JSON.stringify(response));
+  assert.equal(unreadTeamMessages(daemon.db, child.session).some(m => m.id === response.body.id), false);
+  assert.ok(events(daemon.db, child.session, 'prompt').some(e => e.text.includes('Urgent context, not a cancellation')));
   assert.equal(events(daemon.db, child.session, 'interaction_expired').some(e => e.request === request), false);
   assert.equal(events(daemon.db, child.session, 'interrupted').length > 0, active);
   const decision = escalate

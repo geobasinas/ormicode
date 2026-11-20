@@ -65,7 +65,7 @@ export async function handoffRequest(ctx: DispatchCtx, client: Client, id: strin
         pendingApprovals.delete(request);
         clearTimeout(timer);
         ctx.record(session, 'interaction_expired', { request, approvalKind: 'handoff', reason });
-        restoreHandoffState(ctx, session, reason === 'cancelled');
+        restoreHandoffState(ctx, session, { cancelled: reason === 'cancelled' });
         if (reason === 'timeout') void ctx.drainQueue(session).catch(() => undefined);
         resolve(false);
       };
