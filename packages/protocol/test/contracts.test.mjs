@@ -189,6 +189,9 @@ test('agent events require matching tool, usage and retry data', () => {
   assert.equal(parseEventBody({ kind: 'tool_call', callId: 'call-1', name: 'read' }).success, false);
   assert.equal(parseEventBody({ kind: 'tool_result', callId: 'call-1', status: 'interrupted' }).success, true);
   assert.equal(parseEventBody({ kind: 'usage', input: -1 }).success, false);
+  assert.deepEqual(parseEventBody({ kind: 'usage', model: 'gpt-5.5', input: 1, costCumulativeUsd: 0.5, extra: true }).data, { kind: 'usage', model: 'gpt-5.5', input: 1, costCumulativeUsd: 0.5, extra: true });
+  assert.equal(parseEventBody({ kind: 'usage', costCumulativeUsd: -1 }).success, false);
+  assert.equal(parseEventBody({ kind: 'usage', model: 5 }).success, false);
   assert.equal(parseEventBody({ kind: 'retry_scheduled', delayMs: -1 }).success, false);
   assert.equal(parseEventBody({ kind: 'workspace_step', step: 'setup', status: 'warn', output: 'warning' }).success, true);
   assert.equal(parseEventBody({ kind: 'workspace_step', step: 'resume', status: 'ok' }).success, true);

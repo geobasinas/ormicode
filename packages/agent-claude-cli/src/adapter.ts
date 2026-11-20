@@ -116,10 +116,12 @@ export class ClaudeCliAdapter implements AgentAdapter {
       child.stdin.on('error', (error) => { inputError = error; });
       child.stdin.end(prompt);
       let buffer = Buffer.alloc(0);
+      let reportedModel: string | undefined;
       const accept = (line: Buffer) => {
         if (!line.length || (line.length === 1 && line[0] === 13)) return;
         if (line.length > MAX_LINE_BYTES) throw new Error('Claude CLI message exceeded size limit');
-        const mapped = mapCliMessage(JSON.parse(line.toString('utf8')));
+        const mapped = mapCliMessage(JSON.parse(line.toString('utf8')), { model: reportedModel });
+        reportedModel = mapped.model ?? reportedModel;
         if (mapped.nativeId) {
           if (session.nativeId && session.nativeId !== mapped.nativeId) {
             session.needsResumeId = true;

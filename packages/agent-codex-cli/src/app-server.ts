@@ -14,6 +14,8 @@ export class CodexAppServer {
   private readonly peer: RpcPeer;
   private readonly log?: RawLog;
   private closing = false;
+  /** Effective model from the last thread/start or thread/resume response. */
+  model?: string;
   private constructor(child: ChildProcessWithoutNullStreams, handlers: { onNotification?: (method: string, params: unknown) => void; onRequest?: (method: string, params: unknown) => Promise<unknown>; log?: RawLog }) {
     this.child = child;
     this.log = handlers.log;
@@ -57,8 +59,9 @@ export class CodexAppServer {
   }
   private async threadRequest(method: string, params: unknown): Promise<string> {
     const response = await this.request(method, params);
-    const parsed = z.safeParse(z.looseObject({ thread: z.looseObject({ id: z.string().check(z.minLength(1)) }) }), response);
+    const parsed = z.safeParse(z.looseObject({ thread: z.looseObject({ id: z.string().check(z.minLength(1)) }), model: z.optional(z.string()) }), response);
     if (!parsed.success) throw new Error(`Invalid ${method} response`);
+    this.model = parsed.data.model || undefined;
     return parsed.data.thread.id;
   }
   /** Extra turn params (model, effort, outputSchema, sandboxPolicy) apply to this turn only. */

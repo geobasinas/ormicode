@@ -38,3 +38,9 @@ test('CLI mapper pairs tools and counts only terminal usage', () => {
  assert.deepEqual(mapper.map({ type: 'usage', usage: { input_tokens: 10 } }).events, []);
  assert.equal(mapper.map({ type: 'end', sessionId: 'x', stopReason: 'end_turn', usage: { input_tokens: 12 } }).events[0].input, 12);
 });
+test('CLI mapper labels terminal usage with the only reported model', () => {
+ const end = modelUsage => new GrokCliMapper().map({ type: 'end', sessionId: 'x', stopReason: 'end_turn', usage: { input_tokens: 12 }, modelUsage }).events[0].model;
+ assert.equal(end({ 'grok-4.6': { inputTokens: 12 } }), 'grok-4.6');
+ assert.equal(end({ 'grok-4.6': {}, 'grok-code-fast-1': {} }), undefined);
+ assert.equal(end({}), undefined);
+});

@@ -8,6 +8,7 @@ import { append } from '@ormicode/journal';
 import { fromOpenRouter } from '@ormicode/pricing';
 import { GrokTurnMapper } from '@ormicode/agent-grok-acp';
 import { mapSdkMessage } from '@ormicode/agent-claude-sdk';
+import { mapCliMessage } from '@ormicode/agent-claude-cli';
 import { costMethod } from '../src/cost-methods.ts';
 
 test('header and Settings usage price Codex/Claude aliases and journaled Grok ACP usage', async () => {
@@ -63,4 +64,25 @@ test('reported-model estimates persist across refresh and restart for headers an
  assert.deepEqual(result.sessions.map(row => row.usd), [0.2, 0.2]);
  await costMethod(ctx, client, 'range', 'cost.totals', { since: Date.now() + 1000 });
  assert.equal(result.total.usd, null); assert.deepEqual(result.sessions, []);
+});
+
+test('Settings totals price Claude CLI rows by reported model and fall back to running-cost deltas', async t => {
+ const dir = mkdtempSync(join(tmpdir(), 'claude-cli-costs-')); t.after(() => rmSync(dir, { recursive: true, force: true }));
+ const db = openStore(join(dir, 'store.db')); t.after(() => db.close());
+ const table = fromOpenRouter({ data: [{ id: 'anthropic/claude-sonnet-4.6', pricing: { prompt: '0.000003', completion: '0.000015' } }] });
+ const ctx = { db, prices: { ensure: async () => {}, table: () => table } };
+ let result; const client = { link: { reply: (_id, body) => { result = body; } } };
+ const model = mapCliMessage({ type: 'assistant', parent_tool_use_id: null, message: { model: 'claude-sonnet-4-6-20260217', content: [] } }).model;
+ const cli = mapCliMessage({ type: 'result', subtype: 'success', usage: { input_tokens: 1_000_000, output_tokens: 0 }, total_cost_usd: 7, modelUsage: { 'claude-haiku-4-5': {}, 'claude-sonnet-4-6': {} } }, { model }).events[0];
+ createSession(db, { id: 'cli', machine: 'm', project: 'p', vendor: 'claude', transport: 'cli', model: 'sonnet', cwd: dir });
+ append(db, 'cli', { kind: 'usage', payload: cli });
+ createSession(db, { id: 'old', machine: 'm', project: 'p', vendor: 'claude', transport: 'cli', model: 'sonnet', cwd: dir });
+ for (const total of [0.5, 1.25, 0.25]) append(db, 'old', { kind: 'usage', payload: { input: 10, costCumulativeUsd: total } });
+ await costMethod(ctx, client, 'header', 'session.cost', { session: 'cli' });
+ assert.deepEqual([result.usd, result.source], [3, 'estimate']);
+ await costMethod(ctx, client, 'header', 'session.cost', { session: 'old' });
+ assert.deepEqual([result.usd, result.source], [1.5, 'reported']);
+ await costMethod(ctx, client, 'settings', 'cost.totals', {});
+ assert.deepEqual([result.total.usd, result.total.unpriced], [4.5, 0]);
+ assert.deepEqual(result.sessions.map(row => [row.session, row.usd, row.unpriced]), [['cli', 3, 0], ['old', 1.5, 0]]);
 });

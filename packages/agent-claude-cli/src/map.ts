@@ -7,19 +7,20 @@ const common = z.looseObject({ type: z.string() });
 const init = z.looseObject({ type: z.literal('system'), subtype: z.literal('init'), session_id: z.string(), claude_code_version: z.string() });
 const retry = z.looseObject({ type: z.literal('system'), subtype: z.literal('api_retry'), attempt: z.number(), retry_delay_ms: z.number(), error: z.string() });
 const denied = z.looseObject({ type: z.literal('system'), subtype: z.literal('permission_denied'), message: z.string() });
-const assistant = z.looseObject({ type: z.literal('assistant'), parent_tool_use_id: z.nullable(z.string()), message: z.looseObject({ content: z.array(record) }) });
+const assistant = z.looseObject({ type: z.literal('assistant'), parent_tool_use_id: z.nullable(z.string()), message: z.looseObject({ model: z.optional(z.string()), content: z.array(record) }) });
 const user = z.looseObject({ type: z.literal('user'), parent_tool_use_id: z.nullable(z.string()), message: z.looseObject({ content: z.union([z.string(), z.array(record)]) }) });
 const partial = z.looseObject({ type: z.literal('stream_event'), parent_tool_use_id: z.nullable(z.string()), event: record });
-const result = z.looseObject({ type: z.literal('result'), subtype: z.string(), usage: z.looseObject({ input_tokens: z.number(), output_tokens: z.number(), cache_read_input_tokens: z.optional(z.nullable(z.number())), cache_creation_input_tokens: z.optional(z.nullable(z.number())) }), total_cost_usd: z.number(), errors: z.optional(z.array(z.string())) });
+const result = z.looseObject({ type: z.literal('result'), subtype: z.string(), usage: z.looseObject({ input_tokens: z.number(), output_tokens: z.number(), cache_read_input_tokens: z.optional(z.nullable(z.number())), cache_creation_input_tokens: z.optional(z.nullable(z.number())) }), total_cost_usd: z.number(), modelUsage: z.optional(record), errors: z.optional(z.array(z.string())) });
 
-export interface CliMappedMessage { events: AgentEvent[]; nativeId?: string; result?: 'success' | 'error' }
+export interface CliMappedMessage { events: AgentEvent[]; nativeId?: string; result?: 'success' | 'error'; model?: string }
 
-/** Parse a documented CLI JSON message; unknown message types are ignored. */
-export function mapCliMessage(value: unknown): CliMappedMessage {
+/** Parse a documented CLI JSON message; unknown message types are ignored. `model` is the last main-loop assistant model. */
+export function mapCliMessage(value: unknown, options: { model?: string } = {}): CliMappedMessage {
   const header = z.parse(common, value);
   const out: unknown[] = [];
   let nativeId: string | undefined;
   let resultStatus: 'success' | 'error' | undefined;
+  let model: string | undefined;
   if (header.type === 'system' && header.subtype === 'init') {
     const m = z.parse(init, value);
     nativeId = m.session_id;
@@ -36,6 +37,7 @@ export function mapCliMessage(value: unknown): CliMappedMessage {
       out.push({ kind: 'error', code, message: m.error });
     }
     const parent = m.parent_tool_use_id ? { parent: m.parent_tool_use_id } : {};
+    if (!m.parent_tool_use_id && m.message.model && m.message.model !== '<synthetic>') model = m.message.model;
     for (const block of m.message.content) {
       if (block.type === 'text' && !m.parent_tool_use_id) out.push({ kind: 'text', text: block.text });
       if (block.type === 'thinking' && !m.parent_tool_use_id) out.push({ kind: 'thinking', text: block.thinking });
@@ -57,7 +59,9 @@ export function mapCliMessage(value: unknown): CliMappedMessage {
     }
   } else if (header.type === 'result') {
     const m = z.parse(result, value); resultStatus = m.subtype === 'success' ? 'success' : 'error';
-    out.push({ kind: 'usage', input: m.usage.input_tokens, output: m.usage.output_tokens, ...(m.usage.cache_read_input_tokens == null ? {} : { cacheRead: m.usage.cache_read_input_tokens }), ...(m.usage.cache_creation_input_tokens == null ? {} : { cacheWrite: m.usage.cache_creation_input_tokens }), costCumulativeUsd: m.total_cost_usd });
+    const models = Object.keys(m.modelUsage ?? {});
+    const usageModel = options.model ?? (models.length === 1 ? models[0] : undefined);
+    out.push({ kind: 'usage', ...(usageModel ? { model: usageModel } : {}), input: m.usage.input_tokens, output: m.usage.output_tokens, ...(m.usage.cache_read_input_tokens == null ? {} : { cacheRead: m.usage.cache_read_input_tokens }), ...(m.usage.cache_creation_input_tokens == null ? {} : { cacheWrite: m.usage.cache_creation_input_tokens }), costCumulativeUsd: m.total_cost_usd });
     if (m.subtype !== 'success') out.push({ kind: 'error', code: m.subtype === 'error_max_budget_usd' ? 'plan_limit' : 'unknown', message: m.errors?.join('\n') ?? m.subtype });
   }
   const events = out.map((event) => {
@@ -65,5 +69,5 @@ export function mapCliMessage(value: unknown): CliMappedMessage {
     if (!parsed.success) throw new Error(`Invalid Claude CLI event: ${parsed.error}`);
     return parsed.data;
   });
-  return { events, ...(nativeId ? { nativeId } : {}), ...(resultStatus ? { result: resultStatus } : {}) };
+  return { events, ...(nativeId ? { nativeId } : {}), ...(resultStatus ? { result: resultStatus } : {}), ...(model ? { model } : {}) };
 }

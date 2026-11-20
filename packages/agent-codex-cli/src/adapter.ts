@@ -27,7 +27,7 @@ interface Pending { resolve: (result: unknown) => void; turnId?: string; respond
 interface Session {
   server: CodexAppServer; queue: EventQueue; log?: RawLog;
   nativeId?: string; turnId?: string; active: boolean; disposed: boolean;
-  model?: string; effort?: string; outputSchema?: unknown; backlog: string[]; lastUsage?: { input_tokens: number; output_tokens: number; cached_input_tokens: number; cache_write_input_tokens: number };
+  model?: string; usageModel?: string; reroutedModel?: string; effort?: string; outputSchema?: unknown; backlog: string[]; lastUsage?: { input_tokens: number; output_tokens: number; cached_input_tokens: number; cache_write_input_tokens: number };
   approvals: Map<string, Pending>; questions: Map<string, Pending>; mapper?: CodexEventMapper;
 }
 
@@ -74,7 +74,7 @@ export class CodexCliAdapter implements AgentAdapter {
       const id = nativeId
         ? await session.server.resumeThread({ threadId: nativeId, cwd: spec.cwd, model: spec.model, sandbox, approvalPolicy: 'on-request' })
         : await session.server.startThread({ cwd: spec.cwd, model: spec.model, sandbox, approvalPolicy: 'on-request' });
-      session.nativeId = id;
+      session.nativeId = id; session.usageModel = session.server.model;
       this.onNativeId?.(handle, id);
     } catch (error) { session.server.close(); throw error; }
     this.sessions.set(handle, session);
@@ -107,7 +107,7 @@ export class CodexCliAdapter implements AgentAdapter {
     else session.backlog.push(input.text);
   }
   async setModel(handle: Handle, model: string): Promise<void> {
-    const session = this.get(handle); session.model = model;
+    const session = this.get(handle); session.model = model; session.usageModel = model;
     session.queue.push([{ kind: 'model_changed', model }]);
   }
   async setEffort(handle: Handle, effort: string): Promise<void> {
@@ -178,7 +178,8 @@ export class CodexCliAdapter implements AgentAdapter {
     const feed = (event: unknown) => {
       const mapped = mapper.map(event as never);
       if (mapped.nativeId) session.nativeId = mapped.nativeId;
-      if (mapped.events.length) session.queue.push(mapped.events as AgentEvent[]);
+      const model = session.reroutedModel ?? session.usageModel;
+      if (mapped.events.length) session.queue.push(mapped.events.map(e => e.kind === 'usage' && model ? { ...e, model } : e) as AgentEvent[]);
       if (mapped.terminal) { session.active = false; session.turnId = undefined; session.queue.push([{ kind: 'turn_end' }]); }
     };
     if (method === 'item/started') feed({ type: 'item.started', item: translateItem(p.item) });
@@ -189,8 +190,9 @@ export class CodexCliAdapter implements AgentAdapter {
       if (turn?.status === 'interrupted' && (turn.id ?? session.turnId)) this.expireTurnInteractions(session, (turn.id ?? session.turnId)!);
       if (turn?.status === 'failed' || turn?.error?.message) feed({ type: 'turn.failed', error: { message: turn.error?.message ?? 'turn failed' } });
       else feed({ type: 'turn.completed', usage: session.lastUsage ?? { input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_write_input_tokens: 0 } });
-      session.lastUsage = undefined;
+      session.lastUsage = undefined; session.reroutedModel = undefined;
     }
+    else if (method === 'model/rerouted') session.reroutedModel = (p as { toModel?: string }).toModel || undefined;
     else if (method === 'thread/tokenUsage/updated') {
       const last = (p.tokenUsage as { last?: Record<string, number> })?.last;
       if (last) session.lastUsage = { input_tokens: last.inputTokens ?? 0, output_tokens: last.outputTokens ?? 0, cached_input_tokens: last.cachedInputTokens ?? 0, cache_write_input_tokens: last.cacheWriteInputTokens ?? 0 };

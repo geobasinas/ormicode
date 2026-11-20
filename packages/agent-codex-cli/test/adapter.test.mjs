@@ -24,6 +24,22 @@ test('CLI adapter starts a thread, runs a turn with deltas and usage, resumes', 
   await a.dispose(handle);
 });
 
+test('CLI adapter labels usage with the effective model app-server reports', async () => {
+  const a = adapter();
+  const handle = await a.start({ cwd: '/repo' });
+  const stream = a.events(handle)[Symbol.asyncIterator]();
+  const usage = async text => {
+    await a.prompt(handle, { text });
+    for (;;) { const { value } = await stream.next(); if (value.kind === 'usage') return value.model; }
+  };
+  assert.equal(await usage('hi'), 'gpt-fixture-default');
+  assert.equal(await usage('reroute'), 'gpt-safe-1');
+  assert.equal(await usage('hi'), 'gpt-fixture-default');
+  await a.setModel(handle, 'gpt-test-1');
+  assert.equal(await usage('hi'), 'gpt-test-1');
+  await a.dispose(handle);
+});
+
 test('CLI adapter forwards approvals with destructive flag and resumes the turn', async () => {
   const a = adapter();
   const handle = await a.start({ cwd: '/repo' });

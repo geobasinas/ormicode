@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fromOpenRouter, normalizeModel, priceFor, summarize, PriceBook, EMPTY } from '../src/index.ts';
+import { fromOpenRouter, normalizeModel, priceFor, summarize, turnCosts, PriceBook, EMPTY } from '../src/index.ts';
 
 const OR = { data: [
   { id: 'anthropic/claude-sonnet-4.6', canonical_slug: 'anthropic/claude-4.6-sonnet-20260217', pricing: { prompt: '0.000003', completion: '0.000015', input_cache_read: '0.0000003', input_cache_write: '0.00000375' } },
@@ -40,6 +40,19 @@ test('summarize estimates from the fetched price, prefers reported cost, and nev
   const rep = summarize([ev('usage', { input: 10, costUsd: 0.25 })], 'mystery', EMPTY);
   assert.deepEqual([rep.usd, rep.source], [0.25, 'reported']);
   assert.deepEqual([summarize([ev('usage', { input: 10 })], 'claude-sonnet-4-6', EMPTY).usd], [null]);
+});
+
+test('a running cost total becomes per-turn deltas and only fills turns with no price', () => {
+  const ev = (payload) => ({ kind: 'usage', payload });
+  const events = [ev({ input: 1, costCumulativeUsd: 0.25 }), ev({ input: 1, costCumulativeUsd: 0.75 }), ev({ input: 1, costCumulativeUsd: 0 }),
+    ev({ input: 1, costCumulativeUsd: 1 }), ev({ input: 1, costCumulativeUsd: 0.125 }), ev({ input: 1 })];
+  assert.deepEqual([...turnCosts(events).values()], [0.25, 0.5, 0, 0.25, 0.125]);
+  const reported = summarize(events.slice(0, 5), 'mystery', EMPTY);
+  assert.deepEqual([reported.usd, reported.source], [1.125, 'reported']);
+  assert.equal(summarize(events, 'mystery', EMPTY).usd, null);
+  const t = fromOpenRouter(OR);
+  const priced = summarize([ev({ model: 'claude-sonnet-4-6-20260217', input: 1_000_000, costCumulativeUsd: 9 })], 'sonnet', t);
+  assert.deepEqual([priced.usd, priced.source], [3, 'estimate']);
 });
 
 test('summarize uses the pinned price and version instead of a changed table', () => {

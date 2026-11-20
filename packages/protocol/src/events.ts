@@ -38,7 +38,7 @@ export const eventBodies = {
   effort_changed: z.looseObject({ kind: z.literal('effort_changed'), effort: nonEmpty }),
   mode_changed: z.looseObject({ kind: z.literal('mode_changed'), mode: nonEmpty }),
   config_option: z.looseObject({ kind: z.literal('config_option'), id: nonEmpty, value: z.union([z.string(), z.boolean()]) }),
-  usage: z.looseObject({ kind: z.literal('usage'), input: z.optional(count), output: z.optional(count), cacheRead: z.optional(count), cacheWrite: z.optional(count), costUsd: z.optional(quantity) }),
+  usage: z.looseObject({ kind: z.literal('usage'), model: z.optional(z.string()), input: z.optional(count), output: z.optional(count), cacheRead: z.optional(count), cacheWrite: z.optional(count), costUsd: z.optional(quantity), costCumulativeUsd: z.optional(quantity) }),
   rate_limited: z.looseObject({ kind: z.literal('rate_limited'), attempt: count }),
   retry_scheduled: z.looseObject({ kind: z.literal('retry_scheduled'), delayMs: count }),
   permission_denied: z.looseObject({ kind: z.literal('permission_denied'), reason: z.optional(text) }),

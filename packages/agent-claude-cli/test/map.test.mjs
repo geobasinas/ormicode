@@ -23,3 +23,14 @@ test('maps structured retry and usage without inventing missing cache values', (
   assert.deepEqual(result.events, [{ kind: 'usage', input: 1, output: 2, costCumulativeUsd: 0.1 }, { kind: 'error', code: 'plan_limit', message: 'budget' }]);
   assert.equal(result.result, 'error');
 });
+
+test('labels usage with the main-loop assistant model or the only modelUsage entry', () => {
+  const main = mapCliMessage({ type: 'assistant', parent_tool_use_id: null, message: { model: 'claude-sonnet-4-6-20260217', content: [] } });
+  const nested = mapCliMessage({ type: 'assistant', parent_tool_use_id: 'task', message: { model: 'claude-haiku-4-5', content: [] } });
+  const synthetic = mapCliMessage({ type: 'assistant', parent_tool_use_id: null, message: { model: '<synthetic>', content: [] } });
+  assert.deepEqual([main.model, nested.model, synthetic.model], ['claude-sonnet-4-6-20260217', undefined, undefined]);
+  const result = (modelUsage, model) => mapCliMessage({ type: 'result', subtype: 'success', usage: { input_tokens: 1, output_tokens: 2 }, total_cost_usd: 0.1, modelUsage }, { model }).events[0].model;
+  assert.equal(result({ 'claude-haiku-4-5': {}, 'claude-sonnet-4-6': {} }, main.model), 'claude-sonnet-4-6-20260217');
+  assert.equal(result({ 'claude-opus-4-6': {} }), 'claude-opus-4-6');
+  assert.equal(result({ 'claude-haiku-4-5': {}, 'claude-sonnet-4-6': {} }), undefined);
+});

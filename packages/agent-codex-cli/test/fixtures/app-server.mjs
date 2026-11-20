@@ -28,7 +28,7 @@ for await (const line of lines) {
     workspace = message.params.cwd; sandbox = message.params.sandbox;
     if (message.params.approvalPolicy !== 'on-request') process.exit(9);
     if (!['read-only', 'workspace-write'].includes(message.params.sandbox)) process.exit(4);
-    out({ id: message.id, result: { thread: { id: message.params.threadId ?? 'thread-1' } } });
+    out({ id: message.id, result: { thread: { id: message.params.threadId ?? 'thread-1' }, model: message.params.model ?? 'gpt-fixture-default' } });
   }
   else if (message.method === 'model/list') out({ id: message.id, result: { data: [{ id: 'gpt-test-1', displayName: 'GPT Test', supportedReasoningEfforts: [{ reasoningEffort: 'low' }, { reasoningEffort: 'high' }] }, { id: 'hidden-model', hidden: true }], nextCursor: null } });
   else if (message.method === 'turn/start') {
@@ -76,6 +76,9 @@ for await (const line of lines) {
       const rid = ++nextRequest;
       pending.set(rid, message => { if (Object.keys(message.result?.answers ?? {}).length) finishTurn('thread-1', turnId); });
       out({ id: rid, method: 'item/tool/requestUserInput', params: { threadId: 'thread-1', turnId, questions: [{ id: 'q', question: 'Which?', header: 'Choice', options: [{ label: 'A', description: 'First' }] }] } });
+    } else if (text === 'reroute') {
+      notify('model/rerouted', { threadId: 'thread-1', turnId, fromModel: 'gpt-fixture-default', toModel: 'gpt-safe-1', reason: 'highRiskCyberActivity' });
+      finishTurn('thread-1', turnId);
     } else finishTurn('thread-1', turnId);
   }
   else if (message.method === 'turn/steer') {

@@ -5,7 +5,7 @@ import type { AgentEvent } from '@ormicode/protocol';
 const base = z.looseObject({ type: z.string() });
 const chunk = z.looseObject({ data: z.string() });
 const tool = z.looseObject({ toolCallId: z.string().check(z.minLength(1)), title: z.optional(z.nullable(z.string())), toolName: z.optional(z.nullable(z.string())), status: z.optional(z.nullable(z.string())), rawInput: z.optional(z.json()), rawOutput: z.optional(z.json()) });
-const end = z.looseObject({ sessionId: z.string().check(z.minLength(1)), stopReason: z.string().check(z.minLength(1)), usage: z.optional(z.looseObject({ input_tokens: z.optional(z.number()), output_tokens: z.optional(z.number()), cache_read_input_tokens: z.optional(z.number()), cache_creation_input_tokens: z.optional(z.number()) })), total_cost_usd: z.optional(z.number()) });
+const end = z.looseObject({ sessionId: z.string().check(z.minLength(1)), stopReason: z.string().check(z.minLength(1)), usage: z.optional(z.looseObject({ input_tokens: z.optional(z.number()), output_tokens: z.optional(z.number()), cache_read_input_tokens: z.optional(z.number()), cache_creation_input_tokens: z.optional(z.number()) })), modelUsage: z.optional(z.record(z.string(), z.unknown())), total_cost_usd: z.optional(z.number()) });
 
 /** Maps streaming-json events; usage comes from the terminal aggregate only. */
 export class GrokCliMapper {
@@ -46,7 +46,8 @@ export class GrokCliMapper {
       if (this.thinking) events.push({ kind: 'thinking', text: this.thinking });
       if (this.text) events.push({ kind: 'text', text: this.text });
       for (const callId of this.calls) events.push({ kind: 'tool_result', callId, status: 'interrupted' });
-      if (value.usage || value.total_cost_usd !== undefined) events.push({ kind: 'usage', ...(value.usage?.input_tokens !== undefined ? { input: value.usage.input_tokens } : {}), ...(value.usage?.output_tokens !== undefined ? { output: value.usage.output_tokens } : {}), ...(value.usage?.cache_read_input_tokens !== undefined ? { cacheRead: value.usage.cache_read_input_tokens } : {}), ...(value.usage?.cache_creation_input_tokens !== undefined ? { cacheWrite: value.usage.cache_creation_input_tokens } : {}), ...(value.total_cost_usd !== undefined ? { costUsd: value.total_cost_usd } : {}) });
+      const models = Object.keys(value.modelUsage ?? {});
+      if (value.usage || value.total_cost_usd !== undefined) events.push({ kind: 'usage', ...(models.length === 1 ? { model: models[0] } : {}), ...(value.usage?.input_tokens !== undefined ? { input: value.usage.input_tokens } : {}), ...(value.usage?.output_tokens !== undefined ? { output: value.usage.output_tokens } : {}), ...(value.usage?.cache_read_input_tokens !== undefined ? { cacheRead: value.usage.cache_read_input_tokens } : {}), ...(value.usage?.cache_creation_input_tokens !== undefined ? { cacheWrite: value.usage.cache_creation_input_tokens } : {}), ...(value.total_cost_usd !== undefined ? { costUsd: value.total_cost_usd } : {}) });
     }
     return { events: events.map(event => { const parsed = parseEventBody(event); if (!parsed.success) throw new Error('Invalid Grok CLI event'); return parsed.data; }), ...(nativeId ? { nativeId } : {}), ...(stopReason ? { stopReason } : {}) };
   }

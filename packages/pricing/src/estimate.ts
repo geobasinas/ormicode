@@ -2,7 +2,7 @@
 // real (agent-reported costUsd) or estimated from a known list price.
 import { normalizeModel, priceFor, type Price, type PriceTable } from './table.ts';
 
-export interface Usage { model?: string; input?: number; output?: number; cacheRead?: number; cacheWrite?: number; costUsd?: number }
+export interface Usage { model?: string; input?: number; output?: number; cacheRead?: number; cacheWrite?: number; costUsd?: number; costCumulativeUsd?: number }
 export interface CostSummary {
   input: number; output: number; cacheRead: number; cacheWrite: number; turns: number;
   usd: number | null; source: 'reported' | 'estimate' | 'none'; priceVersion: string | null; model: string | null;
@@ -13,7 +13,21 @@ export function costOf(u: Usage, p: Price): number {
     + (u.cacheRead ?? 0) * (p.cacheRead ?? p.input) + (u.cacheWrite ?? 0) * (p.cacheWrite ?? p.input)) / 1e6;
 }
 
-/** Turns that report costUsd use it; other turns are estimated; any unpriced turn without a reported cost makes the dollar figure null. */
+/** Per-turn cost from a running session total (Claude's total_cost_usd). A drop means the total restarted; a zeroed total (crash results) costs 0 and keeps the baseline. */
+export function turnCosts(events: { kind: string; payload: Record<string, unknown> }[]): Map<object, number> {
+  const costs = new Map<object, number>();
+  let last = 0;
+  for (const e of events) {
+    const total = e.payload.costCumulativeUsd;
+    if (e.kind !== 'usage' || typeof total !== 'number') continue;
+    if (total === 0) { costs.set(e.payload, 0); continue; }
+    costs.set(e.payload, Math.round((total >= last ? total - last : total) * 1e10) / 1e10);
+    last = total;
+  }
+  return costs;
+}
+
+/** Turns that report costUsd use it; other turns are estimated, then fall back to the turn's share of a reported running total; any other unpriced turn makes the dollar figure null. */
 export function summarize(
   events: { kind: string; payload: Record<string, unknown> }[],
   model: string | null,
@@ -25,6 +39,7 @@ export function summarize(
   const price = pinned?.price ?? priceFor(table, model);
   let reported = false; let estimated = false;
   const versions = new Set<string>();
+  const turns = turnCosts(events);
   for (const e of events) {
     if (e.kind === 'turn_end') sum.turns++;
     if (e.kind !== 'usage') continue;
@@ -38,6 +53,7 @@ export function summarize(
       estimated = true; versions.add(eventPin?.version ?? table.version ?? 'unversioned');
       if (sum.usd !== null) sum.usd += costOf(u, eventPrice);
     }
+    else if (turns.has(e.payload)) { reported = true; if (sum.usd !== null) sum.usd += turns.get(e.payload)!; }
     else sum.usd = null;
   }
   sum.source = estimated ? 'estimate' : reported ? 'reported' : 'none';

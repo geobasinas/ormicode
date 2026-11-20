@@ -1,6 +1,6 @@
 import { getPinnedPrice, getSession, listSessions, pinPrice, type SessionRow, type Store } from '@ormicode/session-store';
 import { replay } from '@ormicode/journal';
-import { costOf, normalizeModel, priceFor, summarize, type CostSummary, type Price, type PriceTable, type Usage } from '@ormicode/pricing';
+import { costOf, normalizeModel, priceFor, summarize, turnCosts, type CostSummary, type Price, type PriceTable, type Usage } from '@ormicode/pricing';
 import type { Client, DispatchCtx } from './dispatch.ts';
 
 interface CostEvent { ts: number; kind: string; payload: Record<string, unknown> }
@@ -22,14 +22,15 @@ function priceForSession(db: Store, session: SessionRow, events: CostEvent[], ta
 
 function emptyBucket(): Bucket { return { tokens: 0, usd: null, unpriced: 0, estimate: false }; }
 
-function addUsage(bucket: Bucket, event: CostEvent, price: Price | undefined): void {
+function addUsage(bucket: Bucket, event: CostEvent, price: Price | undefined, turnCost: number | undefined): void {
   const usage = event.payload as Usage;
   bucket.tokens += (usage.input ?? 0) + (usage.output ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
   if (typeof usage.costUsd === 'number') bucket.usd = (bucket.usd ?? 0) + usage.costUsd;
   else if (price) {
     bucket.usd = (bucket.usd ?? 0) + costOf(usage, price);
     bucket.estimate = true;
-  } else bucket.unpriced++;
+  } else if (turnCost !== undefined) bucket.usd = (bucket.usd ?? 0) + turnCost;
+  else bucket.unpriced++;
 }
 
 function localDate(ts: number): string {
@@ -71,6 +72,7 @@ export async function costMethod(ctx: DispatchCtx, client: Client, id: string, m
     if (!usageEvents.length) continue;
     const pinned = priceForSession(ctx.db, session, events, table);
     const price = pinned?.price ?? priceFor(table, session.model);
+    const turns = turnCosts(usageEvents);
     const inRange = usageEvents.filter(e => since === undefined || e.ts >= since);
     if (!inRange.length) continue;
     const sessionBucket = emptyBucket();
@@ -78,10 +80,10 @@ export async function costMethod(ctx: DispatchCtx, client: Client, id: string, m
       const model = typeof event.payload.model === 'string' ? event.payload.model : session.model;
       const eventPrice = model && normalizeModel(model) !== normalizeModel(session.model ?? '')
         ? getPinnedPrice(ctx.db, session.id, model)?.price ?? priceFor(table, model) : price;
-      addUsage(total, event, eventPrice);
-      addUsage(insert(projects, session.project), event, eventPrice);
-      addUsage(insert(days, localDate(event.ts)), event, eventPrice);
-      addUsage(sessionBucket, event, eventPrice);
+      addUsage(total, event, eventPrice, turns.get(event.payload));
+      addUsage(insert(projects, session.project), event, eventPrice, turns.get(event.payload));
+      addUsage(insert(days, localDate(event.ts)), event, eventPrice, turns.get(event.payload));
+      addUsage(sessionBucket, event, eventPrice, turns.get(event.payload));
     }
     sessions.push({ session: session.id, project: session.project, ...sessionBucket });
   }
