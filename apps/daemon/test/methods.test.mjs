@@ -57,6 +57,8 @@ test('session.abort kills the worker, interrupts its open tool row and allows a 
     const rows = replay(daemon.db, session);
     assert.equal(JSON.parse(rows.find(e => e.kind === 'tool_result').payload).status, 'interrupted');
     assert.equal(JSON.parse(rows.at(-1).payload).reason, 'user_abort');
+    assert.equal((await client.request('session.retry', { session })).body.accepted, true);
+    assert.equal((await client.request('session.abort', { session })).type, 'res');
     assert.equal((await client.request('session.prompt', { session, text: 'continue' })).type, 'res');
     assert.equal((await client.request('session.abort', { session })).type, 'res');
   } finally { await cleanup(); }

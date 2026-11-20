@@ -287,6 +287,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   });
   const { sendPrompt, drainQueue, enqueueAutoPrompt } = createPromptDelivery({
     db, notesDir, paused, heldPrompts, lastPrompt, ensureWorker, toWorker, terminals, record, closed: () => closing,
+    restartWorker: async session => { await stopWorker(session, true); await ensureWorker(session); },
     previewEntries: (session, ids) => services.previewEntries(session, ids),
   });
   const retries = rateRetries(db, session => {
