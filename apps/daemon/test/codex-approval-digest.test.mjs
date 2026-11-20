@@ -9,7 +9,7 @@ import { summarize } from '@ormicode/digest';
 import { stateFor } from '../src/supervisor-state.ts';
 import { needsAttention } from '../../../packages/client-ui/src/features/session/attention.ts';
 
-for (const option of ['accept', 'decline']) test(`Codex CLI ${option} decisions clear journaled user approvals from Needs You`, async t => {
+async function fixture(t) {
   const db = openStore(':memory:'); t.after(() => db.close());
   createSession(db, { id: 'child', machine: 'm', project: '/repo', cwd: '/repo', vendor: 'codex', transport: 'cli' });
   const fixture = fileURLToPath(new URL('../../../packages/agent-codex-cli/test/fixtures/app-server.mjs', import.meta.url));
@@ -23,6 +23,11 @@ for (const option of ['accept', 'decline']) test(`Codex CLI ${option} decisions 
     return event;
   };
   const digest = () => summarize({ id: 'child', state: getSession(db, 'child').state, updatedAt: 0 }, replay(db, 'child').map(e => ({ ...e, payload: JSON.parse(e.payload) })), 0);
+  return { db, adapter, handle, next, digest };
+}
+
+for (const option of ['accept', 'decline']) test(`Codex CLI ${option} decisions clear journaled user approvals from Needs You`, async t => {
+  const { db, adapter, handle, next, digest } = await fixture(t);
   await adapter.prompt(handle, { text: 'approve me' });
   let event;
   do { event = await next(); } while (event.kind !== 'approval_request');
@@ -37,4 +42,42 @@ for (const option of ['accept', 'decline']) test(`Codex CLI ${option} decisions 
   assert.equal(digest().wants, null);
   assert.equal(needsAttention(getSession(db, 'child'), digest()), false);
   assert.equal(replay(db, 'child').filter(e => e.kind === 'approval_decision').length, 1);
+});
+
+for (const newTurn of [false, true]) test(`a late Codex approval expires without reviving its turn (${newTurn ? 'another turn active' : 'idle'})`, async t => {
+  const { db, adapter, handle, next, digest } = await fixture(t);
+  await adapter.prompt(handle, { text: 'approval ends' });
+  let request;
+  for (;;) {
+    const event = await next();
+    if (event.kind === 'approval_request') request = event.request;
+    if (event.kind === 'turn_end') break;
+  }
+  assert.ok(request);
+  assert.equal(getSession(db, 'child').state, 'idle');
+  assert.equal(digest().wants.kind, 'approval');
+  let currentRequest;
+  if (newTurn) {
+    await adapter.prompt(handle, { text: 'approve me' });
+    let event;
+    do { event = await next(); } while (event.kind !== 'approval_request');
+    currentRequest = event.request;
+  }
+  const state = getSession(db, 'child').state;
+  await assert.rejects(adapter.approve(handle, request, 'accept'), /Approval expired/);
+  assert.deepEqual(await next(), { kind: 'interaction_expired', request, reason: 'turn_ended' });
+  assert.equal(getSession(db, 'child').state, state);
+  assert.equal(needsAttention(getSession(db, 'child'), digest()), newTurn);
+  await assert.rejects(adapter.approve(handle, request, 'accept'), /Unknown approval request/);
+  assert.equal(replay(db, 'child').some(e => e.kind === 'approval_decision' && JSON.parse(e.payload).request === request), false);
+  if (newTurn) {
+    await adapter.approve(handle, currentRequest, 'accept');
+    assert.equal((await next()).kind, 'approval_decision');
+  } else {
+    assert.equal(digest().wants, null);
+    await adapter.prompt(handle, { text: 'next prompt is not busy' });
+  }
+  while ((await next()).kind !== 'turn_end') {}
+  assert.equal(getSession(db, 'child').state, 'idle');
+  assert.equal(digest().wants, null);
 });

@@ -22,7 +22,7 @@ function translateItem(item: unknown): unknown {
 }
 const APPROVAL_OPTIONS = [{ id: 'accept', label: 'Approve' }, { id: 'acceptForSession', label: 'Approve for session' }, { id: 'decline', label: 'Decline' }, { id: 'cancel', label: 'Cancel turn' }];
 
-interface Pending { resolve: (result: unknown) => void }
+interface Pending { resolve: (result: unknown) => void; turnId?: string }
 interface Session {
   server: CodexAppServer; queue: EventQueue; log?: RawLog;
   nativeId?: string; turnId?: string; active: boolean; disposed: boolean;
@@ -121,6 +121,10 @@ export class CodexCliAdapter implements AgentAdapter {
     const pending = session.approvals.get(requestId);
     if (!pending) throw new Error(`Unknown approval request: ${requestId}`);
     session.approvals.delete(requestId);
+    if (!session.active || !session.turnId || pending.turnId !== session.turnId) {
+      session.queue.push([{ kind: 'interaction_expired', request: requestId, reason: 'turn_ended' }]);
+      throw new Error('Approval expired: its turn has ended');
+    }
     session.queue.push([{ kind: 'approval_decision', request: requestId, option: optionId }]);
     pending.resolve({ decision: optionId });
   }
@@ -180,12 +184,12 @@ export class CodexCliAdapter implements AgentAdapter {
     else if (method === 'error') session.queue.push([{ kind: 'error', code: 'unknown', message: String((p as { message?: string }).message ?? 'Codex app-server error') }]);
   }
   private onRequest(session: Session, method: string, params: unknown): Promise<unknown> {
-    const p = params as { approvalId?: string; itemId?: string; command?: string; reason?: string; questions?: { id: string; question: string; header: string; options?: { label: string; description?: string }[] | null }[] };
+    const p = params as { turnId?: string; approvalId?: string; itemId?: string; command?: string; reason?: string; questions?: { id: string; question: string; header: string; options?: { label: string; description?: string }[] | null }[] };
     const id = `req_${ulid()}`;
     if (method === 'item/commandExecution/requestApproval' || method === 'item/fileChange/requestApproval' || method === 'item/permissions/requestApproval') {
       const hit = classifyCommand(String(p.command ?? ''));
       session.queue.push([{ kind: 'approval_request', request: id, options: APPROVAL_OPTIONS, ...(hit ? { destructive: true, rule: hit.rule } : {}) }]);
-      return new Promise((resolve) => { session.approvals.set(id, { resolve }); });
+      return new Promise((resolve) => { session.approvals.set(id, { resolve, turnId: p.turnId ?? session.turnId }); });
     }
     if (method === 'item/tool/requestUserInput') {
       session.queue.push([{ kind: 'question_request', request: id, questions: (p.questions ?? []).map((q) => ({ question: q.question, header: q.header, options: (q.options ?? []).map((o) => ({ label: o.label, description: o.description ?? '' })), multiSelect: false })) }]);
