@@ -75,3 +75,16 @@ test('empty and self transfers do not resolve context or alter existing destinat
   assert.deepEqual(accesses, []); assert.equal(ctx.heldPrompts.size, 0); assert.equal(ctx.paused.size, 0);
   assert.deepEqual(listQueuedPrompts(db, 'new').map(item => item.text), ['existing']);
 });
+
+for (const held of [false, true]) test(`validation rejects ${held ? 'held' : 'queued'} source-only file context before changing ownership`, t => {
+  const { root, db, ctx } = fixture(t);
+  writeFileSync(join(root, 'old', 'source-only.txt'), 'not present in fork');
+  const prompt = { text: 'source-only', context: [{ kind: 'file', path: 'source-only.txt' }] };
+  if (held) ctx.heldPrompts.set('old', [prompt]);
+  else addQueuedPrompt(db, 'old', { id: 'invalid', createdAt: 1, ...prompt });
+  addQueuedPrompt(db, 'old', { id: 'valid', text: 'valid', createdAt: 2 });
+  assert.throws(() => transferHandoffPrompts(ctx, 'old', 'new'), held ? /Held prompt 1 cannot be transferred/ : /Queued prompt invalid cannot be transferred/);
+  assert.deepEqual(listQueuedPrompts(db, 'new'), []); assert.equal(ctx.paused.has('old'), true);
+  assert.equal(listQueuedPrompts(db, 'old').length, held ? 1 : 2);
+  if (held) assert.deepEqual(ctx.heldPrompts.get('old'), [prompt]);
+});

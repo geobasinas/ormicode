@@ -11,7 +11,7 @@ import { sessionEnvironment } from './session-env.ts';
 import { runSessionHook } from './workspace-hooks.ts';
 import { restoreHandoffState } from './handoff-state.ts';
 import { handoffTargetError, reserveHandoff } from './handoff-transition.ts';
-import { transferHandoffPrompts } from './handoff-prompts.ts';
+import { transferHandoffPrompts, validateHandoffPrompts } from './handoff-prompts.ts';
 
 const pendingApprovals = new Map<string, { ctx: DispatchCtx; session: string; expire(reason: string): void; resolve(approved: boolean): void }>();
 
@@ -146,6 +146,7 @@ async function runHandoff(ctx: DispatchCtx, client: Client, id: string, body: Re
   try {
     ctx.spawnWorker(child);
     await ctx.ensureWorker(child, Number.isFinite(readyMs) && readyMs > 0 ? readyMs : 60_000);
+    validateHandoffPrompts(ctx, session, child);
     await ctx.stopWorker(session);
     parentStopped = true;
     setState(db, session, 'done');

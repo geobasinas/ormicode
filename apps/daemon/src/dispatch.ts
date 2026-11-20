@@ -18,7 +18,6 @@ import { ormicodeDir, sessionLogDir } from './socket.ts';
 import { releaseForSession } from '@ormicode/leases';
 import { agentList } from './registry.ts';
 import { diffPatch, DiffStatCache } from '@ormicode/git-core';
-
 const diffStats = new DiffStatCache();
 const PATCH_INLINE = 256 * 1024;
 import type { Checkpoints } from '@ormicode/checkpoints';
