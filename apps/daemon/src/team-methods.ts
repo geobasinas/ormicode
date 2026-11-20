@@ -39,6 +39,7 @@ async function handle(ctx: DispatchCtx, client: Client, id: string, method: stri
     case 'team.askUser': return ctx.interactions.ask(client, id, actor.id, body);
     case 'team.openPr': return ctx.interactions.openPr(client, id, actor.id, target?.id ?? actor.id, body);
     case 'team.approve': return ctx.teamApprovals.approve(client, id, body);
+    case 'team.escalate': return ctx.teamApprovals.escalate(client, id, body);
     case 'team.tree': return reply({ team: team.id, parent: team.parent, children: teamChildren(ctx.db, team.id).map(s => status(ctx, s)) });
     case 'team.status':
       if (body.wake && !target!.archived) await ctx.ensureWorker(target!.id);

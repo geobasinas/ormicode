@@ -9,6 +9,8 @@ test('team contracts validate actors, targets, board actions and journal events'
     ['team.askUser', { actor, question: 'Proceed?', options: ['Yes', 'No'] }],
     ['team.openPr', { actor, session: child, title: 'Change', body: '', draft: true }],
     ['team.approve', { actor, session: child, request: newId('req'), option: 'allow', reason: 'safe' }],
+    ['team.escalate', { actor, session: child, request: newId('req') }],
+    ['team.escalate', { actor, session: child, request: newId('req'), reason: '' }],
     ['team.spawn', { actor, task: 'implement' }], ['team.tree', { actor }], ['team.status', { actor, session: child }],
     ['team.message', { actor, to: child, text: 'hello' }], ['team.inbox', { actor }],
     ['team.board', { actor, action: 'append', text: '' }], ['team.cancel', { actor, session: child }],
@@ -25,6 +27,9 @@ test('team contracts validate actors, targets, board actions and journal events'
   assert.equal(parseRequestBody('team.spawn', { actor: 'wrong', task: 'task' }).success, false);
   assert.equal(parseRequestBody('team.board', { actor, action: 'replace' }).success, false);
   assert.equal(parseRequestBody('team.cancel', { actor }).success, false);
+  assert.equal(parseRequestBody('team.escalate', { actor, session: child }).success, false);
+  assert.equal(parseRequestBody('team.escalate', { actor, session: child, request: newId('req'), reason: 42 }).success, false);
+  assert.equal(parseResponseBody('team.escalate', { escalated: true }).success, true);
   assert.equal(parseRequestBody('team.approve', { actor, session: child, request: newId('req'), option: 'allow', reason: '' }).success, false);
   assert.equal(parseResponseBody('team.spawn', { team, session: child }).success, true);
   assert.equal(parseResponseBody('team.report', { text: '' }).success, true);

@@ -95,6 +95,65 @@ for (const option of ['allow', 'deny']) test(`parent ${option} answers only a pe
   await eventually(() => getSession(daemon.db, child.session).state === (option === 'allow' ? 'idle' : 'interrupted'));
 });
 
+for (const reason of [undefined, '', 'major security design decision']) test(`parent escalation returns the original approval to the user (${JSON.stringify(reason)})`, async t => {
+  const { daemon, req, parent, spawn, approve } = await fixture(t);
+  const child = await spawn();
+  const original = events(daemon.db, child.session, 'team_approval_request')[0];
+  const body = { actor: parent, ...child, ...(reason !== undefined ? { reason } : {}) };
+  assert.equal((await req('team.escalate', body)).body.escalated, true);
+  const approval = events(daemon.db, child.session, 'approval_request')[0];
+  assert.equal(approval.request, original.request);
+  assert.deepEqual(approval.options, original.options);
+  assert.equal(approval.userOnly, true);
+  assert.equal(approval.escalatedBy, parent);
+  assert.equal(approval.escalationReason, reason);
+  assert.equal(getSession(daemon.db, child.session).state, 'awaiting_approval');
+  assert.deepEqual((await req('session.get', { session: parent })).body.teamApprovals, []);
+  const digest = await req('session.digest', { since: 0 });
+  assert.equal(digest.body.entries.find(e => e.session === child.session).wants.kind, 'approval');
+  assert.equal((await approve(child, 'allow')).code, 'session.already_decided');
+  assert.equal((await req('team.escalate', body)).code, 'session.already_decided');
+  assert.equal((await req('session.decide', { ...child, option: 'allow' })).body.decided, true);
+  await eventually(() => getSession(daemon.db, child.session).state === 'idle');
+  const decision = events(daemon.db, child.session, 'approval_decision')[0];
+  assert.equal(decision.actor, 'cli');
+  assert.equal(decision.parentDecided, false);
+});
+
+test('escalation rejects missing proof, forged actors, non-parents and undelegated requests', async t => {
+  const { daemon, client, req, parent, spawn, approve, credentials } = await fixture(t);
+  const child = await spawn();
+  assert.equal((await client.request('team.escalate', { actor: parent, ...child })).code, 'mcp.unauthorized');
+  assert.equal((await client.request('team.escalate', { actor: parent, ...child }, 30_000, credentials.proof(child.session))).code, 'mcp.forbidden');
+  assert.equal((await req('team.escalate', { actor: child.session, ...child })).code, 'team.forbidden');
+  assert.equal((await req('team.escalate', { actor: parent, ...child, request: newId('req') })).code, 'session.already_decided');
+  assert.equal(events(daemon.db, child.session, 'approval_request').length, 0);
+  assert.equal((await approve(child, 'deny')).body.decided, true);
+  assert.equal((await req('team.escalate', { actor: parent, ...child })).code, 'session.already_decided');
+  await eventually(() => getSession(daemon.db, child.session).state === 'interrupted');
+  const destructive = await spawn('rm -rf disposable-test-path');
+  assert.equal((await req('team.escalate', { actor: parent, ...destructive })).code, 'session.already_decided');
+});
+
+for (const escalate of [false, true]) test(`confirmation-required handoffs remain delegated and can ${escalate ? 'escalate to the user' : 'be decided by the parent'}`, async t => {
+  const { daemon, client, req, parent, spawn, approve, credentials } = await fixture(t);
+  const child = await spawn();
+  await approve(child, 'allow');
+  await eventually(() => getSession(daemon.db, child.session).state === 'idle');
+  const result = client.request('session.handoff', { session: child.session, to: { vendor: 'fake', model: 'unknown-price-model' }, mode: 'rehydrate', agentApproval: true }, 30_000, credentials.proof(child.session));
+  await eventually(() => events(daemon.db, child.session, 'team_approval_request').some(e => e.approvalKind === 'handoff'));
+  const handoff = events(daemon.db, child.session, 'team_approval_request').find(e => e.approvalKind === 'handoff');
+  const target = { session: child.session, request: handoff.request };
+  assert.equal(handoff.estimate.confirmRequired, true);
+  assert.equal(events(daemon.db, child.session, 'approval_request').length, 0);
+  if (escalate) {
+    assert.equal((await req('team.escalate', { actor: parent, ...target, reason: 'large spend' })).body.escalated, true);
+    assert.equal(events(daemon.db, child.session, 'approval_request')[0].approvalKind, 'handoff');
+    assert.equal((await req('session.decide', { ...target, option: 'deny' })).body.decided, true);
+  } else assert.equal((await approve(target, 'deny')).body.decided, true);
+  assert.equal((await result).code, 'handoff.declined');
+});
+
 test('destructive commands, including custom patterns, stay in the user queue', async t => {
   const { daemon, req, parent, spawn, approve, dir } = await fixture(t);
   for (const command of ['rm -rf disposable-test-path', 'custom-danger']) {
