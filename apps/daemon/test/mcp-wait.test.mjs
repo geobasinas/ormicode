@@ -109,7 +109,7 @@ test('MCP wait cleans up on subscription/status errors and restores the existing
       if (throws) await assert.rejects(waiting, /connection closed/);
       else assert.deepEqual(JSON.parse(await waiting), { error: 'mcp.forbidden' });
       assert.equal(link.onFrame, listener);
-      assert.equal(calls.includes('session.unsubscribe'), failure === 'session.get');
+      assert.equal(calls.includes('session.unsubscribe'), true);
     }
   }
 });
@@ -131,6 +131,7 @@ test('MCP wait deadline includes stalled setup and cleanup, with late subscripti
       { timedOut: true, ...(stalled === 'session.unsubscribe' ? { state: 'running' } : {}) });
     assert.ok(performance.now() - start < 500, 'must not wait for the stalled request');
     assert.equal(link.onFrame, previous);
+    assert.equal(calls.filter(method => method === 'session.unsubscribe').length, 1, 'cleanup must precede any late subscription reply');
     release({ type: 'res', body: { state: 'idle' } });
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(calls.filter(method => method === 'session.unsubscribe').length, 1);

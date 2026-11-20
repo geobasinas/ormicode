@@ -6,7 +6,7 @@ export async function waitFor(link: Pick<Link, 'request' | 'onFrame'>, session: 
   const deadline = Date.now() + Math.max(0, timeoutMs);
   const remaining = () => Math.max(1, deadline - Date.now());
   let live = false;
-  let subscribed = false;
+  let subscriptionRequested = false;
   let unsubscribed = false;
   let settled = false;
   let lastState: string | undefined;
@@ -18,7 +18,7 @@ export async function waitFor(link: Pick<Link, 'request' | 'onFrame'>, session: 
   });
   const timer = setTimeout(() => finish({ timedOut: true, ...(lastState ? { state: lastState } : {}) }), Math.max(0, timeoutMs));
   const unsubscribe = () => {
-    if (!subscribed || unsubscribed) return;
+    if (!subscriptionRequested || unsubscribed) return;
     unsubscribed = true;
     void link.request('session.unsubscribe', { session }, remaining(), proof).catch(() => undefined);
   };
@@ -53,9 +53,9 @@ export async function waitFor(link: Pick<Link, 'request' | 'onFrame'>, session: 
       void checkState().catch(fail);
   };
   const setup = async () => {
+    subscriptionRequested = true;
     const res = await link.request('session.subscribe', { session }, remaining(), proof);
     if (res.type === 'err') { finish({ error: res.code }); return; }
-    subscribed = true;
     if (settled) { unsubscribe(); return; }
     live = true;
     await checkState();
