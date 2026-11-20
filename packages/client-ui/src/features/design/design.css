@@ -76,25 +76,26 @@ textarea.design-input { resize: vertical; }
 .design-section-heading small { color: var(--text-hint); font: 10px var(--font-mono); }
 .design-section-heading .design-icon-button { width: 24px; min-height: 24px; }
 .design-boards, .design-layers { min-height: 0; padding: 8px; }
-.design-boards { border-bottom: 1px solid var(--design-border); }
+.design-boards { flex: none; border-bottom: 1px solid var(--design-border); }
+.design-sidebar > .design-pages { flex: none; }
 .design-board-list { max-height: min(132px, 22vh); overflow: auto; }
-.design-layers { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.design-layers { flex: 1; display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
 .design-layer-search {
-  display: flex; align-items: center; gap: 7px; min-height: 28px; margin: 2px 0 5px;
+  display: flex; align-items: center; gap: 8px; min-height: 28px; margin: 0;
   padding: 0 8px; border: 1px solid var(--design-border); border-radius: 6px; background: var(--bg-inset); color: var(--text-secondary);
 }
 .design-layer-search input { width: 100%; min-width: 0; font: inherit; font-size: 11px; color: var(--text-title); background: transparent; border: 0; }
 .design-layer-search input:focus-visible { outline: 0; }
 .design-layer-search:focus-within { border-color: var(--design-accent); }
-.design-layer-list { min-height: 0; overflow: auto; }
-.design-frame-row { display: flex; align-items: center; border-radius: 6px; }
+.design-layer-list { flex: 1; min-height: 0; overflow: auto; }
+.design-frame-row { display: flex; align-items: center; min-height: 28px; border-radius: 6px; }
 .design-frame-row:hover, .design-frame-row[data-active="true"] { background: var(--bg-card); }
 .design-frame-row[data-active="true"] svg, .design-working-star { color: var(--design-accent); }
-.design-frame-row .design-icon-button { width: 24px; min-height: 26px; }
+.design-frame-row .design-icon-button { width: 24px; min-height: 28px; }
 .design-reveal { opacity: 0; }
 .design-frame-row:hover .design-reveal, .design-frame-row:focus-within .design-reveal { opacity: 1; }
 .design-layer-name {
-  display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; min-height: 27px; padding: 4px 8px;
+  display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; min-height: 28px; padding: 4px 8px;
   text-align: left; color: var(--text-label); font: inherit; background: transparent; border-radius: 6px; cursor: pointer;
 }
 .design-layer-name:hover { background: var(--bg-card); }
@@ -105,13 +106,10 @@ textarea.design-input { resize: vertical; }
 .design-board-row[aria-pressed="true"], .design-element-row[aria-pressed="true"] { background: var(--design-selection); color: var(--text-title); }
 .design-board-row[aria-pressed="true"] svg, .design-element-row[aria-pressed="true"] svg { color: var(--design-accent); }
 .design-element-row { font-size: 11px; }
-.design-list-note { margin: 7px 6px; font-size: 11px; }
-.design-agent { flex: none; padding: 9px 10px 10px; border-top: 1px solid var(--design-border); }
-.design-agent .design-section-heading { padding: 0 1px 4px; }
-.design-session-select { text-overflow: ellipsis; padding-right: 3px; cursor: pointer; }
-.design-branch { display: flex; align-items: center; gap: 5px; overflow: hidden; margin: 6px 1px 9px; color: var(--text-secondary); font: 10px var(--font-mono); }
-.design-branch svg { flex: none; }
-.design-branch span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.design-list-note { margin: 8px 6px; font-size: 12px; line-height: 1.45; }
+.design-agent { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 8px; border-top: 1px solid var(--design-border); }
+.design-agent .design-section-heading { padding: 0; }
+.design-session-select { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 3px; cursor: pointer; }
 .design-status { display: flex; align-items: center; flex: none; gap: 6px; color: var(--text-secondary); font: 10px var(--font-mono); }
 .design-status i { width: 6px; height: 6px; border-radius: 50%; background: var(--design-accent); }
 .design-status[data-dirty="true"] i { background: var(--accent-amber); }

@@ -1,13 +1,28 @@
-.design-agent-dock { max-height: 66%; overflow: auto; }
-.design-agent-state { display: flex; justify-content: space-between; gap: 5px; color: var(--text-secondary); font-size: 11px; }
+.design-agent-dock { flex: none; }
+.design-agent-state {
+  display: flex; align-items: center; gap: 8px; min-width: 0;
+  color: var(--text-secondary); font-size: 11px; line-height: 1.3;
+}
+.design-agent-state strong { flex: none; font-weight: 650; }
 .design-agent-state[data-failed="true"] strong, .design-agent-error { color: var(--accent-red); }
-.design-agent-copy, .design-agent-error { margin: 5px 0; font-size: 11px; color: var(--text-secondary); overflow-wrap: anywhere; }
-.design-agent-copy { text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
-.design-agent-error { color: var(--accent-red); }
-.design-agent-edits { margin: 8px 0; padding: 6px 0; border-block: 1px solid var(--design-border); }
-.design-agent-edits summary { cursor: pointer; font-size: 11px; }
-.design-agent-edits ol { list-style: none; padding: 0; margin: 0; max-height: 94px; overflow: auto; }
-.design-agent-edits li { display: grid; gap: 1px; margin-top: 5px; font-size: 11px; }
+.design-agent-transport { flex: none; }
+.design-agent-branch {
+  display: inline-flex; align-items: center; gap: 4px; min-width: 0; margin-left: auto;
+  color: var(--text-secondary); font: 10px var(--font-mono);
+}
+.design-agent-branch svg { flex: none; }
+.design-agent-branch span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.design-agent-copy, .design-agent-context {
+  margin: 0; font-size: 11px; line-height: 1.35; color: var(--text-secondary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.design-agent-error { margin: 0; font-size: 11px; line-height: 1.35; color: var(--accent-red); overflow-wrap: anywhere; }
+.design-agent-edits { margin: 0; padding: 0; border: 0; }
+.design-agent-edits summary { cursor: pointer; font-size: 11px; font-weight: 650; color: var(--text-secondary); }
+.design-agent-edits ol { list-style: none; padding: 0; margin: 8px 0 0; overflow: visible; }
+.design-agent-edits[open] ol { max-height: 9rem; overflow: auto; }
+.design-agent-edits li { display: grid; gap: 2px; margin-top: 8px; font-size: 11px; }
+.design-agent-edits li:first-child { margin-top: 0; }
 .design-agent-edits li > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .design-agent-edits small, .design-queue-count { color: var(--text-secondary); font-size: 10px; }
-.design-queue-count { margin-bottom: 4px; }
+.design-queue-count { margin: 0 0 8px; }

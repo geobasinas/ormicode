@@ -99,6 +99,9 @@ export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefi
   const effort = effortOverride ?? details?.effort ?? 'default';
   const live = LIVE.has(details?.state ?? '');
   const queueInstead = live || Boolean(taskContext && WAITING.has(details?.state ?? ''));
+  const dockComposer = Boolean(compact || taskContext);
+  const canSend = Boolean(text.trim());
+  const failedQueued = queue.filter(item => item.error).length;
   const call = async (method: string, body: Record<string, unknown>) => {
     setError(undefined);
     const res = await transport.request(method, { session, ...body }).catch((e: Error) => ({ type: 'err' as const, code: 'transport', message: e.message }));
@@ -254,7 +257,7 @@ export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefi
       }} className="ormi-composer">
         {img.picker}
         {files.picker}
-        {taskContext ? <div className="design-queue-count" role="status">{queue.length} queued{queue.some(item => item.error) ? ` · ${queue.filter(item => item.error).length} failed` : ''}</div> : null}
+        {taskContext && queue.length ? <div className="design-queue-count" role="status">{queue.length} queued{failedQueued ? ` · ${failedQueued} failed` : ''}</div> : null}
         {queue.length ? <div style={{ marginBottom: 7, display: 'grid', gap: 3 }}>
           {queue.length > 3 && !queueExpanded ? <button onClick={() => setQueueExpanded(true)} style={{ ...iconBtn, fontSize: 11, justifyContent: 'flex-start' }}>{queue.length} queued</button>
             : queue.slice(0, queueExpanded ? undefined : 3).map((item, index) => <div key={item.id} draggable onDragStart={() => setDragging(item.id)} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); if (dragging) void transport.request('session.queue.move', { session, id: dragging, index }).then(refreshQueue); setDragging(undefined); }} style={{ display: 'flex', alignItems: 'center', gap: 5, minHeight: 22, fontSize: 12, color: 'var(--text-secondary)' }}>
@@ -343,9 +346,9 @@ export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefi
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             }}><Square size={10} fill="currentColor" /></button>
           ) : (
-            <button onClick={() => void send(false)} title={queueInstead ? 'queue follow-up' : 'send'} aria-label={queueInstead && taskContext ? 'Queue follow-up' : 'send'} style={{
-              width: 26, height: 26, borderRadius: '50%', border: 'none', cursor: 'pointer', marginLeft: 2, flexShrink: 0,
-              background: 'var(--text-active)', color: 'var(--text-onAccent)', opacity: text.trim() ? 1 : 0.5,
+            <button onClick={() => { if (canSend) void send(false); }} disabled={dockComposer && !canSend} aria-disabled={dockComposer ? !canSend : undefined} title={queueInstead ? 'queue follow-up' : 'send'} aria-label={queueInstead && taskContext ? 'Queue follow-up' : 'send'} style={{
+              width: 26, height: 26, borderRadius: '50%', border: 'none', cursor: dockComposer && !canSend ? 'default' : 'pointer', marginLeft: 2, flexShrink: 0,
+              background: 'var(--text-active)', color: 'var(--text-onAccent)', opacity: canSend ? 1 : 0.5,
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             }}><ArrowUp size={15} strokeWidth={2.5} /></button>
           )}
