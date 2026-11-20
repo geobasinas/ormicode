@@ -1359,14 +1359,14 @@ No approval from the agent = none shown. Before starting a transport without app
 
 **The broker**
 - Named secrets live in the OS keyring on the hub — never in the repo or the store.
-- At process start, the daemon injects the secrets a project declares as environment variables into the worker and its services. Memory only.
+- At worker start, the daemon injects stored machine secrets and that project's stored secrets as environment variables; project values win. Agents and tool subprocesses inherit them. Restart/resume the worker to pick up later changes. Declared service secrets keep their existing declaration-based resolution. Values stay in memory only.
 - Projects declare names, not values:
 ```yaml
 secrets:
   - STRIPE_TEST_KEY
   - DATABASE_URL
 ```
-- Missing secrets are reported before the session starts.
+- Missing declared secrets are reported before the session starts. Declarations are optional for stored worker secrets and remain useful for required names.
 - Secrets are never passed as tool-call arguments.
 
 **Redaction:** transcripts, logs and tool output are scanned for loaded values and replaced with `[redacted:STRIPE_TEST_KEY]`. If one shows up in a tool call, it's replaced and the session gets a warning.

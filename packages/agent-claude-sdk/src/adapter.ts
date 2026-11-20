@@ -175,6 +175,7 @@ export class ClaudeSdkAdapter implements AgentAdapter {
         });
       };
       const options: Options = {
+        env: { ...process.env },
         cwd: session.spec.cwd, abortController: abort, includePartialMessages: true,
         thinking: { type: 'enabled', display: 'summarized' },
         settingSources: ['user', 'project', 'local'], tools: { type: 'preset', preset: 'claude_code' },

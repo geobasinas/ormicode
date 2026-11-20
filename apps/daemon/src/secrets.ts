@@ -39,6 +39,11 @@ export class SecretBroker {
 
   envFor(session: string, project: string): Record<string, string> {
     const { env } = resolve(this.keyring, project);
+    const index = readNamesIndex(this.namesPath);
+    for (const name of new Set([...index.machine, ...(index.projects[project] ?? [])])) {
+      const value = this.keyring.get(account(name, project)) ?? this.keyring.get(account(name));
+      if (value !== undefined) env[name] = value;
+    }
     this.redactors.set(session, new Redactor(env));
     for (const name of Object.keys(env)) audit(this.auditPath, { session, name, action: 'inject' });
     return env;
