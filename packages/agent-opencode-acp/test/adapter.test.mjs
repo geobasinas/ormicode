@@ -2,6 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { OpenCodeAcpAdapter, OpenCodeTurnMapper } from '../src/index.ts';
 import { validateTurn } from '@ormicode/agent-core';
 const fixture = fileURLToPath(new URL('./fixture.mjs', import.meta.url));
@@ -69,4 +72,31 @@ test('ACP forwards Allow once without granting a permanent allow rule', async ()
   }
   assert.ok(events.some(event => event.kind === 'text' && event.text.includes('write applied')));
  } finally { await adapter.dispose(handle); }
+});
+
+test('ACP permission decisions gate a real fixture file write, including cancellation', async () => {
+ const dir = mkdtempSync(join(tmpdir(), 'ormi-opencode-permission-'));
+ try {
+  for (const choice of ['allow', 'deny', 'cancelled']) {
+   const path = join(dir, choice);
+   writeFileSync(path, 'original');
+   const adapter = new OpenCodeAcpAdapter({ spawn: (_command, args, options) => {
+    assert.deepEqual(args, ['acp']);
+    assert.equal(options.env, undefined, 'no unsupported configuration is injected');
+    return spawn(process.execPath, [fixture], { ...options, env: { ...process.env, ORMI_PERMISSION_TEST_FILE: path } });
+   } });
+   let handle;
+   try {
+    handle = await adapter.start({ cwd: dir });
+    const stream = adapter.events(handle);
+    await adapter.prompt(handle, { text: choice === 'allow' ? 'approval-allow' : choice === 'deny' ? 'approval-test' : 'hello' });
+    for await (const event of stream) {
+     if (event.kind === 'approval_request') await adapter.approve(handle, event.request, choice);
+     if (event.kind === 'error' || event.kind === 'interrupted') assert.fail(JSON.stringify(event));
+     if (event.kind === 'turn_end') break;
+    }
+    assert.equal(readFileSync(path, 'utf8'), choice === 'allow' ? 'approved fixture write' : 'original');
+   } finally { if (handle) await adapter.dispose(handle); }
+  }
+ } finally { rmSync(dir, { recursive: true, force: true }); }
 });

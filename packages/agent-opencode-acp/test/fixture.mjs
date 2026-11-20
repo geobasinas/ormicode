@@ -1,4 +1,5 @@
 import readline from 'node:readline';
+import { writeFileSync } from 'node:fs';
 const lines = readline.createInterface({ input: process.stdin });
 let promptId;
 let expectedOutcome = 'cancelled';
@@ -20,6 +21,7 @@ for await (const line of lines) {
  else if (message.id === 'permission-1') {
   const outcome = message.result?.outcome;
   if ((outcome?.outcome === 'selected' ? `selected:${outcome.optionId}` : outcome?.outcome) !== expectedOutcome) process.exit(5);
+  if (outcome?.outcome === 'selected' && outcome.optionId === 'allow' && process.env.ORMI_PERMISSION_TEST_FILE) writeFileSync(process.env.ORMI_PERMISSION_TEST_FILE, 'approved fixture write');
   if (outcome.outcome === 'selected') process.stdout.write(JSON.stringify({ jsonrpc: '2.0', method: 'session/update', params: { sessionId: 'session-1', update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: outcome.optionId === 'allow' ? 'write applied' : 'write blocked' } } } }) + '\n');
   process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: promptId, result: { stopReason: 'end_turn' } }) + '\n');
  }

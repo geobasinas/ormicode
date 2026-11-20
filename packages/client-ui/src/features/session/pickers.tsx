@@ -1,7 +1,7 @@
 /** Composer mega-chips for new sessions: one chip bundling agent + transport +
  * model + effort (nested submenus), and one chip for the git workspace choice
  * (current branch / new branch / worktree from a branch). */
-import { useState, type ReactNode } from 'react';
+import { Fragment, useState, type ReactNode } from 'react';
 import { Check, ChevronDown, Cpu, Gauge, RefreshCw } from 'lucide-react';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
@@ -11,6 +11,7 @@ import {
 import { chip } from './composer-parts.tsx';
 import { VendorIcon } from './vendor-icons.tsx';
 import type { ListedModel } from './useModels.ts';
+import { OpenCodePermissionNotice } from './OpenCodePermissionNotice.tsx';
 
 const chev = <ChevronDown size={11} style={{ color: 'var(--text-hint)', flexShrink: 0 }} />;
 const mark = (on: boolean) => <span style={{ width: 16, display: 'inline-flex' }}>{on ? <Check size={13} /> : null}</span>;
@@ -72,12 +73,15 @@ export function AgentChip({ vendor, via, agents, onPick, model, models, onModel,
       <DropdownMenuContent align="end" style={{ width: 248, maxWidth: 'calc(100vw - 16px)' }}>
         <DropdownMenuLabel>Agent</DropdownMenuLabel>
         {agents.map(a => a.transports.length === 1 ? (
-          <DropdownMenuItem key={a.vendor} onSelect={() => onPick(a.vendor, a.transports[0]!)} className="text-xs" style={{ paddingTop: 6, paddingBottom: 6 }}>
+          <Fragment key={a.vendor}>
+          <DropdownMenuItem onSelect={() => onPick(a.vendor, a.transports[0]!)} className="text-xs" style={{ paddingTop: 6, paddingBottom: 6 }}>
             {mark(a.vendor === vendor)}
             {tile(a.vendor)}
             <span className="min-w-0 flex-1 truncate">{meta(a.vendor).name}</span>
             {right(a.transports[0]!)}
           </DropdownMenuItem>
+          <OpenCodePermissionNotice vendor={a.vendor} transport={a.transports[0]} />
+          </Fragment>
         ) : (
           <DropdownMenuSub key={a.vendor}>
             <DropdownMenuSubTrigger className="text-xs" style={{ paddingTop: 6, paddingBottom: 6 }}>
@@ -88,6 +92,7 @@ export function AgentChip({ vendor, via, agents, onPick, model, models, onModel,
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent style={{ minWidth: 180 }}>
               <DropdownMenuLabel>{meta(a.vendor).name}</DropdownMenuLabel>
+              {a.transports.includes('acp') ? <OpenCodePermissionNotice vendor={a.vendor} transport="acp" /> : null}
               {a.transports.map(t => (
                 <DropdownMenuItem key={t} onSelect={() => onPick(a.vendor, t)} className="text-xs">
                   {mark(a.vendor === vendor && t === via)}
