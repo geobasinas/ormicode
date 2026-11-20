@@ -9,6 +9,9 @@ const start = { machine, project: '/repo', vendor: 'fake', transport: 'cli', mod
 
 test('session start validates the workspace choice and preserves agent values', () => {
   assert.deepEqual(parseRequestBody('session.start', start), { success: true, data: start });
+  assert.deepEqual(parseRequestBody('session.start', { ...start, machine: 'm_local' }), { success: true, data: { ...start, machine: 'm_local' } });
+  for (const machine of ['', 'm_other', 'm_local/../remote', null, undefined])
+    assert.equal(parseRequestBody('session.start', { ...start, machine }).success, false);
   assert.equal(parseRequestBody('session.start', { ...start, workspace: { kind: 'worktree', branch: 'main' } }).success, true);
   assert.equal(parseRequestBody('session.start', { ...start, workspace: { kind: 'checkout', branch: 'origin/feature' } }).success, true);
   assert.equal(parseRequestBody('session.start', { ...start, workspace: { kind: 'branch', branch: 'ormi/new', from: 'feature' } }).success, true);
