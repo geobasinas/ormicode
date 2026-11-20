@@ -175,12 +175,21 @@ test('unknown-price handoffs require user confirmation and agent approval', asyn
 test('ordinary user-routed handoffs expire when aborted and cannot be approved later', async t => {
   const { daemon, client, credentials } = await boot();
   t.after(async () => { client.close(); await daemon.close(); });
-  const session = (await startFake(client)).body.session;
+  const previousScript = process.env.ORMICODE_FAKE_SCRIPT;
+  let session;
+  try {
+    process.env.ORMICODE_FAKE_SCRIPT = 'approval';
+    session = (await startFake(client)).body.session;
+  } finally {
+    if (previousScript === undefined) delete process.env.ORMICODE_FAKE_SCRIPT;
+    else process.env.ORMICODE_FAKE_SCRIPT = previousScript;
+  }
+  await client.request('session.prompt', { session, text: 'hold for approval' });
   const pending = client.request('session.handoff', { session, to: { vendor: 'fake' }, mode: 'rehydrate', agentApproval: true }, 30_000, credentials.proof(session));
   const deadline = Date.now() + 5000;
   let request;
   while (!request && Date.now() < deadline) {
-    const event = replay(daemon.db, session).find(e => e.kind === 'approval_request');
+    const event = replay(daemon.db, session).find(e => e.kind === 'approval_request' && JSON.parse(e.payload).approvalKind === 'handoff');
     if (event) request = JSON.parse(event.payload).request;
     else await new Promise(resolve => setTimeout(resolve, 20));
   }
@@ -191,6 +200,30 @@ test('ordinary user-routed handoffs expire when aborted and cannot be approved l
   assert.equal(replay(daemon.db, session).filter(e => e.kind === 'interaction_expired').length, 1);
   assert.equal((await client.request('session.decide', { session, request, option: 'approve' })).type, 'err');
   assert.equal(daemon.db.prepare('SELECT COUNT(*) AS n FROM sessions WHERE parent = ?').get(session).n, 0);
+});
+
+for (const vendor of ['fake', 'claude']) test(`${vendor} abort errors leave a pending handoff answerable and do not mark interruption`, async t => {
+  const { daemon, client, credentials } = await boot();
+  t.after(async () => { client.close(); await daemon.close(); });
+  const started = await client.request('session.start', { machine: newId('m'), project: projectDir, vendor, transport: 'cli', model: 'test', effort: 'low', mode: 'default', workspace: { kind: 'current' } });
+  assert.equal(started.type, 'res', JSON.stringify(started));
+  const session = started.body.session;
+  const pending = client.request('session.handoff', { session, to: { vendor: 'fake' }, mode: 'rehydrate', agentApproval: true }, 30_000, credentials.proof(session));
+  let request;
+  const deadline = Date.now() + 5000;
+  while (!request && Date.now() < deadline) {
+    const event = replay(daemon.db, session).find(e => e.kind === 'approval_request');
+    if (event) request = JSON.parse(event.payload).request;
+    else await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  assert.ok(request);
+  const aborted = await client.request('session.abort', { session });
+  assert.equal(aborted.type, 'err');
+  assert.equal(aborted.code, 'agent.unsupported');
+  assert.equal(getSession(daemon.db, session).state, 'awaiting_approval');
+  assert.equal(replay(daemon.db, session).some(e => e.kind === 'interaction_expired' || e.kind === 'interrupted'), false);
+  assert.equal((await client.request('session.decide', { session, request, option: 'deny' })).body.decided, true);
+  assert.equal((await pending).code, 'handoff.declined');
 });
 
 test('rehydrate rolls back when a fake child never becomes ready', async () => {

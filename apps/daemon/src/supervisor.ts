@@ -268,11 +268,11 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     if (idle.length) void evictWorker(idle[0]![0], 'pool_full');
   };
   const toWorker = async (session: string, method: string, body: Record<string, unknown>) => {
-    const cancelled = method === 'worker.abort' && expireHandoffApprovals(dispatchCtx, session, 'cancelled');
     const w = workers.get(session);
     const link = workerLinks.get(session);
     const response = w && link ? await link.request(method, { session, ...body }, 30_000) : undefined;
-    return cancelled && response?.type !== 'res' ? { v: 1, type: 'res', id: 'worker.abort', ok: true, body: { interrupted: true } } as Frame : response;
+    if (method === 'worker.abort' && response?.type === 'res') expireHandoffApprovals(dispatchCtx, session, 'cancelled');
+    return response;
   };
   const workerLinks = new Map<string, Link>();
   const sessionByLink = new Map<Link, string>();
