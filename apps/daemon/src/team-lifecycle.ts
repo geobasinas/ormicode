@@ -18,6 +18,7 @@ export class TeamLifecycle {
   private readonly activity = new Map<string, { at: number; nudged: boolean }>();
   private timer?: NodeJS.Timeout;
   private closed = false;
+  private readonly handoffInterruptions = new Set<string>();
 
   constructor(context: () => DispatchCtx, live: (session: string) => boolean) {
     this.context = context;
@@ -48,20 +49,25 @@ export class TeamLifecycle {
     for (const child of setChildrenParentless(ctx.db, parent, false))
       ctx.record(child, 'team_parent_changed', { parent, parentless: false });
   }
-  unavailable(parent: string): void {
+  async preserveHandoffs(session: string, action: () => Promise<void>): Promise<void> {
+    this.handoffInterruptions.add(session);
+    try { await action(); } finally { this.handoffInterruptions.delete(session); }
+  }
+  unavailable(parent: string, preserveHandoffs = false): void {
     if (this.closed) return;
     const ctx = this.context();
-    expireHandoffApprovals(ctx, parent);
+    if (!preserveHandoffs) expireHandoffApprovals(ctx, parent);
     for (const child of setChildrenParentless(ctx.db, parent, true))
       ctx.record(child, 'team_parent_changed', { parent, parentless: true });
-    ctx.teamApprovals.unavailable(parent);
+    ctx.teamApprovals.unavailable(parent, preserveHandoffs);
     ctx.interactions?.unavailable(parent);
   }
   event(session: string, kind: string, payload: Record<string, unknown>, now = Date.now()): void {
     if (this.closed) return;
     if (kind !== 'team_parent_changed' && !payload.nudge) this.activity.set(session, { at: now, nudged: false });
     if (['error', 'interrupted', 'evicted'].includes(kind)
-      || kind === 'state' && ['failed', 'interrupted', 'archived'].includes(String(payload.state))) this.unavailable(session);
+      || kind === 'state' && ['failed', 'interrupted', 'archived'].includes(String(payload.state)))
+      this.unavailable(session, this.handoffInterruptions.has(session) && (kind === 'interrupted' || kind === 'state' && payload.state === 'interrupted'));
     if (kind === 'turn_start' || kind === 'ready') this.available(session);
   }
   check(now = Date.now()): void {

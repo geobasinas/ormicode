@@ -180,6 +180,29 @@ for (const escalate of [false, true]) test(`confirmation-required handoffs remai
   assert.equal((await result).code, 'handoff.declined');
 });
 
+for (const active of [false, true]) for (const escalate of [false, true]) test(`urgent messages preserve ${escalate ? 'escalated' : 'delegated'} handoffs for ${active ? 'active' : 'idle'} children`, async t => {
+  const { daemon, client, req, parent, spawn, approve, credentials } = await fixture(t);
+  const child = await spawn();
+  if (!active) {
+    await approve(child, 'allow');
+    await eventually(() => getSession(daemon.db, child.session).state === 'idle');
+  }
+  const pending = client.request('session.handoff', { session: child.session, to: { vendor: 'fake', model: 'unknown-price' }, mode: 'rehydrate', agentApproval: true }, 30_000, credentials.proof(child.session));
+  await eventually(() => events(daemon.db, child.session, 'team_approval_request').some(e => e.approvalKind === 'handoff'));
+  const request = events(daemon.db, child.session, 'team_approval_request').find(e => e.approvalKind === 'handoff').request;
+  const target = { session: child.session, request };
+  if (escalate) await req('team.escalate', { actor: parent, ...target });
+  const response = await req('team.message', { actor: parent, to: child.session, text: 'Urgent context, not a cancellation', urgent: true });
+  assert.equal(response.type, 'res', JSON.stringify(response));
+  assert.equal(events(daemon.db, child.session, 'interaction_expired').some(e => e.request === request), false);
+  assert.equal(events(daemon.db, child.session, 'interrupted').length > 0, active);
+  const decision = escalate
+    ? await req('session.decide', { ...target, option: 'deny' })
+    : await approve(target, 'deny');
+  assert.equal(decision.body?.decided, true, JSON.stringify(decision));
+  assert.equal((await pending).code, 'handoff.declined');
+});
+
 for (const escalate of [false, true]) for (const method of ['session.abort', 'team.cancel']) test(`${escalate ? 'escalated' : 'delegated'} handoffs cannot start a replacement after ${method}`, async t => {
   const { daemon, client, req, parent, spawn, credentials } = await fixture(t);
   const child = await spawn();
