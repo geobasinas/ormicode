@@ -37,8 +37,7 @@ async function handle(ctx: DispatchCtx, client: Client, id: string, method: stri
     return fail('team.forbidden', 'only the team parent may perform this action (children may close only themselves)');
   if (body.session !== undefined && (!target || (target.team !== team.id && target.id !== team.parent)))
     return fail('team.not_member', 'target is not in this team');
-  const targetsWork = ['team.openPr', 'team.approve', 'team.escalate', 'team.cancel', 'team.reassign', 'team.close'].includes(method)
-    || method === 'team.status' && body.wake;
+  const targetsWork = ['team.openPr', 'team.approve', 'team.escalate', 'team.cancel', 'team.reassign', 'team.close'].includes(method);
   const targetError = targetsWork && target && handoffTargetError(ctx.db, target.id);
   if (targetError)
     return fail('team.invalid', targetError);
@@ -50,7 +49,7 @@ async function handle(ctx: DispatchCtx, client: Client, id: string, method: stri
     case 'team.escalate': return ctx.teamApprovals.escalate(client, id, body);
     case 'team.tree': return reply({ team: team.id, parent: team.parent, children: teamChildren(ctx.db, team.id).map(s => status(ctx, s)) });
     case 'team.status':
-      if (body.wake && !target!.archived) await ctx.ensureWorker(target!.id);
+      if (body.wake && !target!.archived && !handoffTargetError(ctx.db, target!.id)) await ctx.ensureWorker(target!.id);
       return reply(status(ctx, getSession(ctx.db, target!.id)!));
     case 'team.inbox': {
       const messages = unreadTeamMessages(ctx.db, actor.id).filter(m => m.team === team.id);
@@ -104,7 +103,8 @@ function status(ctx: DispatchCtx, session: SessionRow): Record<string, unknown> 
     const payload = JSON.parse(event.payload) as { input?: number; output?: number };
     return sum + (payload.input ?? 0) + (payload.output ?? 0);
   }, 0) : null;
-  return { session: session.id, state: ctx.teamApprovals.waiting(session.id) ? 'awaiting_approval' : session.state, parentless: Boolean(session.parentless), lastActivity: session.updated_at, tokens };
+  const state = session.handed_off ? session.archived ? 'archived' : 'done' : ctx.teamApprovals.waiting(session.id) ? 'awaiting_approval' : session.state;
+  return { session: session.id, state, parentless: Boolean(session.parentless), lastActivity: session.updated_at, tokens };
 }
 async function message(ctx: DispatchCtx, client: Client, id: string, body: Record<string, unknown>, actor: SessionRow, team: TeamRow): Promise<void> {
   const original = body.replyTo ? getTeamMessage(ctx.db, String(body.replyTo)) : undefined;
