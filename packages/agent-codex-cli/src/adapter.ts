@@ -117,9 +117,11 @@ export class CodexCliAdapter implements AgentAdapter {
     session.queue.push([{ kind: 'config_option', id, value }]);
   }
   async approve(handle: Handle, requestId: string, optionId: string): Promise<void> {
-    const pending = this.get(handle).approvals.get(requestId);
+    const session = this.get(handle);
+    const pending = session.approvals.get(requestId);
     if (!pending) throw new Error(`Unknown approval request: ${requestId}`);
-    this.get(handle).approvals.delete(requestId);
+    session.approvals.delete(requestId);
+    session.queue.push([{ kind: 'approval_decision', request: requestId, option: optionId }]);
     pending.resolve({ decision: optionId });
   }
   async answerQuestion(handle: Handle, requestId: string, answers: Record<string, string>): Promise<void> {

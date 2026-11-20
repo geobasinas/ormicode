@@ -141,7 +141,8 @@ test('one user-routed approval stays in Needs You while another request remains 
   const delegated = await summary();
   assert.equal(delegated.delegatedApproval, true);
   assert.equal(needsAttention(delegated), false);
-  await req('session.abort', { session: child.session });
+  const handoff = events(daemon.db, child.session, 'team_approval_request').find(e => e.approvalKind === 'handoff');
+  await req('team.approve', { actor: parent, session: child.session, request: handoff.request, option: 'deny', reason: 'cleanup' });
   assert.equal((await pending).code, 'handoff.declined');
 });
 
@@ -180,10 +181,8 @@ for (const escalate of [false, true]) test(`confirmation-required handoffs remai
 });
 
 for (const escalate of [false, true]) for (const method of ['session.abort', 'team.cancel']) test(`${escalate ? 'escalated' : 'delegated'} handoffs cannot start a replacement after ${method}`, async t => {
-  const { daemon, client, req, parent, spawn, approve, credentials } = await fixture(t);
+  const { daemon, client, req, parent, spawn, credentials } = await fixture(t);
   const child = await spawn();
-  await approve(child, 'allow');
-  await eventually(() => getSession(daemon.db, child.session).state === 'idle');
   const pending = client.request('session.handoff', { session: child.session, to: { vendor: 'fake', model: 'unknown-price' }, mode: 'rehydrate', agentApproval: true }, 30_000, credentials.proof(child.session));
   await eventually(() => events(daemon.db, child.session, 'team_approval_request').some(e => e.approvalKind === 'handoff'));
   const request = events(daemon.db, child.session, 'team_approval_request').find(e => e.approvalKind === 'handoff').request;

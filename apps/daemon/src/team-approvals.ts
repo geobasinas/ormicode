@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { classifyCommand, loadDestructivePatterns } from '@ormicode/agent-core';
 import { newId } from '@ormicode/protocol';
-import { addQueuedPrompt, addTeamMessage, getSession, getTeam } from '@ormicode/session-store';
+import { addQueuedPrompt, addTeamMessage, getSession, getTeam, hasPendingApproval } from '@ormicode/session-store';
 import type { Client, DispatchCtx } from './dispatch.ts';
 import { resolveHandoffApproval } from './handoff-dispatch.ts';
 import { ormicodeDir } from './socket.ts';
@@ -47,11 +47,7 @@ export class TeamApprovals {
   }
   waiting(session: string): boolean { return [...this.pending.values()].some(p => p.session === session); }
   delegatedOnly(session: string): boolean {
-    return this.waiting(session) && !this.context().db.prepare(`SELECT 1 FROM events q
-      WHERE q.session = ? AND q.kind = 'approval_request' AND NOT EXISTS (
-        SELECT 1 FROM events a WHERE a.session = q.session AND a.seq > q.seq
-        AND a.kind IN ('approval_decision', 'interaction_expired')
-        AND json_extract(a.payload, '$.request') = json_extract(q.payload, '$.request')) LIMIT 1`).get(session);
+    return this.waiting(session) && !hasPendingApproval(this.context().db, session);
   }
   forParent(parent: string): Payload[] {
     return [...this.pending.values()].filter(p => p.parent === parent && !p.decision).map(p => ({
@@ -61,6 +57,13 @@ export class TeamApprovals {
   }
   event(session: string, kind: string, payload: Payload): [string, Payload] {
     const ctx = this.context(), id = key(session, payload.request), pending = this.pending.get(id);
+    if (kind === 'turn_end') {
+      for (const [id, pending] of this.pending) {
+        if (pending.session !== session || pending.payload.approvalKind === 'handoff') continue;
+        this.pending.delete(id);
+        ctx.record(session, 'interaction_expired', { request: pending.payload.request, reason: 'turn_ended' });
+      }
+    }
     if (['approval_decision', 'interaction_expired'].includes(kind)) {
       const user = this.userAnswers.get(id); this.userAnswers.delete(id);
       this.pending.delete(id);
