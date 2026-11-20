@@ -1,6 +1,8 @@
 import { createServer } from 'node:http';
 const expected = `Basic ${Buffer.from(`opencode:${process.env.OPENCODE_SERVER_PASSWORD}`).toString('base64')}`;
 const version = process.env.ORMICODE_FIXTURE_VERSION ?? '2.2.5';
+const banner = process.env.ORMICODE_FIXTURE_BANNER ?? 'server listening';
+const healthOnly = process.env.ORMICODE_FIXTURE_HEALTH === '1';
 const events = [];
 const pending = [];
 let seq = 0;
@@ -20,7 +22,11 @@ const server = createServer(async (req, res) => {
     while (pending.length) res.write(pending.shift()); return;
   }
   res.setHeader('content-type', 'application/json');
-  if (url.pathname === '/api/info') return res.end(JSON.stringify({ version }));
+  if (url.pathname === '/api/info') {
+    if (healthOnly) { res.writeHead(200, { 'content-type': 'text/html' }); return res.end('<!doctype html>'); }
+    return res.end(JSON.stringify({ version }));
+  }
+  if (url.pathname === '/global/health' || url.pathname === '/api/health') return res.end(JSON.stringify({ healthy: true, version }));
   if (url.pathname === '/api/model' && req.method === 'GET') return res.end(JSON.stringify({ location: {}, data: [{ id: 'm1', modelID: 'model-1', providerID: 'prov', name: 'Model One', variants: [{ id: 'low' }, { id: 'high' }] }] }));
   if (url.pathname === '/api/session' && req.method === 'POST') return res.end(JSON.stringify({ data: { id: 'ses_fake' } }));
   const session = /^\/api\/session\/([^/]+)(\/.*)?$/.exec(url.pathname);
@@ -59,4 +65,4 @@ const server = createServer(async (req, res) => {
   if (session && (session[2] === '/model' || session[2] === '/agent') && req.method === 'POST') { await read(req); return res.writeHead(204).end(); }
   res.writeHead(404).end('{}');
 });
-server.listen(0, '127.0.0.1', () => console.log(`server listening on http://127.0.0.1:${server.address().port}`));
+server.listen(0, '127.0.0.1', () => console.log(`${banner} on http://127.0.0.1:${server.address().port}`));
