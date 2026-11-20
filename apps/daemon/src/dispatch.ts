@@ -1,14 +1,12 @@
-import type { Frame, PromptAttachment, PromptContext } from '@ormicode/protocol';
+import { parseRequestBody, newId, PROTOCOL_VERSION, type Frame, type PromptAttachment, type PromptContext } from '@ormicode/protocol';
 import type { UserInteractions } from './user-interactions.ts';
 import { resumeSession } from './team-resume.ts';
 import { sessionTeamView } from './session-team-view.ts';
-import { parseRequestBody, newId } from '@ormicode/protocol';
 import {
   getSession, listSessions, setState, setTitle, listNotes, setNote, deleteNote, archiveSession, releaseSessionPorts,
-  getPendingPromptData, deletePendingPromptData, getSessionPorts, type Store,
+  getPendingPromptData, deletePendingPromptData, getSessionPorts, listDevices, renameDevice, revokeDevice, type Store,
 } from '@ormicode/session-store';
 import { replay, setCursor } from '@ormicode/journal';
-import { listDevices, renameDevice, revokeDevice } from '@ormicode/session-store';
 import { handleJoin, type Pairing } from './pair.ts';
 import { handoffMethod } from './handoff-methods.ts';
 import { handoffRequest } from './handoff-dispatch.ts';
@@ -19,9 +17,7 @@ import { rmSync } from 'node:fs';
 import { ormicodeDir, sessionLogDir } from './socket.ts';
 import { releaseForSession } from '@ormicode/leases';
 import { agentList } from './registry.ts';
-import {
-  diffPatch, DiffStatCache,
-} from '@ormicode/git-core';
+import { diffPatch, DiffStatCache } from '@ormicode/git-core';
 
 const diffStats = new DiffStatCache();
 const PATCH_INLINE = 256 * 1024;
@@ -54,6 +50,7 @@ import { authorizeMcp, type McpCredentials } from './mcp-auth.ts';
 import type { TeamApprovals } from './team-approvals.ts';
 import type { TeamLifecycle } from './team-lifecycle.ts';
 import { shouldResetUiCheckFollowups } from './ui-check.ts';
+import { machineMethod } from './machine-methods.ts';
 
 /** What a client transport must do: send frames and answer requests. */
 export interface ClientLink {
@@ -120,6 +117,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
     switch (method) {
       case 'agents.list':
         return client.link.reply(id, { agents: agentList() });
+      case 'machine.list': case 'fs.browse': case 'project.list': case 'project.add': case 'project.remove': return await machineMethod(ctx, client, id, method, body);
       case 'models.list':
         return client.link.reply(id, await listModels(body as { agent?: string; transport?: string; refresh?: boolean }));
       case 'project.branches': return projectBranches(ctx, client, id, body);
@@ -130,7 +128,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
       case 'project.deleteBranch':
         return await projectBranchMethod(ctx, client, id, method, body);
       case 'daemon.status':
-        return client.link.reply(id, { version: '0.0.0', uptimeMs: Date.now() - ctx.startedAt, liveWorkers: ctx.liveWorkers(), relay: ctx.relay()?.connected() ? 'connected' : 'disconnected', lastError: ctx.lastError() });
+        return client.link.reply(id, { version: '0.0.0', proto: PROTOCOL_VERSION, uptimeMs: Date.now() - ctx.startedAt, liveWorkers: ctx.liveWorkers(), relay: ctx.relay()?.connected() ? 'connected' : 'disconnected', lastError: ctx.lastError() });
       case 'session.start': return await startSession(ctx, client, id, body);
       case 'session.rename': {
         const session = String(body.session);

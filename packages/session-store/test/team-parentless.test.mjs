@@ -39,13 +39,13 @@ test('parentless flags and user-directed inbox requests persist independently of
   } finally { db.close(); }
 });
 
-test('migration 0009 upgrades shipped teams data without changing messages or membership', t => {
+test('migration 0010 upgrades teams data without changing messages or membership', t => {
   const dir = mkdtempSync(join(tmpdir(), 'ormi-team-upgrade-')), path = join(dir, 'store.db');
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const old = new Database(path);
   const migrations = fileURLToPath(new URL('../migrations/', import.meta.url));
-  for (const file of readdirSync(migrations).sort().filter(file => /^000[1-8]-/.test(file))) old.exec(readFileSync(join(migrations, file), 'utf8'));
-  old.pragma('user_version = 8');
+  for (const file of readdirSync(migrations).sort().filter(file => /^000[1-9]-/.test(file))) old.exec(readFileSync(join(migrations, file), 'utf8'));
+  old.pragma('user_version = 9');
   for (const id of ['parent', 'child']) createSession(old, { id, parent: id === 'child' ? 'parent' : undefined, machine: 'local', project: '/repo', vendor: 'fake', transport: 'cli', cwd: '/repo' });
   createTeam(old, { id: 'team', parent: 'parent', project: '/repo' }); setSessionTeam(old, 'child', 'team');
   addTeamMessage(old, { id: 'message', team: 'team', from_session: 'child', to_session: 'parent', reply_to: null, body: 'preserved finding', urgent: 0, created_at: 1 });
@@ -53,7 +53,7 @@ test('migration 0009 upgrades shipped teams data without changing messages or me
   old.close();
   const db = openStore(path);
   try {
-    assert.equal(db.pragma('user_version', { simple: true }), 9);
+    assert.equal(db.pragma('user_version', { simple: true }), 10);
     assert.equal(getSession(db, 'child').parentless, 1);
     assert.equal(getSession(db, 'child').team, 'team');
     assert.equal(getSession(db, 'child').parent, 'parent');

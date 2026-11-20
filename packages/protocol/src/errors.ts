@@ -9,6 +9,7 @@ export const errorCodes = [
   'team.closed', 'team.forbidden', 'team.limit', 'team.failed', 'team.not_found', 'team.not_member', 'team.invalid', 'team.delivery_failed',
   'handoff.confirm_required', 'handoff.declined', 'handoff.failed',
   'workspace.not_found',
+  'fs.invalid_path', 'fs.not_found', 'fs.not_directory', 'fs.denied',
   'service.not_found', 'service.not_running', 'service.failed', 'config.error', 'preview.port_denied',
   'browser.unavailable', 'browser.not_allowed', 'browser.action_failed', 'browser.not_found',
   'session.not_scratch', 'copy_out.invalid_project', 'copy_out.invalid_path', 'copy_out.conflict', 'copy_out.failed',

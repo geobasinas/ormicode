@@ -53,6 +53,26 @@ test('response contracts reject missing fields and unknown methods', () => {
   assert.deepEqual(parseResponseBody('session.teleport', {}), { success: false, error: 'protocol.unknown_method' });
 });
 
+test('machine, browse, and project registry methods validate request and response bodies', () => {
+  const machineBody = { id: 'm_local', name: 'workstation', kind: 'local', status: 'online', heartbeat: 100 };
+  const project = { machine: 'm_local', path: '/repo', name: 'repo', git: true, addedAt: 100 };
+  const cases = [
+    ['machine.list', {}, null, { machines: [machineBody] }, { machines: [{ ...machineBody, kind: 'unknown' }] }],
+    ['fs.browse', { machine: 'm_local', path: '/home', hidden: true }, { machine: 'm_local', hidden: 'yes' },
+      { machine: 'm_local', path: '/home', parent: '/', home: '/home', entries: [], truncated: false },
+      { machine: 'm_local', path: '/home', parent: '/', home: '/home', entries: [{ name: 'x', path: '/home/x', git: 'yes', hidden: false }], truncated: false }],
+    ['project.list', {}, null, { projects: [project] }, { projects: [{ ...project, addedAt: -1 }] }],
+    ['project.add', { machine: 'm_local', path: '/repo' }, { machine: 'm_local', path: '' }, { project }, { project: { ...project, name: '' } }],
+    ['project.remove', { machine: 'm_local', path: '/repo' }, { machine: '', path: '/repo' }, { removed: true }, { removed: 'yes' }],
+  ];
+  for (const [method, validRequest, invalidRequest, validResponse, invalidResponse] of cases) {
+    assert.equal(parseRequestBody(method, validRequest).success, true, `${method} valid request`);
+    assert.equal(parseRequestBody(method, invalidRequest).success, false, `${method} invalid request`);
+    assert.equal(parseResponseBody(method, validResponse).success, true, `${method} valid response`);
+    assert.equal(parseResponseBody(method, invalidResponse).success, false, `${method} invalid response`);
+  }
+});
+
 test('preview relay requests and paged responses are bounded and typed', () => {
   const request = { session, port: 41001, method: 'POST', path: '/submit', headers: { 'content-type': 'text/plain' }, body: 'aGVsbG8=' };
   assert.equal(parseRequestBody('preview.fetch', request).success, true);

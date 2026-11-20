@@ -281,16 +281,30 @@ function Devices() {
 }
 
 function About({ connection }: { connection?: string }) {
-  const { transport } = usePlatform();
+  const platform = usePlatform();
+  const { transport } = platform;
   const [st, setSt] = useState<{ version: string; uptimeMs: number; liveWorkers: number; relay: string }>();
-  useEffect(() => { transport.request('daemon.status', {}).then(r => { if (r.type === 'res') setSt(r.body as unknown as typeof st); }).catch(() => undefined); }, [transport]);
+  useEffect(() => {
+    if (!platform.web) transport.request('daemon.status', {}).then(r => { if (r.type === 'res') setSt(r.body as unknown as typeof st); }).catch(() => undefined);
+  }, [platform, transport]);
   return (
     <Group title="DAEMON">
       <Row title="Connection" hint={connection ?? 'unknown'} />
+      {platform.web ? <>
+        <Row title="Web version" hint={platform.web.version} />
+        <Row title="Commit" hint={platform.web.commit} mono />
+        <Row title="Relay" hint={platform.web.relayUrl} mono />
+        <Row title="Forget this browser" hint="Remove this browser's relay token">
+          <button className="hv-sub" style={{ ...ctl, cursor: 'pointer' }} onClick={() => {
+            if (window.confirm('Forget this browser? You will need a new pairing code to reconnect.')) void platform.web?.unpair();
+          }}>Forget</button>
+        </Row>
+      </> : <>
       <Row title="Version" hint={st?.version ?? '…'} mono />
       <Row title="Uptime" hint={st ? ago(Date.now() - st.uptimeMs) : '…'} />
       <Row title="Live workers" hint={st ? String(st.liveWorkers) : '…'} />
       <Row title="Relay" hint={st?.relay ?? '…'} />
+      </>}
     </Group>
   );
 }

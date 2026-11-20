@@ -5,9 +5,11 @@ import { Check, Folder, GitBranch, ChevronDown, ChevronRight, Users } from 'luci
 import { useSessions, type SessionSummary } from './useSessions.ts';
 import { StateIcon, stateLabel } from './state.tsx';
 import { ago, compactTokens, projectName } from '../../lib/format.ts';
-import { containsSession, needsUser, sessionForest, type SessionNode } from './team-tree.ts';
+import { containsSession, needsUser, type SessionNode } from './team-tree.ts';
 import { branchLabel, isTeamRunning, teamState } from './team-presentation.ts';
 import { TeamStateIcon, TeamStatus } from './TeamStatus.tsx';
+import { useProjects } from '../projects/useProjects.ts';
+import { groupSessionProjects } from '../projects/groupProjects.ts';
 
 const DAY = 24 * 3600 * 1000;
 const isDone = (s: SessionSummary) => s.state === 'done';
@@ -79,21 +81,13 @@ function TeamRow({ node, active, onSelect, query }: { node: SessionNode; active?
 
 export function SessionList({ active, onSelect, query }: { active?: string; onSelect: (id: string) => void; query?: string }) {
   const { sessions, error } = useSessions();
-  const groups = useMemo(() => {
-    const byProject = new Map<string, SessionNode[]>();
-    for (const node of sessionForest(sessions, query)) {
-      const g = byProject.get(node.session.project) ?? [];
-      g.push(node); byProject.set(node.session.project, g);
-    }
-    const latest = (l: SessionNode[]) => Math.max(...l.map(n => n.session.updatedAt ?? 0));
-    // Projects first by recency; scratch sessions sit last under"no project" like the mockup.
-    return [...byProject.entries()].sort((a, b) => Number(a[0] === 'scratch') - Number(b[0] === 'scratch') || latest(b[1]) - latest(a[1]));
-  }, [sessions, query]);
+  const { projects } = useProjects();
+  const groups = useMemo(() => groupSessionProjects(sessions, projects, query), [sessions, projects, query]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto', gap: 0 }}>
       {error ? <div style={{ padding: '0 10px', color: 'var(--accent-red)', fontSize: 12 }}>{error}</div> : null}
-      {groups.map(([project, list]) => {
+      {groups.map(({ project, name, nodes: list }) => {
         const open = list.filter(n => n.children.length || !isDone(n.session));
         const done = list.filter(n => !n.children.length && isDone(n.session)).map(n => n.session);
         const countWaiting = (nodes: SessionNode[]): number => nodes.reduce((sum, n) => sum + Number(needsUser(n.session)) + countWaiting(n.children), 0);
@@ -105,7 +99,7 @@ export function SessionList({ active, onSelect, query }: { active?: string; onSe
               fontSize: 12, fontWeight: 600, color: project === 'scratch' ? 'var(--text-secondary)' : 'var(--text-label)',
             }}>
               <Folder size={13} style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
-              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{project === 'scratch' ? 'No project' : projectName(project)}</span>
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name || (project === 'scratch' ? 'No project' : projectName(project))}</span>
               {waiting ? <span style={{ fontWeight: 400, color: 'var(--accent-amber)', fontSize: 10.5 }} title="needs you">{waiting} waiting</span> : null}
             </div>
             {open.map(node => <TeamRow key={node.session.id} node={node} active={active} onSelect={onSelect} query={query} />)}

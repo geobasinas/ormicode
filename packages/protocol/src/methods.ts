@@ -4,6 +4,7 @@ import { portBlock, serviceRequests, serviceResponses, browserRequests, browserR
 import { teamRequests, teamResponses, userQuestion, userAnswer } from './team-contracts.ts';
 import { workspaceSchema } from './workspace-schema.ts';
 import { promptContextSchema } from './prompt-context-schema.ts';
+import { projectRequests, projectResponses } from './project-methods.ts';
 export type { PromptContext } from './prompt-context-schema.ts';
 export type { PreviewConsoleEntry } from './service-contracts.ts';
 
@@ -211,7 +212,7 @@ export const requestBodies = {
   'devices.list': z.object({}),
   'devices.rename': z.object({ device: nonEmpty, name: nonEmpty }),
   // confirm must equal the device name, so a revoke can't fire by accident.
-  'devices.revoke': z.object({ device: nonEmpty, confirm: nonEmpty }),
+  'devices.revoke': z.object({ device: nonEmpty, confirm: nonEmpty }), ...projectRequests,
   'models.list': z.object({ agent: z.optional(nonEmpty), transport: z.optional(nonEmpty), refresh: z.optional(z.boolean()) }),
   // Branch catalog for a project dir before a session exists (composer workspace picker).
   'project.branches': z.object({ project: nonEmpty }),
@@ -228,7 +229,7 @@ export const requestBodies = {
 export const responseBodies = {
   ...teamResponses,
   'session.askUser': userAnswer,
-  'daemon.status': z.object({ version: nonEmpty, uptimeMs: cursorSchema, liveWorkers: cursorSchema, relay: z.enum(['connected', 'disconnected']), lastError: z.nullable(z.string()) }),
+  'daemon.status': z.object({ version: nonEmpty, proto: cursorSchema, uptimeMs: cursorSchema, liveWorkers: cursorSchema, relay: z.enum(['connected', 'disconnected']), lastError: z.nullable(z.string()) }),
   'session.start': z.object({ session: sessionIdSchema }),
   'session.get': detailsSchema,
   'session.copyOut': z.object({ copied: z.array(z.object({ from: nonEmpty, to: nonEmpty })) }),
@@ -374,7 +375,7 @@ export const responseBodies = {
   'agents.list': z.object({ agents: z.array(z.object({ vendor: nonEmpty, transports: z.array(nonEmpty) })) }),
   'devices.list': z.object({ devices: z.array(z.object({ id: nonEmpty, name: nonEmpty, trustedAt: timestampSchema })) }),
   'devices.rename': z.object({ renamed: z.literal(true) }),
-  'devices.revoke': z.object({ revoked: z.literal(true), relaySynced: z.boolean() }),
+  'devices.revoke': z.object({ revoked: z.literal(true), relaySynced: z.boolean() }), ...projectResponses,
   'pair.create': z.object({ code: nonEmpty, expiresAt: timestampSchema, link: nonEmpty }),
   'pair.join': z.object({ device: nonEmpty, token: nonEmpty }),
 } as const;
