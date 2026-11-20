@@ -1,5 +1,6 @@
 name = "ormicode-web"
 compatibility_date = "2025-11-17"
+routes = [{ pattern = "app.ormi.codes", custom_domain = true }]
 
 [assets]
 directory = "./dist"

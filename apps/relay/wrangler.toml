@@ -18,3 +18,4 @@ new_sqlite_classes = ["AccountDO"]
 
 [vars]
 # BOOTSTRAP_SECRET is a wrangler secret, not a var: `wrangler secret put BOOTSTRAP_SECRET`
+ALLOWED_ORIGINS = "https://app.ormi.codes,https://ormicode-web.geobasinas-141.workers.dev"

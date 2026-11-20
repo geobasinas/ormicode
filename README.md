@@ -2426,7 +2426,7 @@ Each has `order`, `size`, `collapsed`, `visible`. Unknown ids are kept but ignor
 
 ## Web app
 
-> **Status:** in progress — Vite/Worker static-assets shell, browser pairing, IndexedDB device storage, relay CORS, security headers, multi-tab leader/follower transport, and web About/connection states are implemented. · **Needs:** [Relay](#relay), [Pairing](#pairing)
+> **Status:** in progress — Vite/Worker static-assets shell, browser pairing, IndexedDB device storage, relay CORS, security headers, multi-tab leader/follower transport, and web About/connection states are implemented. Live on Cloudflare at `https://app.ormi.codes` (worker `ormicode-web`, custom domain); relay `ALLOWED_ORIGINS` allows it. · **Needs:** [Relay](#relay), [Pairing](#pairing)
 
 **`apps/web`: a Vite single-page app served as Cloudflare Worker static assets.** Same `client-ui` as desktop; only the platform layer differs. Talks to the hub through the relay — no server API, no secrets in the Worker.
 
