@@ -74,7 +74,7 @@ for (const code of ['rate_limited', 'plan_limit']) test(`urgent messages preserv
   setState(db, 'child', 'paused_rate_limited', code);
   const sent = [], replies = [];
   const ctx = { db, teamApprovals: { waiting: () => false },
-    teamLifecycle: { preserveHandoffs: async (_session, action) => action() },
+    teamLifecycle: { duringUrgentDelivery: async (_session, action) => action() },
     toWorker: async () => assert.fail('a paused worker must not be aborted'),
     drainQueue: async () => assert.fail('a paused child must wait for its retry'),
     record(session, kind, payload) { append(db, session, { kind, payload }); if (kind === 'state') setState(db, session, payload.state); },

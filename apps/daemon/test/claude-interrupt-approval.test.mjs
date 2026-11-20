@@ -20,7 +20,7 @@ test('urgent team delivery clears a real Claude SDK user approval before waking 
   })() });
   const handle = await adapter.start({ cwd: '/repo' }); t.after(() => adapter.dispose(handle));
   const stream = adapter.events(handle)[Symbol.asyncIterator]();
-  const ctx = { db, teamLifecycle: { preserveHandoffs: (_id, fn) => fn() },
+  const ctx = { db, teamLifecycle: { duringUrgentDelivery: (_id, fn) => fn() },
     record(session, kind, payload) {
       [kind, payload] = ctx.teamApprovals.event(session, kind, payload);
       append(db, session, { kind, payload });

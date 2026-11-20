@@ -4,7 +4,7 @@ import { FakeAdapter } from '@ormicode/agent-core';
 import { openStore, createSession, setState } from '@ormicode/session-store';
 import { interrupt } from '../src/team-interrupt.ts';
 
-const teamLifecycle = { preserveHandoffs: async (_session, action) => action() };
+const teamLifecycle = { duringUrgentDelivery: async (_session, action) => action() };
 
 test('cancel succeeds when the adapter has finished but turn_end is still being pumped', async t => {
   const db = openStore(':memory:'); t.after(() => db.close());
