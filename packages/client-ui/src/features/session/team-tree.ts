@@ -1,7 +1,8 @@
 import type { SessionSummary } from './useSessions.ts';
+import { USER_WAIT_STATES } from './waiting.ts';
 
 export interface SessionNode { session: SessionSummary; children: SessionNode[]; tokens: number }
-export const needsUser = (session: SessionSummary) => !session.delegatedApproval && ['awaiting_approval', 'awaiting_input', 'interrupted', 'failed', 'paused_rate_limited'].includes(session.state);
+export const needsUser = (session: SessionSummary) => !session.delegatedApproval && USER_WAIT_STATES.has(session.state);
 const rank = (s: SessionSummary) => needsUser(s) ? 0 : ['starting', 'running', 'retrying'].includes(s.state) ? 1 : 2;
 
 export function sessionForest(sessions: SessionSummary[], query = ''): SessionNode[] {

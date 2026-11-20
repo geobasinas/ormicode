@@ -168,7 +168,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
       }
       case 'session.digest': {
         const since = Number(body.since); const computedAt = Date.now();
-        const entries = listSessions(db).map(s => digestOf({ id: s.id, state: s.state, updatedAt: s.updated_at },
+        const entries = listSessions(db).map(s => digestOf({ id: s.id, state: sessionStatus(ctx, s).state, reason: s.reason, delegatedApproval: ctx.teamApprovals.delegatedOnly(s.id), updatedAt: s.updated_at },
           replay(db, s.id).filter(e => e.ts > since).map(e => ({ seq: e.seq, ts: e.ts, kind: e.kind, payload: JSON.parse(e.payload) as Record<string, unknown> })),
           since, computedAt));
         return client.link.reply(id, { since, computedAt, entries: rankDigest(entries) });

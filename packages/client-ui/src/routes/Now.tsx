@@ -2,7 +2,7 @@
  * recent sessions on the left, sessions that need you on the right. */
 import { useSessions, type SessionSummary } from '../features/session/useSessions.ts';
 import { NewSession } from '../features/session/NewSession.tsx';
-import { StateIcon, NEEDS_YOU, whereLine } from '../features/session/state.tsx';
+import { StateIcon, whereLine } from '../features/session/state.tsx';
 import { useDigest, type DigestEntry } from '../features/session/useDigest.ts';
 import { ago, greeting, projectName } from '../lib/format.ts';
 import { needsAttention, attentionReason } from '../features/session/attention.ts';
@@ -44,8 +44,7 @@ function attentionLine(s: SessionSummary, entry?: DigestHighlight): string {
 }
 
 function AttentionRow({ s, n, entry, onOpen }: { s: SessionSummary; n: number; entry?: DigestHighlight; onOpen: (id: string) => void }) {
-  const color = entry?.rank === 'waiting' || (!entry && NEEDS_YOU.has(s.state))
-    ? 'var(--accent-amber)' : entry?.rank === 'failed' ? 'var(--accent-red)' : 'var(--text-secondary)';
+  const color = 'var(--accent-amber)';
   return (
     <button className="hv-row" title={entry?.changed.result} onClick={() => onOpen(s.id)} style={rowBtn}>
       <span style={{

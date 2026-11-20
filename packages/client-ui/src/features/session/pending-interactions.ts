@@ -1,6 +1,7 @@
 type Interaction = { kind: string; body: Record<string, unknown> };
 
 export function pendingInteractions<T extends Interaction>(pending: T[], event: T): T[] {
+  if (event.kind === 'interrupted' && event.body.reason === 'user_abort') return [];
   if (['approval_decision', 'question_answer', 'interaction_expired'].includes(event.kind))
     return pending.filter(p => p.body.request !== event.body.request
       || event.kind === 'interaction_expired' && event.body.answerable === true && p.kind === 'question_request');

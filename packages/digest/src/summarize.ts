@@ -1,7 +1,7 @@
 // Mechanical re-entry digest: every field is pulled straight from journal
 // events since `since` — nothing is claimed that isn't in an event.
 export interface DigestEvent { seq: number; ts: number; kind: string; payload: Record<string, unknown> }
-export interface DigestSession { id: string; state: string; updatedAt: number }
+export interface DigestSession { id: string; state: string; updatedAt: number; reason?: string | null; delegatedApproval?: boolean }
 export type Rank = 'waiting' | 'failed' | 'done' | 'progressed' | 'silent';
 export interface Wants { kind: 'approval' | 'question' | 'rate_limit'; since: number }
 export type DigestEntry =
@@ -18,8 +18,11 @@ export function summarize(s: DigestSession, events: DigestEvent[], since: number
   const paths = new Set<string>(); const calls = new Map<string, string>(); const dropped: string[] = [];
   const open = new Map<string, Wants>();
   let result: string | undefined; let tokens = 0; let lastText: string | undefined;
+  let userAborted = s.reason === 'user_abort';
   for (const e of events) {
     const p = e.payload;
+    if (e.kind === 'turn_start' || e.kind === 'state' && p.reason === 'prompt_dispatch') userAborted = false;
+    if (e.kind === 'interrupted') { userAborted = p.reason === 'user_abort'; if (userAborted) open.clear(); }
     if (e.kind === 'tool_call') {
       calls.set(String(p.callId), String(p.name));
       const input = p.input as Record<string, unknown> | null;
@@ -35,9 +38,12 @@ export function summarize(s: DigestSession, events: DigestEvent[], since: number
     else if (e.kind === 'text' && typeof p.text === 'string') lastText = p.text;
   }
   let wants: Wants | null = [...open.values()].at(-1) ?? null;
+  if (userAborted && s.state === 'interrupted') wants = null;
   if (!wants && s.state === 'paused_rate_limited') wants = { kind: 'rate_limit', since: s.updatedAt };
-  const rank: Exclude<Rank, 'silent'> = wants || s.state === 'awaiting_approval' || s.state === 'awaiting_input' ? 'waiting'
-    : s.state === 'failed' || s.state === 'interrupted' ? 'failed' : s.state === 'done' ? 'done' : 'progressed';
+  const canWait = !['idle', 'interrupted', 'failed', 'done', 'archived', 'paused_rate_limited'].includes(s.state);
+  const userRequest = wants?.kind === 'approval' || wants?.kind === 'question';
+  const rank: Exclude<Rank, 'silent'> = canWait && (userRequest || !s.delegatedApproval && (s.state === 'awaiting_approval' || s.state === 'awaiting_input')) ? 'waiting'
+    : s.state === 'failed' || s.state === 'interrupted' && !userAborted ? 'failed' : s.state === 'done' ? 'done' : 'progressed';
   if (!result && lastText) result = clip(lastText);
   return {
     session: s.id, rank, source: 'mechanical',

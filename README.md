@@ -450,7 +450,7 @@ If a worker loses the supervisor it stops (no unbounded buffering).
 
 States with several causes carry a `reason` (e.g. `interrupted`: `host_restart`, `resume_failed`, `worker_crash`; `evicted`: idle timeout or full pool), and clients show it.
 
-**Transitions:** Define the source state, resulting state, events and errors for every operation in the protocol schemas. Prompting `idle` or `done` starts a turn; prompting `running` is rejected unless explicitly queued or sent as a supported steer. Archiving hides a session without stopping it. If an adapter cannot interrupt, abort returns `agent.unsupported` and the client says the turn may still be running. Define approval, pause, retry, deletion and simultaneous-request transitions before implementing them.
+**Transitions:** Define the source state, resulting state, events and errors for every operation in the protocol schemas. Prompting `idle` or `done` starts a turn; prompting `running` is rejected unless explicitly queued or sent as a supported steer. Archiving hides a session without stopping it. The supervisor stops active worker process trees even when an adapter lacks cooperative interruption; abort without an active turn returns `agent.unsupported`. Define approval, pause, retry, deletion and simultaneous-request transitions before implementing them.
 
 **Turns**
 - `session.prompt` returns once the worker has the input; follow the turn via `turn_start` … `turn_end` events.
@@ -495,6 +495,8 @@ States with several causes carry a `reason` (e.g. `interrupted`: `host_restart`,
 - Editable from any client; carried through handoffs and moves.
 
 **Display:** transcript is full while running, summarized when idle (adjustable per session and globally). Sort: carry-over and things waiting on you first, then most recent. Done sessions fade after a day.
+
+**Waiting / Needs You:** only pending user approvals and questions count. Idle, user-stopped, failed (including expired authentication), and rate-limited sessions do not count as waiting; stopped sessions use a muted stopped indicator and failures keep their failed indicator. Stale digest entries cannot promote these sessions back into Needs You. Programmatic urgent-delivery interruptions use `urgent_delivery`, not `user_abort`, so their preserved user questions remain actionable.
 
 **Ending**
 - `done` when the agent finishes with nothing pending. `archived` when you say so or after an inactivity sweep. Archiving never deletes; retention does.
