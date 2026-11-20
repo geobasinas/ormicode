@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { openStore, createSession, createTeam, getTeam, ownedTeam, closeTeam, activeTeamCount, setSessionTeam, teamChildren,
-  addTeamMessage, getTeamMessage, unreadTeamMessages, markTeamMessagesRead, settingValue } from '../src/index.ts';
+  addTeamMessage, getTeamMessage, unreadTeamMessages, markTeamMessagesRead, settingValue, archiveSession } from '../src/index.ts';
 
 test('team migration, membership, message inbox and lifecycle', () => {
   const db = openStore(':memory:');
@@ -29,5 +29,25 @@ test('team migration, membership, message inbox and lifecycle', () => {
     assert.equal(ownedTeam(db, 'parent'), undefined);
     assert.equal(activeTeamCount(db), 0);
     assert.ok(getTeam(db, 'team').closed_at);
+  } finally { db.close(); }
+});
+
+test('active team limits exclude fully archived teams but retain teams with any live member', () => {
+  const db = openStore(':memory:');
+  try {
+    assert.equal(activeTeamCount(db), 0);
+    for (const id of ['parent', 'child', 'other']) createSession(db, { id, machine: 'local', project: '/repo', vendor: 'fake', transport: 'cli', cwd: '/repo' });
+    createTeam(db, { id: 'team', parent: 'parent', project: '/repo' });
+    assert.equal(activeTeamCount(db), 1);
+    setSessionTeam(db, 'child', 'team');
+    archiveSession(db, 'parent');
+    assert.equal(activeTeamCount(db), 1);
+    archiveSession(db, 'child');
+    assert.equal(activeTeamCount(db), 0);
+    assert.equal(getTeam(db, 'team').closed_at, null);
+    createTeam(db, { id: 'next', parent: 'other', project: '/repo' });
+    assert.equal(activeTeamCount(db), 1);
+    closeTeam(db, 'next');
+    assert.equal(activeTeamCount(db), 0);
   } finally { db.close(); }
 });
