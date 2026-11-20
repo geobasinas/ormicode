@@ -33,10 +33,15 @@ test('CLI adapter forwards approvals with destructive flag and resumes the turn'
   do { item = await stream.next(); } while (item.value.kind !== 'approval_request');
   assert.equal(item.value.destructive, true);
   assert.equal(item.value.rule, 'rm -rf');
+  const request = item.value.request;
+  await assert.rejects(a.approve(handle, 'missing', 'accept'), /Unknown approval request/);
   await a.approve(handle, item.value.request, 'accept');
+  assert.deepEqual((await stream.next()).value, { kind: 'approval_decision', request, option: 'accept' });
+  await assert.rejects(a.approve(handle, request, 'accept'), /Unknown approval request/);
   const kinds = [];
   for (;;) { const next = await stream.next(); kinds.push(next.value.kind); if (next.value.kind === 'turn_end') break; }
   assert.ok(kinds.includes('usage'));
+  assert.equal(kinds.includes('approval_decision'), false);
   await a.dispose(handle);
 });
 
