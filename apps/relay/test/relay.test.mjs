@@ -21,6 +21,7 @@ before(async () => {
     compatibilityDate: '2025-11-17',
     durableObjects: { ACCOUNT: { className: 'AccountDO', useSQLite: true } },
     r2Buckets: ['EVENTS'],
+    bindings: { ALLOWED_ORIGINS: 'https://app.example' },
   });
 });
 after(async () => { await mf?.dispose(); });
@@ -189,4 +190,39 @@ test('browser origins are rejected without an allowlist entry', async () => {
     headers: { upgrade: 'websocket', origin: 'https://evil.example' },
   });
   assert.equal(res.status, 403);
+});
+
+test('join allows an allowlisted browser origin and answers its preflight', async () => {
+  const preflight = await mf.dispatchFetch(url('/join'), {
+    method: 'OPTIONS',
+    headers: { origin: 'https://app.example', 'access-control-request-method': 'POST', 'access-control-request-headers': 'content-type' },
+  });
+  assert.equal(preflight.status, 204);
+  assert.equal(preflight.headers.get('access-control-allow-origin'), 'https://app.example');
+  assert.equal(preflight.headers.get('access-control-allow-methods'), 'POST');
+  assert.equal(preflight.headers.get('access-control-allow-headers'), 'content-type');
+  assert.equal(preflight.headers.get('vary'), 'origin');
+
+  const post = await mf.dispatchFetch(url('/join'), {
+    method: 'POST', headers: { origin: 'https://app.example', 'content-type': 'application/json' },
+    body: JSON.stringify({ code: '000000000000', name: 'browser' }),
+  });
+  assert.equal(post.status, 403);
+  assert.equal(post.headers.get('access-control-allow-origin'), 'https://app.example');
+  assert.equal(post.headers.get('vary'), 'origin');
+});
+
+test('join rejects disallowed origins and remains usable without an origin', async () => {
+  const rejected = await mf.dispatchFetch(url('/join'), {
+    method: 'POST', headers: { origin: 'https://evil.example', 'content-type': 'application/json' },
+    body: JSON.stringify({ code: '000000000000', name: 'browser' }),
+  });
+  assert.equal(rejected.status, 403);
+
+  const native = await mf.dispatchFetch(url('/join'), {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ code: '000000000000', name: 'native' }),
+  });
+  assert.equal(native.status, 403);
+  assert.equal(native.headers.get('access-control-allow-origin'), null);
 });

@@ -22,6 +22,7 @@ const bridge = {
     ipcRenderer.invoke('ormi:pair', args),
   unpair: (): Promise<void> => ipcRenderer.invoke('ormi:unpair'),
   remote: (): RemoteInfo | null => ipcRenderer.sendSync('ormi:remote:get'),
+  linkIsLocal: (): boolean => ipcRenderer.sendSync('ormi:link:local'),
   storageBackend: (): string => ipcRenderer.sendSync('ormi:storageBackend'),
   hubLabel: (): string => ipcRenderer.sendSync('ormi:hubLabel'),
   winMin: () => ipcRenderer.send('ormi:win:min'),

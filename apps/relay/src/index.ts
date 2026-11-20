@@ -11,7 +11,7 @@ export interface Env {
   ACCOUNT: DurableObjectNamespace;
   EVENTS: R2Bucket;
   BOOTSTRAP_SECRET?: string;
-  /** Comma-separated origins allowed to open browser /connect sockets. Unset/empty = no browser clients. */
+  /** Comma-separated origins allowed for browser /connect and /join. */
   ALLOWED_ORIGINS?: string;
 }
 
@@ -56,11 +56,28 @@ export default {
       return stub.fetch(req);
     }
 
-    if (req.method === 'POST' && url.pathname === '/join') {
-      if (limited(ip, 'join', 20)) return tooMany();
-      if (!account) return new Response('account required', { status: 400 });
+    if (url.pathname === '/join') {
+      const origin = req.headers.get('origin');
+      const allowed = (env.ALLOWED_ORIGINS ?? '').split(',').map(o => o.trim()).filter(Boolean);
+      if (origin !== null && !allowed.includes(origin)) return new Response('origin not allowed', { status: 403 });
+      const cors = origin !== null ? {
+        'access-control-allow-origin': origin,
+        'access-control-allow-methods': 'POST',
+        'access-control-allow-headers': 'content-type',
+        vary: 'origin',
+      } : undefined;
+      if (req.method === 'OPTIONS' && origin) return new Response(null, { status: 204, headers: cors });
+      if (req.method !== 'POST') return new Response('method not allowed', { status: 405 });
+      const respond = (response: Response) => {
+        if (!cors) return response;
+        const headers = new Headers(response.headers);
+        for (const [key, value] of Object.entries(cors)) headers.set(key, value);
+        return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+      };
+      if (limited(ip, 'join', 20)) return respond(tooMany());
+      if (!account) return respond(new Response('account required', { status: 400 }));
       const stub = env.ACCOUNT.get(env.ACCOUNT.idFromName(`acct:${account}`));
-      return stub.fetch(req);
+      return respond(await stub.fetch(req));
     }
 
     if (req.method === 'POST' && url.pathname === '/revoke') {
@@ -74,7 +91,7 @@ export default {
       if (req.headers.get('upgrade') !== 'websocket') return new Response('expected websocket', { status: 426 });
       // Browsers send Origin; native clients don't. An Origin must be allowlisted.
       const origin = req.headers.get('origin');
-      if (origin) {
+      if (origin !== null) {
         const allowed = (env.ALLOWED_ORIGINS ?? '').split(',').map(o => o.trim()).filter(Boolean);
         if (!allowed.includes(origin)) return new Response('origin not allowed', { status: 403 });
       }

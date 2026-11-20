@@ -176,6 +176,11 @@ button:disabled, input:disabled, textarea:disabled, select:disabled, [aria-disab
 .ormi-toast-action:hover { background: var(--bg-inset) !important; color: var(--text-active) !important; }
 .ormi-toast-action:focus-visible { outline: 1px solid var(--focus-ring); outline-offset: 1px; }
 .ormi-toast-toaster [data-sonner-toast] { transition: opacity 120ms, height 400ms, box-shadow 200ms; }
+.ormi-toast-toaster { --width: 260px; }
+.ormi-toast-toaster [data-sonner-toast][data-styled=true] { padding: 8px 12px; gap: 8px; min-height: 0; font-size: 12px; border-radius: 8px; background: var(--bg-raised); border: 1px solid var(--line-card); color: var(--text-secondary); box-shadow: 0 4px 14px var(--shadow-color); }
+.ormi-toast-toaster [data-sonner-toast] [data-icon] { width: 14px; height: 14px; margin: 0; color: var(--text-hint); }
+.ormi-toast-toaster [data-sonner-toast] [data-icon] svg { width: 13px; height: 13px; }
+.ormi-toast-toaster [data-sonner-toast][data-type=error] [data-icon] { color: var(--accent-red); }
 
 /* Native controls restyled to match the app (no browser-default checkboxes/selects). */
 .ormi-check { appearance: none; width: 13px; height: 13px; margin: 0; border-radius: 4px; border: 1px solid var(--text-hint); background: transparent; cursor: pointer; display: inline-grid; place-content: center; flex-shrink: 0; }

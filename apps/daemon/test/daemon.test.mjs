@@ -109,6 +109,7 @@ test('daemon.status and unknown methods respond correctly', async () => {
   const { daemon, client } = await boot();
   const status = await client.request('daemon.status', {});
   assert.equal(status.body.relay, 'disconnected');
+  assert.equal(status.body.proto, 1);
   assert.equal(typeof status.body.uptimeMs, 'number');
   const agents = await client.request('agents.list', {});
   assert.deepEqual(agents.body.agents.find(a => a.vendor === 'claude')?.transports, ['sdk', 'cli']);

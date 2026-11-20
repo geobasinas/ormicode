@@ -18,6 +18,7 @@ interface OrmiBridge {
   pair(args: { relay: string; account: string; code: string; name?: string }): Promise<{ device: string }>;
   unpair(): Promise<void>;
   remote(): { relayUrl: string; account: string; device: string; name: string } | null;
+  linkIsLocal(): boolean;
   storageBackend(): string;
   hubLabel(): string;
   winMin(): void;
@@ -69,6 +70,7 @@ export function electronPlatform(): ClientPlatform {
       remote: () => b.remote(),
       pair: args => b.pair(args),
       unpair: () => b.unpair(),
+      linkIsLocal: () => b.linkIsLocal(),
       winMin: () => b.winMin(),
       winMax: () => b.winMax(),
       winClose: () => b.winClose(),

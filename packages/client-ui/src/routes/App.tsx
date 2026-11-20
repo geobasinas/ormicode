@@ -7,7 +7,7 @@ import { PlatformContext } from '../lib/platform.ts';
 import { applyTheme, themeByName } from '../lib/theme.ts';
 import { defaultLayout, applyLayout, validateLayout } from '../lib/layout.ts';
 import type { LayoutDescriptor } from '../lib/layout.ts';
-import { PanelLeft, Minus, Square, X, Search, SquarePen, Settings, GitBranch, FolderOpen, SquareTerminal, NotebookPen, Globe, PenTool, type LucideIcon } from 'lucide-react';
+import { PanelLeft, Minus, Square, X, Search, SquarePen, Settings, FolderPlus, GitBranch, FolderOpen, SquareTerminal, NotebookPen, Globe, PenTool, type LucideIcon } from 'lucide-react';
 import { SessionList } from '../features/session/SessionList.tsx';
 import { useSession } from '../features/session/useSession.ts';
 import { Now } from './Now.tsx';
@@ -21,6 +21,11 @@ import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panel
 import { Toaster } from '../components/ui/sonner.tsx';
 import { WorkspaceSwitcher, type Workspace } from './WorkspaceSwitcher.tsx';
 import { codeWorkspaceRoute } from '../lib/workspace-route.ts';
+import { agoText } from '../lib/format.ts';
+import { Button } from '../components/Button.tsx';
+import { Onboarding } from '../features/pair/Onboarding.tsx';
+import { AddProjectDialog } from '../features/projects/AddProjectDialog.tsx';
+import { useIsMobile } from '../hooks/use-mobile.ts';
 
 const MAX_TABS = 8;
 const drag = { WebkitAppRegion: 'drag' } as const;
@@ -126,7 +131,7 @@ function ActiveHeader({ session, onOpen, onHandoff }: { session: string; onOpen:
   return <SessionHeader session={session} details={details} onOpen={onOpen} onHandoff={onHandoff} />;
 }
 
-export function App({ platform, theme: initialTheme, layout }: { platform: ClientPlatform; theme?: string; layout?: LayoutDescriptor }) {
+export function App({ platform, theme: initialTheme, layout, pairPrefill }: { platform: ClientPlatform; theme?: string; layout?: LayoutDescriptor; pairPrefill?: { account?: string; code?: string } }) {
   const [prefs, setPrefs] = useState<Prefs>(() => loadPrefs(initialTheme));
   const theme = prefs.theme;
   const [storedLayout, setStoredLayout] = useState<LayoutDescriptor>(() => {
@@ -142,9 +147,32 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
   useEffect(() => { if (route !== 'design' && route !== 'settings') lastCodeRoute.current = route; }, [route]);
   const [toastBottomOffset, setToastBottomOffset] = useState(16);
   const [state, setState] = useState<string>('connecting');
+  const [onboarding, setOnboarding] = useState(false);
+  const [onboardingSkipped, setOnboardingSkipped] = useState(false);
+  const [onlineOnce, setOnlineOnce] = useState(false);
+  const [booted, setBooted] = useState(false);
+  const mobile = useIsMobile();
+  useEffect(() => {
+    if (state === 'connecting') return;
+    setBooted(true);
+    if (state === 'online') {
+      setOnlineOnce(true);
+      setOnboarding(false);
+      return;
+    }
+    if (platform.web) {
+      if (state === 'unpaired') setOnboarding(true);
+      return;
+    }
+    if (platform.desktop && !onlineOnce && !onboardingSkipped
+      && (state === 'unpaired' || (state === 'offline' && !platform.desktop.remote())))
+      setOnboarding(true);
+  }, [platform, state, onlineOnce, onboardingSkipped]);
+  const [, setClock] = useState(0);
   const [query, setQuery] = useState('');
   const [rail, setRail] = useState<RailPane>(() => storedLayout.regions.rightRail?.collapsed === false ? 'files' : 'none');
   const [handoffOpen, setHandoffOpen] = useState(false);
+  const [addProjectOpen, setAddProjectOpen] = useState(false);
   useLayoutEffect(() => {
     if (PAGES[route]) {
       setToastBottomOffset(16);
@@ -219,8 +247,13 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
   }, [searchRef, route]);
   useEffect(() => {
     platform.transport.onState = setState;
-    platform.transport.onState?.(state);
+    if (platform.kind === 'desktop') platform.transport.onState?.(state);
   }, [platform]);
+  useEffect(() => {
+    if (!platform.web || state !== 'offline') return;
+    const timer = window.setInterval(() => setClock(value => value + 1), 30_000);
+    return () => window.clearInterval(timer);
+  }, [platform, state]);
 
   const sidebar = resolved.regions.sidebar;
   const codeSidebarOpen = codeSidebarOverride ?? (sidebar?.visible !== false && sidebar?.collapsed !== true);
@@ -253,14 +286,32 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
     return next;
   });
 
+  if (!booted) return <div style={{ height: '100vh', background: 'var(--bg-window)' }} />;
+
   return (
     <PlatformContext.Provider value={platform}>
       <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg-window)', color: 'var(--text-label)', fontFamily: 'var(--font-ui)', fontSize: 14, borderRadius: 14, overflow: 'hidden' }}>
         <Titlebar platform={platform} workspace={inDesign ? 'design' : 'code'} onWorkspaceChange={workspace => workspace === 'design' ? open('design') : setRoute(codeWorkspaceRoute(lastCodeRoute.current, tabs))}
           sidebarOpen={inDesign ? designSidebarOpen : codeSidebarOpen} onSidebarToggle={() => inDesign ? setDesignSidebarOpen(value => !value) : setCodeSidebarOverride(!codeSidebarOpen)} />
+        {platform.web && !onboarding && state === 'offline' ? (
+          <div role="status" style={{ padding: '8px 14px', borderBottom: '1px solid var(--line-card)', background: 'var(--bg-card)', color: 'var(--text-active)', fontSize: 12 }}>
+            Relay unreachable · {platform.web.lastOnline() ? `last online ${agoText(platform.web.lastOnline()!)}` : 'never connected'}
+          </div>
+        ) : null}
+        {platform.web && state === 'protocol-old-client' ? (
+          <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 14px', borderBottom: '1px solid var(--line-card)', background: 'var(--bg-card)', color: 'var(--text-active)', fontSize: 12 }}>
+            <span>This page is older than your hub — reload</span>
+            <Button onClick={() => window.location.reload()}>Reload</Button>
+          </div>
+        ) : null}
+        {platform.web && state === 'protocol-old-hub' ? (
+          <div role="alert" style={{ padding: '8px 14px', borderBottom: '1px solid var(--line-card)', background: 'var(--bg-card)', color: 'var(--text-active)', fontSize: 12 }}>
+            Your hub runs an older protocol — upgrade the hub
+          </div>
+        ) : null}
         {inDesign ? <DesignPage initialSession={designSession} onSessionChange={setDesignSession} onOpen={open} sidebarOpen={designSidebarOpen} onShowSidebar={() => setDesignSidebarOpen(true)} connection={state} /> : <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
         <Group id="ormi.shell" orientation="horizontal" defaultLayout={shellLayout.defaultLayout} onLayoutChanged={onShellLayoutChanged} style={{ flex: 1, minWidth: 0 }}>
-          {codeSidebarOpen ? <>
+          {codeSidebarOpen && !(onboarding && mobile) ? <>
             <Panel id="sidebar" defaultSize={sidebar?.size ?? 268} minSize={220} maxSize={420}>
             <aside style={{
               width: '100%', height: '100%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column',
@@ -282,7 +333,7 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
                 <span style={{ fontSize: 10, color: 'var(--text-hint)' }}>Ctrl N</span>
               </button>
               <div style={{ height: 4 }} />
-              <div style={{ display: 'flex', padding: '0 2px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '0 2px' }}>
                 <div style={{ flex: 1, display: 'flex', gap: 2, padding: 2, background: 'var(--bg-inset)', borderRadius: 9 }}>
                   {FILTER_TABS.map(f => (
                     <button key={f} onClick={() => setFilter(f)} style={{
@@ -293,10 +344,14 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
                     }}>{f}</button>
                   ))}
                 </div>
+                {!onboarding ? <button className="hv-sub" aria-label="Add project folder" title="Add project folder"
+                  onClick={() => setAddProjectOpen(true)} style={{ width: 30, height: 30, display: 'grid', placeItems: 'center', border: 'none', borderRadius: 8, background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                  <FolderPlus size={15} />
+                </button> : null}
               </div>
               <div style={{ height: 8 }} />
               <div style={{ flex: 1, overflow: 'auto' }}>
-                {filter !== 'Bots' ? <SessionList active={route !== 'now' ? route : undefined} onSelect={open} query={query} /> : (
+                {onboarding ? null : filter !== 'Bots' ? <SessionList active={route !== 'now' ? route : undefined} onSelect={open} query={query} /> : (
                   <div style={{ padding: '0 var(--space-3)', color: 'var(--text-hint)', fontSize: 13 }}>no bots yet</div>
                 )}
               </div>
@@ -313,18 +368,20 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
             <Separator className="ormi-handle" />
           </> : null}
           <Panel id="main" minSize={420}>
-          <main style={{ height: '100%', boxSizing: 'border-box', minWidth: 0, display: 'flex', flexDirection: 'column', padding: '12px 0 18px 12px' }}>
-            <div style={{ display: 'flex', gap: 10, flexShrink: 0, position: 'relative', zIndex: 1, marginBottom: -1 }}>
+          <main style={{ height: '100%', boxSizing: 'border-box', minWidth: 0, display: 'flex', flexDirection: 'column', padding: onboarding ? '12px 12px 18px' : '12px 0 18px 12px' }}>
+            {onboarding ? null : <div style={{ display: 'flex', gap: 10, flexShrink: 0, position: 'relative', zIndex: 1, marginBottom: -1 }}>
               <Tab id="now" active={route === 'now'} onSelect={() => setRoute('now')} />
               {tabs.map((t, i) => <Tab key={t} id={t} n={PAGES[t] ? undefined : tabs.filter(x => !PAGES[x]).indexOf(t) + 1} active={route === t} onSelect={() => setRoute(t)} onClose={() => close(t)} />)}
               <span style={{ flex: 1 }} />
               {!PAGES[route] ? <div style={{ ...noDrag, minWidth: 0, display: 'flex' }}><ActiveHeader key={route} session={route} onOpen={open} onHandoff={() => setHandoffOpen(true)} /></div> : null}
-            </div>
+            </div>}
             <div style={{
-              flex: 1, minHeight: 0, overflow: 'hidden', background: 'var(--bg-main)',
-              borderRadius: route === 'now' ? '0 12px 12px 12px' : 12,
+              flex: 1, minHeight: 0, overflow: onboarding ? 'auto' : 'hidden', background: 'var(--bg-main)',
+              borderRadius: route === 'now' && !onboarding ? '0 12px 12px 12px' : 12,
             }}>
-              {route === 'now' ? <Now onOpen={open} state={state} layout={resolved} />
+              {onboarding ? <Onboarding state={state} pairPrefill={pairPrefill}
+                  onSkip={platform.desktop ? () => { setOnboardingSkipped(true); setOnboarding(false); } : undefined} />
+                : route === 'now' ? <Now onOpen={open} layout={resolved} />
                 : route === 'settings' ? <SettingsView prefs={prefs} onPrefs={setPrefs} connection={state} />
                 : <SessionView key={route} session={route} rail={rail} onRail={setRail} onOpen={open} handoffOpen={handoffOpen} onHandoffChange={setHandoffOpen} layout={resolved}
                   onLayoutChange={descriptor => window.dispatchEvent(new CustomEvent('ormi-layout-change', { detail: descriptor }))} />}
@@ -332,10 +389,11 @@ export function App({ platform, theme: initialTheme, layout }: { platform: Clien
           </main>
           </Panel>
         </Group>
-          <Rail route={route} rail={rail} onRail={setRail} onDesign={() => open('design')} />
+          {onboarding ? null : <Rail route={route} rail={rail} onRail={setRail} onDesign={() => open('design')} />}
         </div>}
       </div>
-      <Toaster className="toaster group ormi-toast-toaster" position="bottom-center" duration={3000} visibleToasts={1} closeButton={false}
+      {!onboarding ? <AddProjectDialog open={addProjectOpen} onClose={() => setAddProjectOpen(false)} /> : null}
+      <Toaster className="toaster group ormi-toast-toaster" position="bottom-right" duration={3000} visibleToasts={1} closeButton={false}
         offset={{ top: 16, right: 16, bottom: toastBottomOffset, left: 16 }}
         mobileOffset={{ top: 16, right: 16, bottom: toastBottomOffset, left: 16 }} />
     </PlatformContext.Provider>
