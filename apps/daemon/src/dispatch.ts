@@ -51,7 +51,6 @@ import type { TeamApprovals } from './team-approvals.ts';
 import type { TeamLifecycle } from './team-lifecycle.ts';
 import { shouldResetUiCheckFollowups } from './ui-check.ts';
 import { machineMethod } from './machine-methods.ts';
-
 /** What a client transport must do: send frames and answer requests. */
 export interface ClientLink {
   send(frame: Frame | Record<string, unknown>): void;
