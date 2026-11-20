@@ -53,7 +53,7 @@ export function useDesignArtwork({ owner, scope, frame, enabled, view, size, onC
       <DropdownMenu>
         <DropdownMenuTrigger asChild><button type="button" className="design-icon-button design-vector-trigger"
           title="Drawing and rich text" aria-label="Drawing and rich text" data-active={Boolean(draw)} disabled={!enabled}>
-          <Shapes size={16} /><ChevronDown size={10} />
+          <Shapes size={16} /><ChevronDown size={13} />
         </button></DropdownMenuTrigger>
         <DropdownMenuContent side="top" align="start">
           {tools.map(([tool, label]) => <DropdownMenuItem key={tool} onSelect={() => setMode({ tool })}>{label}</DropdownMenuItem>)}

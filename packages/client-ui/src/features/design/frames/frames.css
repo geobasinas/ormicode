@@ -86,7 +86,7 @@
 .design-frame-layer-controls { display: inline-flex; gap: 1px; opacity: 0; }
 .design-frame-row:hover .design-frame-layer-controls, .design-frame-row:focus-within .design-frame-layer-controls,
 .design-frame-layer-controls[data-pinned="true"] { opacity: 1; }
-.design-frame-layer-controls .design-icon-button { width: 22px; height: 22px; }
+.design-frame-layer-controls .design-icon-button { width: 24px; height: 24px; }
 .design-frame-row[data-secondary="true"] .design-layer-name { color: var(--design-accent); }
 .design-frame-row[data-hidden="true"] .design-layer-name { opacity: 0.5; }
 .design-frame-row[data-drop="true"] { box-shadow: inset 0 2px 0 var(--design-accent); }

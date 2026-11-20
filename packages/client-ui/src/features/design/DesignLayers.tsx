@@ -151,7 +151,7 @@ export function DesignLayers({ frames, activeFrame, activePath, workingFrame, on
             <button className="design-icon-button design-fold" type="button" aria-label={expanded ? 'Collapse ' + frame.name : 'Expand ' + frame.name}
               aria-expanded={expanded} onClick={() => { if (active || onFrame(frame.id)) setFolded(expanded ? frame.id : ''); }}><Chevron size={13} /></button>
             <button className="design-layer-name" type="button" aria-pressed={active} title={frame.name} onClick={event => { if (onFrameClick?.(event, frame)) return; if (onFrame(frame.id)) setFolded(''); }} onDoubleClick={() => onReveal(frame)}><Device size={14} /><span>{frame.name}</span></button>
-            {workingFrame === frame.id ? <Star className="design-working-star" size={11} aria-label="Working direction" /> : null}
+            {workingFrame === frame.id ? <Star className="design-working-star" size={13} aria-label="Working direction" /> : null}
             {frameControls?.(frame)}
             <button className="design-icon-button design-reveal" type="button" title={'Fit ' + frame.name} aria-label={'Fit ' + frame.name} onClick={() => onReveal(frame)}><Scan size={13} /></button>
           </div>
@@ -160,7 +160,7 @@ export function DesignLayers({ frames, activeFrame, activePath, workingFrame, on
             return <button key={layer.path} type="button" className="design-layer-name design-element-row" aria-pressed={active && layer.path === activePath}
               title={layer.title} onClick={() => onElement(frame.id, layer.path)}
               style={{ paddingLeft: 30 + (query ? 0 : Math.min(layer.depth, 7)) * 11 }}>
-              <Icon size={12} /><span>{layer.label}</span>
+              <Icon size={13} /><span>{layer.label}</span>
             </button>;
           }) : null}
         </div>;

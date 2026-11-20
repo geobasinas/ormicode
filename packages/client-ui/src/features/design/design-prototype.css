@@ -1,5 +1,5 @@
 .design-prototype-field { display: grid; gap: 8px; }
-.design-prototype-field span { color: var(--text-secondary); }
+.design-prototype-field span { color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
 .design-prototype-field select { width: 100%; }
 /* Electron's titlebar hit region still covers its original coordinates under a top-layer dialog. */
 :root:has(.design-prototype-player[open]) .app-titlebar { -webkit-app-region: no-drag !important; }

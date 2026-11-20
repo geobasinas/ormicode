@@ -28,7 +28,7 @@ export function DesignBoardHeader({ boards, name, slug, status, failure, error, 
       <span className="design-header-space" />
       {name && !failure ? <span className="design-status" data-dirty={sourceDirty || saving} role="status"><i />{status}</span> : null}
       {name ? insertFrame : null}
-      <button type="button" className="design-icon-button design-inspector-toggle" title="Toggle inspector" aria-label="Toggle inspector" aria-expanded={inspectorOpen} onClick={() => toggleInspector()}><PanelRight size={17} /></button>
+      <button type="button" className="design-icon-button design-inspector-toggle" title="Toggle inspector" aria-label="Toggle inspector" aria-expanded={inspectorOpen} onClick={() => toggleInspector()}><PanelRight size={16} /></button>
     </header>
     {failure ? <div className="design-alert" role="alert"><span>{status}</span>
       {canReload ? <button className="design-button" type="button" onClick={() => void reloadCurrent()}>Reload changes</button> : null}

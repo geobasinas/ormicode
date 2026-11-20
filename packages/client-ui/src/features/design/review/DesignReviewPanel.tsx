@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { DesignDocument } from '@ormicode/protocol';
 import type { DesignReview } from './useDesignReview.ts';
-import { actorLabel, filterThreads, relativeTime, targetLabel, type CommentTarget, type ReviewComment } from './review-model.ts';
+import { actorLabel, filterThreads, relativeTime, targetLabel, visibleSessionName, type CommentTarget, type ReviewComment } from './review-model.ts';
 import { ReviewComposer } from './ReviewComposer.tsx';
 import './review.css';
 
@@ -19,7 +19,10 @@ export function DesignReviewPanel({ document, review, target, disabled, onThread
   useEffect(() => {
     if (review.thread) root.current?.querySelector<HTMLElement>('[data-thread-active="true"]')?.scrollIntoView({ block: 'nearest' });
   }, [review.thread, review.threadFocus, filter]);
-  const chips = (mentions: string[] = []) => <div className="review-chips">{mentions.map(id => <span key={id}>@{review.sessions.find(item => item.id === id)?.title || id}</span>)}</div>;
+  const chips = (mentions: string[] = []) => <div className="review-chips">{mentions.map(id => {
+    const session = review.sessions.find(item => item.id === id);
+    return <span key={id} title={id}>@{session ? visibleSessionName(session) : 'Session'}</span>;
+  })}</div>;
   return <section className="review-panel" ref={root}>
     <section className="design-properties">
       <div className="review-heading"><h3>New comment</h3>{review.pending ? <button type="button" className="design-button" onClick={() => review.setPending(null)}>Clear target</button> : null}</div>

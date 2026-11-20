@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { activeMentionQuery, actorLabel, annotationAnchor, approvalLabel, extractMentions, filterThreads, mentionToken, targetLabel } from '../src/features/design/review/review-model.ts';
+import { activeMentionQuery, actorLabel, annotationAnchor, approvalLabel, extractMentions, filterThreads, mentionToken, targetLabel, visibleSessionName } from '../src/features/design/review/review-model.ts';
 
 const frames = [{ id: 'f', name: 'Phone', x: 100, y: -50, width: 390, height: 844 }];
 const comment = { id: 'c', frameId: null, session: 'legacy', text: 'Review', resolved: false, createdAt: 0 };
@@ -23,7 +23,10 @@ test('actor labels include legacy sessions and approval and thread filters are e
   assert.equal(actorLabel({ kind: 'agent', session: 's_one' }, sessions), 'Agent · Design Agent');
   assert.equal(actorLabel(undefined, sessions, 's_one'), 'Design Agent');
   assert.equal(actorLabel(undefined, sessions, 'legacy'), 'legacy');
+  assert.equal(actorLabel(undefined, sessions, 's_two'), 'Fake session');
   assert.equal(actorLabel(undefined, sessions), 'Unknown');
+  assert.equal(visibleSessionName({ id: 's_01M7X5HEQBDZWGNEB7EZZV4SD4', title: 's_01M7X5HEQBDZWGNEB7EZZV4SD4', vendor: 'claude' }), 'Claude session');
+  assert.equal(visibleSessionName({ id: 's_named', title: 'Homepage', vendor: 'grok' }), 'Homepage');
   assert.equal(approvalLabel({}), 'Draft');
   assert.equal(approvalLabel({ approval: { status: 'approved' } }), 'Approved');
   assert.equal(approvalLabel({ approval: { status: 'needs_review' } }), 'Needs review');

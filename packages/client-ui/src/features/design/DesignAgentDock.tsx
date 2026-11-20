@@ -16,17 +16,41 @@ const ACTIVE = new Set(['running', 'starting', 'retrying', 'awaiting_approval', 
 const FAILED = new Set(['failed', 'interrupted', 'paused_rate_limited']);
 const OPERATION = /\b(?:frame|board|element|style|page|token|layer)\.[A-Za-z][\w-]*/;
 
-export function sessionOptionLabel(item: { id: string; title?: string | null; branch?: string | null }): string {
-  const name = item.title?.trim() || item.id;
+type SessionChoice = {
+  id: string; title?: string | null; branch?: string | null; vendor?: string | null; transport?: string | null;
+  project?: string; cwd?: string;
+};
+
+/** A real prompt title. A blank title, or a title that is the session id, is not a name. */
+function promptTitle(item: { id: string; title?: string | null }): string {
+  const title = item.title?.trim() ?? '';
+  return title && title !== item.id ? title : '';
+}
+
+/** Vendor, plus a short transport when it distinguishes the adapter. Never the raw id. */
+function fallbackSessionName(item: { vendor?: string | null; transport?: string | null }): string {
+  const vendor = item.vendor?.trim() ?? '';
+  if (!vendor) return 'Session';
+  const name = vendor.charAt(0).toUpperCase() + vendor.slice(1);
+  const transport = item.transport?.trim() ?? '';
+  return transport && transport.length <= 12 && !/\s/.test(transport) ? `${name} · ${transport}` : `${name} session`;
+}
+
+function sessionChoiceName(item: SessionChoice): string {
+  return promptTitle(item) || fallbackSessionName(item);
+}
+
+export function sessionOptionLabel(item: SessionChoice): string {
+  const name = sessionChoiceName(item);
   const branch = item.branch?.trim() ?? '';
   const labeled = branch ? `${name} · ${branch}` : name;
   if (!branch || branch.length > 18 || labeled.length > 46) return name;
   return labeled;
 }
 
-export function sessionOptionTitle(item: { id: string; title?: string | null; project?: string; branch?: string | null; cwd?: string }): string {
-  const name = item.title?.trim() || item.id;
-  return [name, item.project ? projectName(item.project) : '', item.branch?.trim(), item.cwd?.trim()].filter(Boolean).join(' · ');
+export function sessionOptionTitle(item: SessionChoice): string {
+  const name = sessionChoiceName(item);
+  return [name, item.project ? projectName(item.project) : '', item.branch?.trim(), item.cwd?.trim(), item.id].filter(Boolean).join(' · ');
 }
 
 export function designContextLabel(board: DesignAgentContext): string {
@@ -36,7 +60,8 @@ export function designContextLabel(board: DesignAgentContext): string {
 /** `rN · action` plus a short origin. Long prompts are not repeated on either line. */
 export function designEditRow(edit: { revision: number; summary?: string; source?: 'mcp'; originSession?: string }, originTitle?: string | null): { primary: string; secondary: string } {
   const summary = edit.summary?.trim() ?? '';
-  const title = originTitle?.trim() ?? '';
+  const rawTitle = originTitle?.trim() ?? '';
+  const title = rawTitle && rawTitle !== edit.originSession ? rawTitle : '';
   const operation = summary.match(OPERATION)?.[0];
   const repeatsPrompt = !summary || summary === title || (Boolean(title) && title.length > 24 && summary.includes(title)) || summary.length > 48 || summary.split(/\s+/).length > 8;
   const action = operation && (repeatsPrompt || summary === operation || summary.startsWith(`${operation} `) || summary.startsWith(`${operation}:`) || summary.startsWith(`${operation},`))
@@ -83,7 +108,7 @@ export function DesignAgentDock({ details, sessions, online, board, sourceDirty,
     <div className="design-agent-state" role="status" data-failed={FAILED.has(state)}>
       <strong>{online ? LABELS[state] ?? state : 'Offline'}</strong>
       <span className="design-agent-transport">{vendor} · {transport}</span>
-      {location ? <span className="design-agent-branch" title={location}><GitBranch size={12} /><span>{branch || cwd}</span></span> : null}
+      {location ? <span className="design-agent-branch" title={location}><GitBranch size={13} /><span>{branch || cwd}</span></span> : null}
     </div>
     {ACTIVE.has(state) && live.lastPrompt ? <p className="design-agent-copy" title={live.lastPrompt}>{live.lastPrompt}</p> : null}
     {FAILED.has(state) && live.lastError ? <p className="design-agent-error">{live.lastError}</p> : null}

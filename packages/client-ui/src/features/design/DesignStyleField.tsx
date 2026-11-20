@@ -35,7 +35,7 @@ export function DesignStyleField({ property, label, inline, computed, disabled, 
         {rule.token ? <DesignTokenControl label={label} kind={rule.token} inline={inline} computed={computed}
           tokens={tokens} disabled={disabled} canCreate={canCreateToken} onCommit={onCommit} onCreate={onCreateToken} onUpdate={onUpdateToken} /> : null}
         {inline || computed ? <button className="design-property-reset" type="button" aria-label={'Reset ' + label}
-          title="Remove inline override" disabled={disabled || !inline} onClick={() => onCommit('')}><RotateCcw size={11} /></button> : null}
+          title="Remove inline override" disabled={disabled || !inline} onClick={() => onCommit('')}><RotateCcw size={13} /></button> : null}
       </span>
     </div>
     {selectChoices ? <select className="design-input ormi-select" id={id} disabled={disabled} value={inline} onChange={event => onCommit(event.currentTarget.value)}>

@@ -8,7 +8,7 @@
 .design-agent-transport { flex: none; }
 .design-agent-branch {
   display: inline-flex; align-items: center; gap: 4px; min-width: 0; margin-left: auto;
-  color: var(--text-secondary); font: 10px var(--font-mono);
+  color: var(--text-secondary); font: 11px var(--font-mono);
 }
 .design-agent-branch svg { flex: none; }
 .design-agent-branch span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -24,5 +24,5 @@
 .design-agent-edits li { display: grid; gap: 2px; margin-top: 8px; font-size: 11px; }
 .design-agent-edits li:first-child { margin-top: 0; }
 .design-agent-edits li > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.design-agent-edits small, .design-queue-count { color: var(--text-secondary); font-size: 10px; }
+.design-agent-edits small, .design-queue-count { color: var(--text-secondary); font-size: 11px; }
 .design-queue-count { margin: 0 0 8px; }

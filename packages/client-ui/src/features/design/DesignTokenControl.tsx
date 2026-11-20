@@ -31,7 +31,7 @@ export function DesignTokenControl({ kind, label, inline, computed, tokens, disa
   return <Popover open={open} onOpenChange={next => { setOpen(next); setDraft(undefined); }}>
     <PopoverTrigger asChild>
       <button type="button" className="design-property-reset design-inspector-token-trigger" aria-label={label + ' token'}
-        title={bound ? 'Bound to ' + bound : 'Bind a token'} aria-pressed={Boolean(bound)} disabled={disabled}><Braces size={12} /></button>
+        title={bound ? 'Bound to ' + bound : 'Bind a token'} aria-pressed={Boolean(bound)} disabled={disabled}><Braces size={13} /></button>
     </PopoverTrigger>
     <PopoverContent className="design-property-popup design-inspector-token-popup" side="left" align="start" aria-label={label + ' tokens'}>
       {draft ? <form onSubmit={event => {

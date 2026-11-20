@@ -13,10 +13,19 @@ export function annotationAnchor(comment: ReviewComment, frames: DesignFrame[], 
   return { x: frame.x + frame.width, y: frame.y + 24 + index * 32 };
 }
 
+/** Visible session name. A missing title, or a title that is the id, becomes “Vendor session”. */
+export function visibleSessionName(session: { id: string; title?: string | null; vendor?: string | null }): string {
+  const title = session.title?.trim() ?? '';
+  if (title && title !== session.id) return title;
+  const vendor = session.vendor?.trim();
+  return vendor ? `${vendor.charAt(0).toUpperCase()}${vendor.slice(1)} session` : 'Session';
+}
+
 export function actorLabel(actor: DesignActor | undefined, sessions: MentionableSession[], legacySession?: string): string {
   if (actor?.kind === 'user') return 'You';
   const id = actor?.session ?? legacySession;
-  const title = sessions.find(item => item.id === id)?.title || id || 'Unknown';
+  const session = id ? sessions.find(item => item.id === id) : undefined;
+  const title = session ? visibleSessionName(session) : id || 'Unknown';
   return actor?.kind === 'agent' ? `Agent · ${title}` : title;
 }
 

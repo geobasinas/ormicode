@@ -31,7 +31,7 @@ export function DesignPrototypeInspector({ element, frame, frames, pages, disabl
             {targets.map(target => <option value={`overlay:${target.id}`} key={target.id}>{targetName(target)}</option>)}
           </optgroup>
         </select>
-      </label> : <small>Select an element on the canvas to set its click action.</small>}
+      </label> : <p className="design-inspector-hint">Select an element on the canvas to set its click action.</p>}
     </section>
     {frame && !frame.hidden && <section className="design-properties">
       <h3>Flow start</h3>

@@ -140,6 +140,30 @@ test('design sidebar polish', async (t) => {
     assert.equal(sessionOptionLabel({ id: 's', title: 'Nav', branch: 'main' }).includes('ormicode'), false);
     assert.match(sessionOptionTitle({ id: 's', title: 'Fix the nav', project: '/workspace/ormicode', branch: 'main', cwd: '/workspace/ormicode' }), /Fix the nav · ormicode · main/);
     assert.equal(designContextLabel({ slug: 'home', name: 'Marketing', revision: 5, frame: { id: 'desktop', name: 'Desktop 1' } }), 'On Desktop 1 · r5');
+
+    const id = 's_01M7X5HEQBDZWGNEB7EZZV4SD4';
+    const missing = { id, title: null, vendor: 'grok', transport: 'acp', branch: 'main', project: '/workspace/ormicode', cwd: '/workspace/ormicode' };
+    assert.equal(sessionOptionLabel(missing), 'Grok · acp · main');
+    assert.equal(sessionOptionLabel(missing).includes(id), false);
+    assert.match(sessionOptionTitle(missing), /Grok · acp · ormicode · main/);
+    assert.match(sessionOptionTitle(missing), new RegExp(id));
+    assert.equal(sessionOptionTitle(missing).startsWith(id), false);
+
+    const titledAsId = { id, title: ` ${id} `, vendor: 'claude', transport: 'sdk', branch: 'fix/nav' };
+    assert.equal(sessionOptionLabel(titledAsId), 'Claude · sdk · fix/nav');
+    assert.equal(sessionOptionLabel(titledAsId).includes(id), false);
+    assert.match(sessionOptionTitle(titledAsId), new RegExp(`Claude · sdk · fix/nav · ${id}`));
+
+    assert.equal(sessionOptionLabel({ id, vendor: 'grok' }), 'Grok session');
+    assert.equal(sessionOptionLabel({ id, title: '  ', vendor: 'pi', transport: 'cli', branch: 'feature/very-long-branch-name' }), 'Pi · cli');
+    assert.equal(sessionOptionLabel({ id, title: id }), 'Session');
+    assert.equal(designEditRow({ revision: 6, summary: 'frame.update', originSession: id }, id).secondary, 'Session');
+
+    assert.equal(sessionOptionLabel({ id, title: 'Fix the nav', vendor: 'claude', transport: 'sdk', branch: 'main' }), 'Fix the nav · main');
+    const realTitle = sessionOptionTitle({ id, title: 'Fix the nav', vendor: 'claude', transport: 'sdk', project: '/workspace/ormicode', branch: 'main' });
+    assert.match(realTitle, /Fix the nav · ormicode · main/);
+    assert.equal(realTitle.includes('Claude'), false);
+    assert.match(realTitle, new RegExp(id));
   });
 
   await t.test('design composer hides an empty queue and disables send until there is text', async () => {

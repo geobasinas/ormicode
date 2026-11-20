@@ -1,5 +1,5 @@
 import { useState, type RefObject } from 'react';
-import { activeMentionQuery, mentionToken, type MentionableSession } from './review-model.ts';
+import { activeMentionQuery, mentionToken, visibleSessionName, type MentionableSession } from './review-model.ts';
 import './review.css';
 
 export function ReviewComposer({ sessions, label, button, disabled, inputRef, onSubmit }: {
@@ -31,7 +31,7 @@ export function ReviewComposer({ sessions, label, button, disabled, inputRef, on
       }} />
     {matches.length ? <div className="review-mentions" role="listbox" aria-label="Mention sessions">{matches.map((item, i) => <button key={item.id} type="button" role="option" aria-selected={i === index % matches.length}
       onMouseDown={event => event.preventDefault()} onClick={event => insert(item, event.currentTarget.closest('form')?.querySelector('textarea') ?? null)}>
-      <strong>{item.title || item.id}</strong><small>{item.vendor} · {item.id.slice(-6)}</small>
+      <strong>{visibleSessionName(item)}</strong><small title={item.id}>{item.vendor} · {item.id.slice(-6)}</small>
     </button>)}</div> : null}
     <button className="design-button" type="submit" disabled={disabled || !text.trim()}>{button}</button>
   </form>;

@@ -48,6 +48,24 @@ type Props = {
   prototype?: ReactNode;
 };
 
+const TEXT_TAGS = new Set(['span', 'p', 'label', 'li', 'strong', 'em', 'small', 'code', 'pre', 'blockquote', 'figcaption']);
+const FRAME_TAGS = new Set(['section', 'article', 'header', 'footer', 'main', 'aside', 'nav', 'figure']);
+
+/** Primary inspector name. The raw tag stays in the subtitle. */
+function elementHeading(element: { tag: string; text: string; leaf: boolean }): string {
+  const text = element.text.trim();
+  if (text) return text.slice(0, 46);
+  const tag = element.tag;
+  if (/^h[1-6]$/.test(tag)) return 'Heading';
+  if (tag === 'button') return 'Button';
+  if (tag === 'img' || tag === 'picture' || tag === 'svg' || tag === 'canvas') return 'Image';
+  if (tag === 'ul' || tag === 'ol') return 'Group';
+  if (TEXT_TAGS.has(tag)) return 'Text';
+  if (tag === 'div') return element.leaf ? 'Rectangle' : 'Frame';
+  if (FRAME_TAGS.has(tag)) return 'Frame';
+  return tag;
+}
+
 const geometry = [
   { key: 'x', label: 'X', min: -100000, max: 100000 },
   { key: 'y', label: 'Y', min: -100000, max: 100000 },
@@ -69,8 +87,8 @@ export function DesignInspector(props: Props) {
       {tab === 'prototype' ? props.prototype : null}
       {tab === 'inspect' && frame ? <>
         <header className="design-selection">
-          <span className="design-selection-icon">{element ? <MousePointer2 size={17} /> : <PanelsTopLeft size={17} />}</span>
-          <div><strong>{element ? element.text.trim().slice(0, 46) || element.tag : frame.name}</strong><small>{element ? '<' + element.tag + '> · ' + frame.name : (frame.width < 600 ? 'Mobile frame' : 'Frame')}</small></div>
+          <span className="design-selection-icon">{element ? <MousePointer2 size={16} /> : <PanelsTopLeft size={16} />}</span>
+          <div><strong>{element ? elementHeading(element) : frame.name}</strong><small>{element ? '<' + element.tag + '> · ' + frame.name : (frame.width < 600 ? 'Mobile frame' : 'Frame')}</small></div>
         </header>
         {element ? <>
           {element.tag === 'img' ? <DesignImageLayer key={element.id} alt={element.alt ?? ''} disabled={frameLocked}
