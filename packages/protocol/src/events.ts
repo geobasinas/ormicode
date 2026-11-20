@@ -1,12 +1,15 @@
 import * as z from 'zod/mini';
-import { requestIdSchema, timestampSchema } from './schema.ts';
+import { requestIdSchema, sessionIdSchema, timestampSchema } from './schema.ts';
 import { sessionStateSchema } from './methods.ts';
+import { designChangeFields } from './design-activity.ts';
 
 const text = z.string();
 const nonEmpty = z.string().check(z.minLength(1));
 const count = z.number().check(z.int(), z.gte(0));
 const quantity = z.number().check(z.gte(0));
 export const eventBodies = {
+  design_changed: z.looseObject({ kind: z.literal('design_changed'), slug: nonEmpty, ...designChangeFields }),
+  design_mention: z.looseObject({ kind: z.literal('design_mention'), slug: nonEmpty, commentId: nonEmpty, revision: count, from: sessionIdSchema, excerpt: z.string().check(z.maxLength(2000)) }),
   team_pr_result: z.looseObject({ kind: z.literal('team_pr_result'), session: nonEmpty, branch: nonEmpty, head: nonEmpty, number: z.optional(count), url: z.optional(text), error: z.optional(text) }),
   team_approval_request: z.looseObject({ kind: z.literal('team_approval_request'), parent: nonEmpty, request: requestIdSchema, options: z.array(z.looseObject({ id: nonEmpty, label: text })) }),
   team_parent_changed: z.looseObject({ kind: z.literal('team_parent_changed'), parent: nonEmpty, parentless: z.boolean() }),

@@ -51,7 +51,7 @@ export function authorizeMcp(ctx: DispatchCtx, method: string, body: Record<stri
   const child = typeof body.session === 'string' && getSession(ctx.db, body.session)?.parent === self;
   if (['session.prompt', 'session.subscribe', 'session.unsubscribe'].includes(method)) return own || child ? undefined : 'mcp.forbidden';
   if (['session.get', 'session.list'].includes(method)) return undefined;
-  if (['session.askUser', 'session.handoff', 'session.getNotes', 'session.setNotes', 'preview.console'].includes(method) || method.startsWith('browser.'))
+  if (['session.askUser', 'session.handoff', 'session.getNotes', 'session.setNotes', 'preview.console'].includes(method) || method.startsWith('browser.') || method.startsWith('design.'))
     return own ? undefined : 'mcp.forbidden';
   return 'mcp.forbidden';
 }

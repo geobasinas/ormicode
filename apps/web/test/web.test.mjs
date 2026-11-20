@@ -8,6 +8,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
+import { BRIDGE_SCRIPT } from '../../../packages/client-ui/src/features/design/bridge.ts';
+import { checkDesignCsp } from './design-csp-check.mjs';
 import { browseResult, registerProjectTests } from './project-tests.mjs';
 import { findBrowser } from './browser-path.mjs';
 
@@ -52,7 +54,6 @@ class HubSimulator {
     this.browseRequests = [];
     this.failBrowse = false;
   }
-
   async start() {
     this.socket = new WebSocket(`${relayOrigin.replace(/^http/, 'ws')}/connect?account=${account}`);
     this.socket.addEventListener('message', event => this.onMessage(String(event.data)));
@@ -64,7 +65,6 @@ class HubSimulator {
     this.send({ type: 'auth', token: hubToken });
     await authed;
   }
-
   send(message) { this.socket.send(JSON.stringify(message)); }
 
   waitFor(predicate) {
@@ -143,7 +143,6 @@ class HubSimulator {
 
   close() { this.socket?.close(); }
 }
-
 async function waitForWeb() {
   const until = Date.now() + 30_000;
   while (Date.now() < until) {
@@ -246,7 +245,8 @@ test('static assets have exact CSP, cache, and security headers', async t => {
   const page = await browser.newPage();
   const response = await page.goto(webOrigin);
   assert.equal(response.status(), 200);
-  const csp = `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src ${relayOrigin} ${relayOrigin.replace(/^http/, 'ws')}; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; object-src 'none'`;
+  const bridgeHash = createHash('sha256').update(BRIDGE_SCRIPT).digest('base64');
+  const csp = `default-src 'self'; script-src 'self' 'sha256-${bridgeHash}'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src ${relayOrigin} ${relayOrigin.replace(/^http/, 'ws')}; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; object-src 'none'`;
   assert.equal(response.headers()['content-security-policy'], csp);
   assert.equal(await page.locator('meta[http-equiv="Content-Security-Policy" i]').count(), 0);
   assert.equal(response.headers()['x-content-type-options'], 'nosniff');
@@ -257,6 +257,7 @@ test('static assets have exact CSP, cache, and security headers', async t => {
   const assets = await fetch(asset);
   assert.equal(assets.headers.get('content-security-policy'), csp);
   assert.equal(assets.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+  await checkDesignCsp(page);
 });
 
 test('SPA serves /pair and scrubs pairing fragments before browser requests', async t => {

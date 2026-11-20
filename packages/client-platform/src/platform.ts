@@ -18,6 +18,7 @@ export interface ProtocolTransport {
   subscribe(session: string, after?: number): void;
   unsubscribe(session: string): void;
   onEvent: ((frame: Frame) => void) | undefined;
+  subscribeEvents(listener: (frame: Frame) => void): () => void;
   /** 'connecting' | 'online' | 'offline' | 'unpaired' */
   onState: ((state: string) => void) | undefined;
 }

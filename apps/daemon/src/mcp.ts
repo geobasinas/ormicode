@@ -7,6 +7,7 @@
  */
 import { connect } from './socket.ts';
 import { newId } from '@ormicode/protocol';
+import { designMcpTools } from './design-mcp-tools.ts';
 import { TEAM_TOOLS, callTeamTool } from './team-mcp.ts';
 import { waitFor } from './mcp-wait.ts';
 
@@ -40,6 +41,7 @@ export const TOOLS = [
   { name: 'ormi_wait', description: 'Wait for a session this one started to finish its turn (idle/done), need approval, or fail', inputSchema: { type: 'object', required: ['session'], properties: { session: { type: 'string' }, until: { type: 'string', enum: ['idle', 'done', 'approval'] }, timeoutMs: { type: 'number' } } } },
   { name: 'ormi_handoff', description: 'Hand this task to another agent or model. You write the brief.', inputSchema: { type: 'object', required: ['reason'], properties: { vendor: { type: 'string' }, transport: { type: 'string' }, model: { type: 'string' }, effort: { type: 'string' }, mode: { type: 'string', enum: ['in_place', 'rehydrate', 'fork'] }, brief: { type: 'string' }, reason: { type: 'string' } } } },
   { name: 'ormi_notes', description: 'Read this session\'s notes, or write one (title + body)', inputSchema: { type: 'object', properties: { title: { type: 'string' }, body: { type: 'string' } } } },
+  ...designMcpTools(),
   { name: 'ormi_browser_open', description: 'Use this to check your own UI changes on the session dev server. Open only this session preview; inspect it with snapshot before interacting.', inputSchema: { type: 'object', properties: { port: { type: 'number' }, path: { type: 'string' }, url: { type: 'string' }, device: { type: 'string', enum: ['phone', 'tablet', 'desktop'] } } } },
   { name: 'ormi_browser_click', description: 'Click an element in your own session preview. Use snapshot first and prefer role= selectors such as role=button[name=\"Save\"].', inputSchema: { type: 'object', required: ['selector'], properties: { selector: { type: 'string' } } } },
   { name: 'ormi_browser_type', description: 'Type into your own session preview. Use snapshot first and prefer role= selectors.', inputSchema: { type: 'object', required: ['selector', 'text'], properties: { selector: { type: 'string' }, text: { type: 'string' }, submit: { type: 'boolean' } } } },
@@ -156,6 +158,15 @@ export async function serveOrmiMcp(socketPath: string, self: string, token: stri
         }
         return text(JSON.stringify(await req('session.getNotes', { session: self })));
       }
+      case 'ormi_design_list': return text(JSON.stringify(await req('design.list', { session: self })));
+      case 'ormi_design_get': return text(JSON.stringify(await req('design.get', { session: self, slug: String(args.slug) })));
+      case 'ormi_design_create': return text(JSON.stringify(await req('design.create', { session: self, slug: String(args.slug), name: String(args.name) })));
+      case 'ormi_design_update': return text(JSON.stringify(await req('design.update', { session: self, slug: String(args.slug), expectedRevision: args.expectedRevision, operations: args.operations })));
+      case 'ormi_design_frame_versions': return text(JSON.stringify(await req('design.frameVersions', { session: self, slug: String(args.slug), frameId: String(args.frameId) })));
+      case 'ormi_design_mentionable': return text(JSON.stringify(await req('design.mentionable', { session: self })));
+      case 'ormi_design_history': return text(JSON.stringify(await req('design.history', { session: self, slug: String(args.slug) })));
+      case 'ormi_design_activity': return text(JSON.stringify(await req('design.activity', { session: self, slug: String(args.slug) })));
+      case 'ormi_design_restore': return text(JSON.stringify(await req('design.restore', { session: self, slug: String(args.slug), expectedRevision: args.expectedRevision, targetRevision: args.targetRevision })));
       case 'ormi_browser_open':
       case 'ormi_browser_click':
       case 'ormi_browser_type':

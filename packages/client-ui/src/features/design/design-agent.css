@@ -1,0 +1,13 @@
+.design-agent-dock { max-height: 66%; overflow: auto; }
+.design-agent-state { display: flex; justify-content: space-between; gap: 5px; color: var(--text-secondary); font-size: 11px; }
+.design-agent-state[data-failed="true"] strong, .design-agent-error { color: var(--accent-red); }
+.design-agent-copy, .design-agent-error { margin: 5px 0; font-size: 11px; color: var(--text-secondary); overflow-wrap: anywhere; }
+.design-agent-copy { text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
+.design-agent-error { color: var(--accent-red); }
+.design-agent-edits { margin: 8px 0; padding: 6px 0; border-block: 1px solid var(--design-border); }
+.design-agent-edits summary { cursor: pointer; font-size: 11px; }
+.design-agent-edits ol { list-style: none; padding: 0; margin: 0; max-height: 94px; overflow: auto; }
+.design-agent-edits li { display: grid; gap: 1px; margin-top: 5px; font-size: 11px; }
+.design-agent-edits li > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.design-agent-edits small, .design-queue-count { color: var(--text-secondary); font-size: 10px; }
+.design-queue-count { margin-bottom: 4px; }

@@ -1,7 +1,7 @@
 /** Session composer — Enter sends (session.prompt; session.steer while the agent
  * is working), Shift+Enter newline. Images by picker or paste; model, effort and
  * mode chips call session.setModel/setEffort/setMode; Stop calls session.abort. */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Plus, AtSign, Mic, ArrowUp, Square, Cpu, Gauge, X, GripVertical, FileText, History, GitBranch } from 'lucide-react';
 import { usePlatform } from '../../lib/platform.ts';
 import type { SessionDetails } from './useSession.ts';
@@ -13,20 +13,22 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import type { PromptContext } from '@ormicode/protocol';
 import { feedback } from '../../lib/feedback.ts';
 import { useComposerInbox } from '../../lib/composer-inbox.ts';
+import { useComposerHeight } from './useComposerHeight.ts';
+import { useComposerQueue, type QueuedItem } from './useComposerQueue.ts';
 import { branchLabel } from './team-presentation.ts';
 
 const LIVE = new Set(['running', 'starting', 'retrying']);
-type QueuedItem = { id: string; text: string; createdAt: number; images?: number; error?: string };
+const WAITING = new Set(['awaiting_approval', 'awaiting_input', 'paused_rate_limited']);
 const APP_COMMANDS = [
   ['model', 'Choose a model'], ['effort', 'Choose effort'], ['mode', 'Choose mode'], ['handoff', 'Switch agent'],
   ['diff', 'Open Git changes'], ['files', 'Open files'], ['notes', 'Open notes'], ['stop', 'Stop the turn'], ['clear-queue', 'Clear queued prompts'],
 ] as const;
 
-export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefill, onPrefillApplied }: { session: string; details?: SessionDetails; onGit?: () => void; onOpenRail?: (rail: 'files' | 'notes') => void; onHandoff?: () => void; prefill?: string; onPrefillApplied?(): void }) {
+export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefill, onPrefillApplied, compact = false, taskContext }: { session: string; details?: SessionDetails; onGit?: () => void; onOpenRail?: (rail: 'files' | 'notes') => void; onHandoff?: () => void; prefill?: string; onPrefillApplied?(): void; compact?: boolean; taskContext?: string }) {
   const { transport } = usePlatform();
   const area = useRef<HTMLTextAreaElement>(null);
   const { text, setText } = useComposerDraft(session);
-  const [queue, setQueue] = useState<QueuedItem[]>([]);
+  const { queue, refreshQueue } = useComposerQueue(transport, session);
   const [queueExpanded, setQueueExpanded] = useState(false);
   const [editing, setEditing] = useState<string>();
   const [editText, setEditText] = useState('');
@@ -57,14 +59,14 @@ export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefi
   const img = useImages();
   const files = useFiles();
   const modelList = useModels(details?.vendor, details?.transport);
+  const maxPromptHeight = compact ? 132 : 168;
+  const grow = useComposerHeight(area, text, maxPromptHeight, compact);
   useEffect(() => {
     if (prefill === undefined) return;
     setText(prefill);
     const frame = requestAnimationFrame(() => {
       if (!area.current) return;
       area.current.focus();
-      area.current.style.height = 'auto';
-      area.current.style.height = `${Math.min(area.current.scrollHeight, 168)}px`;
     });
     onPrefillApplied?.();
     return () => cancelAnimationFrame(frame);
@@ -104,19 +106,7 @@ export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefi
   const model = modelOverride ?? details?.model ?? 'default';
   const effort = effortOverride ?? details?.effort ?? 'default';
   const live = LIVE.has(details?.state ?? '');
-  const refreshQueue = useCallback(async () => {
-    const res = await transport.request('session.queue.list', { session }).catch(() => undefined);
-    if (res?.type === 'res') setQueue((res.body as { items: QueuedItem[] }).items);
-  }, [transport, session]);
-  useEffect(() => {
-    void refreshQueue();
-    const timer = window.setInterval(() => { void refreshQueue(); }, 1200);
-    return () => window.clearInterval(timer);
-  }, [refreshQueue]);
-  const grow = () => {
-    const el = area.current;
-    if (el) { el.style.height = 'auto'; el.style.height = `${Math.min(el.scrollHeight, 168)}px`; }
-  };
+  const queueInstead = live || Boolean(taskContext && WAITING.has(details?.state ?? ''));
   const call = async (method: string, body: Record<string, unknown>) => {
     setError(undefined);
     const res = await transport.request(method, { session, ...body }).catch((e: Error) => ({ type: 'err' as const, code: 'transport', message: e.message }));
@@ -124,13 +114,14 @@ export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefi
     return res.type !== 'err';
   };
   const send = async (steer = false, override?: { text: string; context: PromptContext[]; images: typeof img.images }) => {
-    const t = (override?.text ?? text).trim(); if (!t) return;
+    const draft = (override?.text ?? text).trim(); if (!draft) return;
+    const t = taskContext ? `${draft}\n\n${taskContext}` : draft;
     const images = override ? override.images.map(({ data, mimeType, name, size }) => ({ data, mimeType, name, size }))
       : img.wire.length ? img.wire : undefined;
     const attachments = files.wire.length ? files.wire : undefined;
     const promptContext = override?.context ?? context;
-    if (live) {
-      if (steer) {
+    if (queueInstead) {
+      if (steer && live) {
         const res = await transport.request('session.steer', { session, text: t, images, attachments, context: promptContext }).catch(() => undefined);
         if (res?.type === 'res') { setText(''); setContext([]); img.clear(); files.clear(); requestAnimationFrame(grow); return; }
         if (res?.type !== 'err' || res.code !== 'agent.unsupported') {
@@ -264,20 +255,21 @@ export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefi
       : slashAction === 'mode' ? modes.map(item => ({ value: item.id, label: item.name }))
         : [];
   return (
-    <div style={{ padding: '0 var(--space-5) var(--space-4)', display: 'flex', justifyContent: 'center' }}>
+    <div style={{ padding: compact ? 0 : '0 var(--space-5) var(--space-4)', display: 'flex', justifyContent: 'center' }}>
       <div onDragOver={event => { event.preventDefault(); setDropping(true); }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDropping(false); }} onDrop={event => { event.preventDefault(); setDropping(false); void addFiles(event.dataTransfer.files); }} style={{
         width: '100%', maxWidth: 680, background: 'var(--bg-card)', border: '1px solid var(--line-card)',
         borderRadius: 12, padding: '10px 12px 8px', boxSizing: 'border-box', minWidth: 0, position: 'relative',
       }} className="ormi-composer">
         {img.picker}
         {files.picker}
+        {taskContext ? <div className="design-queue-count" role="status">{queue.length} queued{queue.some(item => item.error) ? ` · ${queue.filter(item => item.error).length} failed` : ''}</div> : null}
         {queue.length ? <div style={{ marginBottom: 7, display: 'grid', gap: 3 }}>
           {queue.length > 3 && !queueExpanded ? <button onClick={() => setQueueExpanded(true)} style={{ ...iconBtn, fontSize: 11, justifyContent: 'flex-start' }}>{queue.length} queued</button>
             : queue.slice(0, queueExpanded ? undefined : 3).map((item, index) => <div key={item.id} draggable onDragStart={() => setDragging(item.id)} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); if (dragging) void transport.request('session.queue.move', { session, id: dragging, index }).then(refreshQueue); setDragging(undefined); }} style={{ display: 'flex', alignItems: 'center', gap: 5, minHeight: 22, fontSize: 12, color: 'var(--text-secondary)' }}>
               <GripVertical size={12} style={{ color: 'var(--text-hint)', cursor: 'grab' }} />
               {editing === item.id ? <input autoFocus value={editText} onChange={event => setEditText(event.target.value)} onBlur={() => void updateQueued(item)} onKeyDown={event => { if (event.key === 'Enter') void updateQueued(item); if (event.key === 'Escape') setEditing(undefined); }} style={{ flex: 1, minWidth: 0, height: 22, padding: '0 5px', font: 'inherit', background: 'var(--bg-inset)', color: 'var(--text-active)', border: '1px solid var(--line-card)', borderRadius: 4, outline: 'none', boxShadow: 'none' }} />
                 : <span onClick={() => { setEditing(item.id); setEditText(item.text); }} title={item.error ?? 'Click to edit'} style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'text' }}>{item.text}</span>}
-              {item.error ? <span title={item.error} style={{ color: 'var(--accent-red)', fontSize: 9 }}>invalid</span> : null}
+              {item.error ? <span title={item.error} aria-label={item.error} style={{ color: 'var(--accent-red)', fontSize: 9 }}>{taskContext ? 'Failed' : 'invalid'}</span> : null}
               <button disabled={Boolean(item.error)} title={item.error} onClick={() => void sendQueuedNow(item)} style={{ ...iconBtn, fontSize: 10, padding: 2, opacity: item.error ? 0.45 : 1 }}>Send now</button>
               <button aria-label="remove queued prompt" onClick={() => void removeQueued(item.id)} style={{ ...iconBtn, padding: 2 }}><X size={12} /></button>
             </div>)}
@@ -289,7 +281,7 @@ export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefi
           ref={area}
           value={text}
           onChange={e => {
-            const value = e.target.value; setText(value); grow();
+            const value = e.target.value; setText(value);
             setHistoryIndex(-1);
             setContext(current => current.filter(entry => entry.kind === 'element' || entry.kind === 'console'
               || value.includes(`@${entry.path ?? (entry.kind === 'diff' ? 'Diff' : entry.kind === 'terminal' ? 'Terminal' : 'Notes')}`)));
@@ -314,11 +306,11 @@ export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefi
             else if (e.key === 'ArrowDown' && historyIndex >= 0) { e.preventDefault(); cycleHistory(1); }
             else if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(e.metaKey || e.ctrlKey); }
           }}
-          placeholder={live ? error?.startsWith('Steering is unavailable') ? 'Queue a follow-up… (steering unavailable)' : 'Queue a follow-up… (Ctrl+Enter to steer)' : 'Reply…'} aria-label="prompt" rows={1}
+          placeholder={queueInstead ? live && !error?.startsWith('Steering is unavailable') ? 'Queue a follow-up… (Ctrl+Enter to steer)' : 'Queue a follow-up…' : taskContext ? 'Ask about this board…' : compact ? 'Ask your agent…' : 'Reply…'} aria-label="prompt" rows={1}
           style={{
             width: '100%', resize: 'none', font: 'inherit', fontSize: 13, lineHeight: 1.5,
             color: 'var(--text-active)', background: 'transparent', border: 'none', outline: 'none',
-            padding: '4px 0 6px', maxHeight: 168, overflow: 'hidden',
+            padding: '4px 0 6px', maxHeight: maxPromptHeight, overflowY: compact ? 'auto' : 'hidden',
             backgroundImage: slashToken ? 'linear-gradient(var(--bg-inset), var(--bg-inset))' : undefined,
             backgroundSize: slashToken ? `${slashToken.length * 7}px 17px` : undefined,
             backgroundRepeat: 'no-repeat', backgroundPosition: '0 4px',
@@ -331,7 +323,7 @@ export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefi
           <button className="ormi-narrow-hide" style={iconBtn} title="Prompt history (Ctrl+R)" onClick={openHistory}><History size={14} /></button>
           <button className="ormi-narrow-hide" style={{ ...iconBtn, color: 'var(--text-hint)', cursor: 'default' }} title="voice (soon)" disabled><Mic size={15} /></button>
           <span style={{ flex: 1, minWidth: 4 }} />
-          {details?.project !== 'scratch' && details?.branch ? (
+          {!compact && details?.project !== 'scratch' && details?.branch ? (
             <button
               className="ormi-narrow-hide hv-sub"
               onClick={onGit}
@@ -347,10 +339,10 @@ export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefi
               {details.worktree ? <span style={{ color: 'var(--text-hint)', fontSize: 9, flexShrink: 0 }}>wt</span> : null}
             </button>
           ) : null}
-          {details?.vendor ? <span className="ormi-narrow-hide" style={{ ...chip, cursor: 'default', flexShrink: 0 }} title="agent · transport">{details.vendor}<span style={{ color: 'var(--text-hint)' }}>{details.transport}</span></span> : null}
-          {modes.length ? <MenuChip title="mode" label="Mode" value={mode ?? modes[0]!.id} choices={modes.map(m => ({ value: m.id, name: m.name }))} onChange={v => void call('session.setMode', { mode: v })} /> : null}
-          {details ? <ModelChip title="model — the vendor's model id" icon={<Cpu size={11} style={{ color: 'var(--text-hint)' }} />} value={model} models={modelList.models} loading={modelList.loading} refresh={modelList.refresh} onChange={v => { setModelOverride(v); if (v !== 'default') void call('session.setModel', { model: v }).then(ok => { if (!ok) setModelOverride(undefined); }); }} /> : null}
-          {details ? <EffortChip title="effort — the vendor's own word" icon={<Gauge size={11} style={{ color: 'var(--text-hint)' }} />} value={effort} model={model} models={modelList.models} onChange={v => { setEffortOverride(v); if (v !== 'default') void call('session.setEffort', { effort: v }).then(ok => { if (!ok) setEffortOverride(undefined); }); }} /> : null}
+          {!compact && details?.vendor ? <span className="ormi-narrow-hide" style={{ ...chip, cursor: 'default', flexShrink: 0 }} title="agent · transport">{details.vendor}<span style={{ color: 'var(--text-hint)' }}>{details.transport}</span></span> : null}
+          {!compact && modes.length ? <MenuChip title="mode" label="Mode" value={mode ?? modes[0]!.id} choices={modes.map(m => ({ value: m.id, name: m.name }))} onChange={v => void call('session.setMode', { mode: v })} /> : null}
+          {!compact && details ? <ModelChip title="model — the vendor's model id" icon={<Cpu size={11} style={{ color: 'var(--text-hint)' }} />} value={model} models={modelList.models} loading={modelList.loading} refresh={modelList.refresh} onChange={v => { setModelOverride(v); if (v !== 'default') void call('session.setModel', { model: v }).then(ok => { if (!ok) setModelOverride(undefined); }); }} /> : null}
+          {!compact && details ? <EffortChip title="effort — the vendor's own word" icon={<Gauge size={11} style={{ color: 'var(--text-hint)' }} />} value={effort} model={model} models={modelList.models} onChange={v => { setEffortOverride(v); if (v !== 'default') void call('session.setEffort', { effort: v }).then(ok => { if (!ok) setEffortOverride(undefined); }); }} /> : null}
           {live && !text.trim() ? (
             <button onClick={() => void call('session.abort', {})} title="stop the turn" aria-label="stop" style={{
               width: 26, height: 26, borderRadius: '50%', border: 'none', cursor: 'pointer', marginLeft: 2, flexShrink: 0,
@@ -358,7 +350,7 @@ export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefi
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             }}><Square size={10} fill="currentColor" /></button>
           ) : (
-            <button onClick={() => void send(false)} title={live ? 'queue follow-up' : 'send'} aria-label="send" style={{
+            <button onClick={() => void send(false)} title={queueInstead ? 'queue follow-up' : 'send'} aria-label={queueInstead && taskContext ? 'Queue follow-up' : 'send'} style={{
               width: 26, height: 26, borderRadius: '50%', border: 'none', cursor: 'pointer', marginLeft: 2, flexShrink: 0,
               background: 'var(--text-active)', color: 'var(--text-onAccent)', opacity: text.trim() ? 1 : 0.5,
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',

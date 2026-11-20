@@ -1,0 +1,62 @@
+.design-prototype-field { display: grid; gap: 8px; }
+.design-prototype-field span { color: var(--text-secondary); }
+.design-prototype-field select { width: 100%; }
+/* Electron's titlebar hit region still covers its original coordinates under a top-layer dialog. */
+:root:has(.design-prototype-player[open]) .app-titlebar { -webkit-app-region: no-drag !important; }
+.design-prototype-player[open] {
+  -webkit-app-region: no-drag;
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: var(--text-active);
+  background: var(--bg-main);
+}
+.design-prototype-toolbar {
+  display: grid;
+  grid-template-columns: 1fr minmax(0, 1fr) 1fr;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--line-card);
+  background: var(--bg-card);
+}
+.design-prototype-location {
+  justify-self: center;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.design-prototype-controls { display: flex; justify-content: flex-end; align-items: center; gap: 4px; }
+.design-prototype-stage, .design-prototype-overlay { position: relative; display: grid; place-items: center; overflow: hidden; }
+.design-prototype-screen {
+  position: relative;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 0 0 1px var(--line-card), 0 18px 64px #0005;
+}
+.design-prototype-screen iframe { display: block; border: 0; transform-origin: top left; }
+.design-prototype-overlay, .design-prototype-scrim { position: absolute; inset: 0; }
+.design-prototype-scrim { width: 100%; border: 0; background: #0008; }
+.design-prototype-error {
+  position: absolute;
+  bottom: 16px;
+  padding: 8px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--line-card);
+  border-radius: 6px;
+}
+@media (max-width: 540px) {
+  .design-prototype-toolbar { grid-template-columns: minmax(0, 1fr) auto; gap: 6px; padding: 8px; }
+  .design-prototype-toolbar > strong { display: none; }
+  .design-prototype-location { justify-self: start; }
+}

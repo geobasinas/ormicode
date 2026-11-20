@@ -32,6 +32,7 @@ import { costMethod } from './cost-methods.ts';
 import { gitMethod, projectBranches, projectFetch } from './git-methods.ts';
 import { projectBranchMethod } from './project-branch-methods.ts';
 import { fileMethod } from './file-methods.ts';
+import { designMethod } from './design-methods.ts';
 import { projectSearchFiles } from './project-search.ts';
 import { queueMethod } from './queue-methods.ts';
 import { composerMethod } from './composer-methods.ts';
@@ -93,7 +94,6 @@ export interface DispatchCtx {
   prices: PriceBook;
   record(session: string, kind: string, payload: Record<string, unknown>): void;
 }
-
 /** Client-facing session.* / daemon.* request dispatch. */
 export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Frame): Promise<void> {
   const { db } = ctx;
@@ -215,8 +215,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         const base = getSessionPorts(db, s.id);
         return client.link.reply(id, {
           id: s.id, title: s.title, ...sessionStatus(ctx, s), parentless: Boolean(s.parentless), project: s.project, vendor: s.vendor,
-          cwd: s.cwd,
-          ...(s.project === 'scratch' ? { scratchFiles: countScratchFiles(s.cwd) } : {}),
+          cwd: s.cwd, ...(s.project === 'scratch' ? { scratchFiles: countScratchFiles(s.cwd) } : {}),
           transport: s.transport, updatedAt: s.updated_at, branch: s.branch, worktree: Boolean(s.worktree),
           ...(base === undefined ? {} : { ports: { base, count: SESSION_PORT_COUNT } }),
           model: s.model, effort: s.effort, mode: s.mode,
@@ -381,6 +380,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         return client.link.reply(id, { revoked: true, relaySynced: relay?.connected() ?? false });
       }
       default:
+        if (method.startsWith('design.')) return designMethod(ctx, client, id, method, body);
         if (method === 'session.handoffEstimate' || method === 'session.handoffBrief')
           return await handoffMethod(ctx, client, id, method, body);
         if (method === 'session.draft.get' || method === 'session.draft.set' || method === 'session.commands' || method === 'prompts.history')

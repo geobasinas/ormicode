@@ -1,4 +1,5 @@
 export const errorCodes = [
+  'design.not_found', 'design.conflict', 'design.invalid', 'design.outside', 'design.too_large', 'design.failed', 'design.forbidden',
   'mcp.unauthorized', 'mcp.forbidden',
   'session.busy', 'session.already_decided', 'session.not_found', 'session.not_running',
   'session.resync_required', 'agent.unauthorized', 'agent.binary_missing', 'agent.rate_limited',

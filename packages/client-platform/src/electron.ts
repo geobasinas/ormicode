@@ -45,12 +45,14 @@ function bridge(): OrmiBridge {
 
 export function electronPlatform(): ClientPlatform {
   const b = bridge();
+  const eventListeners = new Set<(frame: Frame) => void>();
   let stateListener: ProtocolTransport['onState'];
   let state: string | undefined;
   const transport: ProtocolTransport = {
     request: (m, body) => b.request(m, body),
     subscribe: (s, after) => b.subscribe(s, after),
     unsubscribe: s => b.unsubscribe(s),
+    subscribeEvents: listener => { eventListeners.add(listener); return () => { eventListeners.delete(listener); }; },
     onEvent: undefined,
     get onState() { return stateListener; },
     set onState(listener) {
@@ -58,7 +60,10 @@ export function electronPlatform(): ClientPlatform {
       if (listener && state !== undefined) listener(state);
     },
   };
-  b.onEvent(frame => transport.onEvent?.(frame));
+  b.onEvent(frame => {
+    transport.onEvent?.(frame);
+    for (const listener of [...eventListeners]) listener(frame);
+  });
   b.onState(next => { state = next; stateListener?.(next); });
   const tokens: TokenStore = {
     get: () => b.tokenGet(),

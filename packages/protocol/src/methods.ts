@@ -1,10 +1,12 @@
 import * as z from 'zod/mini';
 import { cursorSchema, jsonObjectSchema, requestIdSchema, sessionIdSchema, idSchema, timestampSchema } from './schema.ts';
 import { portBlock, serviceRequests, serviceResponses, browserRequests, browserResponses } from './service-contracts.ts';
+import { promptContextSchema } from './prompt-context-schema.ts';
+import { designRequests, designResponses } from './design.ts';
+import { projectRequests, projectResponses } from './project-methods.ts';
 import { teamRequests, teamResponses, userQuestion, userAnswer } from './team-contracts.ts';
 import { workspaceSchema } from './workspace-schema.ts';
-import { promptContextSchema } from './prompt-context-schema.ts';
-import { projectRequests, projectResponses } from './project-methods.ts';
+
 export type { PromptContext } from './prompt-context-schema.ts';
 export type { PreviewConsoleEntry } from './service-contracts.ts';
 
@@ -101,6 +103,7 @@ const handoffEstimateSchema = z.object({ ...session, to: handoffTargetSchema, mo
 
 // A registered body schema does not expose the operation; the server must implement it separately.
 export const requestBodies = {
+  ...designRequests,
   ...teamRequests,
   'session.askUser': z.object({ ...session, ...userQuestion }),
   'daemon.status': z.object({}),
@@ -228,6 +231,7 @@ export const requestBodies = {
 } as const;
 
 export const responseBodies = {
+  ...designResponses,
   ...teamResponses,
   'session.askUser': userAnswer,
   'daemon.status': z.object({ version: nonEmpty, proto: cursorSchema, uptimeMs: cursorSchema, liveWorkers: cursorSchema, relay: z.enum(['connected', 'disconnected']), lastError: z.nullable(z.string()) }),
@@ -384,7 +388,6 @@ export const responseBodies = {
 export type ImplementedMethod = keyof typeof requestBodies;
 export const methodNameSchema = z.string().check(z.regex(/^[a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)+$/));
 export const genericBodySchema = jsonObjectSchema;
-
 function parseBody(registry: typeof requestBodies | typeof responseBodies, method: string, body: unknown) {
   if (!Object.hasOwn(registry, method)) return { success: false as const, error: 'protocol.unknown_method' as const };
   const result = z.safeParse(registry[method as ImplementedMethod], body);
