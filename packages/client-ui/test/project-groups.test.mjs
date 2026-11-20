@@ -1,11 +1,31 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { groupProjects } from '../src/features/projects/groupProjects.ts';
+import { groupProjects, groupSessionProjects } from '../src/features/projects/groupProjects.ts';
 
 const session = (id, project, updatedAt, state = 'idle') => ({
   id, project, updatedAt, state, title: id, vendor: 'fake',
 });
 const project = (path, name, addedAt) => ({ machine: 'm_local', path, name, addedAt, git: false });
+
+test('project groups retain team hierarchy, child search and empty registered projects', () => {
+  const sessions = [
+    { ...session('parent', '/repo', 1), team: 'team', tokens: 2 },
+    { ...session('child', '/repo', 2), team: 'team', parent: 'parent', tokens: 3 },
+    { ...session('other', '/repo', 3), team: 'team', parent: 'parent', tokens: 5 },
+  ];
+  const projects = [project('/repo', 'Named Project', 1), project('/empty', 'Empty', 2)];
+  const groups = groupSessionProjects(sessions, projects);
+  assert.equal(groups[0].nodes.length, 1);
+  assert.equal(groups[0].nodes[0].tokens, 10);
+  assert.equal(groups[0].nodes[0].children.length, 2);
+  assert.deepEqual(groups[1].nodes, []);
+  const searched = groupSessionProjects(sessions, projects, 'child')[0];
+  assert.equal(searched.nodes[0].session.id, 'parent');
+  assert.deepEqual(searched.nodes[0].children.map(node => node.session.id), ['child']);
+  assert.equal(groupSessionProjects(sessions, projects, 'named')[0].nodes[0].children.length, 2);
+  assert.deepEqual(groupSessionProjects(sessions, projects, 'missing'), []);
+  assert.deepEqual(groupSessionProjects([], []), []);
+});
 
 test('project groups sort populated by recency, empty by added time, and scratch last', () => {
   const groups = groupProjects([

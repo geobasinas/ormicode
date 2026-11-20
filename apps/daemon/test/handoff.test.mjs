@@ -10,12 +10,14 @@ import { getSession, createSession } from '@ormicode/session-store';
 import { append, replay } from '@ormicode/journal';
 import { handoffBrief } from '../src/handoff.ts';
 import { fileURLToPath } from 'node:url';
+import { TestMcpCredentials } from './mcp-fixture.mjs';
 
 const boot = async () => {
   const dir = mkdtempSync(join(tmpdir(), 'ormi-handoff-test-'));
-  const daemon = await startDaemon({ socketPath: '127.0.0.1:0', storePath: join(dir, 'store.db') });
+  const credentials = new TestMcpCredentials();
+  const daemon = await startDaemon({ socketPath: '127.0.0.1:0', storePath: join(dir, 'store.db'), mcpCredentials: credentials });
   const client = await connect(daemon.socketPath);
-  return { dir, daemon, client };
+  return { dir, daemon, client, credentials };
 };
 const projectDir = mkdtempSync(join(tmpdir(), 'ormi-handoff-project-'));
 const otherProjectDir = mkdtempSync(join(tmpdir(), 'ormi-handoff-other-project-'));
@@ -145,7 +147,7 @@ test('at most one handoff per turn — a running session gets exactly one', asyn
 });
 
 test('unknown-price handoffs require user confirmation and agent approval', async () => {
-  const { daemon, client } = await boot();
+  const { daemon, client, credentials } = await boot();
   const session = (await startFake(client)).body.session;
   const gated = await client.request('session.handoff', { session, to: { vendor: 'fake' }, mode: 'rehydrate' });
   assert.equal(gated.type, 'err');
@@ -153,7 +155,7 @@ test('unknown-price handoffs require user confirmation and agent approval', asyn
   assert.match(gated.message, /confirmRequired/);
   const pending = client.request('session.handoff', {
     session, to: { vendor: 'fake' }, mode: 'rehydrate', reason: 'needs another agent', agentApproval: true,
-  });
+  }, 30_000, credentials.proof(session));
   const deadline = Date.now() + 5000;
   let request;
   while (!request && Date.now() < deadline) {
@@ -168,6 +170,60 @@ test('unknown-price handoffs require user confirmation and agent approval', asyn
   assert.equal(declined.type, 'err');
   assert.equal(declined.code, 'handoff.declined');
   await daemon.close();
+});
+
+test('ordinary user-routed handoffs expire when aborted and cannot be approved later', async t => {
+  const { daemon, client, credentials } = await boot();
+  t.after(async () => { client.close(); await daemon.close(); });
+  const previousScript = process.env.ORMICODE_FAKE_SCRIPT;
+  let session;
+  try {
+    process.env.ORMICODE_FAKE_SCRIPT = 'approval';
+    session = (await startFake(client)).body.session;
+  } finally {
+    if (previousScript === undefined) delete process.env.ORMICODE_FAKE_SCRIPT;
+    else process.env.ORMICODE_FAKE_SCRIPT = previousScript;
+  }
+  await client.request('session.prompt', { session, text: 'hold for approval' });
+  const pending = client.request('session.handoff', { session, to: { vendor: 'fake' }, mode: 'rehydrate', agentApproval: true }, 30_000, credentials.proof(session));
+  const deadline = Date.now() + 5000;
+  let request;
+  while (!request && Date.now() < deadline) {
+    const event = replay(daemon.db, session).find(e => e.kind === 'approval_request' && JSON.parse(e.payload).approvalKind === 'handoff');
+    if (event) request = JSON.parse(event.payload).request;
+    else await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  assert.ok(request);
+  const aborted = await client.request('session.abort', { session });
+  assert.equal(aborted.type, 'res', JSON.stringify(aborted));
+  assert.equal((await pending).code, 'handoff.declined');
+  assert.equal(replay(daemon.db, session).filter(e => e.kind === 'interaction_expired').length, 1);
+  assert.equal((await client.request('session.decide', { session, request, option: 'approve' })).type, 'err');
+  assert.equal(daemon.db.prepare('SELECT COUNT(*) AS n FROM sessions WHERE parent = ?').get(session).n, 0);
+});
+
+for (const vendor of ['fake', 'claude']) test(`${vendor} abort errors leave a pending handoff answerable and do not mark interruption`, async t => {
+  const { daemon, client, credentials } = await boot();
+  t.after(async () => { client.close(); await daemon.close(); });
+  const started = await client.request('session.start', { machine: newId('m'), project: projectDir, vendor, transport: 'cli', model: 'test', effort: 'low', mode: 'default', workspace: { kind: 'current' } });
+  assert.equal(started.type, 'res', JSON.stringify(started));
+  const session = started.body.session;
+  const pending = client.request('session.handoff', { session, to: { vendor: 'fake' }, mode: 'rehydrate', agentApproval: true }, 30_000, credentials.proof(session));
+  let request;
+  const deadline = Date.now() + 5000;
+  while (!request && Date.now() < deadline) {
+    const event = replay(daemon.db, session).find(e => e.kind === 'approval_request');
+    if (event) request = JSON.parse(event.payload).request;
+    else await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  assert.ok(request);
+  const aborted = await client.request('session.abort', { session });
+  assert.equal(aborted.type, 'err');
+  assert.equal(aborted.code, 'agent.unsupported');
+  assert.equal(getSession(daemon.db, session).state, 'awaiting_approval');
+  assert.equal(replay(daemon.db, session).some(e => e.kind === 'interaction_expired' || e.kind === 'interrupted'), false);
+  assert.equal((await client.request('session.decide', { session, request, option: 'deny' })).body.decided, true);
+  assert.equal((await pending).code, 'handoff.declined');
 });
 
 test('rehydrate rolls back when a fake child never becomes ready', async () => {
@@ -203,11 +259,11 @@ test('rehydrate rolls back when a fake child never becomes ready', async () => {
 });
 
 test('the ormi MCP server answers initialize, tools/list and ormi_notes over stdio', async () => {
-  const { daemon, client } = await boot();
+  const { daemon, client, credentials } = await boot();
   const session = (await startFake(client)).body.session;
   const serve = fileURLToPath(new URL('../src/mcp-serve.ts', import.meta.url));
   const proc = spawn(process.execPath, [serve], {
-    env: { ...process.env, ORMICODE_SOCKET: daemon.socketPath, ORMI_SESSION: session },
+    env: { ...process.env, ORMICODE_SOCKET: daemon.socketPath, ORMI_SESSION: session, ORMI_MCP_TOKEN: credentials.proof(session).token },
     stdio: ['pipe', 'pipe', 'inherit'],
   });
   try {

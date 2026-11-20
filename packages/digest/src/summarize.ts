@@ -30,7 +30,7 @@ export function summarize(s: DigestSession, events: DigestEvent[], since: number
       if (typeof p.output === 'string') result = clip(`${name}: ${p.output}`);
     } else if (e.kind === 'approval_request') open.set(String(p.request), { kind: 'approval', since: e.ts });
     else if (e.kind === 'question_request') open.set(String(p.request), { kind: 'question', since: e.ts });
-    else if (e.kind === 'approval_decision' || e.kind === 'question_answer' || e.kind === 'interaction_expired') open.delete(String(p.request));
+    else if (e.kind === 'approval_decision' || e.kind === 'question_answer' || e.kind === 'interaction_expired' && !(p.answerable === true && open.get(String(p.request))?.kind === 'question')) open.delete(String(p.request));
     else if (e.kind === 'usage') tokens += Number(p.input ?? 0) + Number(p.output ?? 0);
     else if (e.kind === 'text' && typeof p.text === 'string') lastText = p.text;
   }

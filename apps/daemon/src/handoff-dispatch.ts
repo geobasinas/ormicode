@@ -9,24 +9,52 @@ import type { Client, DispatchCtx } from './dispatch.ts';
 import { allocateSessionPorts } from './session-ports.ts';
 import { sessionEnvironment } from './session-env.ts';
 import { runSessionHook } from './workspace-hooks.ts';
+import { restoreHandoffState } from './handoff-state.ts';
+import { handoffTargetError, reserveHandoff } from './handoff-transition.ts';
+import { transferHandoffPrompts, validateHandoffPrompts } from './handoff-prompts.ts';
+import { expireHandoffQuestions } from './handoff-questions.ts';
 
-const pendingApprovals = new Map<string, { session: string; resolve(approved: boolean): void }>();
+const pendingApprovals = new Map<string, { ctx: DispatchCtx; session: string; expire(reason: string): void; resolve(approved: boolean): void }>();
+
+export function expireHandoffApprovals(ctx: DispatchCtx, session?: string, reason = 'session_unavailable'): boolean {
+  let expired = false;
+  for (const pending of pendingApprovals.values())
+    if (pending.ctx === ctx && (session === undefined || pending.session === session)) { pending.expire(reason); expired = true; }
+  return expired;
+}
 
 export function resolveHandoffApproval(ctx: DispatchCtx, session: string, request: string, option: string): boolean {
   const pending = pendingApprovals.get(request);
-  if (pending?.session !== session) return false;
+  if (pending?.ctx !== ctx || pending.session !== session) return false;
   pendingApprovals.delete(request);
   const approved = option === 'approve';
   pending.resolve(approved);
-  ctx.record(session, 'approval_decision', { request, option: approved ? 'approve' : 'deny' });
+  ctx.record(session, 'approval_decision', { request, option: approved ? 'approve' : 'deny', approvalKind: 'handoff' });
+  restoreHandoffState(ctx, session);
+  if (!approved) void ctx.drainQueue(session).catch(() => undefined);
   return true;
 }
 
 export async function handoffRequest(ctx: DispatchCtx, client: Client, id: string, body: Record<string, unknown>): Promise<void> {
   const session = String(body.session);
+  let release: (() => void) | undefined;
+  try { await runHandoff(ctx, client, id, body, () => { release ??= reserveHandoff(ctx.db, session); }); }
+  finally {
+    if (release) {
+      release();
+      restoreHandoffState(ctx, session);
+      await ctx.drainQueue(session).catch(() => undefined);
+    }
+  }
+}
+
+async function runHandoff(ctx: DispatchCtx, client: Client, id: string, body: Record<string, unknown>, reserve: () => void): Promise<void> {
+  const session = String(body.session);
   const db = ctx.db;
   const s = getSession(db, session);
   if (!s) return client.link.replyError(id, 'session.not_found', session);
+  const unavailable = handoffTargetError(db, session);
+  if (unavailable) return client.link.replyError(id, 'session.busy', unavailable);
   const to = body.to as { vendor?: string; transport?: string; model?: string; effort?: string; branch?: string };
   const mode = String(body.mode);
   const reason = typeof body.reason === 'string' ? body.reason : undefined;
@@ -51,13 +79,18 @@ export async function handoffRequest(ctx: DispatchCtx, client: Client, id: strin
       return client.link.replyError(id, 'handoff.confirm_required', JSON.stringify(estimate));
     const request = newId('req');
     const approved = await new Promise<boolean>(resolve => {
-      const timer = setTimeout(() => {
+      const expire = (reason: string) => {
         pendingApprovals.delete(request);
+        clearTimeout(timer);
+        ctx.record(session, 'interaction_expired', { request, approvalKind: 'handoff', reason });
+        restoreHandoffState(ctx, session, { cancelled: reason === 'cancelled' });
+        if (reason === 'timeout') void ctx.drainQueue(session).catch(() => undefined);
         resolve(false);
-      }, 10 * 60_000).unref();
+      };
+      const timer = setTimeout(() => expire('timeout'), 10 * 60_000).unref();
       pendingApprovals.set(request, {
-        session,
-        resolve: value => { clearTimeout(timer); resolve(value); },
+        ctx, session, expire,
+        resolve: value => { clearTimeout(timer); if (value) reserve(); resolve(value); },
       });
       ctx.record(session, 'approval_request', {
         request, approvalKind: 'handoff', target: to, mode, reason: reason ?? '', estimate,
@@ -66,6 +99,8 @@ export async function handoffRequest(ctx: DispatchCtx, client: Client, id: strin
     });
     if (!approved) return client.link.replyError(id, 'handoff.declined', 'The handoff was declined or expired');
   }
+  reserve();
+  const fail = (code: string, detail: string) => client.link.replyError(id, code, detail);
   if (mode === 'in_place') {
     for (const [kind, value] of [['model', to.model], ['effort', to.effort]] as const) {
       if (!value) continue;
@@ -78,7 +113,7 @@ export async function handoffRequest(ctx: DispatchCtx, client: Client, id: strin
   const child = newId('s');
   let ports: { base: number; count: 10 };
   try { ports = await allocateSessionPorts(db, child); }
-  catch (error) { return client.link.replyError(id, 'session.ports_unavailable', String(error)); }
+  catch (error) { return fail('session.ports_unavailable', String(error)); }
   let resolved = { cwd: s.cwd, worktree: s.worktree ?? undefined, branch: s.branch ?? undefined, baseCommit: s.base_commit ?? undefined };
   if (mode === 'fork') {
     const name = to.branch ?? `handoff-${child.slice(-8)}`;
@@ -90,11 +125,11 @@ export async function handoffRequest(ctx: DispatchCtx, client: Client, id: strin
       );
     } catch (error) {
       releaseSessionPorts(db, child);
-      return client.link.replyError(id, 'workspace.failed', String(error));
+      return fail('workspace.failed', String(error));
     }
     if ('err' in r) {
       releaseSessionPorts(db, child);
-      return client.link.replyError(id, r.err, r.detail ?? r.err);
+      return fail(r.err, r.detail ?? r.err);
     }
     resolved = { cwd: r.cwd, worktree: r.worktree, branch: r.branch, baseCommit: r.baseCommit };
   }
@@ -107,12 +142,12 @@ export async function handoffRequest(ctx: DispatchCtx, client: Client, id: strin
     ...(to.effort ?? s.effort ? { effort: String(to.effort ?? s.effort) } : {}),
     ...(s.mode ? { mode: s.mode } : {}), title: s.title ?? undefined, parent: s.id,
   });
-  const originalState = s.state;
   const readyMs = Number(process.env.ORMICODE_HANDOFF_READY_MS ?? 60_000);
   let parentStopped = false;
   try {
     ctx.spawnWorker(child);
     await ctx.ensureWorker(child, Number.isFinite(readyMs) && readyMs > 0 ? readyMs : 60_000);
+    validateHandoffPrompts(ctx, session, child);
     await ctx.stopWorker(session);
     parentStopped = true;
     setState(db, session, 'done');
@@ -121,9 +156,13 @@ export async function handoffRequest(ctx: DispatchCtx, client: Client, id: strin
     if (lease.conflict) throw new Error(`workspace held by ${lease.conflict}`);
     const sent = await ctx.sendPrompt(child, `You are taking over this task${reason ? ` — ${reason}` : ''}. Handoff brief:\n${brief}\nContinue where the previous session left off.`, undefined, { journal: false });
     if (!sent) throw new Error('new worker rejected the handoff brief');
+    transferHandoffPrompts(ctx, session, child);
+    ctx.interactions?.unavailable(session, 'handed_off');
+    expireHandoffQuestions(ctx, session);
     ctx.record(session, 'handoff_started', { child, target: targetVendor, mode });
     ctx.record(child, 'handoff_continued', { parent: session, parentTitle: s.title ?? session });
     ctx.handoffsInTurn.set(session, (ctx.handoffsInTurn.get(session) ?? 0) + 1);
+    await ctx.drainQueue(child).catch(() => undefined);
     return client.link.reply(id, { session: child, brief, parent: s.id });
   } catch (error) {
     const reasonText = error instanceof Error ? error.message : String(error);
@@ -139,7 +178,8 @@ export async function handoffRequest(ctx: DispatchCtx, client: Client, id: strin
     db.prepare('DELETE FROM sessions WHERE id = ?').run(child);
     releaseSessionPorts(db, child);
     if (mode === 'fork' && resolved.worktree && resolved.branch) removeWorktree(s.project, resolved.worktree, resolved.branch);
-    db.prepare('UPDATE sessions SET handed_off = 0, state = ?, worker_pid = NULL WHERE id = ?').run(originalState, session);
+    db.prepare('UPDATE sessions SET handed_off = 0, worker_pid = NULL WHERE id = ?').run(session);
+    if (parentStopped) ctx.record(session, 'turn_end', {});
     let leaseMessage = reasonText;
     if (mode !== 'fork' && !db.prepare('SELECT 1 FROM leases WHERE path = ? AND session = ?').get(s.cwd, session)) {
       const lease = acquireWorkspace(db, s.cwd, session, s.machine);
@@ -150,6 +190,6 @@ export async function handoffRequest(ctx: DispatchCtx, client: Client, id: strin
       await ctx.ensureWorker(session, Number.isFinite(readyMs) && readyMs > 0 ? readyMs : 60_000);
     } catch { /* session remains recoverable */ }
     ctx.record(session, 'handoff_failed', { reason: leaseMessage });
-    return client.link.replyError(id, 'handoff.failed', reasonText);
+    return fail('handoff.failed', reasonText);
   }
 }

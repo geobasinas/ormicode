@@ -177,10 +177,53 @@ test('interrupt denies a pending approval and marks the turn interrupted', async
   assert.equal(approval.kind, 'approval_request');
   await adapter.interrupt(handle);
   assert.deepEqual(decision, { behavior: 'deny', message: 'Turn interrupted', interrupt: true });
+  assert.deepEqual((await stream.next()).value, { kind: 'interaction_expired', request: approval.request, reason: 'cancelled' });
   assert.deepEqual((await stream.next()).value, { kind: 'interrupted', reason: 'user_abort' });
   await assert.rejects(adapter.approve(handle, approval.request, 'allow'), /no longer pending/);
   await assert.rejects(adapter.interrupt(handle), /no active turn/);
   await adapter.dispose(handle);
+});
+
+test('interrupt expires a question exactly once when its SDK signal also aborts', async t => {
+  let decision;
+  const adapter = new ClaudeSdkAdapter({ query: ({ options }) => (async function* () {
+    yield { type: 'system', subtype: 'init', claude_code_version: 'test', session_id: 'native-1' };
+    decision = await options.canUseTool('AskUserQuestion', { questions: [{ question: 'Which?', header: 'Choice', options: [{ label: 'A', description: 'First' }], multiSelect: false }] }, { signal: options.abortController.signal });
+    yield result;
+  })() });
+  const handle = await adapter.start({ cwd: '/repo' }); t.after(() => adapter.dispose(handle));
+  const stream = adapter.events(handle)[Symbol.asyncIterator]();
+  await adapter.prompt(handle, { text: 'test' });
+  let event;
+  do { event = (await stream.next()).value; } while (event.kind !== 'question_request');
+  const request = event.request;
+  await adapter.interrupt(handle);
+  assert.equal(decision.behavior, 'deny');
+  assert.deepEqual((await stream.next()).value, { kind: 'interaction_expired', request, reason: 'cancelled' });
+  assert.equal((await stream.next()).value.kind, 'interrupted');
+  await assert.rejects(adapter.answerQuestion(handle, request, { 'Which?': 'A' }), /no longer pending/);
+  await adapter.dispose(handle);
+  assert.equal((await stream.next()).done, true);
+});
+
+test('an SDK failure expires approvals abandoned by the stream', async t => {
+  let decision;
+  const adapter = new ClaudeSdkAdapter({ query: ({ options }) => (async function* () {
+    yield { type: 'system', subtype: 'init', claude_code_version: 'test', session_id: 'native-1' };
+    decision = options.canUseTool('Bash', {}, { signal: new AbortController().signal });
+    throw new Error('stream failed');
+  })() });
+  const handle = await adapter.start({ cwd: '/repo' }); t.after(() => adapter.dispose(handle));
+  const stream = adapter.events(handle)[Symbol.asyncIterator]();
+  await adapter.prompt(handle, { text: 'test' });
+  let event;
+  do { event = (await stream.next()).value; } while (event.kind !== 'approval_request');
+  const request = event.request;
+  assert.equal((await stream.next()).value.kind, 'interrupted');
+  assert.equal((await stream.next()).value.kind, 'error');
+  assert.deepEqual((await stream.next()).value, { kind: 'interaction_expired', request, reason: 'turn_ended' });
+  assert.equal((await decision).behavior, 'deny');
+  await assert.rejects(adapter.approve(handle, request, 'allow'), /no longer pending/);
 });
 
 test('a thrown SDK error does not report a successful turn', async () => {

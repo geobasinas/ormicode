@@ -36,6 +36,7 @@
     "@ormicode/pixel-diff": "workspace:*",
     "@ormicode/secrets": "workspace:*",
     "@ormicode/session-store": "workspace:*",
+    "@ormicode/team-core": "workspace:*",
     "playwright-core": "1.62.0",
     "pngjs": "7.0.0",
     "yaml": "2.9.1",

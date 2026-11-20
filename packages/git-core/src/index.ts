@@ -12,3 +12,4 @@ export { pullBranch, renameBranch, removeBranch, BranchOperationError } from './
 export { stage, unstage, commit, push, merge, cherryPick, revert, NothingToCommit } from './ops.ts';
 export { stash } from './stash.ts';
 export { prStatus, createPr, mergePr } from './pull-request.ts';
+export { preparePr, publishPr, type PreparedPr } from './pr-publish.ts';

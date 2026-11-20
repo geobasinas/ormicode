@@ -13,6 +13,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import type { PromptContext } from '@ormicode/protocol';
 import { feedback } from '../../lib/feedback.ts';
 import { useComposerInbox } from '../../lib/composer-inbox.ts';
+import { branchLabel } from './team-presentation.ts';
 
 const LIVE = new Set(['running', 'starting', 'retrying']);
 type QueuedItem = { id: string; text: string; createdAt: number; images?: number; error?: string };
@@ -342,7 +343,7 @@ export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefi
               }}
             >
               <GitBranch size={12} style={{ color: 'var(--text-hint)', flexShrink: 0 }} />
-              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{details.branch}</span>
+              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{branchLabel(details)}</span>
               {details.worktree ? <span style={{ color: 'var(--text-hint)', fontSize: 9, flexShrink: 0 }}>wt</span> : null}
             </button>
           ) : null}

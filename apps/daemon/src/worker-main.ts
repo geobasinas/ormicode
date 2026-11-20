@@ -16,6 +16,8 @@ const session = env('ORMICODE_SESSION');
 const vendor = env('ORMICODE_VENDOR');
 const transport = env('ORMICODE_TRANSPORT') || 'cli';
 const cwd = env('ORMICODE_CWD');
+const mcpToken = env('ORMI_MCP_TOKEN');
+delete process.env.ORMI_MCP_TOKEN;
 const link = await connect(env('ORMICODE_SOCKET'));
 
 const send = async (method: string, body: Record<string, unknown>) => {
@@ -123,7 +125,7 @@ try {
       mcpServers: {
         ormi: {
           command: process.execPath, args: [fileURLToPath(new URL('./mcp-serve.ts', import.meta.url))],
-          env: { ORMICODE_SOCKET: env('ORMICODE_SOCKET'), ORMI_SESSION: session },
+          env: { ORMICODE_SOCKET: env('ORMICODE_SOCKET'), ORMI_SESSION: session, ORMI_MCP_TOKEN: mcpToken },
         },
       },
     } : {}),

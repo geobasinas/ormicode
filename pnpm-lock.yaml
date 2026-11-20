@@ -122,6 +122,9 @@ importers:
       '@ormicode/session-store':
         specifier: workspace:*
         version: link:../../packages/session-store
+      '@ormicode/team-core':
+        specifier: workspace:*
+        version: link:../../packages/team-core
       playwright-core:
         specifier: 1.62.0
         version: 1.62.0
@@ -702,6 +705,8 @@ importers:
       '@types/better-sqlite3':
         specifier: ^7.6.13
         version: 7.6.13
+
+  packages/team-core: {}
 
   packages/ui-tokens: {}
 
