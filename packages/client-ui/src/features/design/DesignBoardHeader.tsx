@@ -6,14 +6,14 @@ type Props = {
   boards: { slug: string; name: string }[]; name?: string; slug: string;
   status: string; failure: boolean; error: string; canReload: boolean;
   loading: boolean; saving: boolean; sourceDirty: boolean; inspectorOpen: boolean; createOpen: boolean;
-  newName: string; newSlug: string; insertFrame: ReactNode;
+  newName: string; creating: boolean; insertFrame: ReactNode;
   readBoard(slug: string): void; reloadCurrent(): void; toggleInspector(): void; createBoard(): void;
-  setCreateOpen(value: boolean): void; setError(value: string): void; setNewName(value: string): void; setNewSlug(value: string): void;
+  setCreateOpen(value: boolean): void; setError(value: string): void; setNewName(value: string): void;
 };
 
 export function DesignBoardHeader({ boards, name, slug, status, failure, error, canReload, loading, saving, sourceDirty,
-  inspectorOpen, createOpen, newName, newSlug, insertFrame, readBoard, reloadCurrent, toggleInspector, createBoard,
-  setCreateOpen, setError, setNewName, setNewSlug }: Props) {
+  inspectorOpen, createOpen, newName, creating, insertFrame, readBoard, reloadCurrent, toggleInspector, createBoard,
+  setCreateOpen, setError, setNewName }: Props) {
   return <>
     <header className="design-canvas-header">
       <DropdownMenu>
@@ -36,8 +36,7 @@ export function DesignBoardHeader({ boards, name, slug, status, failure, error, 
     </div> : null}
     {createOpen ? <form className="design-create" onSubmit={event => { event.preventDefault(); void createBoard(); }}>
       <input className="design-input" aria-label="New board name" placeholder="Board name" autoFocus maxLength={120} value={newName} onChange={event => setNewName(event.target.value)} />
-      <input className="design-input" aria-label="New board slug" placeholder="Folder name" maxLength={48} value={newSlug} onChange={event => setNewSlug(event.target.value)} />
-      <button type="submit" className="design-button primary" disabled={loading || saving || !newName.trim()}>Create board</button>
+      <button type="submit" className="design-button primary" disabled={creating || saving || !newName.trim()}>{creating ? 'Creating…' : 'Create board'}</button>
       <button type="button" className="design-icon-button" aria-label="Cancel creation" onClick={() => setCreateOpen(false)}><X size={15} /></button>
     </form> : null}
   </>;

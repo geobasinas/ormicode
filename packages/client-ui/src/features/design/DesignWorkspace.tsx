@@ -34,6 +34,7 @@ import { DesignFrameVersions } from './review/DesignFrameVersions.tsx';
 import type { ReviewComment } from './review/review-model.ts';
 import { useCanvasViewport, useFitOnPageChange } from './useCanvasViewport.ts';
 import { DesignBoardHeader } from './DesignBoardHeader.tsx';
+import { newBoardIdentity } from './create-board.ts';
 import { InsertElementMenu, InsertFrameMenu } from './DesignInsertMenus.tsx';
 import { DesignPrototypeInspector } from './DesignPrototypeInspector.tsx';
 import { DesignPrototypeLauncher } from './DesignPrototypePlayer.tsx';
@@ -59,7 +60,7 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
   const [sourceHtml, setSourceHtml] = useState('');
   const [sourceStyles, setSourceStyles] = useState('');
   const [sourceDirty, setSourceDirty] = useState(false);
-  const [newSlug, setNewSlug] = useState('');
+  const [creating, setCreating] = useState(false); const creatingRef = useRef(false);
   const [newName, setNewName] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -181,20 +182,19 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
   const review = useDesignReview(session, slug, async operations => Boolean(await mutate(operations)));
 
   const createBoard = async () => {
+    if (creatingRef.current || savingRef.current || !newName.trim()) return;
     if (dirtyRef.current) { setError('Save or discard the unsaved HTML before creating another board.'); return; }
-    const token = generation.current;
-    const title = newName.trim();
-    const cleanSlug = newSlug.trim() || title.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48);
-    if (!/^[a-z0-9][a-z0-9-]{0,47}$/.test(cleanSlug) || !title) { setError('Use a lowercase board slug and a non-empty name.'); return; }
-    setLoading(true); setError('');
+    const token = ++generation.current; const { name: title, slug: cleanSlug } = newBoardIdentity(newName, boards);
+    creatingRef.current = true; setCreating(true); setLoading(true); setError('');
     try {
       const response = await transport.request('design.create', { session, slug: cleanSlug, name: title });
       if (token !== generation.current) return;
       if (response.type === 'err') throw new Error(`${response.code}: ${response.message}`);
-      setNewSlug(''); setNewName(''); setCreateOpen(false); setBoards(items => [...items.filter(item => item.slug !== cleanSlug), { slug: cleanSlug, name: title, revision: 1, frames: 0 }].sort((a, b) => a.slug.localeCompare(b.slug)));
-      void readBoard(cleanSlug, true);
+      setNewName(''); setCreateOpen(false); setBoards(items => [...items.filter(item => item.slug !== cleanSlug), { slug: cleanSlug, name: title, revision: 1, frames: 0 }].sort((a, b) => a.slug.localeCompare(b.slug)));
+      fittedSlug.current = ''; slugRef.current = cleanSlug; setSlug(cleanSlug); board.current = null;
+      setSelectedElement(null); setSelectionRequest(undefined); setCurrent(response.body as Result, token);
     } catch (reason) { if (token === generation.current) setError(reason instanceof Error ? reason.message : String(reason)); }
-    finally { if (token === generation.current) setLoading(false); }
+    finally { creatingRef.current = false; setCreating(false); if (token === generation.current) setLoading(false); }
   };
 
   const pages = useDesignPages(document, session + ':' + slug, mutate);
@@ -319,10 +319,10 @@ export function DesignWorkspace({ session, project, workspacePath, sessionError,
     <section className="design-main" aria-label="Board editor">
       <DesignBoardHeader boards={boards} name={document?.name} slug={slug} status={status} failure={failure} error={error} canReload={Boolean(canReload)}
         loading={loading} saving={saving} sourceDirty={sourceDirty} inspectorOpen={inspectorOpen} createOpen={createOpen}
-        newName={newName} newSlug={newSlug} readBoard={readBoard} reloadCurrent={reloadCurrent}
+        newName={newName} creating={creating} readBoard={readBoard} reloadCurrent={reloadCurrent}
         insertFrame={<><DesignPrototypeLauncher key={JSON.stringify([session, slug, pages.active.id])} document={document} page={pages.active} tokenStyles={tokenStyles} disabled={loading || saving || sourceDirty} />{insertFrame}</>}
         toggleInspector={() => setInspectorOpen(shown => !shown)} createBoard={createBoard}
-        setCreateOpen={setCreateOpen} setError={setError} setNewName={setNewName} setNewSlug={setNewSlug} />
+        setCreateOpen={setCreateOpen} setError={setError} setNewName={setNewName} />
       <DesignCanvas canvas={canvas} frames={visibleFrames} selectedFrame={selectedFrame} selectedIds={frameOps.ids} view={view} tool={tool} panning={drag.panning} onTool={next => { artwork.clear(); setTool(next); }}
         drawing={artwork.overlay} drawingTools={artwork.toolbar}
         background={pages.active.background} startFrameId={pages.start?.id} viewportOverlay={<DesignViewportOverlay page={pages.active} view={view} {...canvasSize} preferences={viewport} disabled={!document || saving || sourceDirty} act={pages.act} />}
