@@ -19,23 +19,29 @@ export function summarize(
   model: string | null,
   table: PriceTable,
   pinned?: { price: Price; version: string },
+  pinnedModel?: (model: string) => { price: Price; version: string } | undefined,
 ): CostSummary {
   const sum: CostSummary = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, turns: 0, usd: 0, source: 'none', priceVersion: null, model };
   const price = pinned?.price ?? priceFor(table, model);
-  let reported = false; let estimated = false; let unpinned = false;
+  let reported = false; let estimated = false;
+  const versions = new Set<string>();
   for (const e of events) {
     if (e.kind === 'turn_end') sum.turns++;
     if (e.kind !== 'usage') continue;
     const u = e.payload as Usage;
     const ownModel = u.model && normalizeModel(u.model) !== normalizeModel(model ?? '');
-    const eventPrice = ownModel ? priceFor(table, u.model) : price;
+    const eventPin = ownModel ? pinnedModel?.(u.model!) : pinned;
+    const eventPrice = ownModel ? eventPin?.price ?? priceFor(table, u.model) : price;
     sum.input += u.input ?? 0; sum.output += u.output ?? 0; sum.cacheRead += u.cacheRead ?? 0; sum.cacheWrite += u.cacheWrite ?? 0;
     if (typeof u.costUsd === 'number') { reported = true; if (sum.usd !== null) sum.usd += u.costUsd; }
-    else if (eventPrice) { estimated = true; unpinned ||= !!ownModel; if (sum.usd !== null) sum.usd += costOf(u, eventPrice); }
+    else if (eventPrice) {
+      estimated = true; versions.add(eventPin?.version ?? table.version ?? 'unversioned');
+      if (sum.usd !== null) sum.usd += costOf(u, eventPrice);
+    }
     else sum.usd = null;
   }
   sum.source = estimated ? 'estimate' : reported ? 'reported' : 'none';
   if (sum.source === 'none' && sum.usd === 0) sum.usd = null;
-  if (estimated) sum.priceVersion = (unpinned ? table.version : pinned?.version ?? table.version) ?? null;
+  if (estimated) sum.priceVersion = versions.size > 1 ? 'mixed' : [...versions][0] ?? null;
   return sum;
 }

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { openStore, createSession } from '@ormicode/session-store';
+import { openStore, createSession, getPinnedPrice } from '@ormicode/session-store';
 import { append } from '@ormicode/journal';
 import { fromOpenRouter } from '@ormicode/pricing';
 import { GrokTurnMapper } from '@ormicode/agent-grok-acp';
@@ -35,4 +35,32 @@ test('header and Settings usage price Codex/Claude aliases and journaled Grok AC
   assert.equal(result.total.usd, 4.7); assert.equal(result.total.tokens, 3_000_000); assert.equal(result.total.unpriced, 0);
   assert.equal(result.sessions.length, 3);
  } finally { db.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('reported-model estimates persist across refresh and restart for headers and every totals bucket', async t => {
+ const dir = mkdtempSync(join(tmpdir(), 'reported-price-pin-')); t.after(() => rmSync(dir, { recursive: true, force: true }));
+ const path = join(dir, 'store.db'); let db = openStore(path); t.after(() => db.close());
+ const old = fromOpenRouter({ data: [{ id: 'x-ai/grok-code-fast-1', pricing: { prompt: '0.0000002', completion: '0.0000015' } }] });
+ const refreshed = fromOpenRouter({ data: [{ id: 'x-ai/grok-code-fast-1', pricing: { prompt: '0.0000001', completion: '0.000001' } }] });
+ let table = old;
+ const ctx = { db, prices: { ensure: async () => {}, table: () => table } };
+ let result; const client = { link: { reply: (_id, body) => { result = body; } } };
+ for (const [id, model] of [['default', null], ['different', 'codex-mini-latest']]) {
+  createSession(db, { id, model, machine: 'm', project: 'p', vendor: 'grok', transport: 'acp', cwd: dir });
+  append(db, id, { kind: 'usage', payload: { model: 'grok-code-fast-1', input: 1_000_000 } });
+ }
+ await costMethod(ctx, client, 'first-read', 'cost.totals', {});
+ assert.equal(result.total.usd, 0.4);
+ assert.equal(getPinnedPrice(db, 'default', 'grok-code-fast-1').version, old.version);
+ table = refreshed; db.close(); db = openStore(path); ctx.db = db;
+ for (const session of ['default', 'different']) {
+  await costMethod(ctx, client, 'header', 'session.cost', { session });
+  assert.equal(result.usd, 0.2); assert.equal(result.priceVersion, old.version);
+ }
+ await costMethod(ctx, client, 'settings', 'cost.totals', {});
+ assert.equal(result.total.usd, 0.4);
+ assert.equal(result.projects[0].usd, 0.4); assert.equal(result.days[0].usd, 0.4);
+ assert.deepEqual(result.sessions.map(row => row.usd), [0.2, 0.2]);
+ await costMethod(ctx, client, 'range', 'cost.totals', { since: Date.now() + 1000 });
+ assert.equal(result.total.usd, null); assert.deepEqual(result.sessions, []);
 });
