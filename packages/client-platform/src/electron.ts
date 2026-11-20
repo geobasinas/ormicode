@@ -18,6 +18,7 @@ interface OrmiBridge {
   pair(args: { relay: string; account: string; code: string; name?: string }): Promise<{ device: string }>;
   unpair(): Promise<void>;
   remote(): { relayUrl: string; account: string; device: string; name: string } | null;
+  linkIsLocal(): boolean;
   storageBackend(): string;
   hubLabel(): string;
   winMin(): void;
@@ -44,14 +45,21 @@ function bridge(): OrmiBridge {
 
 export function electronPlatform(): ClientPlatform {
   const b = bridge();
+  let stateListener: ProtocolTransport['onState'];
+  let state: string | undefined;
   const transport: ProtocolTransport = {
     request: (m, body) => b.request(m, body),
     subscribe: (s, after) => b.subscribe(s, after),
     unsubscribe: s => b.unsubscribe(s),
-    onEvent: undefined, onState: undefined,
+    onEvent: undefined,
+    get onState() { return stateListener; },
+    set onState(listener) {
+      stateListener = listener;
+      if (listener && state !== undefined) listener(state);
+    },
   };
   b.onEvent(frame => transport.onEvent?.(frame));
-  b.onState(state => transport.onState?.(state));
+  b.onState(next => { state = next; stateListener?.(next); });
   const tokens: TokenStore = {
     get: () => b.tokenGet(),
     set: t => b.tokenSet(t),
@@ -64,6 +72,7 @@ export function electronPlatform(): ClientPlatform {
       remote: () => b.remote(),
       pair: args => b.pair(args),
       unpair: () => b.unpair(),
+      linkIsLocal: () => b.linkIsLocal(),
       winMin: () => b.winMin(),
       winMax: () => b.winMax(),
       winClose: () => b.winClose(),

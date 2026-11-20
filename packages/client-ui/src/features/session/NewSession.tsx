@@ -11,6 +11,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { AgentChip, GitChip, branchNameIssue, type RepoInfo, type WorkspaceChoice, type WorkspaceMode } from './pickers.tsx';
 import { useModels } from './useModels.ts';
 import { useComposerDraft } from './useComposerDraft.ts';
+import { useProjects } from '../projects/useProjects.ts';
 
 const chip = {
   font: 'inherit', fontSize: 11, fontWeight: 500, color: 'var(--text-title)',
@@ -49,6 +50,7 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
   const [vendor, setVendor] = useState(() => loadPrefs().defaultVendor);
   const [project, setProject] = useState(() => loadPrefs().defaultProject);
   const [projects, setProjects] = useState<string[]>(() => loadPrefs().projects ?? []);
+  const { projects: registeredProjects } = useProjects();
   const [branchPrefix] = useState(() => loadPrefs().worktreeBranchPrefix ?? 'ormi/');
   const [branchName, setBranchName] = useState(() => branchNameFor('', loadPrefs().worktreeBranchPrefix ?? 'ormi/'));
   const branchNameEdited = useRef(false);
@@ -296,7 +298,7 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
         <button style={{ ...iconBtn, color: 'var(--text-hint)', cursor: 'default' }} title="voice (soon)" disabled><Mic size={16} /></button>
         <span style={{ flex: 1 }} />
         <ProjectChip title="project folder or 'scratch'" icon={<Folder size={12} style={{ color: 'var(--text-hint)' }} />}
-          value={project} projects={projects}
+          value={project} projects={[...projects, ...registeredProjects.map(project => project.path)]}
           onChange={v => { setProject(v); if (v !== 'scratch') { rememberProject(v); setProjects(loadPrefs().projects ?? []); } }}
           onBrowse={async () => {
             const picked = await desktop?.pickFolder().catch(() => null) ?? null;

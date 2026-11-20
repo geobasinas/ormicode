@@ -266,7 +266,7 @@ export function ProjectChip({ value, projects, onChange, onBrowse, icon, title }
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" style={{ maxWidth: 'calc(100vw - 16px)' }}>
         <DropdownMenuLabel>Project</DropdownMenuLabel>
-        {['scratch', ...new Map(projects.map(p => [p.replace(/\\/g, '/').toLowerCase(), p])).values()].map(path => (
+        {[...new Set(['scratch', ...projects])].map(path => (
           <DropdownMenuItem key={path} onSelect={() => onChange(path)} title={path === 'scratch' ? 'scratch folder, no git' : path} className="text-xs">
             <span style={{ width: 16, display: 'inline-flex' }}>{value === path ? <Check size={13} /> : null}</span>
             {path === 'scratch' ? <FolderOpen size={13} style={{ color: 'var(--text-hint)' }} /> : null}

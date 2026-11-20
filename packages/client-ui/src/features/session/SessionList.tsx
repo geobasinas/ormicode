@@ -3,10 +3,11 @@
 import { useMemo, useState } from 'react';
 import { Check, Folder, GitBranch, ChevronDown, ChevronRight } from 'lucide-react';
 import { useSessions, type SessionSummary } from './useSessions.ts';
-import { StateIcon, NEEDS_YOU, LIVE, stateLabel } from './state.tsx';
+import { StateIcon, NEEDS_YOU, stateLabel } from './state.tsx';
 import { ago, projectName } from '../../lib/format.ts';
+import { useProjects } from '../projects/useProjects.ts';
+import { groupProjects } from '../projects/groupProjects.ts';
 
-const rank = (s: SessionSummary) => (NEEDS_YOU.has(s.state) ? 0 : LIVE.has(s.state) ? 1 : 2);
 const DAY = 24 * 3600 * 1000;
 const isDone = (s: SessionSummary) => s.state === 'done';
 const mono = { fontFamily: 'var(--font-mono)', fontSize: 10 };
@@ -46,25 +47,13 @@ function Row({ s, active, onSelect }: { s: SessionSummary; active?: string; onSe
 
 export function SessionList({ active, onSelect, query }: { active?: string; onSelect: (id: string) => void; query?: string }) {
   const { sessions, error } = useSessions();
-  const groups = useMemo(() => {
-    const q = query?.trim().toLowerCase();
-    const visible = sessions.filter(s => s.state !== 'archived' &&
-      (!q || `${s.title ?? ''} ${s.project} ${s.vendor} ${s.branch ?? ''}`.toLowerCase().includes(q)));
-    const byProject = new Map<string, SessionSummary[]>();
-    for (const s of visible) {
-      const g = byProject.get(s.project) ?? [];
-      g.push(s); byProject.set(s.project, g);
-    }
-    for (const g of byProject.values()) g.sort((a, b) => rank(a) - rank(b) || (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
-    const latest = (l: SessionSummary[]) => Math.max(...l.map(s => s.updatedAt ?? 0));
-    // Projects first by recency; scratch sessions sit last under"no project" like the mockup.
-    return [...byProject.entries()].sort((a, b) => Number(a[0] === 'scratch') - Number(b[0] === 'scratch') || latest(b[1]) - latest(a[1]));
-  }, [sessions, query]);
+  const { projects } = useProjects();
+  const groups = useMemo(() => groupProjects(sessions, projects, query), [sessions, projects, query]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto', gap: 0 }}>
       {error ? <div style={{ padding: '0 10px', color: 'var(--accent-red)', fontSize: 12 }}>{error}</div> : null}
-      {groups.map(([project, list]) => {
+      {groups.map(({ project, name, sessions: list }) => {
         const open = list.filter(s => !isDone(s));
         const done = list.filter(isDone);
         const waiting = list.filter(s => NEEDS_YOU.has(s.state)).length;
@@ -75,7 +64,7 @@ export function SessionList({ active, onSelect, query }: { active?: string; onSe
               fontSize: 12, fontWeight: 600, color: project === 'scratch' ? 'var(--text-secondary)' : 'var(--text-label)',
             }}>
               <Folder size={13} style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
-              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{project === 'scratch' ? 'No project' : projectName(project)}</span>
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name || (project === 'scratch' ? 'No project' : projectName(project))}</span>
               {waiting ? <span style={{ fontWeight: 400, color: 'var(--accent-amber)', fontSize: 10.5 }} title="needs you">{waiting} waiting</span> : null}
             </div>
             {open.map(s => <Row key={s.id} s={s} active={active} onSelect={onSelect} />)}

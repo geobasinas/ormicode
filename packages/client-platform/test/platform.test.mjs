@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { electronPlatform, browserPlatform } from '../src/index.ts';
+import { electronPlatform, browserPlatform, closeBrowserPlatform } from '../src/index.ts';
 
 test('electronPlatform adapts the preload bridge and forwards events and state', async () => {
   const calls = []; let evtCb; let stateCb;
@@ -34,9 +34,28 @@ test('electronPlatform fails clearly without the bridge', () => {
   try { assert.throws(() => electronPlatform(), /preload bridge missing/); } finally { delete globalThis.window; }
 });
 
-test('browserPlatform is an explicit not-implemented seam', async () => {
-  const p = browserPlatform({ relay: 'https://relay.example', account: 'a' });
-  assert.deepEqual([p.kind, p.hubLabel], ['web', 'https://relay.example']);
-  await assert.rejects(p.transport.request('x'), /not implemented/);
-  assert.equal(await p.tokens.get(), undefined);
+test('browserPlatform exposes web metadata and backs tokens with its store', async () => {
+  const values = { token: undefined, remote: null };
+  const store = {
+    getToken: async () => values.token,
+    setToken: async token => { values.token = token; },
+    clearToken: async () => { values.token = undefined; },
+    getRemote: async () => values.remote,
+    setRemote: async remote => { values.remote = remote; },
+    clear: async () => { values.token = undefined; values.remote = null; },
+  };
+  const p = browserPlatform({
+    relay: 'https://relay.example', version: '1.2.3', commit: 'abc123',
+    deps: { store, locks: { request: () => new Promise(() => undefined) }, channel: () => new BroadcastChannel(`platform-${Math.random()}`) },
+  });
+  try {
+    assert.deepEqual([p.kind, p.hubLabel], ['web', 'https://relay.example']);
+    assert.deepEqual([p.web.relayUrl, p.web.version, p.web.commit], ['https://relay.example', '1.2.3', 'abc123']);
+    assert.equal(await p.tokens.get(), undefined);
+    await p.tokens.set('secret-token');
+    assert.equal(values.token, 'secret-token');
+    assert.equal(await p.tokens.get(), 'secret-token');
+    await p.tokens.clear();
+    assert.equal(values.token, undefined);
+  } finally { closeBrowserPlatform(p); }
 });
