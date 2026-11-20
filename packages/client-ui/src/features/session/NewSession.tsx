@@ -272,6 +272,7 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
       {files.files.length ? <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', padding: '2px 0 6px' }}>{files.files.map((file, index) => <span key={`${file.name}-${index}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, maxWidth: 190, fontSize: 10, color: 'var(--text-secondary)', background: 'var(--bg-inset)', borderRadius: 5, padding: '3px 5px' }}><FileText size={11} /><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name} · {Math.ceil(file.size / 1024)} KB</span><button onClick={() => files.remove(index)} style={iconBtn}><X size={10} /></button></span>)}</div> : null}
       {context.length ? <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 5 }}>{context.map((entry, i) => <span key={i} style={{ padding: '2px 5px', borderRadius: 4, background: 'var(--bg-inset)', color: 'var(--text-hint)', fontSize: 10 }}>@{entry.path ?? (entry.kind === 'diff' ? 'Diff' : entry.kind === 'terminal' ? 'Terminal' : 'Notes')}</span>)}</div> : null}
       <textarea
+        className="ormi-composer-input"
         ref={area}
         onPaste={event => { const all = [...event.clipboardData.files]; if (all.length) { event.preventDefault(); void img.add(all.filter(file => file.type.startsWith('image/'))); void files.add(all.filter(file => !file.type.startsWith('image/'))); } }}
         value={text}

@@ -278,6 +278,7 @@ export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefi
         <ImageStrip images={img.images} onRemove={img.remove} />
         {files.files.length ? <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', padding: '2px 0 6px' }}>{files.files.map((file, index) => <span key={`${file.name}-${index}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, maxWidth: 190, fontSize: 10, color: 'var(--text-secondary)', background: 'var(--bg-inset)', borderRadius: 5, padding: '3px 5px' }}><FileText size={11} /><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name} · {Math.ceil(file.size / 1024)} KB</span><button onClick={() => files.remove(index)} style={iconBtn}><X size={10} /></button></span>)}</div> : null}
         <textarea
+          className="ormi-composer-input"
           ref={area}
           value={text}
           onChange={e => {

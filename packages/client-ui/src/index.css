@@ -128,6 +128,7 @@
 
 button:focus { outline: none; }
 :focus-visible { outline: 1px solid var(--focus-ring) !important; outline-offset: 1px; box-shadow: none !important; }
+.ormi-composer-input:focus-visible { outline: none !important; border: none !important; box-shadow: none !important; }
 :focus:not(:focus-visible) { outline: none !important; box-shadow: none !important; }
 [role="menuitem"]:focus, [role="menuitem"][data-highlighted] { background: var(--bg-selected) !important; color: var(--text-active) !important; }
 [role="menuitem"][data-variant="destructive"]:focus, [role="menuitem"][data-variant="destructive"][data-highlighted] { background: var(--tint-red) !important; color: var(--accent-red) !important; outline: 1px solid var(--line-red); }
