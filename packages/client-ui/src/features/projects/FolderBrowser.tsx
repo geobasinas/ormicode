@@ -17,6 +17,7 @@ export function FolderBrowser({ machine, busy, error: addError, onBack, onCancel
   const [filter, setFilter] = useState('');
   const [hidden, setHidden] = useState(false);
   const [selected, setSelected] = useState('');
+  const currentPath = useRef<{ machine: string; path: string } | undefined>(undefined);
   const list = useRef<HTMLDivElement>(null);
   const browse = useCallback(async (path?: string) => {
     setLoading(true); setError(''); setSelected('');
@@ -24,11 +25,12 @@ export function FolderBrowser({ machine, busy, error: addError, onBack, onCancel
       const result = await transport.request('fs.browse', { machine: machine.id, ...(path ? { path } : {}), hidden });
       if (result.type === 'err') { setError(messageFor(result.code)); return; }
       setCurrent(result.body as BrowseResult);
+      currentPath.current = { machine: machine.id, path: (result.body as BrowseResult).path };
     } catch {
       setError("Can't open this folder: the machine could not be reached.");
     } finally { setLoading(false); }
   }, [hidden, machine.id, transport]);
-  useEffect(() => { void browse(); }, [browse]);
+  useEffect(() => { void browse(currentPath.current?.machine === machine.id ? currentPath.current.path : undefined); }, [browse, machine.id]);
   const entries = useMemo(() => (current?.entries ?? []).filter(entry => entry.name.toLowerCase().includes(filter.trim().toLowerCase())), [current, filter]);
   const selectedEntry = entries.find(entry => entry.path === selected);
   const keyDown = (event: KeyboardEvent<HTMLDivElement>) => {

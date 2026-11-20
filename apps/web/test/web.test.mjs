@@ -8,7 +8,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
-import { registerProjectTests } from './project-tests.mjs';
+import { browseResult, registerProjectTests } from './project-tests.mjs';
 import { findBrowser } from './browser-path.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -49,6 +49,8 @@ class HubSimulator {
     this.statusRequests = 0;
     this.projects = [];
     this.projectAdds = [];
+    this.browseRequests = [];
+    this.failBrowse = false;
   }
 
   async start() {
@@ -92,6 +94,14 @@ class HubSimulator {
     if (message.type === 'device.online') this.onlineNotices++;
     if (message.type === 'req') {
       if (message.method === 'daemon.status') this.statusRequests++;
+      if (message.method === 'fs.browse') {
+        this.browseRequests.push(message.body);
+        if (this.failBrowse) {
+          this.failBrowse = false;
+          this.send({ v: 1, type: 'err', id: message.id, code: 'fs.denied', message: 'permission denied' });
+          return;
+        }
+      }
       if (message.method === 'project.add') {
         this.projectAdds.push(message.body);
         const { machine, path } = message.body;
@@ -110,8 +120,7 @@ class HubSimulator {
         : message.method === 'session.digest' ? { computedAt: Date.now(), entries: [] }
         : message.method === 'project.list' ? { projects: this.projects }
           : message.method === 'machine.list' ? { machines: [{ id: 'm_local', name: 'web-test', kind: 'local', status: 'online', heartbeat: Date.now() }] }
-        : message.method === 'fs.browse' ? { machine: 'm_local', path: message.body.path ?? '/home/web', parent: '/home', home: '/home/web',
-          entries: ['repo', 'denied'].map(name => ({ name, path: `/home/web/${name}`, git: false, hidden: false })), truncated: false }
+        : message.method === 'fs.browse' ? browseResult(message.body)
         : message.method === 'agents.list' ? { agents: [] }
         : message.method === 'session.draft.get' ? { text: '' } : {};
       this.send({ v: 1, type: 'res', id: message.id, ok: true, body });
