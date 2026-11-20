@@ -34,6 +34,8 @@ export class WsLink {
   private waiting: ((frame: Frame | undefined) => void) | undefined;
   private pending = new Map<string, { resolve: (frame: Frame) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
   private lastSeq = new Map<string, number>(); // dedupe DO-outbox vs hub-journal replays
+  private subscriptions = new Map<string, number>();
+  private replays = new Map<string, Promise<Frame>>();
   lastSub: { session: string; after: number } | undefined; // last subscribe for resync replay
   closed = false;
   closeCode?: number;
@@ -71,17 +73,37 @@ export class WsLink {
   }
 
   request(method: string, body: Record<string, unknown>, timeoutMs = 30_000): Promise<Frame> {
-    const id = newId('req');
     // Subscription state lives in the DO so it can filter fan-out and replay
     // the outbox; the protocol req still reaches the hub for bookkeeping.
     if (method === 'session.subscribe') {
       const session = String(body.session);
       const after = typeof body.after === 'number' ? body.after : 0;
+      this.subscriptions.set(session, after);
       if (typeof body.after !== 'number') this.lastSeq.set(session, after);
       this.lastSub = { session, after };
       this.send({ type: 'subscribe', session: body.session, after: this.lastSub.after });
     }
-    if (method === 'session.unsubscribe') this.send({ type: 'unsubscribe', session: body.session });
+    if (method === 'session.unsubscribe') {
+      this.subscriptions.delete(String(body.session));
+      this.send({ type: 'unsubscribe', session: body.session });
+    }
+    return this.requestHub(method, body, timeoutMs);
+  }
+
+  /** Recover directly from the hub without asking the bounded relay outbox again. */
+  replay(session: string): Promise<Frame> | undefined {
+    if (!this.subscriptions.has(session)) return undefined;
+    const pending = this.replays.get(session);
+    if (pending) return pending;
+    const after = this.lastSeq.get(session) ?? this.subscriptions.get(session)!;
+    const replay = this.requestHub('session.subscribe', { session, after }, 30_000);
+    this.replays.set(session, replay);
+    void replay.then(() => this.replays.delete(session), () => this.replays.delete(session));
+    return replay;
+  }
+
+  private requestHub(method: string, body: Record<string, unknown>, timeoutMs: number): Promise<Frame> {
+    const id = newId('req');
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`${method}: timed out`)); }, timeoutMs);
       this.pending.set(id, { resolve, reject, timer });
@@ -145,10 +167,10 @@ export function connectRemote(config: RemoteEndpoint, onResyncError?: (msg: stri
         link.send({ v: 1, type: 'hello', role: 'client', proto: 1, device: config.device });
         link.onRelayMessage = m => {
           if (m.type === 'resync') {
-            // Re-ask the hub for the full journal from our cursor; dedupe
-            // drops whatever the DO outbox already delivered.
-            const sub = link.lastSub;
-            if (sub && sub.session === m.session) void link.request('session.subscribe', { session: sub.session, after: sub.after });
+            const replay = link.replay(String(m.session));
+            if (replay) void replay.then(frame => {
+              if (frame.type === 'err') onResyncError?.(frame.code);
+            }, error => onResyncError?.(String(error)));
             else onResyncError?.(`${m.session} too far behind — resync required`);
           } else if (m.type === 'err') onResyncError?.(`${m.code ?? 'error'}`);
         };

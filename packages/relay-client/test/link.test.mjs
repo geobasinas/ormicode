@@ -94,6 +94,37 @@ test('connectRemote identifies relay auth rejection close codes', async () => {
   } finally { globalThis.WebSocket = prev; }
 });
 
+test('resync replays once directly from the hub, including subscriptions other than the last one', async () => {
+  const prev = globalThis.WebSocket; globalThis.WebSocket = FakeWs;
+  try {
+    const errors = [];
+    const connected = connectRemote({ relayUrl: 'https://relay.example', account: 'a', device: 'd_1', token: 'tok' }, error => errors.push(error));
+    const ws = FakeWs.last; ws.onopen(); ws.emit({ type: 'authed' });
+    const link = await connected;
+    for (const session of [evt(1).session, 's_01ARZ3NDEKTSV4RRFFQ69G5FAW']) {
+      const pending = link.request('session.subscribe', { session, after: 10 });
+      ws.emit(res(ws.sent.at(-1).id)); await pending;
+    }
+    const count = ws.sent.length;
+    ws.emit({ type: 'resync', session: evt(1).session });
+    ws.emit({ type: 'resync', session: evt(1).session });
+    const replay = ws.sent.slice(count);
+    assert.equal(replay.length, 1);
+    assert.equal(replay[0].type, 'req');
+    assert.deepEqual(replay[0].body, { session: evt(1).session, after: 10 });
+    ws.emit(evt(11)); ws.emit(res(replay[0].id));
+    await Promise.resolve();
+    assert.equal(ws.sent.filter(frame => frame.type === 'subscribe').length, 2);
+    ws.emit({ type: 'resync', session: 'missing' });
+    assert.match(errors.at(-1), /missing.*resync required/);
+    ws.emit({ type: 'resync', session: evt(1).session });
+    ws.emit({ v: 1, type: 'err', id: ws.sent.at(-1).id, code: 'session.not_found', message: 'gone' });
+    await Promise.resolve();
+    assert.equal(errors.at(-1), 'session.not_found');
+    link.close();
+  } finally { globalThis.WebSocket = prev; }
+});
+
 test('joinRemote posts the code and surfaces relay errors', async () => {
   const prev = globalThis.fetch;
   try {
