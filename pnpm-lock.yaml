@@ -5,10 +5,10 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  undici@>=7 <8: ^7.30.2
-  sharp@>=0 <1: ^0.35.5
-  minimatch@>=9 <10: ^11.0.3
-  minimatch@>=10 <11: ^11.0.3
+  undici@>=7 <8: 7.30.2
+  sharp@>=0 <1: 0.35.5
+  minimatch@>=9 <10: 11.0.3
+  minimatch@>=10 <11: 11.0.3
 
 importers:
 
@@ -5173,7 +5173,7 @@ packages:
       '@aws-sdk/credential-provider-node': '>=3.972.0 <4'
       '@smithy/hash-node': '>=4.3.0 <5'
       '@smithy/signature-v4': '>=5.4.0 <6'
-      undici: ^7.30.2
+      undici: 7.30.2
       ws: ^8.21.0
       zod: ^3.25 || ^4.0
     peerDependenciesMeta:
