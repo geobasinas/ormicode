@@ -8,6 +8,13 @@ import { resolvePath } from '@ormicode/files';
 import { diffPatch, isGitRepo } from '@ormicode/git-core';
 import { listNotes } from '@ormicode/session-store';
 
+/** Why a direct prompt would collide with the live turn, if it would; clients queue it instead.
+ * `starting` is left out because it also covers worker boot, where the first prompt waits for the worker. */
+export function promptBusy(state: string): string | undefined {
+  if (state === 'awaiting_approval') return 'turn in progress: waiting for an approval decision';
+  return ['running', 'awaiting_input', 'retrying'].includes(state) ? 'turn in progress' : undefined;
+}
+
 export interface PromptAttachmentInfo { name: string; mimeType: string; size: number; path: string }
 export interface PromptAppendix {
   text: string;

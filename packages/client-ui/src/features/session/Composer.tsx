@@ -20,6 +20,8 @@ import { loadPromptHistory } from './prompt-history.ts';
 
 const LIVE = new Set(['running', 'starting', 'retrying']);
 const WAITING = new Set(['awaiting_approval', 'awaiting_input', 'paused_rate_limited']);
+/** Mid-turn states where the daemon rejects session.prompt as busy, so follow-ups go to the queue. */
+const IN_TURN_WAIT = new Set(['awaiting_approval', 'awaiting_input']);
 const APP_COMMANDS = [
   ['model', 'Choose a model'], ['effort', 'Choose effort'], ['mode', 'Choose mode'], ['handoff', 'Switch agent'],
   ['diff', 'Open Git changes'], ['files', 'Open files'], ['notes', 'Open notes'], ['stop', 'Stop the turn'], ['clear-queue', 'Clear queued prompts'],
@@ -98,7 +100,7 @@ export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefi
   const model = modelOverride ?? details?.model ?? 'default';
   const effort = effortOverride ?? details?.effort ?? 'default';
   const live = LIVE.has(details?.state ?? '');
-  const queueInstead = live || Boolean(taskContext && WAITING.has(details?.state ?? ''));
+  const queueInstead = live || IN_TURN_WAIT.has(details?.state ?? '') || Boolean(taskContext && WAITING.has(details?.state ?? ''));
   const dockComposer = Boolean(compact || taskContext);
   const canSend = Boolean(text.trim());
   const failedQueued = queue.filter(item => item.error).length;

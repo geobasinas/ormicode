@@ -37,7 +37,7 @@ import { designMethod } from './design-methods.ts';
 import { projectSearchFiles } from './project-search.ts';
 import { queueMethod } from './queue-methods.ts';
 import { composerMethod } from './composer-methods.ts';
-import { expandPrompt, PromptInvalidError, validatePrompt } from './prompt-context.ts';
+import { expandPrompt, PromptInvalidError, promptBusy, validatePrompt } from './prompt-context.ts';
 import { retryPrompt } from './prompt-methods.ts';
 import { listModels } from './models.ts';
 import { startSession } from './session-start.ts';
@@ -228,7 +228,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         const session = String(body.session);
         const s = getSession(db, session);
         if (!s) return client.link.replyError(id, 'session.not_found', session);
-        if (s.state === 'running') return client.link.replyError(id, 'session.busy', 'turn in progress');
+        if (promptBusy(s.state)) return client.link.replyError(id, 'session.busy', promptBusy(s.state)!);
         const pending = getPendingPromptData(db, session);
         const context = [...(pending?.context ?? []), ...(body.context as PromptContext[] | undefined ?? [])];
         const attachments = [...(pending?.attachments ?? []), ...(body.attachments as PromptAttachment[] | undefined ?? [])];
