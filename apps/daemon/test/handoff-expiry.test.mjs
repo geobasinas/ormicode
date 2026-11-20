@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { openStore, createSession, createTeam, setSessionTeam, setState, getSession } from '@ormicode/session-store';
+import { openStore, createSession, createTeam, setSessionTeam, setState, getSession, listQueuedPrompts } from '@ormicode/session-store';
 import { newId } from '@ormicode/protocol';
 import { EMPTY } from '@ormicode/pricing';
 import { append, replay } from '@ormicode/journal';
 import { handoffRequest, resolveHandoffApproval, expireHandoffApprovals } from '../src/handoff-dispatch.ts';
 import { TeamApprovals } from '../src/team-approvals.ts';
 import { stateFor } from '../src/supervisor-state.ts';
+import { teamMethod } from '../src/team-methods.ts';
 
 function fixture(t, route, state = 'idle') {
   const db = openStore(':memory:'), session = newId('s'), parent = newId('s');
@@ -89,3 +90,26 @@ for (const anotherApproval of [false, true]) test(`handoff escalated after turn_
   t.mock.timers.tick(600_000); await pending;
   assert.equal(getSession(db, session).state, anotherApproval ? 'awaiting_approval' : 'idle');
 });
+
+for (const route of ['delegated', 'escalated_before_end', 'escalated_after_end']) for (const method of ['team.cancel', 'team.reassign']) {
+  test(`${method} expires an ended turn's ${route} handoff without aborting an idle worker`, async t => {
+    const { db, session, parent, ctx, client, replies } = fixture(t, 'parent', 'running');
+    ctx.toWorker = async () => assert.fail('there is no active turn to abort');
+    ctx.drainQueue = async () => { assert.equal(getSession(db, session).state, 'idle'); return false; };
+    const pending = handoffRequest(ctx, client, 'handoff', { session, to: {}, mode: 'rehydrate', brief: 'brief', agentApproval: true });
+    const request = JSON.parse(replay(db, session).find(e => e.kind === 'team_approval_request').payload).request;
+    const escalate = () => ctx.teamApprovals.escalate(client, 'escalate', { actor: parent, session, request });
+    if (route === 'escalated_before_end') escalate();
+    ctx.record(session, 'turn_end', {});
+    if (route === 'escalated_after_end') escalate();
+    await teamMethod(ctx, client, 'cancel', method, { actor: parent, session, task: 'replacement task' });
+    await pending;
+    assert.ok(replies.some(r => method === 'team.cancel' ? r.interrupted : r.accepted));
+    assert.ok(replies.some(r => r.code === 'handoff.declined'));
+    assert.equal(getSession(db, session).state, 'idle');
+    assert.equal(ctx.teamApprovals.waiting(session), false);
+    assert.deepEqual(replay(db, session).filter(e => e.kind === 'interaction_expired').map(e => JSON.parse(e.payload)), [{ request, approvalKind: 'handoff', reason: 'cancelled' }]);
+    assert.equal(resolveHandoffApproval(ctx, session, request, 'approve'), false);
+    assert.equal(listQueuedPrompts(db, session).length, method === 'team.reassign' ? 1 : 0);
+  });
+}
