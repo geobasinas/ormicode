@@ -33,7 +33,9 @@ for await (const line of lines) {
     out({ id: message.id, result: { turn: { id: turnId } } });
     notify('turn/started', { threadId: 'thread-1', turn: { id: turnId } });
     notify('item/agentMessage/delta', { threadId: 'thread-1', turnId, itemId: 'msg-1', delta: 'o' });
-    if (text === 'approve me' || text === 'approval ends' || text === 'interrupt fails') {
+    if (text === 'fail turn') {
+      notify('turn/completed', { threadId: 'thread-1', turn: { id: turnId, status: 'failed', error: { message: 'fixture turn failed' } } });
+    } else if (text === 'approve me' || text === 'approval ends' || text === 'interrupt fails') {
       const rid = ++nextRequest;
       pending.set(rid, message => { if (message.result?.decision === 'cancel') return; if (text === 'approval ends') process.exit(7); finishTurn('thread-1', turnId); });
       out({ id: rid, method: 'item/commandExecution/requestApproval', params: { approvalId: 'ap-1', itemId: 'item-1', threadId: 'thread-1', turnId, command: 'rm -rf /tmp/x', reason: 'fixture' } });

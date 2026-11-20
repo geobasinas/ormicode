@@ -11,7 +11,7 @@ const message = z.object({
   id: idSchema('q'), team, from_session: session, to_session: session, reply_to: z.nullable(idSchema('q')),
   body: text, urgent: z.number(), created_at: timestampSchema, read_at: z.nullable(timestampSchema),
 });
-const child = z.object({ session, state: text, parentless: z.optional(z.boolean()), lastActivity: timestampSchema, tokens: z.nullable(z.number()) });
+const child = z.object({ session, state: text, turnCompleted: z.optional(z.boolean()), parentless: z.optional(z.boolean()), lastActivity: timestampSchema, tokens: z.nullable(z.number()) });
 export const teamRequests = {
   'team.askUser': z.object({ actor: session, ...userQuestion }),
   'team.openPr': z.object({ actor: session, session: z.optional(session), title: nonEmpty, body: text, base: z.optional(nonEmpty), draft: z.optional(z.boolean()) }),

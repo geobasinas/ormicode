@@ -12,6 +12,7 @@ import { ormicodeDir } from './socket.ts';
 import { spawnTeamChild } from './team-spawn.ts';
 import { interrupt } from './team-interrupt.ts';
 import { handoffTargetError } from './handoff-transition.ts';
+import { sessionStatus } from './session-status.ts';
 
 const locks = new WeakMap<DispatchCtx, Promise<void>>();
 export async function teamMethod(ctx: DispatchCtx, client: Client, id: string, method: string, body: Record<string, unknown>): Promise<void> {
@@ -103,8 +104,7 @@ function status(ctx: DispatchCtx, session: SessionRow): Record<string, unknown> 
     const payload = JSON.parse(event.payload) as { input?: number; output?: number };
     return sum + (payload.input ?? 0) + (payload.output ?? 0);
   }, 0) : null;
-  const state = session.handed_off ? session.archived ? 'archived' : 'done' : ctx.teamApprovals.waiting(session.id) ? 'awaiting_approval' : ctx.teamLifecycle.state(session);
-  return { session: session.id, state, parentless: Boolean(session.parentless), lastActivity: session.updated_at, tokens };
+  return { session: session.id, ...sessionStatus(ctx, session), parentless: Boolean(session.parentless), lastActivity: session.updated_at, tokens };
 }
 async function message(ctx: DispatchCtx, client: Client, id: string, body: Record<string, unknown>, actor: SessionRow, team: TeamRow): Promise<void> {
   const original = body.replyTo ? getTeamMessage(ctx.db, String(body.replyTo)) : undefined;

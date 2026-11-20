@@ -10,8 +10,6 @@ export async function waitFor(link: Pick<Link, 'request' | 'onFrame'>, session: 
   let unsubscribed = false;
   let settled = false;
   let lastState: string | undefined;
-  let pendingTurn = false;
-  let completedTurn = false;
   let finish!: (result: Record<string, unknown>) => void;
   let fail!: (error: unknown) => void;
   const completed = new Promise<Record<string, unknown>>((resolve, reject) => {
@@ -40,7 +38,7 @@ export async function waitFor(link: Pick<Link, 'request' | 'onFrame'>, session: 
         const state = String((current.body as Record<string, unknown>).state);
         lastState = state;
         if (['done', 'failed', 'archived', 'interrupted'].includes(state)
-          || (until === 'approval' ? ['awaiting_approval', 'awaiting_input'].includes(state) : state === 'idle' && completedTurn && !pendingTurn)) finish({ state });
+          || (until === 'approval' ? ['awaiting_approval', 'awaiting_input'].includes(state) : state === 'idle' && (current.body as Record<string, unknown>).turnCompleted === true)) finish({ state });
       } while (recheck && !settled);
     }).finally(() => { checking = undefined; });
     return checking;
@@ -50,8 +48,6 @@ export async function waitFor(link: Pick<Link, 'request' | 'onFrame'>, session: 
     previous?.(frame);
     if (frame.type !== 'evt' || frame.session !== session) return;
     const body = frame.body as Record<string, unknown>;
-    if (body.kind === 'turn_start' || body.kind === 'state' && body.reason === 'prompt_dispatch') pendingTurn = true;
-    if (body.kind === 'turn_end') { pendingTurn = false; completedTurn = true; }
     if (!live) return;
     if (['turn_end', 'done', 'error', 'state', 'interrupted', 'approval_request', 'team_approval_request', 'question_request'].includes(String(body.kind)))
       void checkState().catch(fail);

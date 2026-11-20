@@ -2,6 +2,7 @@ import { parseRequestBody, newId, PROTOCOL_VERSION, type Frame, type PromptAttac
 import type { UserInteractions } from './user-interactions.ts';
 import { resumeSession } from './team-resume.ts';
 import { sessionTeamView } from './session-team-view.ts';
+import { sessionStatus } from './session-status.ts';
 import {
   getSession, listSessions, setState, setTitle, listNotes, setNote, deleteNote, archiveSession, releaseSessionPorts,
   getPendingPromptData, deletePendingPromptData, getSessionPorts, listDevices, renameDevice, revokeDevice, type Store,
@@ -156,7 +157,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         const sessions = listSessions(db, Boolean(body.archived)).map(s => {
           const base = getSessionPorts(db, s.id);
           return {
-            id: s.id, title: s.title, state: ctx.teamLifecycle.state(s), parentless: Boolean(s.parentless), project: s.project, vendor: s.vendor,
+            id: s.id, title: s.title, state: sessionStatus(ctx, s).state, parentless: Boolean(s.parentless), project: s.project, vendor: s.vendor,
             transport: s.transport, updatedAt: s.updated_at, branch: s.branch,
             worktree: Boolean(s.worktree), ...sessionTeamView(db, s), delegatedApproval: ctx.teamApprovals.delegatedOnly(s.id),
             ...(base === undefined ? {} : { ports: { base, count: SESSION_PORT_COUNT } }),
@@ -214,7 +215,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         if (!s) return client.link.replyError(id, 'session.not_found', String(body.session));
         const base = getSessionPorts(db, s.id);
         return client.link.reply(id, {
-          id: s.id, title: s.title, state: ctx.teamLifecycle.state(s), parentless: Boolean(s.parentless), project: s.project, vendor: s.vendor,
+          id: s.id, title: s.title, ...sessionStatus(ctx, s), parentless: Boolean(s.parentless), project: s.project, vendor: s.vendor,
           cwd: s.cwd,
           ...(s.project === 'scratch' ? { scratchFiles: countScratchFiles(s.cwd) } : {}),
           transport: s.transport, updatedAt: s.updated_at, branch: s.branch, worktree: Boolean(s.worktree),

@@ -37,7 +37,7 @@ test('MCP wait catches live completion during the status request and ignores oth
         link.onFrame(event('turn_end'));
         return { type: 'res', body: { state: 'running' } };
       }
-      return { type: 'res', body: { state: 'idle' } };
+      return { type: 'res', body: { state: 'idle', turnCompleted: true } };
     }
   });
   assert.deepEqual(JSON.parse(await waitFor(link, 'child', 'idle', 100, proof)), { state: 'idle' });
@@ -47,7 +47,7 @@ test('live completion reports authoritative team status in every wait mode', asy
   for (const until of ['idle', 'done', 'approval']) {
     let state = 'running';
     const { link } = fixture(method => {
-      if (method === 'team.status') return { type: 'res', body: { state } };
+      if (method === 'team.status') return { type: 'res', body: { state, turnCompleted: state === 'idle' } };
     });
     const waiting = waitFor(link, 'child', until, 1000, proof, true).then(JSON.parse);
     await new Promise(resolve => setImmediate(resolve));
@@ -68,18 +68,20 @@ test('MCP wait ignores historical completion and times out with current state', 
 
 test('MCP wait does not mistake an acknowledged pending task or an unused idle session for completion', async () => {
   for (const dispatched of [false, true]) {
+    let turnCompleted = false;
     const { link } = fixture((method, link) => {
       if (method === 'session.subscribe' && dispatched) {
         link.onFrame(event('turn_end'));
         link.onFrame({ ...event('state'), body: { kind: 'state', state: 'starting', reason: 'prompt_dispatch' } });
       }
-      if (method === 'session.get') return { type: 'res', body: { state: 'idle' } };
+      if (method === 'session.get') return { type: 'res', body: { state: 'idle', turnCompleted } };
     });
     let settled = false;
     const waiting = waitFor(link, 'child', 'idle', 1000, proof).then(result => { settled = true; return JSON.parse(result); });
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(settled, false);
     link.onFrame(event('turn_start'));
+    turnCompleted = true;
     link.onFrame(event('turn_end'));
     assert.deepEqual(await waiting, { state: 'idle' });
   }
@@ -88,7 +90,7 @@ test('MCP wait does not mistake an acknowledged pending task or an unused idle s
 test('MCP wait accepts a completed task from replay even if it finished before subscription', async () => {
   const { link } = fixture((method, link) => {
     if (method === 'session.subscribe') { link.onFrame(event('turn_start')); link.onFrame(event('turn_end')); }
-    if (method === 'session.get') return { type: 'res', body: { state: 'idle' } };
+    if (method === 'session.get') return { type: 'res', body: { state: 'idle', turnCompleted: true } };
   });
   assert.deepEqual(JSON.parse(await waitFor(link, 'child', 'idle', 100, proof)), { state: 'idle' });
 });
