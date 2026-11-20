@@ -8,7 +8,7 @@ const table = fromOpenRouter({ data: [
  { id: 'openai/codex-mini', pricing: { prompt: '0.0000015', completion: '0.000006' } },
 ] });
 test('SDK model aliases resolve only to the same priced model, including provider forms', () => {
- for (const id of ['claude-3-5-sonnet-20241022', 'claude-sonnet-3-5-latest', 'us.anthropic.claude-3-5-sonnet-20241022-v2:0', 'claude-3-5-sonnet@20241022']) assert.equal(priceFor(table, id).input, 3);
+ for (const id of ['claude-3-5-sonnet-20241022', 'claude-3-5-sonnet-latest', 'us.anthropic.claude-3-5-sonnet-20241022-v2:0', 'claude-3-5-sonnet-v2@20241022']) assert.equal(priceFor(table, id).input, 3);
  assert.equal(priceFor(table, 'codex-mini-latest').input, 1.5);
  for (const id of ['claude-sonnet-4-7', 'sonnet', 'gpt-5.4-codex', '']) assert.equal(priceFor(table, id), undefined);
 });
