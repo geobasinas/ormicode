@@ -126,7 +126,8 @@ function installPreviewProtocol(partition: string): void {
 }
 
 const send = (channel: string, payload: unknown) => { if (!win?.isDestroyed()) win?.webContents.send(channel, payload); };
-const state = (s: string) => send('ormi:state', s);
+let lastState = 'connecting';
+const state = (s: string) => { lastState = s; send('ormi:state', s); };
 
 function loadRemoteFile(): RemoteFile | undefined {
   try {
@@ -256,6 +257,7 @@ function createWindow(): void {
   const devUrl = process.env.ELECTRON_RENDERER_URL;
   if (devUrl) void win.loadURL(devUrl);
   else void win.loadFile(join(__dirname, '../renderer/index.html'));
+  win.webContents.on('did-finish-load', () => send('ormi:state', lastState));
 }
 
 app.whenReady().then(async () => {
