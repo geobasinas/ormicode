@@ -63,9 +63,11 @@ export async function handoffRequest(ctx: DispatchCtx, client: Client, id: strin
         clearTimeout(timer);
         ctx.record(session, 'interaction_expired', { request, approvalKind: 'handoff', reason });
         const current = getSession(db, session);
+        const activity = sessionActivityState(db, session);
+        const interrupted = reason === 'cancelled' && ['running', 'starting', 'retrying', 'awaiting_input'].includes(activity);
         if (current && !current.archived && current.state === 'awaiting_approval'
-          && (reason === 'cancelled' || !hasPendingApproval(db, session) && !ctx.teamApprovals.waiting(session)))
-          ctx.record(session, 'state', { state: reason === 'cancelled' ? 'interrupted' : sessionActivityState(db, session) });
+          && (interrupted || !hasPendingApproval(db, session) && !ctx.teamApprovals.waiting(session)))
+          ctx.record(session, 'state', { state: interrupted ? 'interrupted' : activity });
         resolve(false);
       };
       const timer = setTimeout(() => expire('timeout'), 10 * 60_000).unref();
