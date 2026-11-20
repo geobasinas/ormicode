@@ -197,13 +197,15 @@ export class ClaudeSdkAdapter implements AgentAdapter {
       const stream = (this.options.query ?? query)({ prompt: inputs.iterable, options });
       session.stream = stream;
       session.commandsQuery = stream;
+      let reportedModel: string | undefined;
       for await (const message of stream) {
         if (session.disposed || abort.signal.aborted) break;
         this.log(session, 'stdout.log', JSON.stringify(message));
         if (message.type === 'system' && message.subtype === 'init') {
           this.log(session, 'meta.json', JSON.stringify({ command: 'claude-agent-sdk', cwd: session.spec.cwd, agentVersion: message.claude_code_version }));
         }
-        const mapped = mapSdkMessage(message);
+        if (message.type === 'assistant' && !message.parent_tool_use_id) reportedModel = message.message.model;
+        const mapped = mapSdkMessage(message, { model: reportedModel });
         if (mapped.nativeId) {
           this.options.onNativeId?.(handle, mapped.nativeId);
           session.nativeId = mapped.nativeId;

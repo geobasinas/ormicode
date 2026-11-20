@@ -1,6 +1,6 @@
 import { getPinnedPrice, getSession, listSessions, pinPrice, type SessionRow, type Store } from '@ormicode/session-store';
 import { replay } from '@ormicode/journal';
-import { costOf, priceFor, summarize, type CostSummary, type Price, type PriceTable, type Usage } from '@ormicode/pricing';
+import { costOf, normalizeModel, priceFor, summarize, type CostSummary, type Price, type PriceTable, type Usage } from '@ormicode/pricing';
 import type { Client, DispatchCtx } from './dispatch.ts';
 
 interface CostEvent { ts: number; kind: string; payload: Record<string, unknown> }
@@ -22,8 +22,9 @@ function priceForSession(db: Store, session: SessionRow, events: CostEvent[], ta
 
 function emptyBucket(): Bucket { return { tokens: 0, usd: null, unpriced: 0, estimate: false }; }
 
-function addUsage(bucket: Bucket, event: CostEvent, price?: Price): void {
+function addUsage(bucket: Bucket, event: CostEvent, price: Price | undefined, table: PriceTable, model: string | null): void {
   const usage = event.payload as Usage;
+  if (usage.model && normalizeModel(usage.model) !== normalizeModel(model ?? '')) price = priceFor(table, usage.model);
   bucket.tokens += (usage.input ?? 0) + (usage.output ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
   if (typeof usage.costUsd === 'number') bucket.usd = (bucket.usd ?? 0) + usage.costUsd;
   else if (price) {
@@ -74,10 +75,10 @@ export async function costMethod(ctx: DispatchCtx, client: Client, id: string, m
     if (!inRange.length) continue;
     const sessionBucket = emptyBucket();
     for (const event of inRange) {
-      addUsage(total, event, price);
-      addUsage(insert(projects, session.project), event, price);
-      addUsage(insert(days, localDate(event.ts)), event, price);
-      addUsage(sessionBucket, event, price);
+      addUsage(total, event, price, table, session.model);
+      addUsage(insert(projects, session.project), event, price, table, session.model);
+      addUsage(insert(days, localDate(event.ts)), event, price, table, session.model);
+      addUsage(sessionBucket, event, price, table, session.model);
     }
     sessions.push({ session: session.id, project: session.project, ...sessionBucket });
   }

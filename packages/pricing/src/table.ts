@@ -10,14 +10,17 @@ export const EMPTY: PriceTable = { version: null, models: {} };
 
 /** `anthropic/claude-sonnet-4.6` and `claude-sonnet-4-6-20260217` both → `claude-sonnet-4-6`. */
 export function normalizeModel(id: string): string {
-  return id.toLowerCase().trim().replace(/^.*\//, '').replace(/:.*$/, '').replace(/\./g, '-')
-    .replace(/-(\d{8}|\d{4}-\d{2}-\d{2})$/, '').replace(/@.*$/, '');
+  return id.toLowerCase().trim().replace(/^.*\//, '').replace(/^(?:(?:us|eu|apac|global)\.)?anthropic\./, '')
+    .replace(/[:@].*$/, '').replace(/\./g, '-').replace(/-v\d+$/, '')
+    .replace(/-(?:latest|\d{8}|\d{4}-\d{2}-\d{2})$/, '')
+    .replace(/^claude-(\d+(?:-\d+)?)-(sonnet|opus|haiku)$/, 'claude-$2-$1');
 }
 
 /** Exact match after normalising only — a near miss is a guess. */
 export function priceFor(table: PriceTable, model: string | null | undefined): Price | undefined {
   if (!model) return undefined;
-  return table.models[normalizeModel(model)];
+  const key = normalizeModel(model);
+  return table.models[key] ?? Object.entries(table.models).find(([id]) => normalizeModel(id) === key)?.[1];
 }
 
 /** Hand edits win over fetched prices and mark the version as edited. */

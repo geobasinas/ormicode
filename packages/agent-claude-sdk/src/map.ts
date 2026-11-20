@@ -5,7 +5,7 @@ import type { AgentEvent } from '@ormicode/protocol';
 export interface MappedMessage { events: AgentEvent[]; nativeId?: string }
 
 /** Convert documented SDK messages to protocol events. No credentials or process are touched. */
-export function mapSdkMessage(message: SDKMessage, options: { forwardSubagentText?: boolean } = {}): MappedMessage {
+export function mapSdkMessage(message: SDKMessage, options: { forwardSubagentText?: boolean; model?: string } = {}): MappedMessage {
   const candidates: unknown[] = [];
   const parent = 'parent_tool_use_id' in message && message.parent_tool_use_id
     ? { parent: message.parent_tool_use_id } : {};
@@ -33,7 +33,9 @@ export function mapSdkMessage(message: SDKMessage, options: { forwardSubagentTex
     else if (delta.type === 'thinking_delta') candidates.push({ kind: 'thinking_delta', text: delta.thinking, ...parent });
   } else if (message.type === 'result') {
     const usage = message.usage;
-    candidates.push({ kind: 'usage', input: usage.input_tokens, output: usage.output_tokens, ...(usage.cache_read_input_tokens == null ? {} : { cacheRead: usage.cache_read_input_tokens }), ...(usage.cache_creation_input_tokens == null ? {} : { cacheWrite: usage.cache_creation_input_tokens }), costCumulativeUsd: message.total_cost_usd });
+    const models = Object.keys(message.modelUsage ?? {});
+    const model = options.model ?? (models.length === 1 ? models[0] : undefined);
+    candidates.push({ kind: 'usage', ...(model ? { model } : {}), input: usage.input_tokens, output: usage.output_tokens, ...(usage.cache_read_input_tokens == null ? {} : { cacheRead: usage.cache_read_input_tokens }), ...(usage.cache_creation_input_tokens == null ? {} : { cacheWrite: usage.cache_creation_input_tokens }), costCumulativeUsd: message.total_cost_usd });
     if (message.subtype !== 'success') candidates.push({ kind: 'error', code: message.subtype === 'error_max_budget_usd' ? 'plan_limit' : 'unknown', message: message.errors.join('\n') });
     candidates.push({ kind: 'turn_end' });
   } else if (message.type === 'system' && message.subtype === 'api_retry' && (message.error === 'rate_limit' || message.error === 'overloaded')) {
