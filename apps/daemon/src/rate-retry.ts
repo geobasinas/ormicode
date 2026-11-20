@@ -7,10 +7,14 @@ export function rateRetries(db: Store, retry: (session: string) => Promise<boole
     cancel,
     schedule(session: string, resetAt: number) {
       cancel(session);
-      timers.set(session, setTimeout(() => {
+      timers.set(session, setTimeout(async () => {
         timers.delete(session);
-        if (getSession(db, session)?.state === 'paused_rate_limited')
-          void retry(session)?.then(ok => { if (!ok) setState(db, session, 'interrupted', 'resume_failed'); });
+        if (getSession(db, session)?.state !== 'paused_rate_limited') return;
+        try {
+          if (await retry(session) === false) setState(db, session, 'interrupted', 'resume_failed');
+        } catch {
+          setState(db, session, 'interrupted', 'resume_failed');
+        }
       }, Math.max(0, resetAt - Date.now())).unref());
     },
     close() { for (const timer of timers.values()) clearTimeout(timer); timers.clear(); },
