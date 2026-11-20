@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { browserPlatform, closeBrowserPlatform } from '../src/index.ts';
 import { WsLink } from '@ormicode/relay-client';
 import { newId } from '@ormicode/protocol';
+import { bindBrowserLifecycle } from '../../../apps/web/src/lifecycle.ts';
 
 class MemoryLocks {
   queue = [];
@@ -255,6 +256,35 @@ test('reconnect uses the least advanced subscriber cursor', async t => {
   env.links[0].close();
   await until(() => env.links[1]?.calls.some(([method]) => method === 'session.subscribe'));
   assert.deepEqual(env.links[1].calls.find(([method]) => method === 'session.subscribe')[1], { session: 's_minimum', after: 1 });
+});
+
+test('persisted pageshow reconnects the same platform and listeners on every bfcache restore', async t => {
+  const env = environment(); t.after(() => env.close());
+  const platform = env.create(), target = new EventTarget(), states = [], received = [];
+  t.after(bindBrowserLifecycle(platform, target));
+  const transport = platform.transport;
+  transport.onState = state => states.push(state);
+  transport.onEvent = frame => received.push(frame.seq);
+  target.dispatchEvent(new Event('pageshow'));
+  await platform.web.pair({ account: 'demo', code: 'bfcache' });
+  await until(() => env.links.length === 1 && states.at(-1) === 'online');
+  transport.subscribe('s_cache');
+  env.links[0].onFrame({ v: 1, type: 'evt', session: 's_cache', seq: 1, ts: 1, body: { kind: 'text', text: 'before' } });
+  for (let cycle = 1; cycle <= 2; cycle++) {
+    target.dispatchEvent(new Event('pagehide'));
+    target.dispatchEvent(new Event('pageshow'));
+    assert.equal(env.links.length, cycle);
+    const restore = new Event('pageshow'); Object.defineProperty(restore, 'persisted', { value: true });
+    target.dispatchEvent(restore);
+    await until(() => env.links[cycle]?.calls.some(([method]) => method === 'session.subscribe'));
+    assert.equal(platform.transport, transport);
+    assert.deepEqual(env.links[cycle].calls.find(([method]) => method === 'session.subscribe')[1], { session: 's_cache', after: cycle });
+    env.links[cycle].onFrame({ v: 1, type: 'evt', session: 's_cache', seq: cycle + 1, ts: 1, body: { kind: 'text', text: 'after' } });
+    target.dispatchEvent(restore);
+    assert.equal(env.links.length, cycle + 1);
+    assert.equal((await transport.request('session.list', {})).type, 'res');
+  }
+  assert.deepEqual(received, [1, 2, 3]); assert.equal(states.at(-1), 'online');
 });
 
 test('an unknown or revoked token clears the store and returns to unpaired', async t => {

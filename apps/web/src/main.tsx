@@ -1,6 +1,7 @@
 import { createRoot } from 'react-dom/client';
 import { App } from '@ormicode/client-ui';
-import { browserPlatform, closeBrowserPlatform } from '@ormicode/client-platform';
+import { browserPlatform } from '@ormicode/client-platform';
+import { bindBrowserLifecycle } from './lifecycle.ts';
 import '@ormicode/client-ui/index.css';
 import './theme.css';
 
@@ -22,5 +23,5 @@ const platform = browserPlatform({
   version: __ORMI_VERSION__,
   commit: __ORMI_COMMIT__,
 });
-window.addEventListener('pagehide', () => closeBrowserPlatform(platform), { once: true });
+bindBrowserLifecycle(platform);
 createRoot(document.getElementById('root')!).render(<App platform={platform} pairPrefill={pairPrefill} />);
