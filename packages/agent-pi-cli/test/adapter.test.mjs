@@ -87,3 +87,17 @@ test('CLI mapper maps retries, compaction and thinking changes', () => {
   assert.equal(mapper.map({ type: 'thinking_level_changed', level: 'high' }).events[0].effort, 'high');
   assert.equal(mapper.map({ type: 'compaction_end', reason: 'threshold', result: { summary: 'x' }, aborted: false }).events[0].kind, 'compacted');
 });
+
+test('CLI mapper reads usage from the message snapshot when the event has no top-level usage', () => {
+  const mapper = new PiCliMapper();
+  mapper.map({ type: 'session', id: 'sess-1' });
+  mapper.map({
+    type: 'message_update',
+    message: { role: 'assistant', usage: { input: 182, output: 2, cacheRead: 4, cacheWrite: 0, cost: { total: 0.031 } } },
+    assistantMessageEvent: { type: 'text_delta', delta: 'hi' },
+  });
+  const end = mapper.map({ type: 'agent_end', messages: [] });
+  assert.equal(end.terminal, true);
+  const usage = end.events.find(event => event.kind === 'usage');
+  assert.deepEqual(usage, { kind: 'usage', input: 182, output: 2, cacheRead: 4, cacheWrite: 0, costUsd: 0.031 });
+});

@@ -37,7 +37,7 @@ export class PiCliMapper {
       nativeId = z.parse(sessionHeader, message).id;
     } else if (message.type === 'message_update') {
       const value = z.parse(update, message);
-      this.lastUsage = this.usage(value.usage) ?? this.lastUsage;
+      this.lastUsage = this.usage(value.usage) ?? this.usage((message as { message?: { usage?: unknown } }).message?.usage) ?? this.lastUsage;
       const sub = value.assistantMessageEvent;
       if (sub.type === 'text_delta' && typeof sub.delta === 'string') { this.text += sub.delta; events.push({ kind: 'text_delta', text: sub.delta }); }
       else if (sub.type === 'thinking_delta' && typeof sub.delta === 'string') { this.thinking += sub.delta; events.push({ kind: 'thinking_delta', text: sub.delta }); }
