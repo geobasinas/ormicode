@@ -90,11 +90,14 @@ export class TeamApprovals {
     }
     return ['team_approval_request', { ...payload, parent: team.parent, options }];
   }
-  unavailable(session: string): void {
+  unavailable(session: string, preserveHandoffs = false): void {
     const ctx = this.context();
     for (const id of this.userAnswers.keys()) if (id.startsWith(`${session}/`)) this.userAnswers.delete(id);
     for (const [id, pending] of this.pending) {
-      if (pending.session === session) { this.pending.delete(id); continue; }
+      if (pending.session === session) {
+        if (!preserveHandoffs || pending.payload.approvalKind !== 'handoff') this.pending.delete(id);
+        continue;
+      }
       if (pending.parent !== session || pending.decision) continue;
       this.toUser(pending, { fallbackReason: 'parent_unavailable' });
     }

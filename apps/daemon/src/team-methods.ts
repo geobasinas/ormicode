@@ -61,7 +61,7 @@ async function handle(ctx: DispatchCtx, client: Client, id: string, method: stri
     case 'team.cancel':
     case 'team.reassign': {
       if (target!.id === team.parent || target!.archived) return fail('team.invalid', 'target must be a live child');
-      await interrupt(ctx, target!.id);
+      await interrupt(ctx, target!.id, { cancelHandoffs: true });
       if (method === 'team.cancel') return reply({ interrupted: true });
       addQueuedPrompt(ctx.db, target!.id, { id: newId('q'), text: String(body.task), createdAt: Date.now() });
       await ctx.drainQueue(target!.id);

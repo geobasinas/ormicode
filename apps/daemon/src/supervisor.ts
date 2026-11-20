@@ -271,7 +271,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     const w = workers.get(session);
     const link = workerLinks.get(session);
     const response = w && link ? await link.request(method, { session, ...body }, 30_000) : undefined;
-    if (method === 'worker.abort' && response?.type === 'res') expireHandoffApprovals(dispatchCtx, session, 'cancelled');
+    if (method === 'worker.abort' && body.preserveHandoffs !== true && response?.type === 'res') expireHandoffApprovals(dispatchCtx, session, 'cancelled');
     return response;
   };
   const workerLinks = new Map<string, Link>();

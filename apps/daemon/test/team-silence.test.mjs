@@ -16,7 +16,7 @@ function fixture(t) {
   const lifecycle = new TeamLifecycle(() => ctx, session => live.has(session));
   db.prepare('INSERT INTO settings(key, value) VALUES (?, ?)').run('team.silenceMs', '10');
   const nudges = () => events.filter(e => e.session === parent && e.kind === 'team_message' && e.nudge);
-  return { db, parent, child, team, events, live, lifecycle, nudges };
+  return { db, parent, child, team, events, live, lifecycle, nudges, ctx };
 }
 
 test('silence interval is ten minutes by default and rejects invalid settings', () => {
@@ -74,4 +74,19 @@ test('late worker disconnects and timer callbacks are inert after lifecycle shut
   assert.doesNotThrow(() => lifecycle.available(parent));
   assert.doesNotThrow(() => lifecycle.event(child, 'interrupted', {}));
   assert.doesNotThrow(() => lifecycle.check());
+});
+
+test('urgent interruption preserves handoffs only for intentional interruption events and releases its scope on failure', async t => {
+  const { child, lifecycle, ctx } = fixture(t);
+  const preserved = [];
+  ctx.teamApprovals.unavailable = (session, preserve) => { assert.equal(session, child); preserved.push(preserve); };
+  await lifecycle.preserveHandoffs(child, async () => {
+    lifecycle.event(child, 'interrupted', {});
+    lifecycle.event(child, 'state', { state: 'interrupted' });
+    lifecycle.event(child, 'error', { message: 'actual failure' });
+  });
+  lifecycle.event(child, 'interrupted', {});
+  await assert.rejects(lifecycle.preserveHandoffs(child, async () => { throw new Error('abort failed'); }), /abort failed/);
+  lifecycle.event(child, 'interrupted', {});
+  assert.deepEqual(preserved, [true, true, false, false, false]);
 });
