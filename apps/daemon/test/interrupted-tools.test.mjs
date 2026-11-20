@@ -28,3 +28,23 @@ test('interruption durably closes only unfinished calls, including nested calls,
     assert.equal(replay(db, 'other').length, 1);
   } finally { db.close(); }
 });
+
+test('Stop only closes current-turn calls when IDs are reused across completed turns', t => {
+  const db = openStore(':memory:'); t.after(() => db.close());
+  createSession(db, { id: 's', machine: 'm', project: 'p', vendor: 'fake', transport: 'cli', cwd: '/repo' });
+  const record = (session, kind, payload = {}) => append(db, session, { kind, payload });
+  record('s', 'turn_start');
+  record('s', 'tool_call', { callId: 'call-1' });
+  record('s', 'tool_result', { callId: 'call-1', status: 'completed' });
+  record('s', 'tool_call', { callId: 'old-missing-result' });
+  record('s', 'turn_end');
+  closeInterruptedTools(db, 's', record);
+  assert.equal(replay(db, 's').filter(e => e.kind === 'tool_result').length, 1);
+  record('s', 'turn_start');
+  record('s', 'tool_call', { callId: 'call-1' });
+  closeInterruptedTools(db, 's', record);
+  record('s', 'interrupted');
+  closeInterruptedTools(db, 's', record);
+  const results = replay(db, 's').filter(e => e.kind === 'tool_result').map(e => JSON.parse(e.payload));
+  assert.deepEqual(results, [{ callId: 'call-1', status: 'completed' }, { callId: 'call-1', status: 'interrupted' }]);
+});

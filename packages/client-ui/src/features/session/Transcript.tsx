@@ -355,13 +355,16 @@ function renderEvents(events: TranscriptEvent[], ctx: Ctx, includeChildren = fal
 function renderTurns(events: TranscriptEvent[], ctx: Ctx) {
   return transcriptTurns(events).map((part, index) => {
     if (part.kind === 'events') return <div key={`events-${index}`}>{renderEvents(part.events, ctx)}</div>;
+    const members = new Set(part.events);
+    const turnCtx = { ...ctx, results: transcriptToolResults(part.events),
+      children: new Map([...ctx.children].map(([id, children]) => [id, children.filter(event => members.has(event))])) };
     const { activity, visible } = turnContents(part.events);
     const start = part.start.ts ?? part.events.find(event => event.ts !== undefined)?.ts ?? 0;
     const end = part.end?.ts ?? part.events.findLast(event => event.ts !== undefined)?.ts ?? start;
     return <Fragment key={`turn-${part.start.seq}`}>
-    {renderEvents(visible.filter(event => event.kind === 'prompt'), ctx)}
-    <TurnActivity start={start} end={end} running={!part.end && Boolean(ctx.busy)} activity={renderEvents(activity, ctx)}>
-      {renderEvents(visible.filter(event => event.kind !== 'prompt'), ctx)}
+    {renderEvents(visible.filter(event => event.kind === 'prompt'), turnCtx)}
+    <TurnActivity start={start} end={end} running={!part.end && Boolean(ctx.busy)} activity={renderEvents(activity, turnCtx)}>
+      {renderEvents(visible.filter(event => event.kind !== 'prompt'), turnCtx)}
       {part.end?.kind === 'turn_end' ? <ChangedFilesCard session={ctx.session} events={part.events} allowDiff={!ctx.scratch} /> : null}
     </TurnActivity></Fragment>;
   });
@@ -382,7 +385,7 @@ export function Transcript({ events, session, onHandoff, onOpenSession, onEditPr
       const parent = parentOf(e);
       if (parent) children.set(parent, [...(children.get(parent) ?? []), e]);
     }
-    const resultSeqs = new Set([...results.values()].filter(r => calls.has(String(r.body.callId))).map(r => r.seq));
+    const resultSeqs = new Set(visibleEvents.filter(r => r.kind === 'tool_result' && calls.has(String(r.body.callId))).map(r => r.seq));
     for (const e of visibleEvents) if (e.kind === 'checkpoint' && resultSeqs.has(Number(e.body.seq))) { cpAfter.set(Number(e.body.seq), e); attached.add(e.seq); }
     return { session, results, calls, cpAfter, attached, children, hiddenCount, showHidden, toggleHidden: () => setShowHidden(value => !value), events, screenshots, onHandoff, onOpenSession, onEditPrompt, busy, scratch };
   }, [visibleEvents, events, session, hiddenCount, showHidden, onHandoff, onOpenSession, onEditPrompt, busy, scratch]);
