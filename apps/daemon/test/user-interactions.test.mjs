@@ -24,7 +24,7 @@ test('daemon questions time out at ten minutes but accept one late answer, inclu
   } };
   const interactions = new UserInteractions(() => ctx), replies = [];
   const client = { device: 'user-device', link: { reply: (id, body) => replies.push({ body }), replyError: (id, code, message) => replies.push({ code, message }) } };
-  t.after(() => { interactions.close(); db.close(); rmSync(dir, { recursive: true, force: true }); });
+  t.after(() => { interactions.close(); db.close(); rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); });
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const pending = interactions.ask(client, 'question', session, { question: 'Why?' });
   const request = JSON.parse(replay(db, session).at(-1).payload).request;

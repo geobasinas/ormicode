@@ -25,7 +25,7 @@ test('a follow-up prompt during a pending approval is busy, queues, and runs aft
   t.after(async () => {
     client.close(); await daemon.close();
     if (previous === undefined) delete process.env.ORMICODE_FAKE_SCRIPT; else process.env.ORMICODE_FAKE_SCRIPT = previous;
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
   });
   const session = (await client.request('session.start', { machine: newId('m'), project: dir, vendor: 'fake', transport: 'cli', model: 'x', effort: 'x', mode: 'x', workspace: { kind: 'current' } })).body.session;
   assert.equal((await client.request('session.prompt', { session, text: 'write the file' })).type, 'res');

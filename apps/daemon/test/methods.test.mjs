@@ -12,7 +12,7 @@ const pendingCleanup = new Set();
 const projectDir = mkdtempSync(join(tmpdir(), 'ormi-daemon-project-'));
 test.after(async () => {
   for (const cleanup of pendingCleanup) await cleanup();
-  rmSync(projectDir, { recursive: true, force: true });
+  rmSync(projectDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
 });
 
 const boot = async (env = {}) => {
@@ -283,7 +283,7 @@ test('a full pool keeps a running worker and the worker that just started', asyn
     assert.equal(replay(daemon.db, running).some(e => e.kind === 'evicted'), false);
     assert.equal(replay(daemon.db, fresh).some(e => e.kind === 'evicted'), false);
     assert.equal((await client.request('session.prompt', { session: fresh, text: 'second turn' })).type, 'res');
-  } finally { await cleanup(); rmSync(other, { recursive: true, force: true }); }
+  } finally { await cleanup(); rmSync(other, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); }
 });
 
 test('a full pool still accepts prompts on every session at once', async () => {
@@ -321,7 +321,7 @@ test('a full pool still accepts prompts on every session at once', async () => {
     }
   } finally {
     await cleanup();
-    for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
+    for (const dir of dirs) rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
   }
 });
 

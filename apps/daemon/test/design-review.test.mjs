@@ -110,5 +110,5 @@ test('design review anchors, attribution, mentions, approval and version CAS', a
     assert.equal((await client.request('design.update', { ...board, expectedRevision: doc.revision, operations: Array(5).fill(large) })).code, 'design.too_large');
     writeFileSync(path, 'x'.repeat(225 * 1024));
     assert.equal((await client.request('design.get', board)).code, 'design.too_large');
-  } finally { agent.close(); client.close(); await daemon.close(); rmSync(dir, { recursive: true, force: true }); }
+  } finally { agent.close(); client.close(); await daemon.close(); rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); }
 });

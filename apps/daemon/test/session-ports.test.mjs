@@ -25,7 +25,7 @@ test('port allocation is aligned, unique, and stable across store reopen', async
     assert.equal(getSessionPorts(db, 's_two'), two.base);
   } finally {
     db?.close();
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
   }
 });
 

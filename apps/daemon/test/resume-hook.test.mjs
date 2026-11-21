@@ -53,6 +53,6 @@ test('a second worker spawn runs and journals the resume hook after a turn', asy
   } finally {
     if (session) await client.request('session.delete', { session }).catch(() => undefined);
     await daemon.close();
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
   }
 });

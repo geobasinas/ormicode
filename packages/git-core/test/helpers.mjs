@@ -20,11 +20,12 @@ export function fixture() {
   execFileSync('git', ['init', '-q', '-b', 'main', cwd]);
   git(cwd, 'config', 'user.name', 'Git Test');
   git(cwd, 'config', 'user.email', 'git-test@example.com');
+  git(cwd, 'config', 'core.autocrlf', 'false');
   writeFileSync(join(cwd, 'tracked.txt'), 'base\n');
   const rootCommit = commit(cwd, 'root');
   const origin = join(root, 'origin.git');
   execFileSync('git', ['init', '-q', '--bare', '-b', 'main', origin]);
   git(cwd, 'remote', 'add', 'origin', origin);
   git(cwd, 'push', '-u', 'origin', 'main');
-  return { root, cwd, origin, rootCommit, cleanup: () => rmSync(root, { recursive: true, force: true }) };
+  return { root, cwd, origin, rootCommit, cleanup: () => rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }) };
 }

@@ -44,5 +44,5 @@ test('board preserves timestamped entries across state rewrites, including hosti
     assert.throws(() => readBoard(dir, '../outside'), /invalid team id/);
     writeBoard(dir, team, 'parent', 'parent', 'setState', '');
     assert.match(readBoard(dir, team), /second/);
-  } finally { rmSync(dir, { recursive: true, force: true }); }
+  } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); }
 });

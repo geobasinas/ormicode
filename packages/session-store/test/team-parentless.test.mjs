@@ -12,7 +12,7 @@ import {
 
 test('parentless flags and user-directed inbox requests persist independently of the parent inbox', t => {
   const dir = mkdtempSync(join(tmpdir(), 'ormi-team-parentless-store-')), path = join(dir, 'store.db');
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  t.after(() => rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}));
   let db = openStore(path);
   for (const id of ['parent', 'child', 'solo']) createSession(db, { id, parent: id === 'child' ? 'parent' : undefined, machine: 'local', project: '/repo', vendor: 'fake', transport: 'cli', cwd: '/repo' });
   createTeam(db, { id: 'team', parent: 'parent', project: '/repo' }); setSessionTeam(db, 'child', 'team');
@@ -41,7 +41,7 @@ test('parentless flags and user-directed inbox requests persist independently of
 
 test('migration 0010 upgrades teams data without changing messages or membership', t => {
   const dir = mkdtempSync(join(tmpdir(), 'ormi-team-upgrade-')), path = join(dir, 'store.db');
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  t.after(() => rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}));
   const old = new Database(path);
   const migrations = fileURLToPath(new URL('../migrations/', import.meta.url));
   for (const file of readdirSync(migrations).sort().filter(file => /^000[1-9]-/.test(file))) old.exec(readFileSync(join(migrations, file), 'utf8'));

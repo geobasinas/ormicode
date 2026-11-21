@@ -34,7 +34,7 @@ async function fixture(t) {
   t.after(async () => {
     client.close(); await daemon.close();
     for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
   });
   const req = (method, body) => client.request(method, body, 30_000, method.startsWith('team.') || method === 'session.askUser' ? credentials.proof(body.actor ?? body.session) : undefined);
   const started = await req('session.start', { machine: newId('m'), project, vendor: 'fake', transport: 'cli', model: 'test', effort: 'test', mode: 'acceptEdits', workspace: { kind: 'current' } });

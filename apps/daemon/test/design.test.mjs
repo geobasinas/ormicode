@@ -49,7 +49,7 @@ test('design boards persist, use CAS, retain restore points and emit events', as
     const revisionBeforeRestore = current.body.document.revision;
     for (let i = 0; i < 21; i++) {
       current = await client.request('design.update', { session, slug: 'home', expectedRevision: current.body.document.revision, operations: [{ type: 'frame.update', frameId, patch: { x: i } }] });
-      assert.equal(current.type, 'res');
+      assert.equal(current.type, 'res', JSON.stringify(current));
     }
     const history = await client.request('design.history', { session, slug: 'home' });
     assert.equal(history.body.history.length, 20);
@@ -86,7 +86,7 @@ test('design boards persist, use CAS, retain restore points and emit events', as
     symlinkSync(outside, join(project, 'designs', 'escape'), 'dir');
     assert.equal((await client.request('design.get', { session, slug: 'escape' })).code, 'design.outside');
   } finally {
-    client.close(); await daemon.close(); rmSync(dir, { recursive: true, force: true });
+    client.close(); await daemon.close(); rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
   }
 });
 
@@ -144,7 +144,7 @@ test('worktree sessions keep the project design canvas', async () => {
     assert.equal((await client.request('design.get', { session: main, slug: 'retest' })).body.document.name, 'Shared');
     assert.equal(existsSync(join(worktree, 'designs', 'retest', 'workspace.json')), false);
   } finally {
-    client.close(); await daemon.close(); rmSync(dir, { recursive: true, force: true });
+    client.close(); await daemon.close(); rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
   }
 });
 
@@ -155,5 +155,5 @@ test('workspace board count stays within the list response bound', () => {
     for (let i = 0; i < 100; i++) createDesign(dir, `board-${i}`, 'Board');
     assert.equal(listDesigns(dir).length, 100);
     assert.throws(() => createDesign(dir, 'one-too-many', 'Board'), error => error.code === 'design.too_large');
-  } finally { rmSync(dir, { recursive: true, force: true }); }
+  } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); }
 });

@@ -15,7 +15,7 @@ import { TeamLifecycle } from '../src/team-lifecycle.ts';
 test('late choices survive daemon restart, reject invalid/empty/repeated answers, and deliver only at the next step', async t => {
   const dir = mkdtempSync(join(tmpdir(), 'ormi-late-question-')), path = join(dir, 'store.db'), session = newId('s'), request = newId('req');
   let db = openStore(path);
-  t.after(() => { db.close(); rmSync(dir, { recursive: true, force: true }); });
+  t.after(() => { db.close(); rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); });
   createSession(db, { id: session, machine: 'm', project: 'p', vendor: 'fake', transport: 'cli', cwd: dir });
   append(db, session, { kind: 'question_request', payload: { request, daemonInteraction: true, questions: [{ question: 'Choose?', options: [{ label: 'A' }, { label: 'B' }] }] } });
   setState(db, session, 'awaiting_input'); db.close(); db = openStore(path);

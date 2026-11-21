@@ -1,3 +1,5 @@
+import { resolve } from 'node:path';
+
 export interface WorktreeEntry { path: string; branch: string | null }
 
 export function parseWorktrees(text: string): WorktreeEntry[] {
@@ -6,7 +8,9 @@ export function parseWorktrees(text: string): WorktreeEntry[] {
     const path = lines.find(line => line.startsWith('worktree '))?.slice('worktree '.length);
     if (!path) return undefined;
     const ref = lines.find(line => line.startsWith('branch '))?.slice('branch '.length);
-    return { path, branch: ref?.startsWith('refs/heads/') ? ref.slice('refs/heads/'.length) : null };
+    // git prints forward slashes on Windows; normalize so API consumers can
+    // compare against join()/resolve() paths directly.
+    return { path: resolve(path), branch: ref?.startsWith('refs/heads/') ? ref.slice('refs/heads/'.length) : null };
   }).filter((entry): entry is WorktreeEntry => Boolean(entry));
 }
 

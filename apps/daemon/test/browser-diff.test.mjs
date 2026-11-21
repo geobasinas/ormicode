@@ -37,6 +37,6 @@ test('browser diff counts padding, stores a red artifact, caches pairs, and vali
     assert.throws(() => browser.diff(session, '../store.db', b), /Artifact not found/);
     assert.throws(() => browser.diff(session, oversized, b), /4 MiB/);
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
   }
 });

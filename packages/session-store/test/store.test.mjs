@@ -38,7 +38,7 @@ test('projects migration preserves the unused legacy table and its rows', () => 
     { id: 'old', machine: 'm_old', path: '/old/repo', remote: 'https://example.test/repo', default_branch: 'main' },
   );
   db.close();
-  rmSync(dir, { recursive: true, force: true });
+  rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
 });
 
 test('session port blocks persist, reject duplicate bases, and release independently', () => {
@@ -59,7 +59,7 @@ test('session port blocks persist, reject duplicate bases, and release independe
     assert.equal(releaseSessionPorts(db, 's_one'), false);
   } finally {
     db?.close();
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
   }
 });
 

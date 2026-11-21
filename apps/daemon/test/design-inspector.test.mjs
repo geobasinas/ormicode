@@ -37,5 +37,5 @@ test('token and markup updates share the board CAS, persistence, and restore his
     assert.equal(request(7, full.slice(16)).document.tokens.length, DESIGN_TOKEN_LIMIT);
     assert.throws(() => request(8, [operation]), { code: 'design.invalid' });
     assert.equal(getDesign(dir, 'home').document.revision, 8);
-  } finally { rmSync(dir, { recursive: true, force: true }); }
+  } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); }
 });

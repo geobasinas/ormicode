@@ -23,7 +23,7 @@ function repository() {
   git(project, 'remote', 'add', 'origin', origin);
   git(project, 'push', '-u', 'origin', 'main');
   git(project, 'remote', 'set-head', 'origin', '--auto');
-  return { root, project, origin, cleanup: () => rmSync(root, { recursive: true, force: true }) };
+  return { root, project, origin, cleanup: () => rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}) };
 }
 
 async function boot(root) {

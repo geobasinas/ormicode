@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
+import { normalize } from 'node:path';
 import { fixture, git } from './helpers.mjs';
 import { branches } from '../src/branches.ts';
 import { pullBranch, removeBranch, renameBranch } from '../src/branch-operations.ts';
@@ -32,7 +33,7 @@ test('project branches include merge and linked-worktree metadata', () => {
     const info = branches(repo.cwd, 'main');
     assert.equal(info.local.find(branch => branch.name === 'merged')?.merged, true);
     assert.equal(info.local.find(branch => branch.name === 'unmerged')?.merged, false);
-    assert.equal(info.local.find(branch => branch.name === 'linked')?.worktreePath, worktree);
+    assert.equal(normalize(info.local.find(branch => branch.name === 'linked')?.worktreePath ?? ''), normalize(worktree));
     assert.equal(info.local.find(branch => branch.name === 'main')?.worktreePath, null);
   } finally { repo.cleanup(); }
 });

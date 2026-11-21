@@ -33,6 +33,6 @@ test('boards written before the expanded editor retain their frames, feedback, a
     assert.equal(restored.document.frames[0].styles, frame.styles);
     assert.deepEqual(restored.document.comments, []);
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
   }
 });

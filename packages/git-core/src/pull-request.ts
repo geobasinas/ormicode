@@ -14,9 +14,16 @@ function noPullRequest(error: unknown): boolean {
   return /no pull requests? found|could not find any pull requests/i.test(message);
 }
 
+// ORMICODE_GH is a test hook pointing at a Node script; on Windows an
+// extensionless shebang file cannot be exec'd, so run it under node.
+function ghRun(cwd: string, args: string[]): string {
+  const gh = process.env.ORMICODE_GH;
+  if (gh && process.platform === 'win32') return run(process.execPath, cwd, [gh, ...args]);
+  return run(gh ?? 'gh', cwd, args);
+}
+
 function json(cwd: string, args: string[]): Json {
-  const gh = process.env.ORMICODE_GH ?? 'gh';
-  return JSON.parse(run(gh, cwd, args)) as Json;
+  return JSON.parse(ghRun(cwd, args)) as Json;
 }
 
 function checks(value: unknown) {
@@ -77,7 +84,7 @@ export function createPr(cwd: string, base: string | null, title: string, body: 
   const branch = approved?.branch ?? currentBranch(cwd);
   if (!branch) throw new Error('cannot create a PR from detached HEAD');
   try {
-    const url = run(process.env.ORMICODE_GH ?? 'gh', cwd, ['pr', 'create', '--base', base, '--head', branch, '--title', title, '--body', body, ...(draft ? ['--draft'] : []), ...(approved ? ['--repo', approved.repo] : [])]).trim();
+    const url = ghRun(cwd, ['pr', 'create', '--base', base, '--head', branch, '--title', title, '--body', body, ...(draft ? ['--draft'] : []), ...(approved ? ['--repo', approved.repo] : [])]).trim();
     const number = Number(/\/pull\/(\d+)/.exec(url)?.[1]);
     if (!number) throw new Error(`gh returned an unexpected PR URL: ${url}`);
     return { number, url };
@@ -85,6 +92,6 @@ export function createPr(cwd: string, base: string | null, title: string, body: 
 }
 
 export function mergePr(cwd: string, method: 'squash' | 'merge' | 'rebase') {
-  try { run(process.env.ORMICODE_GH ?? 'gh', cwd, ['pr', 'merge', `--${method}`]); }
+  try { ghRun(cwd, ['pr', 'merge', `--${method}`]); }
   catch (error) { throw unavailable(error); }
 }

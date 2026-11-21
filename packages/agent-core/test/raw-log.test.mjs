@@ -20,7 +20,7 @@ test('writes stdout/stderr/meta and drops oldest bytes past the cap', () => {
   // Cap: write >5 MB, oldest bytes gone.
   log.out(Buffer.alloc(5 * 1024 * 1024 + 64, 'x'));
   assert.equal(statSync(join(dir, 'stdout.log')).size <= 5 * 1024 * 1024, true);
-  rmSync(dir, { recursive: true, force: true });
+  rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
 });
 
 test('undefined dir is a no-op', () => {

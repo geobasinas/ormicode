@@ -9,7 +9,7 @@ import { createPromptDelivery } from '../src/prompt-delivery.ts';
 
 function fixture(t) {
   const root = mkdtempSync(join(tmpdir(), 'ormi-handoff-prompts-'));
-  t.after(() => rmSync(root, { recursive: true, force: true }));
+  t.after(() => rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}));
   const db = openStore(':memory:'); t.after(() => db.close());
   for (const id of ['old', 'new']) {
     const cwd = join(root, id); mkdirSync(cwd); writeFileSync(join(cwd, 'common.txt'), id);

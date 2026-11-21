@@ -13,7 +13,7 @@ import { resumeSession } from '../src/team-resume.ts';
 import { stateFor } from '../src/supervisor-state.ts';
 
 for (const invalid of [false, true]) test(`fork ${invalid ? 'surfaces an absent untracked reference without transferring any work' : 'transfers valid file references and continues queued work after Resume'}`, async t => {
-  const cwd = mkdtempSync(join(tmpdir(), 'ormi-fork-queue-')); t.after(() => rmSync(cwd, { recursive: true, force: true }));
+  const cwd = mkdtempSync(join(tmpdir(), 'ormi-fork-queue-')); t.after(() => rmSync(cwd, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}));
   const git = (...args) => execFileSync('git', args, { cwd, stdio: 'pipe' });
   git('init', '-qb', 'main'); writeFileSync(join(cwd, 'common.txt'), 'tracked'); git('add', 'common.txt');
   git('-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '-qm', 'base');

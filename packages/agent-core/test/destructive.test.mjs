@@ -41,5 +41,5 @@ test('pattern file overrides; broken or missing falls back to defaults', () => {
   writeFileSync(custom, 'not json');
   assert.equal(classifyCommand('rm -rf /', loadDestructivePatterns(custom))?.rule, 'rm -rf');
   assert.equal(classifyCommand('rm -rf /', loadDestructivePatterns(join(dir, 'missing.json')))?.rule, 'rm -rf');
-  rmSync(dir, { recursive: true, force: true });
+  rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
 });

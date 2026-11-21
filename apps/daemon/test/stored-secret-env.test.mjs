@@ -9,7 +9,7 @@ import { SecretBroker } from '../src/secrets.ts';
 import { workerEnvironment } from '../src/worker-env.ts';
 
 test('stored secrets without declarations reach workers and tool children with project precedence and redaction', t => {
-  const dir = mkdtempSync(join(tmpdir(), 'ormi-secret-env-')); t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const dir = mkdtempSync(join(tmpdir(), 'ormi-secret-env-')); t.after(() => rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}));
   const keyring = new MemoryKeyring();
   const broker = new SecretBroker(join(dir, 'audit'), join(dir, 'names'), keyring);
   const project = join(dir, 'project');

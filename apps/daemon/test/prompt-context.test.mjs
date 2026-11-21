@@ -21,7 +21,7 @@ function makeRepo() {
 
 test('prompt context includes safe paths, capped diff, and the last 200 terminal lines', t => {
   const cwd = makeRepo();
-  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+  t.after(() => rmSync(cwd, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}));
   writeFileSync(join(cwd, 'src/main.ts'), 'changed\n'.repeat(20_000));
   const result = expandPrompt({
     cwd, session: 's_test', notesDir: join(cwd, 'notes'),
@@ -35,7 +35,7 @@ test('prompt context includes safe paths, capped diff, and the last 200 terminal
 
 test('attachments are written under .ormi and capped at 10 MB each and 25 MB total', t => {
   const cwd = makeRepo();
-  t.after(() => rmSync(cwd, { recursive: true, force: true }));
+  t.after(() => rmSync(cwd, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}));
   const root = { cwd, session: 's_test', notesDir: join(cwd, 'notes'), terminalOutput: () => undefined };
   const result = expandPrompt(root, { text: 'read this', attachments: [{ name: 'hello.txt', mimeType: 'text/plain', data: Buffer.from('hello').toString('base64') }] });
   assert.equal(readFileSync(join(cwd, result.attachments[0].path), 'utf8'), 'hello');
@@ -56,8 +56,8 @@ test('attachment exclusion resolves through git metadata in a linked worktree', 
   const cwd = makeRepo();
   const worktree = join(cwd, '..', `ormi-linked-${process.pid}-${Date.now()}`);
   t.after(() => {
-    rmSync(worktree, { recursive: true, force: true });
-    rmSync(cwd, { recursive: true, force: true });
+    rmSync(worktree, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
+    rmSync(cwd, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
   });
   execFileSync('git', ['worktree', 'add', '--detach', worktree, 'HEAD'], { cwd, stdio: 'ignore' });
   const root = { cwd: worktree, session: 's_linked', notesDir: join(worktree, 'notes'), terminalOutput: () => undefined };
@@ -73,8 +73,8 @@ test('attachments outside a repository do not modify another repository exclude'
   const repo = makeRepo();
   const nested = mkdtempSync(join(tmpdir(), 'ormi-context-nonrepo-'));
   t.after(() => {
-    rmSync(nested, { recursive: true, force: true });
-    rmSync(repo, { recursive: true, force: true });
+    rmSync(nested, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
+    rmSync(repo, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
   });
   const excludePath = join(repo, '.git/info/exclude');
   const excludeBefore = readFileSync(excludePath, 'utf8');
@@ -114,7 +114,7 @@ test('element and console contexts expand with details for the agent', () => {
     assert.match(latest.text, /latest-11/);
     assert.doesNotMatch(latest.text, /latest-0/);
   } finally {
-    rmSync(cwd, { recursive: true, force: true });
+    rmSync(cwd, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
   }
 });
 

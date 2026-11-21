@@ -13,6 +13,10 @@ import type { ModelList } from '@ormicode/agent-core';
 
 type Spawn = (command: string, args: string[], options: SpawnOptionsWithoutStdio) => ChildProcessWithoutNullStreams;
 const execFileAsync = promisify(execFile);
+// Script executables (.mjs/.js, e.g. test fakes) cannot be spawned directly on
+// Windows — run them under node.
+const scriptRunner = (file: string, args: string[]): [string, string[]] =>
+  process.platform === 'win32' && /\.(mjs|cjs|js)$/i.test(file) ? [process.execPath, [file, ...args]] : [file, args];
 
 /** `@opencode-ai/sdk` `createOpencode({ timeout })` defaults to 5s, which is too short for a cold `opencode serve`. */
 export const OPENCODE_SERVER_START_TIMEOUT_MS = 60_000;
@@ -41,7 +45,8 @@ export class OpenCodeServer {
     const timeoutMs = options.timeoutMs ?? OPENCODE_SERVER_START_TIMEOUT_MS;
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 120_000) throw new Error('Invalid server startup timeout');
     const password = randomBytes(32).toString('base64url');
-    const child = (options.spawn ?? spawn)(options.executable ?? 'opencode', ['serve', '--hostname', '127.0.0.1', '--port', '0'], { cwd: options.cwd, env: { ...process.env, OPENCODE_SERVER_PASSWORD: password }, windowsHide: true, shell: false });
+    const [file, argv] = scriptRunner(options.executable ?? 'opencode', ['serve', '--hostname', '127.0.0.1', '--port', '0']);
+    const child = (options.spawn ?? spawn)(file, argv, { cwd: options.cwd, env: { ...process.env, OPENCODE_SERVER_PASSWORD: password }, windowsHide: true, shell: false });
     child.stderr.resume(); child.stdin.end();
     const deadline = Date.now() + timeoutMs;
     try {
@@ -103,7 +108,8 @@ export async function openCodeModels(executable?: string): Promise<ModelList> {
     try { return await listOpenCodeModels(server); } finally { server.close(); }
   } catch {
     try {
-      const { stdout } = await execFileAsync(executable ?? 'opencode', ['models'], { timeout: 15_000, windowsHide: true });
+      const [file, argv] = scriptRunner(executable ?? 'opencode', ['models']);
+      const { stdout } = await execFileAsync(file, argv, { timeout: 15_000, windowsHide: true });
       return stdout.split('\n').map(line => line.trim()).filter(id => id.includes('/')).map(id => ({ id }));
     } catch { return []; }
   }

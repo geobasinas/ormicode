@@ -34,7 +34,7 @@ for (const phase of phases) {
       const next = append(db2, 's_test1', { kind: 'turn_end', payload: { kind: 'turn_end' } });
       assert.equal(next.seq, 2, `${phase}: next seq continues with no gap`);
       db2.close();
-    } finally { rmSync(dir, { recursive: true, force: true }); }
+    } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); }
   });
 }
 
@@ -49,7 +49,7 @@ test('crash after commit but before send: outbox still delivers the frame', () =
     assert.equal(pending.length, 2);
     assert.equal(pending[1].frame, committed.frame, 'journal is ahead of the wire; resync replays it');
     db2.close();
-  } finally { rmSync(dir, { recursive: true, force: true }); }
+  } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); }
 });
 
 test('interleaved crashes across two sessions keep their journals independent', () => {
@@ -65,5 +65,5 @@ test('interleaved crashes across two sessions keep their journals independent', 
     assert.equal(replay(db2, 's_test1').length, 1);
     assert.equal(replay(db2, 's_other').length, 1);
     db2.close();
-  } finally { rmSync(dir, { recursive: true, force: true }); }
+  } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); }
 });

@@ -98,5 +98,5 @@ test('ACP permission decisions gate a real fixture file write, including cancell
     assert.equal(readFileSync(path, 'utf8'), choice === 'allow' ? 'approved fixture write' : 'original');
    } finally { if (handle) await adapter.dispose(handle); }
   }
- } finally { rmSync(dir, { recursive: true, force: true }); }
+ } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); }
 });

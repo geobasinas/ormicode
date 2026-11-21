@@ -31,6 +31,6 @@ test('killTree reaps a worker and its grandchild', { timeout: 30_000 }, async ()
     assert.ok(!alive(gcpid), 'grandchild dead');
   } finally {
     try { killTree(worker); } catch { /* already dead */ }
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
   }
 });

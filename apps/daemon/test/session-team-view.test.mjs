@@ -12,7 +12,7 @@ import { newId } from '@ormicode/protocol';
 
 test('device read model includes membership and cache-inclusive usage, including archived team descendants but not handoffs', t => {
   const dir = mkdtempSync(join(tmpdir(), 'team-view-')), db = openStore(join(dir, 'db'));
-  t.after(() => { db.close(); rmSync(dir, { recursive: true, force: true }); });
+  t.after(() => { db.close(); rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); });
   for (const id of ['parent', 'child', 'handoff']) createSession(db, { id, machine: 'm', project: 'p', vendor: 'fake', transport: 'cli', cwd: dir, ...(id === 'parent' ? {} : { parent: 'parent' }) });
   createTeam(db, { id: 'team', parent: 'parent', project: 'p' });
   for (const id of ['parent', 'child']) setSessionTeam(db, id, 'team');
@@ -27,7 +27,7 @@ test('device read model includes membership and cache-inclusive usage, including
 
 test('parent approval read model is scoped, once-only, and clears on decision or user fallback', t => {
   const dir = mkdtempSync(join(tmpdir(), 'team-approval-view-')), db = openStore(join(dir, 'db'));
-  t.after(() => { db.close(); rmSync(dir, { recursive: true, force: true }); });
+  t.after(() => { db.close(); rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); });
   for (const id of ['parent', 'child']) createSession(db, { id, machine: 'm', project: 'p', vendor: 'fake', transport: 'cli', cwd: dir, ...(id === 'child' ? { parent: 'parent' } : {}) });
   createTeam(db, { id: 'team', parent: 'parent', project: 'p' }); setSessionTeam(db, 'child', 'team');
   const approvals = new TeamApprovals(() => ({ db, record: () => {}, drainQueue: async () => true }), () => true);
@@ -45,7 +45,7 @@ test('reopening a session replays event kinds and only that session history', as
   process.env.ORMICODE_HOME = dir;
   const daemon = await startDaemon({ socketPath: '127.0.0.1:0', storePath: join(dir, 'db') });
   const client = await connect(daemon.socketPath);
-  t.after(async () => { client.close(); await daemon.close(); if (home === undefined) delete process.env.ORMICODE_HOME; else process.env.ORMICODE_HOME = home; rmSync(dir, { recursive: true, force: true }); });
+  t.after(async () => { client.close(); await daemon.close(); if (home === undefined) delete process.env.ORMICODE_HOME; else process.env.ORMICODE_HOME = home; rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); });
   const parent = newId('s'), child = newId('s');
   for (const id of [parent, child]) createSession(daemon.db, { id, machine: 'm', project: 'p', vendor: 'fake', transport: 'cli', cwd: dir });
   append(daemon.db, parent, { kind: 'text', payload: { text: 'parent history' } });

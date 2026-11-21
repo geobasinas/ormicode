@@ -34,7 +34,7 @@ test('setup receives the full session environment while preserving workspace pat
     ]);
   } finally {
     if (worktree && branch) removeWorktree(project, worktree, branch);
-    rmSync(project, { recursive: true, force: true });
+    rmSync(project, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
   }
 });
 
@@ -55,5 +55,5 @@ test('resume hooks are journaled, use project-root fallback, and missing resume 
     events.length = 0;
     await runSessionHook(row, 'resume', 43010, (...event) => events.push(event));
     assert.deepEqual(events, []);
-  } finally { rmSync(project, { recursive: true, force: true }); }
+  } finally { rmSync(project, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); }
 });

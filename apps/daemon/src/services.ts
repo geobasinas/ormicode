@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync } from 'node:fs';
+import { createWriteStream, existsSync, mkdirSync, readFileSync, realpathSync, type WriteStream } from 'node:fs';
 import { request as httpRequest } from 'node:http';
 import { createConnection } from 'node:net';
 import { isAbsolute, join, relative, resolve } from 'node:path';
@@ -32,7 +32,7 @@ interface Runtime extends Definition {
   port: number;
   state: State; child?: ChildProcess; pid?: number; code?: number | null; detail?: string;
   startedAt?: number; stopping: boolean; lines: LogLine[]; bytes: number; nextLine: number;
-  partial: Map<string, string>;
+  partial: Map<string, string>; logStream?: WriteStream;
 }
 interface Portal { title: string; path: string; url: string }
 interface ServiceView {
@@ -237,9 +237,15 @@ export class Services {
     const batch = process.platform === 'win32';
     let child: ChildProcess;
     try {
-      child = spawn(batch ? 'cmd' : 'bash', batch ? ['/c', definition.config.command] : ['-c', definition.config.command], {
-        cwd: definition.cwd, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
-      });
+      // Windows: detached children get a fresh console and stdio pipes come
+      // back empty, so keep the shell attached; taskkill /T handles the tree.
+      child = batch
+        ? spawn(definition.config.command, {
+          cwd: definition.cwd, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, shell: true,
+        })
+        : spawn('bash', ['-c', definition.config.command], {
+          cwd: definition.cwd, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
+        });
     } catch (error) {
       this.transition(session, runtime, 'exited', String(error));
       throw new ServiceError('service.start_failed', String(error));
@@ -256,6 +262,7 @@ export class Services {
       }
       runtime.child = undefined;
       runtime.pid = undefined;
+      runtime.logStream?.end(); runtime.logStream = undefined;
       if (runtime.stopping) this.transition(session, runtime, 'stopped');
       else this.transition(session, runtime, 'exited', undefined, code);
     });
@@ -287,9 +294,11 @@ export class Services {
     const line = text.slice(-1024 * 1024);
     const entry = { id: runtime.nextLine++, text: line, stream };
     runtime.lines.push(entry); runtime.bytes += Buffer.byteLength(`${line}\n`);
-    const path = join(this.home, 'logs', 'services', session, `${runtime.name}.log`);
-    mkdirSync(join(this.home, 'logs', 'services', session), { recursive: true, mode: 0o700 });
-    appendFileSync(path, `${line}\n`, { mode: 0o600 });
+    if (!runtime.logStream) {
+      mkdirSync(join(this.home, 'logs', 'services', session), { recursive: true, mode: 0o700 });
+      runtime.logStream = createWriteStream(join(this.home, 'logs', 'services', session, `${runtime.name}.log`), { flags: 'a', mode: 0o600 });
+    }
+    runtime.logStream.write(`${line}\n`);
     while (runtime.lines.length > 2000 || runtime.bytes > 1024 * 1024) {
       const removed = runtime.lines.shift();
       if (removed) runtime.bytes -= Buffer.byteLength(`${removed.text}\n`);
@@ -311,7 +320,10 @@ export class Services {
     const child = runtime.child;
     if (child?.pid && child.exitCode === null) {
       runtime.stopping = true;
-      try { process.kill(process.platform === 'win32' ? child.pid : -child.pid, 'SIGTERM'); } catch { /* already stopped */ }
+      // Windows: SIGTERM kills only the shell wrapper and orphans grandchildren
+      // (which keep stdio pipes open), so take down the whole tree at once.
+      if (process.platform === 'win32' && child.pid) killTreePid(child.pid);
+      else try { process.kill(-child.pid!, 'SIGTERM'); } catch { /* already stopped */ }
       await new Promise<void>(resolveWait => {
         const timer = setTimeout(() => {
           if (child.exitCode === null && child.pid) {

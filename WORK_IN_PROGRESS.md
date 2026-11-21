@@ -64,6 +64,24 @@ Five audit gaps were implemented in this pass:
 
 **Still open for these areas:** worker-pool memory caps are supervisor-enforced on Windows/macOS (no Job Object); node request forwarding and per-node fs/secrets; replay scrubber keyboard shortcuts and speed controls; utility summaries are not yet surfaced distinctly in the client UI.
 
+## Update 2026-11-21 (cont. 3)
+
+The standing Windows test-environment failures called out in the last update were fixed; `pnpm test` now passes on this machine.
+
+- **Real bugs found by the failing tests:**
+  - `services.ts` spawned `cmd /c <command>` — cmd mangled the quoting, so every declared service exited instantly and service health checks always timed out. Detached mode also swalloed stdio on Windows, and `SIGTERM` killed only the `cmd` wrapper, orphaning the real server. Services now spawn through `shell: true` attached (correct quoting, captured stdio) and stop with `taskkill /T /F` so the whole tree dies.
+  - `services.ts` wrote every log line with a synchronous `mkdirSync`+`appendFileSync` — 2,105 lines blocked the loop ~15 s and delayed the `exited` transition past test timeouts. Log writes now go through a buffered stream per service.
+  - `parseWorktrees` returned `git worktree list` forward-slash paths verbatim; sessions store `join()` paths, so worktree/session matching failed on Windows. Paths are `resolve()`d at parse.
+  - `pull-request.ts` ran `ORMICODE_GH` (a Node-script test fake) as a direct executable — unspawnable on Windows. On win32 it now runs under `process.execPath`.
+  - `git-methods` reported `hasSetup: false` for Windows `.ormi/setup.cmd`/`.bat` projects even though `findWorkspaceHook` runs them.
+  - `prompt-delivery` only retried a prompt after an `agent.failed` reply; a vanished worker (no reply) failed outright. It now restarts and retries in both cases — this was the "full pool accepts prompts" flake.
+  - `design-store` atomic writes could hit transient `EPERM`/`EBUSY` on the final rename (AV/indexer locks); it now retries the swap briefly.
+- **Test-harness fixes:**
+  - ~125 `rmSync` cleanup calls gained `maxRetries`/`retryDelay` — Windows AV/indexer locks made temp-dir removal flaky.
+  - `agent-usage-costs` registered `t.after(rm)` before `t.after(db.close)` — hooks run in registration order, so cleanup removed the store while it was still open (permanent `EPERM`). Hooks now close first, then remove.
+  - `git-core` fixtures set `core.autocrlf false` (smudge filter rewrote LF to CRLF); the CLI test uses a `\.\pipe\` socket on Windows; `opencode` model fakes run `.mjs` executables under node; a handoff assertion now counts expirations of its own request id only.
+- `pnpm check` unchanged: all typechecks pass; `supervisor.ts` (466) and `App.tsx` (406) still exceed 400 lines.
+
 ## Implementation summary
 
 Rows group related README sections; the per-section audit notes below distinguish individual features and limitations.

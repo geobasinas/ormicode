@@ -62,7 +62,7 @@ test('machine.list and fs.browse expose only directories with hidden and git met
     assert.equal((await client.request('fs.browse', { machine: 'm_local' })).body.path, resolve(homedir()));
   } finally {
     await cleanup();
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
   }
 });
 
@@ -82,7 +82,7 @@ test('fs.browse maps invalid paths, missing folders, files, and unknown machines
     assert.equal(unreachable.code, 'machine.unreachable');
   } finally {
     await cleanup();
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
   }
 });
 
@@ -110,6 +110,6 @@ test('project registry is idempotent, persistent, and never removes the folder',
     assert.equal(existsSync(projectPath), true);
   } finally {
     await daemon.cleanup();
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
   }
 });

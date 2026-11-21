@@ -31,7 +31,7 @@ test('scratch roster is implicit, first spawn shares cwd, children share a team,
   t.after(async () => {
     link.close(); await daemon.close();
     if (savedHome === undefined) delete process.env.ORMICODE_HOME; else process.env.ORMICODE_HOME = savedHome;
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
   });
   const req = (method, body) => link.request(method, body, 30000, method.startsWith('team.') ? credentials.proof(body.actor) : undefined);
   const started = await req('session.start', { machine: newId('m'), project: 'scratch', vendor: 'fake', transport: 'cli',
@@ -99,7 +99,7 @@ test('a Claude SDK scratch lead can request Codex in the same cwd without launch
   const previousHome = process.env.ORMICODE_HOME; process.env.ORMICODE_HOME = join(dir, 'home');
   const db = openStore(':memory:');
   t.after(() => {
-    db.close(); rmSync(dir, { recursive: true, force: true });
+    db.close(); rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
     if (previousHome === undefined) delete process.env.ORMICODE_HOME; else process.env.ORMICODE_HOME = previousHome;
   });
   const parentId = newId('s'), cwd = join(dir, 'home', 'scratch', parentId);
@@ -123,7 +123,7 @@ test('a Claude SDK scratch lead can request Codex in the same cwd without launch
   await spawn({ task: 'bad adapter', vendor: 'unsupported', transport: 'cli' });
   assert.equal(response.code, 'agent.unsupported');
   assert.equal(teamChildren(db, ownedTeam(db, parentId).id).length, 1);
-  rmSync(cwd, { recursive: true });
+  rmSync(cwd, { recursive: true, maxRetries: 10, retryDelay: 200});
   await spawn({ task: 'missing scratch', vendor: 'codex' });
   assert.equal(response.code, 'workspace.not_found'); assert.match(response.message, /workspace directory not found/);
   assert.equal(teamChildren(db, ownedTeam(db, parentId).id).length, 1);

@@ -9,7 +9,7 @@ import { RemoteLink } from '../src/relay.ts';
 import { seedHome, untar } from './home-data-fixture.mjs';
 
 const base = mkdtempSync(join(tmpdir(), 'ormi-data-methods-'));
-test.after(() => rmSync(base, { recursive: true, force: true }));
+test.after(() => rmSync(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}));
 Object.assign(process.env, { ORMICODE_KEYRING: 'memory', ORMICODE_PRICES_URL: 'off' });
 
 let n = 0;

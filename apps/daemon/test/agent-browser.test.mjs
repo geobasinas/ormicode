@@ -28,7 +28,7 @@ test('browser discovery honors env, managed shell, then system path', () => {
     assert.deepEqual(discoverBrowser({ PATH: systemDir }, root, 'linux'), { available: true, source: 'installed', path: managed });
     rmSync(managed);
     assert.deepEqual(discoverBrowser({ PATH: systemDir }, root, 'linux'), { available: true, source: 'system', path: systemPath });
-  } finally { rmSync(root, { recursive: true, force: true }); }
+  } finally { rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); }
 });
 
 test('browser navigation accepts only session-local preview origins and port block', () => {
@@ -59,7 +59,7 @@ test('browser artifacts validate ids and enforce the 4 MiB cap', () => {
     assert.throws(() => browser.artifact(session, `${id}/../../store.db`), error => error.code === 'browser.not_found');
     writeFileSync(join(directory, `${id}.png`), Buffer.alloc(4 * 1024 * 1024 + 1));
     assert.throws(() => browser.artifact(session, id), error => error.code === 'browser.action_failed');
-  } finally { rmSync(root, { recursive: true, force: true }); }
+  } finally { rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); }
 });
 
 test('checkpoint capture does nothing when there is no running service', async () => {
@@ -71,7 +71,7 @@ test('checkpoint capture does nothing when there is no running service', async (
     assert.deepEqual(events, []);
   } finally {
     await browser.closeAll();
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
   }
 });
 
@@ -91,7 +91,7 @@ test('headless browser drives preview proxy and blocks external main-frame navig
   const browser = new AgentBrowser(root, services);
   const previousBrowserPath = process.env.PLAYWRIGHT_BROWSERS_PATH;
   const found = browser.status();
-  if (!found.available) { await browser.closeAll(); rmSync(root, { recursive: true, force: true }); t.skip('No browser found; install with `ormi browser install` or set ORMICODE_BROWSER.'); return; }
+  if (!found.available) { await browser.closeAll(); rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); t.skip('No browser found; install with `ormi browser install` or set ORMICODE_BROWSER.'); return; }
   let server;
   const proxy = new PreviewProxy();
   let db;
@@ -180,6 +180,6 @@ test('headless browser drives preview proxy and blocks external main-frame navig
     if (server?.listening) await new Promise(resolve => server.close(resolve));
     if (previousBrowserPath === undefined) delete process.env.PLAYWRIGHT_BROWSERS_PATH;
     else process.env.PLAYWRIGHT_BROWSERS_PATH = previousBrowserPath;
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
   }
 });

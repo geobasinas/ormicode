@@ -29,7 +29,7 @@ test('boot interrupts in-flight sessions and expires pending approvals', () => {
     assert.ok(kinds.includes('interaction_expired'), 'pending approval expired');
     assert.ok(kinds.includes('interrupted'), 'host_restart recorded');
     assert.equal(JSON.parse(replay(db, 's_a').find(r => r.kind === 'interaction_expired').payload).id, 'req_01');
-  } finally { db.close(); rmSync(dir, { recursive: true, force: true }); }
+  } finally { db.close(); rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); }
 });
 
 test('safe policy resumes only completed sessions with a resumable transport', () => {
@@ -55,6 +55,6 @@ test('safe policy resumes only completed sessions with a resumable transport', (
       // interrupted state isn't in the inFlight list, so 'all' picks it up
       assert.deepEqual(recoverSessions(db2, 'all').autoResume.map(c => c.s.id), ['s_intr']);
       assert.deepEqual(recoverSessions(db2, 'wait').autoResume.length, 0, 'wait resumes nothing');
-    } finally { db2.close(); rmSync(dir2, { recursive: true, force: true }); }
-  } finally { rmSync(dir, { recursive: true, force: true }); }
+    } finally { db2.close(); rmSync(dir2, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); }
+  } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); }
 });

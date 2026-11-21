@@ -31,7 +31,7 @@ const fileCode = code => error => error instanceof FileError && error.code === c
 test('path normalization rejects escapes, absolute paths, NUL, .git and external symlinks', t => {
   const root = temp('ormicode-file-path-');
   const outside = temp('ormicode-file-outside-');
-  t.after(() => { rmSync(root, { recursive: true, force: true }); rmSync(outside, { recursive: true, force: true }); });
+  t.after(() => { rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); rmSync(outside, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); });
   writeFileSync(join(outside, 'secret.txt'), 'secret');
   symlinkSync(outside, join(root, 'escape'), 'dir');
   assert.equal(normalizePath('src\\main.ts'), 'src/main.ts');
@@ -45,7 +45,7 @@ test('path normalization rejects escapes, absolute paths, NUL, .git and external
 
 test('file.list reports porcelain status, directory aggregation and deleted entries', t => {
   const root = makeRepo();
-  t.after(() => rmSync(root, { recursive: true, force: true }));
+  t.after(() => rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}));
   put(root, 'tracked.txt', 'before');
   put(root, 'src/changed.ts', 'before');
   put(root, '.gitignore', 'ignored.txt\nignored-dir/\n');
@@ -77,7 +77,7 @@ test('file.list reports porcelain status, directory aggregation and deleted entr
 
 test('non-Git listing has no git fields', t => {
   const root = temp('ormicode-files-plain-');
-  t.after(() => rmSync(root, { recursive: true, force: true }));
+  t.after(() => rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}));
   put(root, 'plain.txt', 'plain');
   const result = listFiles(root);
   assert.equal(result.entries.length, 1);
@@ -87,7 +87,7 @@ test('non-Git listing has no git fields', t => {
 
 test('file.read handles text limits, binaries, image base64 and Git refs', async t => {
   const root = makeRepo();
-  t.after(() => rmSync(root, { recursive: true, force: true }));
+  t.after(() => rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}));
   put(root, 'note.txt', 'current text');
   commit(root, '-m', 'commit note');
   put(root, 'note.txt', 'working text');
@@ -127,7 +127,7 @@ test('file.read handles text limits, binaries, image base64 and Git refs', async
 
 test('file.write is atomic, preserves mode, checks mtime and refuses binary files', t => {
   const root = temp('ormicode-files-write-');
-  t.after(() => rmSync(root, { recursive: true, force: true }));
+  t.after(() => rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}));
   const file = put(root, 'existing.txt', 'old');
   chmodSync(file, 0o640);
   const baseMtime = Math.round(statSync(file).mtimeMs);
@@ -146,7 +146,7 @@ test('file.write is atomic, preserves mode, checks mtime and refuses binary file
 
 test('file.search ranks names and returns content ranges, regex, no-match and truncation', async t => {
   const root = makeRepo();
-  t.after(() => rmSync(root, { recursive: true, force: true }));
+  t.after(() => rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}));
   put(root, 'src/server.ts', 'é😀 target\nneedle123\n');
   put(root, 'src/serving.ts', 'unrelated\n');
   put(root, 'src/util.ts', 'target elsewhere\n');
@@ -173,7 +173,7 @@ test('file.search ranks names and returns content ranges, regex, no-match and tr
 
 test('file.blame includes commit trailers and an uncommitted hunk', t => {
   const root = makeRepo();
-  t.after(() => rmSync(root, { recursive: true, force: true }));
+  t.after(() => rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}));
   put(root, 'note.txt', 'first\nsecond\n');
   const first = commit(root, '-m', 'first commit', '-m', 'Ormi-Session: s_example');
   put(root, 'note.txt', 'first\nchanged\nthird\n');
@@ -191,7 +191,7 @@ test('file.blame includes commit trailers and an uncommitted hunk', t => {
 test('file.history follows a rename and Git methods reject non-repositories', t => {
   const root = makeRepo();
   const plain = temp('ormicode-files-history-plain-');
-  t.after(() => { rmSync(root, { recursive: true, force: true }); rmSync(plain, { recursive: true, force: true }); });
+  t.after(() => { rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); rmSync(plain, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); });
   put(root, 'old.txt', 'one\ntwo\nthree\n');
   commit(root, '-m', 'create file');
   put(root, 'old.txt', 'one\ntwo\nthree\nfour\n');

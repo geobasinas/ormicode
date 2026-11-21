@@ -73,6 +73,6 @@ test('scratch copy-out stays contained, reports conflicts, and requires overwrit
     await daemon?.close();
     if (previousHome === undefined) delete process.env.ORMICODE_HOME;
     else process.env.ORMICODE_HOME = previousHome;
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
   }
 });

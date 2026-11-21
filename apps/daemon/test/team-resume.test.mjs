@@ -33,7 +33,7 @@ async function fixture(t, policy = 'safe') {
   db.prepare('INSERT INTO settings(key, value) VALUES (?, ?)').run('team.concurrent', '1');
   const credentials = new TestMcpCredentials();
   let daemon, client;
-  t.after(async () => { client?.close(); if (daemon) await daemon.close(); for (const [k, v] of Object.entries(previous)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } rmSync(dir, { recursive: true, force: true }); });
+  t.after(async () => { client?.close(); if (daemon) await daemon.close(); for (const [k, v] of Object.entries(previous)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); });
   return { dir, db, parent, team, children, async start() {
     db.close(); daemon = await startDaemon({ socketPath: '127.0.0.1:0', storePath, mcpCredentials: credentials }); client = await connect(daemon.socketPath);
     const req = (method, body) => client.request(method, body, 30_000, method.startsWith('team.') ? credentials.proof(body.actor) : undefined);

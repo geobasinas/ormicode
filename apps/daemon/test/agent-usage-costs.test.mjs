@@ -35,12 +35,12 @@ test('header and Settings usage price Codex/Claude aliases and journaled Grok AC
   await costMethod(ctx, client, 'settings', 'cost.totals', {});
   assert.equal(result.total.usd, 4.7); assert.equal(result.total.tokens, 3_000_000); assert.equal(result.total.unpriced, 0);
   assert.equal(result.sessions.length, 3);
- } finally { db.close(); rmSync(dir, { recursive: true, force: true }); }
+ } finally { db.close(); rmSync(dir, { recursive: true, force: true, maxRetries: 40, retryDelay: 250}); }
 });
 
 test('reported-model estimates persist across refresh and restart for headers and every totals bucket', async t => {
- const dir = mkdtempSync(join(tmpdir(), 'reported-price-pin-')); t.after(() => rmSync(dir, { recursive: true, force: true }));
- const path = join(dir, 'store.db'); let db = openStore(path); t.after(() => db.close());
+ const dir = mkdtempSync(join(tmpdir(), 'reported-price-pin-'));
+ const path = join(dir, 'store.db'); let db = openStore(path); t.after(() => db.close()); t.after(() => rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}));
  const old = fromOpenRouter({ data: [{ id: 'x-ai/grok-code-fast-1', pricing: { prompt: '0.0000002', completion: '0.0000015' } }] });
  const refreshed = fromOpenRouter({ data: [{ id: 'x-ai/grok-code-fast-1', pricing: { prompt: '0.0000001', completion: '0.000001' } }] });
  let table = old;
@@ -67,8 +67,8 @@ test('reported-model estimates persist across refresh and restart for headers an
 });
 
 test('Settings totals price Claude CLI rows by reported model and fall back to running-cost deltas', async t => {
- const dir = mkdtempSync(join(tmpdir(), 'claude-cli-costs-')); t.after(() => rmSync(dir, { recursive: true, force: true }));
- const db = openStore(join(dir, 'store.db')); t.after(() => db.close());
+ const dir = mkdtempSync(join(tmpdir(), 'claude-cli-costs-'));
+ const db = openStore(join(dir, 'store.db')); t.after(() => db.close()); t.after(() => rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}));
  const table = fromOpenRouter({ data: [{ id: 'anthropic/claude-sonnet-4.6', pricing: { prompt: '0.000003', completion: '0.000015' } }] });
  const ctx = { db, prices: { ensure: async () => {}, table: () => table } };
  let result; const client = { link: { reply: (_id, body) => { result = body; } } };

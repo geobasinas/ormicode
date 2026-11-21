@@ -91,7 +91,17 @@ function write(path: string, stored: DesignStorage): void {
     writeFileSync(fd, JSON.stringify(stored));
     fsyncSync(fd);
     closeSync(fd); fd = undefined;
-    renameSync(temporary, path);
+    // Windows transiently locks freshly written files (indexer/AV), so retry
+    // the atomic swap a few times before giving up.
+    let renamed = false;
+    for (let attempt = 0; attempt < 10 && !renamed; attempt++) {
+      try { renameSync(temporary, path); renamed = true; }
+      catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (!['EPERM', 'EACCES', 'EBUSY'].includes(code ?? '') || attempt === 9) throw error;
+        const until = Date.now() + 50; while (Date.now() < until) { /* spin briefly */ }
+      }
+    }
   } finally {
     if (fd !== undefined) closeSync(fd);
     try { unlinkSync(temporary); } catch (error) { if (!missing(error)) throw error; }

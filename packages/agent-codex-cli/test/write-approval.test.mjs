@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { CodexCliAdapter } from '../src/index.ts';
 
 for (const option of ['accept', 'decline']) test(`CLI file approval ${option} reaches the vendor response and gates its fixture write`, async t => {
-  const cwd = mkdtempSync(join(tmpdir(), 'codex-write-')); t.after(() => rmSync(cwd, { recursive: true, force: true }));
+  const cwd = mkdtempSync(join(tmpdir(), 'codex-write-')); t.after(() => rmSync(cwd, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}));
   const fixture = fileURLToPath(new URL('./fixtures/app-server.mjs', import.meta.url));
   const adapter = new CodexCliAdapter({ spawn: (_cmd, _args, opts) => spawn(process.execPath, [fixture], opts) });
   const handle = await adapter.start({ cwd });
@@ -30,7 +30,7 @@ for (const option of ['accept', 'decline']) test(`CLI file approval ${option} re
 test('CLI default sandbox is read-only so a workspace write waits for approval; explicit workspace-write does not ask', async t => {
   const fixture = fileURLToPath(new URL('./fixtures/app-server.mjs', import.meta.url));
   for (const mode of [undefined, 'workspace-write']) {
-    const cwd = mkdtempSync(join(tmpdir(), 'codex-write-')); t.after(() => rmSync(cwd, { recursive: true, force: true }));
+    const cwd = mkdtempSync(join(tmpdir(), 'codex-write-')); t.after(() => rmSync(cwd, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}));
     let params;
     const adapter = new CodexCliAdapter({ spawn: (_cmd, _args, opts) => {
       const child = spawn(process.execPath, [fixture], opts);

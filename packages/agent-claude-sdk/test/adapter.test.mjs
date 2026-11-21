@@ -322,5 +322,5 @@ test('raw SDK traffic lands in the session log dir', async () => {
   assert.equal(JSON.parse(out[0]).subtype, 'init');
   assert.equal(JSON.parse(readFileSync(join(dir, 'meta.json'), 'utf8')).agentVersion, '1.2.3');
   await adapter.dispose(handle);
-  rmSync(dir, { recursive: true, force: true });
+  rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
 });

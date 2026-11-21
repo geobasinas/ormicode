@@ -12,7 +12,7 @@ function fakeOpenCode(serve) {
   const executable = join(dir, 'opencode.mjs');
   writeFileSync(executable, `#!${process.execPath}\n${serve === 'fail' ? "process.env.ORMICODE_FAKE_SERVE = 'fail';\n" : ''}await import(${JSON.stringify(fixture)});\n`);
   chmodSync(executable, 0o755);
-  return { executable, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
+  return { executable, cleanup: () => rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}) };
 }
 const files = dir => readdirSync(dir, { withFileTypes: true }).flatMap(entry => entry.isDirectory() ? files(join(dir, entry.name)) : [join(dir, entry.name)]);
 test('src/ and package.json do not mention @ormicode/agent-opencode-sdk', () => {

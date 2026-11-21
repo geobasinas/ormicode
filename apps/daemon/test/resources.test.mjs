@@ -9,7 +9,7 @@ import { systemdScopeArgs, overMemoryCap } from '../src/worker-scope.ts';
 const GB = 1e9, MB = 1e6;
 const RESERVE = platform() === 'win32' ? 3 * GB : 2 * GB;
 const dirs = [];
-test.after(() => { for (const dir of dirs) rmSync(dir, { recursive: true, force: true }); });
+test.after(() => { for (const dir of dirs) rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); });
 
 const boot = (probe, opts = {}) => {
   const dir = mkdtempSync(join(tmpdir(), 'ormi-resources-')); dirs.push(dir);

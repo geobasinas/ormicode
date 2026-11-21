@@ -137,7 +137,8 @@ export function projectBranches(ctx: DispatchCtx, client: Client, id: string, bo
     dirty: status(project, null).files.length, busyBranches: busyBranches(ctx.db, project),
     defaultBranch: defaultRef, worktrees: worktreeRows,
     hasWorktreeInclude: isFile(resolve(project, '.worktreeinclude')),
-    hasSetup: isFile(resolve(project, '.ormi', 'setup')),
+    hasSetup: isFile(resolve(project, '.ormi', 'setup'))
+      || (process.platform === 'win32' && (isFile(resolve(project, '.ormi', 'setup.cmd')) || isFile(resolve(project, '.ormi', 'setup.bat')))),
     fetchedAt,
   });
 }

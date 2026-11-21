@@ -8,7 +8,7 @@ import { replay } from '@ormicode/journal';
 import { newId } from '@ormicode/protocol';
 
 const dirs = [];
-test.after(() => { for (const dir of dirs) rmSync(dir, { recursive: true, force: true }); });
+test.after(() => { for (const dir of dirs) rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); });
 
 const boot = async () => {
   const dir = mkdtempSync(join(tmpdir(), 'ormi-archive-test-')); dirs.push(dir);

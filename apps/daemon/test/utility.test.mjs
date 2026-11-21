@@ -7,7 +7,7 @@ import { UtilityCalls } from '../src/utility.ts';
 import { parseDigestSummary } from '../src/digest-methods.ts';
 
 const dirs = [];
-test.after(() => { for (const dir of dirs) rmSync(dir, { recursive: true, force: true }); });
+test.after(() => { for (const dir of dirs) rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); });
 const mk = () => { const dir = mkdtempSync(join(tmpdir(), 'ormi-utility-')); dirs.push(dir); return dir; };
 
 /** Minimal adapter: push events on prompt, answer to a queue. */

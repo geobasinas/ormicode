@@ -33,7 +33,7 @@ test('journal recovery handles latest text, context, attachments and invalid/emp
    append(db, session, { kind: 'prompt', payload });
    await retryPrompt(ctx, client, 'invalid', { session }); assert.equal(error.code, 'prompt.invalid');
   }
- } finally { db.close(); rmSync(dir, { recursive: true, force: true }); }
+ } finally { db.close(); rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); }
 });
 
 test('a fresh daemon retries a journal-only prompt and expires every unresolved native approval', async () => {
@@ -60,6 +60,6 @@ test('a fresh daemon retries a journal-only prompt and expires every unresolved 
  } finally {
   client?.close(); await daemon?.close(); if (db.open) db.close();
   for (const [key, value] of [['ORMICODE_HOME', previous.home], ['ORMICODE_RESUME_POLICY', previous.policy]]) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
-  rmSync(dir, { recursive: true, force: true });
+  rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
  }
 });

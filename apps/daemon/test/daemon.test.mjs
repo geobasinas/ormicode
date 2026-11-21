@@ -15,7 +15,7 @@ const boot = async () => {
   return { dir, daemon, client };
 };
 const projectDir = mkdtempSync(join(tmpdir(), 'ormi-daemon-project-'));
-test.after(() => rmSync(projectDir, { recursive: true, force: true }));
+test.after(() => rmSync(projectDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}));
 
 const events = async (client, session, untilKind, timeoutMs = 30_000) => {
   const seen = [];
@@ -143,7 +143,7 @@ test('a completed session auto-resumes on daemon restart under the safe policy',
   assert.ok(replay(daemon2.db, session).some(r => r.kind === 'resumed'), 'resumed journaled');
   assert.equal(getSession(daemon2.db, session)?.state, 'idle');
   await daemon2.close();
-  rmSync(dir, { recursive: true, force: true });
+  rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
 });
 
 test('a non-resumable session under the all policy gets a recap injected as context', async () => {
@@ -182,7 +182,7 @@ test('a non-resumable session under the all policy gets a recap injected as cont
     assert.ok(after.some(r => r.kind === 'text' && String(r.text).includes('Context recap')), 'recap text reached the agent');
   } finally {
     await daemon2.close();
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
   }
 });
 
@@ -208,7 +208,7 @@ test('hello device identity drives ack cursors per device', async () => {
   assert.equal(getCursor(daemon.db, 'd_testbox', session), seq, 'ack recorded under hello device');
   assert.equal(getCursor(daemon.db, 'cli', session), 0, 'not under the default device');
   await daemon.close(); client.close();
-  rmSync(dir, { recursive: true, force: true });
+  rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
 });
 
 test('scratch sessions get a scratchpad cwd that session.delete removes', async () => {
@@ -228,7 +228,7 @@ test('scratch sessions get a scratchpad cwd that session.delete removes', async 
     await daemon.close(); client.close();
   } finally {
     delete process.env.ORMICODE_HOME;
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
   }
 });
 
@@ -263,7 +263,7 @@ test('reconnect with a cursor replays only newer events, no gaps or dupes', asyn
   assert.equal(sub.type, 'res');
   assert.equal(await Promise.race([client3.next(), new Promise(r => setTimeout(() => r('quiet'), 400))]), 'quiet');
   await daemon.close(); client2.close(); client3.close();
-  rmSync(dir, { recursive: true, force: true });
+  rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
 });
 
 test("session.start treats 'default' placeholders as unset", async () => {

@@ -106,7 +106,8 @@ test('ormi export and ormi wipe work on ORMICODE_HOME and wipe needs the typed w
   const { seedHome, untar } = await import('../../daemon/test/home-data-fixture.mjs');
   const base = mkdtempSync(join(tmpdir(), 'ormi-cli-data-'));
   const home = join(base, 'home');
-  const env = { ...process.env, ORMICODE_HOME: home, ORMICODE_SOCKET: join(base, 'hub.sock'), ORMICODE_REMOTE: '0' };
+  const socketPath = process.platform === 'win32' ? `\\\\.\\pipe\\ormi-cli-${Math.random().toString(36).slice(2)}` : join(base, 'hub.sock');
+  const env = { ...process.env, ORMICODE_HOME: home, ORMICODE_SOCKET: socketPath, ORMICODE_REMOTE: '0' };
   const runIn = (args, input) => spawnSync(process.execPath, [ormi, ...args], { encoding: 'utf8', env, input });
   try {
     assert.match(run([]).stdout, /ormi export \[file\][\s\S]*ormi wipe \[--confirm wipe\]/);
@@ -139,5 +140,5 @@ test('ormi export and ormi wipe work on ORMICODE_HOME and wipe needs the typed w
     assert.equal(wiped.status, 0, wiped.stderr);
     assert.match(wiped.stdout, /deleted store\.db/);
     assert.deepEqual(readdirSync(home).sort(), ['config.json', 'desktop', 'scratch', 'secrets-index.json', 'skills']);
-  } finally { rmSync(base, { recursive: true, force: true }); }
+  } finally { rmSync(base, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); }
 });

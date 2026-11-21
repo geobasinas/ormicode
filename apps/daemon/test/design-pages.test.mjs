@@ -52,7 +52,7 @@ test('page operations use atomic CAS, preserve legacy ownership and remap duplic
     invalid({ type: 'page.remove', pageId: 'default' });
     assert.throws(() => updateDesign(dir, 'board', 1, [{ type: 'page.add', name: 'Stale' }], 's_test'), error => error.code === 'design.conflict');
     assert.equal(getDesign(dir, 'board').document.revision, document.revision);
-  } finally { rmSync(dir, { recursive: true, force: true }); }
+  } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); }
 });
 
 test('frame page assignment materializes legacy pages and duplication respects frame cap', () => {
@@ -65,7 +65,7 @@ test('frame page assignment materializes legacy pages and duplication respects f
     apply(Array.from({ length: 22 }, () => ({ type: 'frame.add', ...fields })));
     assert.throws(() => apply([{ type: 'page.duplicate', pageId: 'default' }]), error => error.code === 'design.invalid');
     assert.equal(getDesign(dir, 'board').document.frames.length, 24);
-  } finally { rmSync(dir, { recursive: true, force: true }); }
+  } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); }
 });
 
 test('multi-frame operations preserve page ownership and prototype starts', () => {
@@ -91,7 +91,7 @@ test('multi-frame operations preserve page ownership and prototype starts', () =
     apply({ type: 'page.remove', pageId });
     assert.equal(document.comments.length, 0);
     assert.equal(document.frames.length, 2);
-  } finally { rmSync(dir, { recursive: true, force: true }); }
+  } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); }
 });
 
 test('duplicating a page rebinds local prototype links and preserves cross-page links', () => {
@@ -111,5 +111,5 @@ test('duplicating a page rebinds local prototype links and preserves cross-page 
     assert.equal(document.pages[1].startFrameId, copy.id);
     assert.equal(copy.html, `${example}<button data-ormi-prototype="frame:${copyNext.id}">Next</button><div data-ormi-prototype="overlay:${copyNext.id}">Open</div><div data-ormi-prototype="frame:${external.id}">Other</div>`);
     assert.equal(document.frames[0].html, html);
-  } finally { rmSync(dir, { recursive: true, force: true }); }
+  } finally { rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); }
 });

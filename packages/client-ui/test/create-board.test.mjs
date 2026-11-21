@@ -17,7 +17,7 @@ test('a name alone creates a persisted, selectable board in an empty workspace',
     assert.equal(listDesigns(root)[0].slug, identity.slug);
     assert.deepEqual(newBoardIdentity('Testing', listDesigns(root)), { name: 'Testing', slug: 'testing-2' });
     assert.throws(() => createDesign(root, identity.slug, identity.name), /already exists/);
-  } finally { rmSync(root, { recursive: true, force: true }); }
+  } finally { rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); }
 });
 
 test('empty names fail and names without ASCII letters still get a valid folder', () => {

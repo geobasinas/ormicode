@@ -73,7 +73,7 @@ export function createPromptDelivery(options: PromptDeliveryOptions) {
           text: prepared.text,
           ...(wireImages ? { images: wireImages } : {}),
         });
-        if (res?.type === 'err' && res.code === 'agent.failed' && options.restartWorker
+        if ((!res || res.type === 'err' && res.code === 'agent.failed') && options.restartWorker
           && getSession(options.db, session)?.state === 'starting'
           && ['idle', 'done', 'interrupted'].includes(previousState)) {
           await options.restartWorker(session);

@@ -191,6 +191,6 @@ test('daemon layer batches are atomic, load legacy boards and retain prior revis
     assert.equal(restored.type, 'res');
     assert.deepEqual(restored.body.document, { ...snapshots[2], revision: 6 });
   } finally {
-    client.close(); await daemon.close(); rmSync(dir, { recursive: true, force: true });
+    client.close(); await daemon.close(); rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
   }
 });

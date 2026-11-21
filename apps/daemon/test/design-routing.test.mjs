@@ -102,5 +102,5 @@ test('design events fan out by canonical cwd; CLI file/stdin and MCP stay sessio
     edits.length = 0;
     await client.request('session.subscribe', { session: sibling, after: replayFrom - 1 });
     assert.deepEqual(edits.map(frame => [frame.seq, frame.body.source]), [[replayFrom, 'mcp']]);
-  } finally { client.close(); await daemon.close(); rmSync(dir, { recursive: true, force: true }); }
+  } finally { client.close(); await daemon.close(); rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); }
 });

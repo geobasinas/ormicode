@@ -22,8 +22,8 @@ const boot = async () => {
 const projectDir = mkdtempSync(join(tmpdir(), 'ormi-handoff-project-'));
 const otherProjectDir = mkdtempSync(join(tmpdir(), 'ormi-handoff-other-project-'));
 test.after(() => {
-  rmSync(projectDir, { recursive: true, force: true });
-  rmSync(otherProjectDir, { recursive: true, force: true });
+  rmSync(projectDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
+  rmSync(otherProjectDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
 });
 const startFake = (client, project = projectDir) =>
   client.request('session.start', { machine: newId('m'), project, vendor: 'fake', transport: 'cli', model: 'x', effort: 'x', mode: 'x', workspace: { kind: 'current' } });
@@ -197,7 +197,7 @@ test('ordinary user-routed handoffs expire when aborted and cannot be approved l
   const aborted = await client.request('session.abort', { session });
   assert.equal(aborted.type, 'res', JSON.stringify(aborted));
   assert.equal((await pending).code, 'handoff.declined');
-  assert.equal(replay(daemon.db, session).filter(e => e.kind === 'interaction_expired').length, 1);
+  assert.equal(replay(daemon.db, session).filter(e => e.kind === 'interaction_expired' && JSON.parse(e.payload).request === request).length, 1);
   assert.equal((await client.request('session.decide', { session, request, option: 'approve' })).type, 'err');
   assert.equal(daemon.db.prepare('SELECT COUNT(*) AS n FROM sessions WHERE parent = ?').get(session).n, 0);
 });

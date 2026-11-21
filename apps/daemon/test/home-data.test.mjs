@@ -9,7 +9,7 @@ import { seedHome, untar } from './home-data-fixture.mjs';
 import { writeExport, wipeHome, ConfirmationError, storeBusy } from '../src/home-data.ts';
 
 const dirs = [];
-test.after(() => { for (const dir of dirs) rmSync(dir, { recursive: true, force: true }); });
+test.after(() => { for (const dir of dirs) rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}); });
 const temp = prefix => { const dir = mkdtempSync(join(tmpdir(), prefix)); dirs.push(dir); return dir; };
 
 test('export holds the store, config and daemon logs, and no tokens or session logs', () => {
@@ -74,7 +74,7 @@ test('wipe deletes a symlink inside home, never what it points at', () => {
   seedHome(home);
   const outside = join(base, 'elsewhere');
   mkdirSync(outside); writeFileSync(join(outside, 'keep.txt'), 'outside');
-  rmSync(join(home, 'cache'), { recursive: true });
+  rmSync(join(home, 'cache'), { recursive: true, maxRetries: 10, retryDelay: 200});
   symlinkSync(outside, join(home, 'cache'));
   wipeHome(home, 'wipe');
   assert.equal(existsSync(join(home, 'cache')), false);
@@ -87,7 +87,7 @@ test('wipe refuses before touching anything when a target folder leaves home', (
   seedHome(home);
   const outside = join(base, 'other-desktop');
   mkdirSync(outside); writeFileSync(join(outside, 'device.token'), 'other');
-  rmSync(join(home, 'desktop'), { recursive: true });
+  rmSync(join(home, 'desktop'), { recursive: true, maxRetries: 10, retryDelay: 200});
   symlinkSync(outside, join(home, 'desktop'));
   const before = readdirSync(home).sort();
   assert.throws(() => wipeHome(home, 'wipe'), /leaves/);

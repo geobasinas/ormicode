@@ -42,8 +42,8 @@ test('file.write journals a manual checkpoint and file_edit event', async t => {
       await daemon?.close();
     } finally {
       restoreEnv(previous);
-      rmSync(dir, { recursive: true, force: true });
-      rmSync(root, { recursive: true, force: true });
+      rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
+      rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
     }
   });
 
@@ -99,8 +99,8 @@ test('project.searchFiles returns folders and files before a session exists', as
     client?.close();
     await daemon?.close();
     restoreEnv(previous);
-    rmSync(dir, { recursive: true, force: true });
-    rmSync(root, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
+    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
   });
   daemon = await startDaemon({ socketPath: '127.0.0.1:0', storePath: join(dir, 'store.db') });
   client = await connect(daemon.socketPath);
@@ -127,8 +127,8 @@ test('file.write returns file.busy during a slow agent turn', async t => {
       await daemon?.close();
     } finally {
       restoreEnv(previous);
-      rmSync(dir, { recursive: true, force: true });
-      rmSync(root, { recursive: true, force: true });
+      rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
+      rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
     }
   });
 

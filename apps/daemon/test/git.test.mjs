@@ -40,7 +40,7 @@ test('current on a clean repo records branch and starting commit', async () => {
   assert.equal(row.base_commit, git(dir, 'rev-parse', 'HEAD'));
   assert.equal(row.cwd, dir);
   await daemon.close(); client.close();
-  rmSync(dir, { recursive: true, force: true });
+  rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
 });
 
 test('detached HEAD with kind current is rejected', async () => {
@@ -51,7 +51,7 @@ test('detached HEAD with kind current is rejected', async () => {
   assert.equal(res.type, 'err');
   assert.equal(res.code, 'workspace.detached');
   await daemon.close(); client.close();
-  rmSync(dir, { recursive: true, force: true });
+  rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
 });
 
 test('a busy branch auto-reserves a worktree at the recorded commit', async () => {
@@ -71,7 +71,7 @@ test('a busy branch auto-reserves a worktree at the recorded commit', async () =
   assert.match(row.branch, /^ormi\//);
   assert.equal(git(row.worktree, 'rev-parse', 'HEAD'), commit, 'worktree at the recorded commit');
   await daemon.close(); client.close();
-  rmSync(dir, { recursive: true, force: true });
+  rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
 });
 
 test('kind worktree creates .ormi/worktrees/<slug> and kind branch switches a new branch', async () => {
@@ -91,7 +91,7 @@ test('kind worktree creates .ormi/worktrees/<slug> and kind branch switches a ne
   assert.equal(row2.branch, 'hotfix-x');
   assert.equal(git(dir, 'branch', '--show-current'), row2.branch, 'checkout switched to the session branch');
   await daemon.close(); client.close();
-  rmSync(dir, { recursive: true, force: true });
+  rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
 });
 
 test('non-git project rejects branch/worktree but allows current', async () => {
@@ -104,7 +104,7 @@ test('non-git project rejects branch/worktree but allows current', async () => {
   assert.equal(ok.type, 'res');
   assert.equal(getSession(daemon.db, ok.body.session).branch, null);
   await daemon.close(); client.close();
-  rmSync(dir, { recursive: true, force: true });
+  rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
 });
 
 test('project.branches reports dirty, busy and detached state and empty non-repositories', async () => {
@@ -170,9 +170,9 @@ test('project.branches reports dirty, busy and detached state and empty non-repo
   } finally {
     await daemon.close();
     client.close();
-    rmSync(dir, { recursive: true, force: true });
-    rmSync(storeDir, { recursive: true, force: true });
-    rmSync(nonRepo, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
+    rmSync(storeDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
+    rmSync(nonRepo, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
   }
 });
 
@@ -213,8 +213,8 @@ test('session.start journals worktree preparation before spawn and existing busy
   } finally {
     await daemon.close();
     client.close();
-    rmSync(dir, { recursive: true, force: true });
-    rmSync(storeDir, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
+    rmSync(storeDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
   }
 });
 
@@ -229,7 +229,7 @@ test('a failed worktree add cleans up and leaves the repo untouched', async () =
   assert.deepEqual(git(dir, 'worktree', 'list').split('\n').length, 1, 'no worktree registered');
   assert.deepEqual(git(dir, 'branch', '--list', 'ormi/*'), '', 'no branch leaked');
   await daemon.close(); client.close();
-  rmSync(dir, { recursive: true, force: true });
+  rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
 });
 
 test('Git pane methods, fake PR status and terminal.open session cwd', { skip: process.platform === 'win32' }, async () => {
@@ -307,7 +307,7 @@ process.stdout.write(JSON.stringify({
   } finally {
     client.close();
     await daemon.close();
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200});
     for (const [key, value] of Object.entries(oldEnv)) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
