@@ -29,6 +29,13 @@ test('duration leads live activity, updates every second, then collapses on fini
     assert.equal(document.querySelector('section').firstElementChild.tagName, 'BUTTON');
     await act(() => t.mock.timers.tick(12000));
     assert.equal(document.querySelector('button').textContent, 'Working for 12s');
+    // A running turn can be collapsed and re-opened by hand.
+    await act(() => document.querySelector('button').click());
+    assert.equal(document.querySelector('button').getAttribute('aria-expanded'), 'false');
+    assert.equal(document.querySelector('[data-tools]'), null);
+    await act(() => document.querySelector('button').click());
+    assert.equal(document.querySelector('button').getAttribute('aria-expanded'), 'true');
+    assert.ok(document.querySelector('[data-tools]'));
     await render(false, 99000);
     const button = document.querySelector('button');
     assert.equal(button.textContent, 'Worked for 1m 38s');

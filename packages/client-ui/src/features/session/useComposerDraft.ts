@@ -10,6 +10,7 @@ export function useComposerDraft(key: string): {
   const [text, setTextState] = useState('');
   const [ready, setReady] = useState(false);
   const edited = useRef(false);
+  const latest = useRef('');
   const setText = useCallback<Dispatch<SetStateAction<string>>>(value => {
     edited.current = true;
     setTextState(value);
@@ -23,11 +24,22 @@ export function useComposerDraft(key: string): {
     void transport.request('session.draft.get', { session: key }).then(res => {
       if (!active) return;
       const saved = res.type === 'res' && typeof res.body.text === 'string' ? res.body.text : '';
-      if (!edited.current) setTextState(saved);
+      if (!edited.current) { setTextState(saved); latest.current = saved; }
       setReady(true);
     }).catch(() => { if (active) setReady(true); });
-    return () => { active = false; };
+    return () => {
+      active = false;
+      // Flush on unmount/key change — only after a real edit, so brief mounts
+      // that never loaded the draft can't wipe it. The debounced save is
+      // cancelled on cleanup, so a last-moment edit (or the clear-on-send
+      // write) would otherwise be lost and the stale draft would resurface.
+      if (edited.current) void transport.request('session.draft.set', { session: key, text: latest.current }).catch(() => undefined);
+    };
   }, [key, transport]);
+
+  useEffect(() => {
+    latest.current = text;
+  }, [text]);
 
   useEffect(() => {
     if (!ready) return;

@@ -60,7 +60,7 @@ export function TranscriptScroller({ count, children, session, header }: { count
       <div ref={end} />
     </div>
     {!following ? <button type="button" onClick={() => { followingRef.current = true; setFollowing(true); setNewEvents(0); end.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }} style={{
-      position: 'absolute', bottom: 12, right: 20, border: '1px solid var(--line-card)',
+      position: 'absolute', bottom: 12, left: '50%', transform: 'translateX(-50%)', border: '1px solid var(--line-card)',
       borderRadius: 16, padding: '6px 10px', background: 'var(--bg-card)', color: 'var(--text-secondary)',
       font: 'inherit', fontSize: 11, boxShadow: 'var(--shadow-md)', cursor: 'pointer',
     }}>Jump to latest{newEvents ? ` · ${newEvents} new` : ''}</button> : null}

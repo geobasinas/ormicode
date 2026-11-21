@@ -12,18 +12,23 @@ export function TurnActivity({ start, end, running, activity, children }: {
   start: number; end: number; running: boolean; activity: ReactNode; children: ReactNode;
 }) {
   const [now, setNow] = useState(Date.now);
-  const [expanded, setExpanded] = useState(false);
+  // null = default: open while running, collapsed when done. Toggling pins
+  // the user's choice for the rest of this turn's life.
+  const [expanded, setExpanded] = useState<boolean | null>(null);
   useEffect(() => {
     if (!running) return;
     setNow(Date.now());
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [running, start]);
-  const open = running || expanded;
+  // Finishing always returns to the collapsed default; the user's choice
+  // only applies to the live part of a turn.
+  useEffect(() => { if (!running) setExpanded(null); }, [running]);
+  const open = expanded ?? running;
   return <section aria-label="Agent turn">
-    <button type="button" aria-expanded={open} disabled={running} onClick={() => setExpanded(value => !value)} style={{
+    <button type="button" aria-expanded={open} onClick={() => setExpanded(value => !(value ?? running))} style={{
       display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0', border: 'none', background: 'transparent',
-      color: 'var(--text-hint)', font: 'inherit', fontSize: 12, cursor: running ? 'default' : 'pointer',
+      color: 'var(--text-hint)', font: 'inherit', fontSize: 12, cursor: 'pointer',
     }}>
       {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}{turnDuration(start, running ? now : end, running)}
     </button>
