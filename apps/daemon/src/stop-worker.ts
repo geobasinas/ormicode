@@ -7,6 +7,9 @@ export async function stopWorkerProcess(proc: ChildProcess, link: Link | undefin
   if (!force && link) {
     try { await link.request('worker.evict', { session }, 10_000); return; } catch { /* force termination below */ }
   }
+  // Stop means stop: nothing the dying worker still sends (a tool that just
+  // finished, an approval, a turn end) may be journaled before it is gone.
+  if (force && link) link.onFrame = () => undefined;
   const exited = proc.exitCode !== null || proc.signalCode !== null ? Promise.resolve() : once(proc, 'exit');
   killTree(proc);
   let timer: ReturnType<typeof setTimeout> | undefined;
