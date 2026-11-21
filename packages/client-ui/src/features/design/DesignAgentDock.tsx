@@ -78,7 +78,7 @@ export function DesignAgentDock({ details, sessions, online, board, sourceDirty,
 }) {
   const live = useDesignAgent(details, online, board);
   const { id, state, title, cwd, branch, vendor, transport, project } = live.details;
-  const projectSessions = sessionsForDesignProject(sessions, project);
+  const projectSessions = sessionsForDesignProject(sessions, project, cwd);
   const sameWorkspace = projectSessions.filter(item => item.id === id || item.cwd === cwd);
   const otherWorkspaces = projectSessions.filter(item => item.id !== id && item.cwd !== cwd);
   const selectedTitle = sessionOptionTitle(live.details);

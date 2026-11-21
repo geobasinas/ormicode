@@ -1,4 +1,6 @@
-/** Linked-session choices for the open design project. Worktrees of that project stay; other projects do not. */
-export function sessionsForDesignProject<T extends { project: string }>(sessions: readonly T[], project: string): T[] {
-  return project && project !== 'scratch' ? sessions.filter(item => item.project === project) : [];
+/** Linked-session choices for the open design board. Sessions sharing the board's canvas root
+ * stay — same project (incl. its worktrees), or the same scratch folder for no-project sessions. */
+export function sessionsForDesignProject<T extends { project: string; cwd?: string }>(sessions: readonly T[], project: string | undefined, cwd?: string): T[] {
+  if (project && project !== 'scratch') return sessions.filter(item => item.project === project);
+  return cwd ? sessions.filter(item => item.project === 'scratch' && item.cwd === cwd) : [];
 }

@@ -26,7 +26,7 @@ export function DesignPage({ initialSession, onSessionChange, onOpen, sidebarOpe
       try {
         const response = await transport.request('session.list', {});
         if (response.type === 'err') throw new Error(response.message);
-        const listed = (response.body as { sessions: { id: string; project: string }[] }).sessions.filter(item => item.project !== 'scratch');
+        const listed = (response.body as { sessions: { id: string; project: string }[] }).sessions;
         const details = await Promise.all(listed.map(item => transport.request('session.get', { session: item.id })));
         if (!alive || token !== generation) return;
         setReachable(true);
@@ -53,9 +53,9 @@ export function DesignPage({ initialSession, onSessionChange, onOpen, sidebarOpe
   if (!details) return <main aria-label="Design workspace" className="design-no-session">
     <div className="design-empty">
       <div className="design-empty-icon"><PanelsTopLeft size={24} /></div>
-      <h1>{loading ? 'Loading project sessions…' : 'Open a project to start designing'}</h1>
+      <h1>{loading ? 'Loading sessions…' : 'Open a session to start designing'}</h1>
       {error ? <p role="alert">{error}</p> : null}
-      {!loading ? <><p>Design boards are saved in the working tree of a Code session.</p>
+      {!loading ? <><p>Design boards are saved in the working folder of a Code session — project or scratch.</p>
         <button type="button" className="design-button primary" onClick={() => onOpen('now')}>Go to Code <ArrowUpRight size={14} /></button></> : null}
     </div>
   </main>;
