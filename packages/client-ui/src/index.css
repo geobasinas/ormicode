@@ -133,7 +133,7 @@
   --sidebar-accent: var(--bg-selected);
   --sidebar-accent-foreground: var(--text-active);
   --sidebar-border: var(--line-pane);
-  --sidebar-ring: var(--line-mint);
+  --sidebar-ring: var(--line-card);
   --focus-ring: var(--line-card);
   --modal-scrim: var(--bg-scrim);
   --image-badge: var(--bg-chip);
