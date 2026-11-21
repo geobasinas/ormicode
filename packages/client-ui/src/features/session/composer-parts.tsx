@@ -136,6 +136,35 @@ export function MenuChip({ value, choices, onChange, label, icon, title }: {
   );
 }
 
+/** Chip for a vendor-advertised config option (ACP configOptions, e.g. approval/permission settings). */
+export function VendorOptionChip({ option, onChange }: {
+  option: { id: string; category?: string; name?: string; current?: string | boolean; choices?: { value: string | boolean; name?: string }[] };
+  onChange: (value: string | boolean) => void;
+}) {
+  const choices = option.choices ?? [];
+  const currentKey = String(option.current ?? '');
+  const label = option.name ?? option.category ?? option.id;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button className="hv-sub" style={chip} title={`${label} — ${option.id}`}><span className="ormi-chip-text">{label}</span>{chev}</button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuLabel>{label}</DropdownMenuLabel>
+        {choices.map(choice => {
+          const key = String(choice.value);
+          return (
+            <DropdownMenuItem key={key} onSelect={() => onChange(choice.value)} className="text-xs">
+              <span style={{ width: 16, display: 'inline-flex' }}>{currentKey === key ? <Check size={13} /> : null}</span>
+              <span>{choice.name ?? key}</span>
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 export function ModelChip({ value, models, loading, onChange, refresh, icon, title }: {
   value: string; models: ListedModel[]; loading: boolean; onChange: (v: string) => void; refresh: () => Promise<unknown>; icon?: ReactNode; title?: string;
 }) {

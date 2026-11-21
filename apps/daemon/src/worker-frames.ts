@@ -2,7 +2,7 @@
 import type { ChildProcess } from 'node:child_process';
 import type { Frame } from '@ormicode/protocol';
 import { append } from '@ormicode/journal';
-import { getSession, setNativeId, setState, setWorkerPid, type SessionState, type Store } from '@ormicode/session-store';
+import { getSession, setNativeId, setSessionConfig, patchSessionOption, setState, setWorkerPid, type SessionState, type Store } from '@ormicode/session-store';
 import { stateFor } from './supervisor-state.ts';
 import type { Link } from './socket.ts';
 import type { DispatchCtx } from './dispatch.ts';
@@ -67,6 +67,7 @@ export function createWorkerFrameHandler(ctx: WorkerFrameContext) {
         let recap = false;
         if (w) {
           w.ready = true; w.pid = Number(body.pid) || w.pid; setWorkerPid(db, session, w.pid ?? null);
+          if (body.config) setSessionConfig(db, session, body.config as Parameters<typeof setSessionConfig>[2]);
           // A prompt may already be waiting on this worker. Stay off the idle
           // evict list so pool pressure cannot drop it before the turn starts.
           if (!ctx.isSending(session)) { setState(db, session, 'idle'); ctx.armIdle(session, 'idle'); }
@@ -104,6 +105,8 @@ export function createWorkerFrameHandler(ctx: WorkerFrameContext) {
         let payload = ctx.secrets.redact(session, ctx.mcpCredentials.redact(body.payload as Record<string, unknown>));
         [kind, payload] = dispatchCtx.teamApprovals.event(session, kind, payload);
         const { seq } = append(db, session, { kind, payload: { kind, ...payload }, ts: Number(body.ts) || Date.now() });
+        if (kind === 'config_option' && (typeof payload.value === 'string' || typeof payload.value === 'boolean'))
+          patchSessionOption(db, session, String(payload.id ?? ''), payload.value);
         const frameOut = JSON.stringify({ v: 1, type: 'evt', session, seq, ts: Number(body.ts) || Date.now(), body: { kind, ...payload } });
         ctx.fanout(session, frameOut);
         ctx.relay()?.sendEvt(session, seq, JSON.parse(frameOut));

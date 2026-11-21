@@ -8,7 +8,8 @@ import { openStore, createSession, getSession, listSessions, sessionsInStates, s
   addDevice, getDeviceByHash, listDevices, renameDevice, revokeDevice, listNotes, setNote, deleteNote, getPinnedPrice, pinPrice,
   addQueuedPrompt, listQueuedPrompts, moveQueuedPrompt, removeQueuedPrompt, updateQueuedPrompt,
   setQueuedPromptError, getSessionPorts, assignSessionPorts, releaseSessionPorts,
-  setPendingPromptData, getPendingPromptData, getDraft, setDraft, addProject, listProjects, removeProject } from '../src/index.ts';
+  setPendingPromptData, getPendingPromptData, getDraft, setDraft, addProject, listProjects, removeProject,
+  setSessionConfig, sessionConfig, patchSessionOption } from '../src/index.ts';
 
 test('openStore applies migrations and is idempotent on reopen', () => {
   const path = join(mkdtempSync(join(tmpdir(), 'ormi-store-')), 'nested', 'store.db');
@@ -199,5 +200,25 @@ test('projects persist, order by added time, and add idempotently', () => {
   assert.equal(removeProject(db, 'm_local', first.path), true);
   assert.equal(removeProject(db, 'm_local', first.path), false);
   assert.deepEqual(listProjects(db), [second]);
+  db.close();
+});
+
+test('session config round-trips and config_option patches update current', () => {
+  const db = openStore(':memory:');
+  createSession(db, { id: 's_cfg', machine: 'm', project: 'p', cwd: '/repo', vendor: 'vibe', transport: 'acp' });
+  setSessionConfig(db, 's_cfg', {
+    modes: [{ id: 'ask', name: 'Ask' }],
+    options: [{ id: 'approval', category: 'permission', current: 'ask', choices: [{ value: 'ask' }, { value: 'auto' }] }],
+  });
+  const stored = sessionConfig(getSession(db, 's_cfg'));
+  assert.equal(stored.modes[0].id, 'ask');
+  assert.equal(stored.options[0].current, 'ask');
+  patchSessionOption(db, 's_cfg', 'approval', 'auto');
+  assert.equal(sessionConfig(getSession(db, 's_cfg')).options[0].current, 'auto');
+  patchSessionOption(db, 's_cfg', 'missing', 'x');
+  assert.equal(sessionConfig(getSession(db, 's_cfg')).options[0].current, 'auto');
+  db.prepare("UPDATE sessions SET options = 'not json' WHERE id = 's_cfg'").run();
+  assert.equal(sessionConfig(getSession(db, 's_cfg')), undefined);
+  patchSessionOption(db, 's_cfg', 'approval', 'ask');
   db.close();
 });

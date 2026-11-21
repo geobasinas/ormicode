@@ -9,6 +9,7 @@ export interface SessionDetails {
   scratchFiles?: number;
   model?: string | null; effort?: string | null; mode?: string | null; nativeId?: string | null;
   modes?: { id: string; name: string }[];
+  options?: { id: string; category?: string; type?: string; name?: string; current?: string | boolean; choices?: { value: string | boolean; name?: string }[] }[];
   parent?: string | null;
   team?: string | null; parentless?: boolean; tokens?: number;
   teamApprovals?: { session: string; request: string; tool: string; input?: unknown; options: { id: string; label: string }[] }[];

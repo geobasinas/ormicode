@@ -481,7 +481,7 @@ States with several causes carry a `reason` (e.g. `interrupted`: `host_restart`,
 
 **Capabilities:** maintain a per-vendor, per-transport matrix, versioned with the tested agent. Record streaming, steering, approval interception, interruption, native resume, model discovery and usage as supported, unsupported or unverified. Unsupported operations return a typed error; test adapters with recorded contract fixtures and local smoke tests.
 
-**Agent config:** each session stores the vendor's own values for model, effort, mode/agent (and ACP `configOptions`). Never invented.
+**Agent config:** each session stores the vendor's own values for model, effort, mode/agent (and ACP `configOptions`). Never invented. The worker reports the vendor's advertised `modes`/`configOptions` on `worker.ready`; the daemon stores them on the session row (`config_option` events keep `current` fresh) and `session.get` returns them. The composer shows a Mode chip for `modes` and one chip per `configOptions` entry whose category isn't already covered by the model/effort/mode chips — that includes approval/permission settings; choices call `session.setOption` with the vendor's own value. Options without choices aren't rendered yet.
 
 **Titles:** 4–6 words from the first prompt via a utility call (fallback: first 8 words). Renameable.
 

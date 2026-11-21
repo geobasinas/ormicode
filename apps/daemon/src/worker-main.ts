@@ -141,10 +141,21 @@ try {
   const probe = (adapter as { nativeId?: (h: Handle) => string }).nativeId;
   if (probe) { const id = probe.call(adapter, handle); if (id) void send('worker.native', { session, nativeId: id }); }
   pump();
+  // Vendor-advertised session settings (permission modes, ACP config options)
+  // ride the ready frame so the supervisor can serve them from session.get.
+  let sessionConfig: { options?: unknown[]; modes?: unknown[] } | undefined;
+  try {
+    const options = adapter.configOptions?.(handle);
+    const modes = adapter.modes?.(handle);
+    const config: { options?: unknown[]; modes?: unknown[] } = {};
+    if (options?.length) config.options = [...options];
+    if (modes?.length) config.modes = [...modes];
+    if (config.options || config.modes) sessionConfig = config;
+  } catch { /* config probe is best-effort; the session still comes up */ }
   if (vendor === 'fake' && process.env.ORMICODE_FAKE_READY === 'fail') throw new Error('fake worker failed before ready');
   if (vendor === 'fake' && process.env.ORMICODE_FAKE_READY === 'never')
     await new Promise(resolve => setTimeout(resolve, 10 * 60_000));
-  await send('worker.ready', { session, pid: process.pid });
+  await send('worker.ready', { session, pid: process.pid, ...(sessionConfig ? { config: sessionConfig } : {}) });
   setInterval(() => { void send('worker.health', { pid: process.pid, rssBytes: process.memoryUsage().rss }).catch(() => undefined); }, 10_000).unref();
 } catch (error) {
   if (resumeId && adapter?.resume) await send('worker.event', { session, kind: 'interrupted', payload: { reason: 'resume_failed' }, ts: Date.now() }).catch(() => undefined);

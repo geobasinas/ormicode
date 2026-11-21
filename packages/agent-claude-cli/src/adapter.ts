@@ -14,6 +14,7 @@ type Spawn = (command: string, args: string[], options: SpawnOptionsWithoutStdio
 interface Session { spec: StartSpec; queue: EventQueue; log?: RawLog; nativeId?: string; process?: ChildProcessWithoutNullStreams; running?: Promise<void>; broker?: PermissionBroker; active: boolean; disposed: boolean; needsResumeId: boolean }
 const newId = monotonicFactory();
 const modes = new Set(['default', 'acceptEdits', 'plan', 'dontAsk']);
+const modeList = [...modes].map(id => ({ id, name: id }));
 const efforts = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
 const MAX_LINE_BYTES = 1024 * 1024;
 const execFileAsync = promisify(execFile);
@@ -186,6 +187,8 @@ export class ClaudeCliAdapter implements AgentAdapter {
     if (!broker) throw new Error('CLI approval bridge is not active');
     broker.answer(requestId, answers);
   }
+  /** Claude's permission modes are the approval surface; ids are the vendor's own words. */
+  modes(): readonly { id: string; name: string }[] { return modeList; }
   events(handle: Handle) { return this.get(handle).queue.subscribe(); }
   async setModel(handle: Handle, model: string): Promise<void> {
     const session = this.idle(handle);

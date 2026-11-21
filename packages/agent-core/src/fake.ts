@@ -1,5 +1,5 @@
 import { NO_CAPABILITIES } from './adapter.ts';
-import type { AgentAdapter, AgentCommand, Handle, ModelList, PromptInput, StartSpec } from './adapter.ts';
+import type { AgentAdapter, AgentCommand, Handle, ModelList, PromptInput, SessionMode, SessionOption, StartSpec } from './adapter.ts';
 import { EventQueue } from './event-queue.ts';
 import type { AgentEvent } from '@ormicode/protocol';
 import { newId } from '@ormicode/protocol';
@@ -22,11 +22,17 @@ export class FakeAdapter implements AgentAdapter {
   private nextId = 0;
   private readonly script?: FakeScript;
   private readonly delayMs: number;
+  private readonly fakeModes?: SessionMode[];
+  private readonly fakeOptions?: SessionOption[];
   constructor(options: { script?: FakeScript; delayMs?: number } = {}) {
     const env = process.env.ORMICODE_FAKE_SCRIPT;
     this.script = options.script ?? (env === 'slow' || env === 'tool' || env === 'approval' || env === 'ratelimit' || env === 'ratelimit_pause' ? env : undefined);
     this.delayMs = options.delayMs ?? (Number(process.env.ORMICODE_FAKE_DELAY_MS) || 30_000);
+    this.fakeModes = jsonList<SessionMode>(process.env.ORMICODE_FAKE_MODES);
+    this.fakeOptions = jsonList<SessionOption>(process.env.ORMICODE_FAKE_OPTIONS);
   }
+  modes(): readonly SessionMode[] { return this.fakeModes ?? []; }
+  configOptions(): readonly SessionOption[] { return this.fakeOptions ?? []; }
   async detect() { return { available: true, version: 'fake-1' }; }
   async models(): Promise<ModelList> {
     const models = process.env.ORMICODE_FAKE_MODELS;
@@ -135,3 +141,8 @@ export class FakeAdapter implements AgentAdapter {
   }
 }
 function interrupted(): Error { return new Error('fake turn interrupted'); }
+function jsonList<T>(raw: string | undefined): T[] | undefined {
+  if (!raw) return undefined;
+  try { const parsed = JSON.parse(raw) as unknown; return Array.isArray(parsed) ? parsed as T[] : undefined; }
+  catch { return undefined; }
+}

@@ -3,7 +3,7 @@ import { EventQueue, NO_CAPABILITIES, RawLog } from '@ormicode/agent-core';
 import type { AgentAdapter, AgentCommand, Handle, NativeRef, PromptInput, StartSpec } from '@ormicode/agent-core';
 import { AcpError, JsonRpcPeer } from './jsonrpc.ts';
 import type { Spawn } from './jsonrpc.ts';
-import { acpMcpServers, type AcpProfile, type ConfigOption, type SessionBootstrap, type TurnMapper } from './profile.ts';
+import { acpMcpServers, type AcpProfile, type ConfigOption, type Mode, type SessionBootstrap, type TurnMapper } from './profile.ts';
 import { AcpPermissionBroker } from './permissions.ts';
 
 export interface AcpEndpoint { peer: JsonRpcPeer; profile: AcpProfile; agentInfo: { name?: string; version?: string } }
@@ -191,6 +191,7 @@ export class AcpAdapter implements AgentAdapter {
   acpVersion(handle: Handle): 1 | 2 { return this.get(handle).profile.version; }
   agentVersion(handle: Handle): string | undefined { return this.get(handle).agentVersion; }
   configOptions(handle: Handle): ConfigOption[] { return this.get(handle).options; }
+  modes(handle: Handle): Mode[] { return this.get(handle).modes; }
   events(handle: Handle) { return this.get(handle).queue.subscribe(); }
   async commands(handle: Handle): Promise<AgentCommand[]> { return this.get(handle).commands; }
   async dispose(handle: Handle): Promise<void> {

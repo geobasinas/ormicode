@@ -21,6 +21,10 @@ export interface Handle { readonly id: string }
 export interface PromptInput { text: string; images?: { data: string; mimeType: string }[] }
 export interface AgentCommand { name: string; description: string; source: 'agent' }
 export interface HandoffState { summary: string }
+/** A vendor-advertised session setting (ACP configOptions). `current` is the live value. */
+export interface SessionOption { id: string; category?: string; type?: string; name?: string; current?: string | boolean; choices?: { value: string | boolean; name?: string }[] }
+/** A vendor-advertised session mode (permission/agent modes). */
+export interface SessionMode { id: string; name: string }
 
 /** Capabilities describe verified behavior; unsupported operations are omitted. */
 export interface AgentAdapter {
@@ -44,6 +48,10 @@ export interface AgentAdapter {
   exportState?(handle: Handle): Promise<HandoffState>;
   events(handle: Handle): AsyncIterable<AgentEvent>;
   commands?(handle: Handle): Promise<AgentCommand[]>;
+  /** Advertised config options for this session (approval/permission settings included); omitted when the transport has none. */
+  configOptions?(handle: Handle): readonly SessionOption[];
+  /** Advertised session modes (e.g. permission modes); omitted when the transport has no enumerable list. */
+  modes?(handle: Handle): readonly SessionMode[];
   dispose(handle: Handle): Promise<void>;
 }
 

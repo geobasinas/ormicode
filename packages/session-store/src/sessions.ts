@@ -65,6 +65,34 @@ export function setNativeId(db: Store, id: string, nativeId: string | null): voi
   db.prepare('UPDATE sessions SET native_id = ? WHERE id = ?').run(nativeId, id);
 }
 
+/** Vendor-advertised session settings persisted from the worker's ready frame. */
+export interface SessionConfig { options?: unknown[]; modes?: { id: string; name: string }[] }
+
+export function setSessionConfig(db: Store, id: string, config: SessionConfig): void {
+  db.prepare('UPDATE sessions SET options = ? WHERE id = ?').run(JSON.stringify(config), id);
+}
+
+export function sessionConfig(row: Pick<SessionRow, 'options'>): SessionConfig | undefined {
+  if (!row.options) return undefined;
+  try {
+    const parsed = JSON.parse(row.options) as SessionConfig | null;
+    return parsed && typeof parsed === 'object' ? parsed : undefined;
+  } catch { return undefined; }
+}
+
+/** Keep a stored config option's `current` in step with config_option events. */
+export function patchSessionOption(db: Store, id: string, optionId: string, value: string | boolean): void {
+  const row = getSession(db, id);
+  const config = row ? sessionConfig(row) : undefined;
+  const options = config?.options;
+  if (!Array.isArray(options)) return;
+  let changed = false;
+  for (const option of options as { id?: unknown; current?: unknown }[]) {
+    if (option && option.id === optionId) { option.current = value; changed = true; }
+  }
+  if (changed) setSessionConfig(db, id, config!);
+}
+
 export function setTitle(db: Store, id: string, title: string): void {
   db.prepare('UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?').run(title, Date.now(), id);
 }

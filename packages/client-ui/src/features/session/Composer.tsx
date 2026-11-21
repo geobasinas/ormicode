@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Plus, AtSign, Mic, ArrowUp, Square, Cpu, Gauge, X, GripVertical, FileText, History, GitBranch } from 'lucide-react';
 import { usePlatform } from '../../lib/platform.ts';
 import type { SessionDetails } from './useSession.ts';
-import { useImages, useFiles, ImageStrip, ContextChips, MenuChip, ModelChip, EffortChip, chip, iconBtn } from './composer-parts.tsx';
+import { useImages, useFiles, ImageStrip, ContextChips, MenuChip, ModelChip, EffortChip, VendorOptionChip, chip, iconBtn } from './composer-parts.tsx';
 import { useModels } from './useModels.ts';
 import { useComposerDraft } from './useComposerDraft.ts';
 import { MentionPopover, type MentionItem } from './MentionPopover.tsx';
@@ -246,6 +246,9 @@ export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefi
   };
   const modes = details?.modes ?? [];
   const mode = details?.mode;
+  // Config-option categories already covered by the dedicated model/effort/mode chips.
+  const coveredOptionCategories = new Set(['mode', 'model', 'model_config', 'thought_level', 'thinking', 'effort']);
+  const vendorOptions = (details?.options ?? []).filter(option => option.choices?.length && !coveredOptionCategories.has(option.category ?? ''));
   const slashToken = /^\/\S+/.exec(text)?.[0];
   const slashValues = slashAction === 'model' ? modelList.models.map(item => ({ value: item.id, label: item.label || item.id }))
     : slashAction === 'effort' ? (modelList.models.find(item => item.id === model)?.efforts ?? []).map(value => ({ value, label: value }))
@@ -339,6 +342,7 @@ export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefi
           ) : null}
           {!compact && details?.vendor ? <span className="ormi-narrow-hide" style={{ ...chip, cursor: 'default', flexShrink: 0 }} title="agent · transport">{details.vendor}<span style={{ color: 'var(--text-hint)' }}>{details.transport}</span></span> : null}
           {!compact && modes.length ? <MenuChip title="mode" label="Mode" value={mode ?? modes[0]!.id} choices={modes.map(m => ({ value: m.id, name: m.name }))} onChange={v => void call('session.setMode', { mode: v })} /> : null}
+          {!compact && vendorOptions.map(option => <VendorOptionChip key={option.id} option={option} onChange={value => void call('session.setOption', { id: option.id, value })} />)}
           {!compact && details ? <ModelChip title="model — the vendor's model id" icon={<Cpu size={11} style={{ color: 'var(--text-hint)' }} />} value={model} models={modelList.models} loading={modelList.loading} refresh={modelList.refresh} onChange={v => { setModelOverride(v); if (v !== 'default') void call('session.setModel', { model: v }).then(ok => { if (!ok) setModelOverride(undefined); }); }} /> : null}
           {!compact && details ? <EffortChip title="effort — the vendor's own word" icon={<Gauge size={11} style={{ color: 'var(--text-hint)' }} />} value={effort} model={model} models={modelList.models} onChange={v => { setEffortOverride(v); if (v !== 'default') void call('session.setEffort', { effort: v }).then(ok => { if (!ok) setEffortOverride(undefined); }); }} /> : null}
           {live && !text.trim() ? (

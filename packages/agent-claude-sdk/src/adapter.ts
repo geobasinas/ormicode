@@ -33,6 +33,7 @@ interface Session {
 }
 const makeId = monotonicFactory();
 const modes = new Set(['default', 'acceptEdits', 'plan', 'dontAsk']);
+const modeList = [...modes].map(id => ({ id, name: id }));
 const efforts = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
 const RAW_LOG_CAP = 5 * 1024 * 1024;
 
@@ -291,6 +292,8 @@ export class ClaudeSdkAdapter implements AgentAdapter {
     session.stream?.close?.();
     await session.running;
   }
+  /** Claude's permission modes are the approval surface; ids are the vendor's own words. */
+  modes(): readonly { id: string; name: string }[] { return modeList; }
   events(handle: Handle) { return this.get(handle).queue.subscribe(); }
   async commands(handle: Handle): Promise<AgentCommand[]> {
     const session = this.get(handle);

@@ -1,12 +1,11 @@
 import { parseRequestBody, newId, PROTOCOL_VERSION, type Frame, type PromptAttachment, type PromptContext } from '@ormicode/protocol';
 import type { UserInteractions } from './user-interactions.ts';
 import { resumeSession } from './team-resume.ts';
-import { sessionTeamView } from './session-team-view.ts';
-import { sessionStatus } from './session-status.ts';
+import { sessionGetMethod } from './session-get-method.ts';
 import { abortSession } from './abort-session.ts';
 import {
   getSession, listSessions, setState, setTitle, listNotes, setNote, deleteNote,
-  getPendingPromptData, deletePendingPromptData, getSessionPorts, listDevices, renameDevice, revokeDevice, type Store,
+  getPendingPromptData, deletePendingPromptData, listDevices, renameDevice, revokeDevice, type Store,
 } from '@ormicode/session-store';
 import { replay, setCursor } from '@ormicode/journal';
 import { handleJoin, type Pairing } from './pair.ts';
@@ -40,8 +39,7 @@ import { expandPrompt, PromptInvalidError, promptBusy, promptTitle, validateProm
 import { retryPrompt } from './prompt-methods.ts';
 import { listModels } from './models.ts';
 import { startSession } from './session-start.ts';
-import { copyOutMethod, countScratchFiles } from './scratch-methods.ts';
-import { SESSION_PORT_COUNT } from './session-ports.ts';
+import { copyOutMethod } from './scratch-methods.ts';
 import { serviceMethod } from './service-methods.ts';
 import type { Services } from './services.ts';
 import type { AgentBrowser } from './agent-browser.ts';
@@ -213,24 +211,8 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
           patch: patch.length > PATCH_INLINE ? patch.slice(0, PATCH_INLINE) : patch, truncated: patch.length > PATCH_INLINE,
         });
       }
-      case 'session.get': {
-        const s = getSession(db, String(body.session));
-        if (!s) {
-          const machine = remoteSessionMachine(ctx, String(body.session));
-          return machine
-            ? client.link.replyError(id, 'machine.unreachable', machine)
-            : client.link.replyError(id, 'session.not_found', String(body.session));
-        }
-        const base = getSessionPorts(db, s.id);
-        return client.link.reply(id, {
-          id: s.id, title: s.title, ...sessionStatus(ctx, s), lastSeq: s.last_seq, parentless: Boolean(s.parentless), project: s.project, vendor: s.vendor,
-          cwd: s.cwd, ...(s.project === 'scratch' ? { scratchFiles: countScratchFiles(s.cwd) } : {}),
-          transport: s.transport, updatedAt: s.updated_at, branch: s.branch, worktree: Boolean(s.worktree),
-          ...(base === undefined ? {} : { ports: { base, count: SESSION_PORT_COUNT } }),
-          model: s.model, effort: s.effort, mode: s.mode,
-          nativeId: s.native_id, acpVersion: s.acp_version, ...sessionTeamView(db, s), teamApprovals: ctx.teamApprovals.forParent(s.id),
-        });
-      }
+      case 'session.get':
+        return sessionGetMethod(ctx, client, id, body);
       case 'session.copyOut': return copyOutMethod(ctx, client, id, body);
       case 'session.prompt': {
         const session = String(body.session);

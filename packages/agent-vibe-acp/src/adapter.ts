@@ -134,6 +134,7 @@ export class VibeAcpAdapter implements AgentAdapter {
   async setEffort(handle: Handle, effort: string): Promise<void> { await this.applyOption(handle, ['thought_level', 'thinking'], effort); this.get(handle).queue.push([{ kind: 'effort_changed', effort }]); }
   /** Advertised ACP config options for this session. */
   configOptions(handle: Handle): ConfigOption[] { return this.get(handle).options; }
+  modes(handle: Handle): Mode[] { return this.get(handle).modes; }
   events(handle: Handle) { return this.get(handle).queue.subscribe(); }
   async dispose(handle: Handle): Promise<void> {
     const session = this.sessions.get(handle); if (!session) return;
