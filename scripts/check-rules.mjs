@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { checkAgentBoundaries } from './check-agent-boundaries.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -40,11 +41,11 @@ function checkSourceSize(base, group) {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const layout = JSON.parse(readFileSync(join(root, 'scripts/layout.json'), 'utf8'));
-  const errors = [...checkLayout(root, layout), ...checkSourceSize(root, 'apps'), ...checkSourceSize(root, 'packages')];
+  const errors = [...checkLayout(root, layout), ...checkSourceSize(root, 'apps'), ...checkSourceSize(root, 'packages'), ...checkAgentBoundaries(root)];
   if (errors.length) {
     console.error(errors.join('\n'));
     process.exitCode = 1;
   } else {
-    console.log('Scaffold layout and source file sizes pass.');
+    console.log('Scaffold layout, source file sizes and agent package boundaries pass.');
   }
 }
