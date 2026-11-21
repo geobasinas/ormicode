@@ -1,7 +1,7 @@
 /** Settings tab (Settings-2 mockup): inner nav + one section at a time. Only
  * client-side prefs and existing daemon methods are wired; the rest say so. */
 import { useEffect, useLayoutEffect, useState } from 'react';
-import { Settings as Gear, Palette, SlidersHorizontal, Bell, Keyboard, Smartphone, Laptop, Shield, Info, Coins, KeyRound, Globe, type LucideIcon } from 'lucide-react';
+import { Settings as Gear, Palette, SlidersHorizontal, Keyboard, Smartphone, Shield, Info, Coins, KeyRound, Globe, type LucideIcon } from 'lucide-react';
 import { usePlatform } from '../lib/platform.ts';
 import { applyTheme, themeByName } from '../lib/theme.ts';
 import { ago, compactTokens, formatUsd, projectName } from '../lib/format.ts';
@@ -30,30 +30,25 @@ type Section = { id: string; label: string; icon: LucideIcon };
 const NAV: { group: string; items: Section[] }[] = [
   { group: 'GENERAL', items: [
     { id: 'general', label: 'General', icon: Gear }, { id: 'appearance', label: 'Appearance', icon: Palette },
-    { id: 'defaults', label: 'Session defaults', icon: SlidersHorizontal }, { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'layout', label: 'Layout', icon: SlidersHorizontal },
-    { id: 'browser', label: 'Browser', icon: Globe },
     { id: 'shortcuts', label: 'Keyboard shortcuts', icon: Keyboard }] },
-  { group: 'CONNECTION', items: [{ id: 'devices', label: 'Paired devices', icon: Smartphone }, { id: 'machines', label: 'Machines', icon: Laptop }] },
-  { group: 'DATA', items: [{ id: 'usage', label: 'Usage', icon: Coins }, { id: 'secrets', label: 'Secrets', icon: KeyRound }, { id: 'privacy', label: 'Data and privacy', icon: Shield }, { id: 'about', label: 'About', icon: Info }] },
+  { group: 'HUB', items: [
+    { id: 'devices', label: 'Paired devices', icon: Smartphone }, { id: 'browser', label: 'Browser', icon: Globe },
+    { id: 'usage', label: 'Usage', icon: Coins }, { id: 'secrets', label: 'Secrets', icon: KeyRound }] },
+  { group: 'DATA', items: [{ id: 'privacy', label: 'Data and privacy', icon: Shield }, { id: 'about', label: 'About', icon: Info }] },
 ];
 const TITLES: Record<string, [string, string]> = {
-  general: ['General', 'How ormicode runs on this computer'],
+  general: ['General', 'Defaults for sessions started from Home'],
   appearance: ['Appearance', 'Theme for this window'],
-  defaults: ['Session defaults', 'Used when you start a session from Home'],
-  layout: ['Layout', 'Arrange the regions in your workspace'],
-  notifications: ['Notifications', 'When ormicode should get your attention'],
+  layout: ['Layout', 'Agent layout changes, history and safe mode'],
   shortcuts: ['Keyboard shortcuts', 'Ctrl on Windows and Linux, Cmd on macOS'],
+  devices: ['Paired devices', 'Phones and browsers that can reach your hub'],
   browser: ['Browser', 'Preview browser and checkpoint screenshots'],
-  devices: ['Paired devices', 'Phones and browsers that can reach this hub'],
-  machines: ['Machines', 'Computers running an ormicode daemon'],
-  usage: ['Usage', 'Stored token and cost totals'],
-  secrets: ['Secrets', 'Names and values stored in this machine’s keyring'],
-  privacy: ['Data and privacy', 'What is stored and where'],
+  usage: ['Usage', 'Token and cost totals'],
+  secrets: ['Secrets', 'Declared names and values in the hub keyring'],
+  privacy: ['Data and privacy', 'Export or delete the hub’s data'],
   about: ['About', 'Versions and connection'],
 };
-
-const Soon = ({ what }: { what: string }) => <span style={{ fontSize: 10.5, color: 'var(--text-hint)' }}>{what}</span>;
 
 interface CostBucket { tokens: number; usd: number | null; unpriced: number; estimate: boolean }
 interface CostTotals {
@@ -252,9 +247,9 @@ function Devices() {
   return (
     <Group title="DEVICES">
       {error ? <Row title="Could not load devices" hint={error} /> : null}
-      {list?.length === 0 ? <Row title="No paired devices" hint="Run ormi pair on this machine to add a phone or browser" /> : null}
+      {list?.length === 0 ? <Row title="No paired devices" hint="Run ormi pair on your hub to add a phone or browser" /> : null}
       {list?.map(d => (
-        <Row key={d.id} title={d.name} hint={`paired ${ago(d.trustedAt)} ago`}>
+        <Row key={d.id} title={d.name} hint={`Paired ${ago(d.trustedAt)} ago`}>
           <button className="hv-sub" style={{ ...ctl, cursor: 'pointer' }} onClick={() => void revoke(d.id, d.name)}>Revoke</button>
         </Row>
       ))}
@@ -266,17 +261,21 @@ function About({ connection }: { connection?: string }) {
   const platform = usePlatform();
   const { transport } = platform;
   const [st, setSt] = useState<{ version: string; uptimeMs: number; liveWorkers: number; relay: string }>();
+  const [remote, setRemote] = useState<{ account: string; device: string; name: string } | null>();
   useEffect(() => {
-    if (!platform.web) transport.request('daemon.status', {}).then(r => { if (r.type === 'res') setSt(r.body as unknown as typeof st); }).catch(() => undefined);
+    if (platform.web) void (platform.web.remote?.() ?? Promise.resolve(null)).then(setRemote).catch(() => undefined);
+    else transport.request('daemon.status', {}).then(r => { if (r.type === 'res') setSt(r.body as unknown as typeof st); }).catch(() => undefined);
   }, [platform, transport]);
+  const backend = platform.desktop?.storageBackend();
   return (
     <Group title="DAEMON">
       <Row title="Connection" hint={connection ?? 'unknown'} />
       {platform.web ? <>
+        {remote ? <Row title="This browser" hint={`${remote.name} · ${remote.account}`} /> : null}
         <Row title="Web version" hint={platform.web.version} />
         <Row title="Commit" hint={platform.web.commit} mono />
         <Row title="Relay" hint={platform.web.relayUrl} mono />
-        <Row title="Forget this browser" hint="Remove this browser's relay token">
+        <Row title="Forget this browser" hint="Removes the pairing; a new code is needed to reconnect">
           <button className="hv-sub" style={{ ...ctl, cursor: 'pointer' }} onClick={() => {
             if (window.confirm('Forget this browser? You will need a new pairing code to reconnect.')) void platform.web?.unpair();
           }}>Forget</button>
@@ -286,14 +285,16 @@ function About({ connection }: { connection?: string }) {
       <Row title="Uptime" hint={st ? ago(Date.now() - st.uptimeMs) : '…'} />
       <Row title="Live workers" hint={st ? String(st.liveWorkers) : '…'} />
       <Row title="Relay" hint={st?.relay ?? '…'} />
+      {backend === 'basic_text' ? <Row title="Device token storage" hint="No system keyring found — the token is stored as basic text" /> : null}
       </>}
     </Group>
   );
 }
 
 export function SettingsView({ prefs, onPrefs, connection }: { prefs: Prefs; onPrefs: (p: Prefs) => void; connection?: string }) {
-  const { desktop } = usePlatform();
+  const { desktop, web } = usePlatform();
   const [section, setSection] = useState('general');
+  const groups = web ? NAV.map(g => ({ ...g, items: g.items.filter(it => it.id !== 'privacy') })) : NAV;
   const set = (patch: Partial<Prefs>) => { const p = { ...prefs, ...patch }; savePrefs(p); onPrefs(p); };
   useLayoutEffect(() => {
     applyTheme(themeByName(prefs.theme));
@@ -303,7 +304,7 @@ export function SettingsView({ prefs, onPrefs, connection }: { prefs: Prefs; onP
   return (
     <div style={{ display: 'flex', height: '100%' }}>
       <nav style={{ width: 216, flexShrink: 0, borderRight: '1px solid var(--line-pane)', padding: '14px 10px', overflow: 'auto' }}>
-        {NAV.map(g => (
+        {groups.map(g => (
           <div key={g.group} style={{ marginBottom: 14 }}>
             <div style={{ ...label, padding: '4px 8px 5px' }}>{g.group}</div>
             {g.items.map(it => (
@@ -320,49 +321,35 @@ export function SettingsView({ prefs, onPrefs, connection }: { prefs: Prefs; onP
         <div style={{ maxWidth: 800 }}>
           <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--text-title)' }}>{title}</h2>
           <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>{sub}</div>
-          {section === 'general' ? <>
-            <Group title="STARTUP">
-              <Row title="Launch at login" hint="Open ormicode when you sign in to your computer"><SettingsSwitch on={false} disabled /></Row>
-              <Row title="Keep running in the tray" hint="The daemon keeps sessions running after you close the window"><Soon what="daemon always runs" /></Row>
-            </Group>
-            <Group title="WORKSPACE">
-              <Row title="Default project folder" hint={prefs.defaultProject} mono>
+          {section === 'general' ? (
+            <Group title="SESSION DEFAULTS">
+              <Row title="Agent" hint="Vendor used for sessions started from Home">
+                <select aria-label="default agent" className="ormi-select" style={ctl} value={prefs.defaultVendor} onChange={e => set({ defaultVendor: e.target.value })}>
+                  {VENDORS.map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </Row>
+              <Row title="Project" hint="Folder the session works in">
                 <DefaultProjectPicker value={prefs.defaultProject} onChange={path => set({ defaultProject: path })} />
               </Row>
-              <Row title="Worktree branch prefix" hint="Prefix for new worktree branches" monoTitle>
+              <Row title="Worktree branch prefix" hint="Branches created for session worktrees" monoTitle>
                 <input aria-label="Worktree branch prefix" style={{ ...ctl, width: 200, fontFamily: 'var(--font-mono)' }}
                   value={prefs.worktreeBranchPrefix ?? 'ormi/'} onChange={e => set({ worktreeBranchPrefix: e.target.value })} />
               </Row>
-              <Row title="Language" hint="Used for menus and messages"><Soon what="English" /></Row>
             </Group>
-          </> : null}
+          ) : null}
           {section === 'browser' ? <BrowserSettings /> : null}
           {section === 'appearance' ? (
             <Group title="THEME">
               {['dark', 'light'].map(t => (
-                <Row key={t} title={t === 'dark' ? 'Dark' : 'Light'} hint={t === 'dark' ? 'Matches the mockups' : 'Same layout, light palette'}>
+                <Row key={t} title={t === 'dark' ? 'Dark' : 'Light'}>
                   <SettingsSwitch ariaLabel={t === 'dark' ? 'Dark theme' : 'Light theme'} on={prefs.theme === t} onChange={checked => { if (checked) set({ theme: t }); }} />
                 </Row>
               ))}
             </Group>
           ) : null}
-          {section === 'defaults' ? (
-            <Group title="NEW SESSIONS">
-              <Row title="Agent" hint="Vendor picked in the Home composer">
-                <select aria-label="default agent" className="ormi-select" style={ctl} value={prefs.defaultVendor} onChange={e => set({ defaultVendor: e.target.value })}>
-                  {VENDORS.map(v => <option key={v} value={v}>{v}</option>)}
-                </select>
-              </Row>
-              <Row title="Project" hint="Path, or scratch for no project" mono>
-                <DefaultProjectPicker value={prefs.defaultProject} onChange={path => set({ defaultProject: path })} />
-              </Row>
-            </Group>
-          ) : null}
           {section === 'layout' ? <LayoutSettings safeMode={prefs.safeMode ?? false} onSafeMode={value => set({ safeMode: value })} /> : null}
-          {section === 'notifications' ? <Group title="ALERTS"><Row title="Approval and question alerts" hint="Desktop notifications are not wired yet; Needs you on Home lists them"><Soon what="soon" /></Row></Group> : null}
           {section === 'shortcuts' ? <Group title="SHORTCUTS">{SHORTCUTS.map(([a, k]) => <Row key={a} title={a}><span style={{ ...ctl, fontFamily: 'var(--font-mono)', fontSize: 10.5, color: 'var(--text-label)' }}>{k}</span></Row>)}</Group> : null}
           {section === 'devices' ? <Devices /> : null}
-          {section === 'machines' ? <Group title="THIS MACHINE"><Row title="local" hint="Other machines appear here once multi-machine hubs ship"><Soon what="soon" /></Row></Group> : null}
           {section === 'usage' ? <Usage /> : null}
           {section === 'secrets' ? <Secrets /> : null}
           {section === 'privacy' ? <PrivacySettings /> : null}

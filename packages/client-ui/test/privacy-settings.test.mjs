@@ -34,14 +34,19 @@ function platform(web) {
   };
 }
 
-async function openPrivacy(web = false) {
+async function openSettings(web = false) {
   const p = platform(web);
   globalThis.__ormiPlatform = p;
   document.body.innerHTML = '<div id="root"></div>';
   const root = createRoot(document.getElementById('root'));
   await act(async () => root.render(createElement(SettingsView, { prefs: loadPrefs(), onPrefs: () => undefined })));
-  await act(async () => [...document.querySelectorAll('nav button')].find(b => b.textContent === 'Data and privacy').click());
   return { p, root };
+}
+
+async function openPrivacy(web = false) {
+  const result = await openSettings(web);
+  await act(async () => [...document.querySelectorAll('nav button')].find(b => b.textContent === 'Data and privacy').click());
+  return result;
 }
 const button = text => [...document.querySelectorAll('button')].find(b => b.textContent === text);
 const typeInto = async (input, value) => act(async () => {
@@ -51,7 +56,6 @@ const typeInto = async (input, value) => act(async () => {
 
 test('Export pulls every chunk and downloads one tar file', async () => {
   const { p, root } = await openPrivacy();
-  assert.match(document.body.textContent, /~\/\.ormicode\/ on this machine/, 'storage note stays');
   const downloads = [];
   const created = [];
   const realCreate = URL.createObjectURL;
@@ -110,10 +114,10 @@ test('Delete shows the hub’s refusal and keeps the prompt open', async () => {
 });
 
 test('the web app cannot export or delete the hub’s data', async () => {
-  const { root } = await openPrivacy(true);
+  const { root } = await openSettings(true);
   try {
-    assert.match(document.body.textContent, /Only on the hub’s own computer/);
-    assert.equal(button('Export').disabled, true);
-    assert.equal(button('Delete…').disabled, true);
+    assert.equal([...document.querySelectorAll('nav button')].find(b => b.textContent === 'Data and privacy'), undefined, 'privacy section is hidden on web');
+    assert.equal(button('Export'), undefined);
+    assert.equal(button('Delete…'), undefined);
   } finally { await act(async () => root.unmount()); }
 });

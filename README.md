@@ -2399,7 +2399,7 @@ Agents can use `frame.update` to add `data-ormi-prototype="frame:<frameId>"`, `d
 
 ## Desktop and web layout
 
-> **Status:** in progress — descriptor validation, safe-mode filtering, restricted desktop `layout.read`/`layout.write` IPC, web localStorage, a region editor, 300 ms debounced persistence, sidebar resize updates, Home widget ordering, and a 20-entry history are implemented. Phone/secondary-panel resize integration remains. · **Needs:** [First screens](#first-screens)
+> **Status:** in progress — descriptor validation, safe-mode filtering, restricted desktop `layout.read`/`layout.write` IPC, web localStorage, 300 ms debounced persistence, sidebar resize updates, Home widget ordering, and a 20-entry history are implemented. The settings page exposes safe mode, history and reset; a row-per-region editor was tried and removed. Phone/secondary-panel resize integration remains. · **Needs:** [First screens](#first-screens)
 
 **One renderer (`packages/client-ui`) in two shells: Electron on desktop, Worker static assets in the browser.**
 
@@ -2657,15 +2657,16 @@ Network denied unless a domain is listed (requests go through a logging host pro
 - **Onboarding:** desktop offers "Skip for now" (opens with no relay or data; pairing shows again next launch). Web has no skip. Desktop says "this app" (web: "this browser") and opens pairing on "enter code" (no camera). Never the word "browser" on desktop.
 
 **Settings** (a tab with inner nav)
-- **General:** hub connection and heartbeat, device name, default project folder, launch at login and tray (desktop), language (English only for now).
-- **Appearance:** theme, accent, transcript density, layout reset and safe mode.
-- **Session defaults:** default agent, model, effort, mode (new sessions only).
-- **Notifications:** in-app only for now.
+- **General:** session defaults — agent, project folder and worktree branch prefix.
+- **Appearance:** theme.
+- **Layout:** safe mode plus layout history and reset to defaults.
 - **Keyboard shortcuts:** the table below.
-- **Paired devices:** list and revoke (the first screens shows only the hub and this device until `devices.*` exists).
-- **Machines:** the local machine is listed as always online until node pairing lands.
-- **Data & privacy:** retention (read-only until the settings API) and a docs link.
-- **About:** version, commit, update channel, check for updates, web deploy version.
+- **Paired devices:** list and revoke.
+- **Browser:** preview browser detection, checkpoint screenshots and UI check.
+- **Usage:** token and cost totals for the last 30 days.
+- **Secrets:** declared names with inline set/delete; values never shown.
+- **Data & privacy (desktop only):** export the store as a tar; wipe after a typed confirmation. Hidden on web — both are local-socket-only and the web client's only local data is its relay token.
+- **About:** version, commit, relay, plus per shell: web shows the paired device and "Forget this browser"; desktop shows daemon status and warns when `safeStorage` has no keyring.
 - Never show a provider account or sign-out ("Signed in · Claude Code · Max plan" must not ship). Show "Claude Code detected on this machine" with version, read-only.
 
 **Keyboard**

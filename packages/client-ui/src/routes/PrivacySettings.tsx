@@ -95,9 +95,6 @@ export function PrivacySettings() {
   const [wiped, setWiped] = useState<string[]>();
   const remoteHint = web ? 'Only on the hub’s own computer' : undefined;
   return <>
-    <Group title="STORAGE">
-      <Row title="Sessions and journals" hint="~/.ormicode/ on this machine. The relay only forwards encrypted frames." mono />
-    </Group>
     {wiped ? <Group title="LOCAL DATA">
       <Row title="Local data deleted" hint={`Removed ${wiped.join(', ') || 'nothing (already empty)'}.`} />
       <div role="status" style={{ ...note, color: 'var(--text-secondary)' }}>The hub has stopped. Start it again with <code>ormi daemon</code> to begin with an empty hub.</div>
