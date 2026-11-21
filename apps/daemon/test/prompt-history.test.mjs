@@ -2,18 +2,19 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { openStore, createSession } from '../../../packages/session-store/src/index.ts';
 import { append } from '../../../packages/journal/src/index.ts';
-import { promptHistory } from '../src/prompt-history.ts';
+import { promptHistory, promptHistorySql } from '../src/prompt-history.ts';
 
 test('history reads only recent prompts, not full journals, with bounded distinct results', () => {
   const db = openStore(':memory:');
   try {
-    for (const [id, project] of [['s_a', '/a'], ['s_b', '/b']]) createSession(db, { id, machine: 'm', project, vendor: 'fake', transport: 'cli', cwd: project });
+    for (const [id, project] of [['s_a', '/a'], ['s_b', '/b'], ['s_c', '/c']]) createSession(db, { id, machine: 'm', project, vendor: 'fake', transport: 'cli', cwd: project });
     db.transaction(() => {
       for (let i = 0; i < 1010; i++) {
         append(db, 's_a', { kind: 'prompt', ts: i, payload: { text: `prompt ${i}` } });
         append(db, 's_a', { kind: 'tool_result', ts: i, payload: { output: 'x'.repeat(2000) } });
       }
       append(db, 's_b', { kind: 'prompt', ts: 2000, payload: { text: 'other project' } });
+      for (let i = 0; i < 1010; i++) append(db, 's_c', { kind: 'prompt', ts: 3000 + i, payload: { text: `newer c ${i}` } });
       append(db, 's_a', { kind: 'prompt', ts: 2001, payload: { text: ' prompt 1009 ' } });
       append(db, 's_a', { kind: 'prompt', ts: 2002, payload: { text: '   ' } });
     })();
@@ -24,9 +25,12 @@ test('history reads only recent prompts, not full journals, with bounded distinc
     assert.deepEqual(promptHistory(db, { project: '/missing' }), []);
     assert.deepEqual(promptHistory(db, { project: '/b' }).map(item => item.text), ['other project']);
     assert.equal(promptHistory(db, { limit: 1000 }).length, 100);
-    const plan = db.prepare("EXPLAIN QUERY PLAN SELECT payload FROM events WHERE kind = 'prompt' ORDER BY ts DESC, seq DESC, session LIMIT 1000").all();
-    assert.ok(plan.some(row => row.detail.includes('events_prompt_history')));
-    assert.ok(!plan.some(row => row.detail.includes('TEMP B-TREE')));
+    for (const [scoped, args] of [[true, ['/a']], [false, []]]) {
+      const plan = db.prepare(`EXPLAIN QUERY PLAN ${promptHistorySql(scoped)}`).all(...args);
+      assert.ok(plan.some(row => row.detail.includes('events_prompt_history')), JSON.stringify(plan));
+      assert.ok(plan.some(row => /SEARCH s USING INDEX sqlite_autoindex_sessions_1/.test(row.detail)), JSON.stringify(plan));
+      assert.ok(!plan.some(row => row.detail.includes('TEMP B-TREE')), JSON.stringify(plan));
+    }
   } finally { db.close(); }
 });
 

@@ -1,15 +1,22 @@
 import type { Store } from '@ormicode/session-store';
 
+// CROSS JOIN pins events as the outer loop so the partial events_prompt_history index
+// drives newest-first order; otherwise a project filter makes SQLite scan every event
+// of every session in the project and sort them in a temp b-tree.
+export function promptHistorySql(scoped: boolean) {
+  return `
+    SELECT e.payload, e.ts, e.session, s.project FROM events e
+    CROSS JOIN sessions s ON s.id = e.session
+    WHERE e.kind = 'prompt' AND s.kind = 'session' ${scoped ? 'AND s.project = ?' : ''}
+    ORDER BY e.ts DESC, e.seq DESC, e.session
+    LIMIT 1000
+  `;
+}
+
 export function promptHistory(db: Store, options: { project?: string; query?: string; limit?: number }) {
   const query = (options.query ?? '').trim().toLowerCase();
   const limit = Math.max(1, Math.min(100, options.limit ?? 50));
-  const rows = db.prepare(`
-    SELECT e.payload, e.ts, e.session, s.project FROM events e
-    JOIN sessions s ON s.id = e.session
-    WHERE e.kind = 'prompt' AND s.kind = 'session' ${options.project ? 'AND s.project = ?' : ''}
-    ORDER BY e.ts DESC, e.seq DESC, e.session
-    LIMIT 1000
-  `).all(...(options.project ? [options.project] : [])) as { payload: string; ts: number; session: string; project: string }[];
+  const rows = db.prepare(promptHistorySql(!!options.project)).all(...(options.project ? [options.project] : [])) as { payload: string; ts: number; session: string; project: string }[];
   const seen = new Set<string>();
   const items: { text: string; createdAt: number; session: string; project: string }[] = [];
   for (const row of rows) {
