@@ -362,12 +362,12 @@ importers:
 
   packages/agent-opencode-acp:
     dependencies:
+      '@opencode/client':
+        specifier: 2.2.5
+        version: 2.2.5(effect@4.0.6)
       '@ormicode/agent-core':
         specifier: workspace:*
         version: link:../agent-core
-      '@ormicode/agent-opencode-sdk':
-        specifier: workspace:*
-        version: link:../agent-opencode-sdk
       '@ormicode/protocol':
         specifier: workspace:*
         version: link:../protocol
@@ -380,12 +380,12 @@ importers:
 
   packages/agent-opencode-cli:
     dependencies:
+      '@opencode/client':
+        specifier: 2.2.5
+        version: 2.2.5(effect@4.0.6)
       '@ormicode/agent-core':
         specifier: workspace:*
         version: link:../agent-core
-      '@ormicode/agent-opencode-sdk':
-        specifier: workspace:*
-        version: link:../agent-opencode-sdk
       '@ormicode/protocol':
         specifier: workspace:*
         version: link:../protocol

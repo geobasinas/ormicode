@@ -2,11 +2,11 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { EventQueue, NO_CAPABILITIES, RawLog } from '@ormicode/agent-core';
-import { OpenCodeServer, listOpenCodeModels } from '@ormicode/agent-opencode-sdk';
 import type { AgentAdapter, Handle, NativeRef, PromptInput, StartSpec } from '@ormicode/agent-core';
 import { AcpConnection } from './connection.ts';
 import { OpenCodeTurnMapper } from './map.ts';
 import { OpenCodePermissionBroker } from './permissions.ts';
+import { openCodeModels } from './server.ts';
 import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from 'node:child_process';
 import { acpMcpServers } from './options.ts';
 
@@ -30,17 +30,7 @@ export class OpenCodeAcpAdapter implements AgentAdapter {
     } catch { return { available: false, reason: 'OpenCode CLI not found or version check failed' }; }
   }
   async models() {
-    // model/list (variants included) needs a short-lived serve instance;
-    // `opencode models` is the degraded fallback — ids only, no efforts.
-    try {
-      const server = await OpenCodeServer.start(this.options.executable ? { executable: this.options.executable } : {});
-      try { return await listOpenCodeModels(server); } finally { server.close(); }
-    } catch {
-      try {
-        const { stdout } = await execFileAsync(this.options.executable ?? 'opencode', ['models'], { timeout: 15_000, windowsHide: true });
-        return stdout.split('\n').map(line => line.trim()).filter(id => id.includes('/')).map(id => ({ id }));
-      } catch { return []; }
-    }
+    return openCodeModels(this.options.executable);
   }
   async start(spec: StartSpec): Promise<Handle> {
     if (spec.model || spec.mode || spec.effort) throw new Error('OpenCode ACP configuration is not yet supported');

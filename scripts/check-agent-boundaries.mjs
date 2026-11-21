@@ -8,10 +8,7 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 // Temporary: known adapter-to-adapter imports that later steps remove one
 // by one. Delete each entry when its import goes; delete the whole list
 // (and the `allowlist` parameter) once it is empty.
-export const TEMP_ALLOWLIST = [
-  { from: 'agent-opencode-cli', to: 'agent-opencode-sdk' },
-  { from: 'agent-opencode-acp', to: 'agent-opencode-sdk' },
-];
+export const TEMP_ALLOWLIST = [];
 
 const scanDirs = ['src', 'test', 'scripts'];
 const skip = new Set(['node_modules', 'dist', 'out', 'coverage', '.turbo']);

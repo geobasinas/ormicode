@@ -7,10 +7,10 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@opencode/client": "2.2.5",
     "zod": "4.6.7",
     "@ormicode/agent-core": "workspace:*",
     "@ormicode/protocol": "workspace:*",
-    "ulid": "3.0.2",
-    "@ormicode/agent-opencode-sdk": "workspace:*"
+    "ulid": "3.0.2"
   }
 }
