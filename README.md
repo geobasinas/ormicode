@@ -2577,7 +2577,7 @@ Network denied unless a domain is listed (requests go through a logging host pro
 
 **The first screens to build, for desktop and web: Now, Sessions, transcript, approvals, layout.** Both shells render them from `client-ui`.
 
-**Onboarding:** both shells use the same pairing flow. Desktop opens it after startup when unpaired or when no remote is configured, and it does not reopen after the app has been online once. Desktop welcome and code steps offer **Skip for now**; skipping is in-memory, so pairing appears again next launch. Desktop pairing says “this app” and allows changing the relay URL; web says “this browser” and has no relay field or skip. The old desktop `PairCard` is removed.
+**Onboarding:** both shells use the same pairing flow. Desktop opens it after startup when unpaired or when no remote is configured, and it does not reopen after the app has been online once. Desktop welcome and code steps offer **Skip for now**; skipping is in-memory, so pairing appears again next launch. Desktop pairing says “this app” and allows changing the relay URL; web says “this browser” and has no relay field or skip. Both shells link to Settings from onboarding so local prefs (theme, layout) are reachable before pairing; hub-backed sections show their offline state. The old desktop `PairCard` is removed.
 
 **Project folders:** the sidebar's **Add project folder** button opens a machine chooser and directory browser. Registered folders without visible sessions still appear as empty project groups; searching also matches their names.
 

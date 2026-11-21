@@ -27,8 +27,8 @@ const mono: CSSProperties = { fontFamily: 'var(--font-mono)', color: 'var(--text
 
 type Step = 'welcome' | 'code' | 'connecting';
 
-export function Onboarding({ state, pairPrefill, onSkip }: {
-  state: string; pairPrefill?: { account?: string; code?: string }; onSkip?: () => void;
+export function Onboarding({ state, pairPrefill, onSkip, onOpenSettings }: {
+  state: string; pairPrefill?: { account?: string; code?: string }; onSkip?: () => void; onOpenSettings?: () => void;
 }) {
   const platform = usePlatform();
   const desktop = Boolean(platform.desktop);
@@ -118,6 +118,11 @@ export function Onboarding({ state, pairPrefill, onSkip }: {
             background: i === index ? 'var(--text-secondary)' : 'var(--bg-raised)',
           }} />)}
         </div>
+        {onOpenSettings ? <button type="button" className="hv-sub" onClick={onOpenSettings} style={{
+          justifySelf: 'center', display: 'inline-flex', alignItems: 'center', gap: 6,
+          padding: '4px 10px', font: 'inherit', fontSize: 12, color: 'var(--text-hint)',
+          background: 'none', border: 'none', borderRadius: 7, cursor: 'pointer',
+        }}>Settings</button> : null}
       </div>
     </div>
   );

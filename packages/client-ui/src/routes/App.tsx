@@ -6,7 +6,7 @@ import type { ClientPlatform } from '@ormicode/client-platform';
 import { PlatformContext } from '../lib/platform.ts';
 import { applyTheme, themeByName } from '../lib/theme.ts';
 import { defaultLayout, applyLayout, validateLayout, type LayoutDescriptor } from '../lib/layout.ts';
-import { PanelLeft, Minus, Square, X, Search, SquarePen, Settings, FolderPlus, GitBranch, FolderOpen, SquareTerminal, NotebookPen, Globe, PenTool, type LucideIcon } from 'lucide-react';
+import { PanelLeft, Minus, Square, X, Search, SquarePen, Settings, FolderPlus, GitBranch, FolderOpen, SquareTerminal, NotebookPen, Globe, PenTool, ArrowLeft, type LucideIcon } from 'lucide-react';
 import { SessionList } from '../features/session/SessionList.tsx';
 import { ArchivedSessionList } from '../features/session/ArchivedSessionList.tsx';
 import { useSession } from '../features/session/useSession.ts';
@@ -149,6 +149,7 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
   const [state, setState] = useState<string>('connecting');
   const [onboarding, setOnboarding] = useState(false);
   const [onboardingSkipped, setOnboardingSkipped] = useState(false);
+  const [settingsPeek, setSettingsPeek] = useState(false);
   const [onlineOnce, setOnlineOnce] = useState(false);
   const [booted, setBooted] = useState(false);
   const mobile = useIsMobile();
@@ -158,6 +159,7 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
     if (state === 'online') {
       setOnlineOnce(true);
       setOnboarding(false);
+      setSettingsPeek(false);
       return;
     }
     if (platform.web) {
@@ -282,7 +284,8 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
     setTabs(ts => ts.includes(id) ? ts : [...ts.slice(-(MAX_TABS - 1)), id]);
     setRoute(id);
   };
-  openRef.current = id => open(id);
+  const openSettings = () => { setSettingsPeek(onboarding); open('settings'); };
+  openRef.current = id => id === 'settings' ? openSettings() : open(id);
   const close = (id: string) => setTabs(ts => {
     const next = ts.filter(t => t !== id);
     if (route === id) setRoute(next[next.length - 1] ?? 'now');
@@ -359,7 +362,7 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
                   <div style={{ padding: '0 var(--space-3)', color: 'var(--text-hint)', fontSize: 13 }}>no bots yet</div>
                 )}
               </div>
-              <button className="hv-sub" onClick={() => open('settings')} style={{
+              <button className="hv-sub" onClick={openSettings} style={{
                 height: 32, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '0 10px', marginTop: 4,
                 font: 'inherit', cursor: 'pointer', border: 'none', borderRadius: 8, textAlign: 'left',
                 background: route === 'settings' ? 'var(--bg-selected)' : 'transparent',
@@ -383,10 +386,20 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
               flex: 1, minHeight: 0, overflow: onboarding ? 'auto' : 'hidden', background: 'var(--bg-main)',
               borderRadius: route === 'now' && !onboarding ? '0 12px 12px 12px' : 12,
             }}>
-              {onboarding ? <Onboarding state={state} pairPrefill={pairPrefill}
+              {route === 'settings' && (!onboarding || settingsPeek) ? (
+                <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                  {onboarding ? <div style={{ flexShrink: 0, padding: '10px 16px 0' }}>
+                    <button type="button" className="hv-sub" onClick={() => { setSettingsPeek(false); close('settings'); }} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 8px',
+                      font: 'inherit', fontSize: 12, color: 'var(--text-hint)', background: 'none',
+                      border: 'none', borderRadius: 7, cursor: 'pointer',
+                    }}><ArrowLeft size={13} /> Back</button>
+                  </div> : null}
+                  <div style={{ flex: 1, minHeight: 0 }}><SettingsView prefs={prefs} onPrefs={setPrefs} connection={state} /></div>
+                </div>
+              ) : onboarding ? <Onboarding state={state} pairPrefill={pairPrefill} onOpenSettings={openSettings}
                   onSkip={platform.desktop ? () => { setOnboardingSkipped(true); setOnboarding(false); } : undefined} />
                 : route === 'now' ? <Now onOpen={open} layout={resolved} />
-                : route === 'settings' ? <SettingsView prefs={prefs} onPrefs={setPrefs} connection={state} />
                 : <SessionView key={route} session={route} rail={rail} onRail={setRail} onOpen={open} handoffOpen={handoffOpen} onHandoffChange={setHandoffOpen} layout={resolved}
                   onLayoutChange={descriptor => window.dispatchEvent(new CustomEvent('ormi-layout-change', { detail: descriptor }))} />}
             </div>
