@@ -6,12 +6,14 @@ import type { ClientPlatform } from '@ormicode/client-platform';
 import { PlatformContext } from '../lib/platform.ts';
 import { useAppliedTheme } from '../lib/theme.ts';
 import { defaultLayout, applyLayout, validateLayout, type LayoutDescriptor } from '../lib/layout.ts';
-import { Search, SquarePen, FolderPlus } from 'lucide-react';
+import { Search, SquarePen, FolderPlus, Settings } from 'lucide-react';
 import { SessionList } from '../features/session/SessionList.tsx';
 import { ArchivedSessionList } from '../features/session/ArchivedSessionList.tsx';
 import { Now } from './Now.tsx';
 import { SessionView } from './SessionView.tsx';
 import { DesignPage } from './DesignPage.tsx';
+import { SettingsView } from '../features/settings/SettingsView.tsx';
+import type { ThemeChoice } from '../features/settings/LocalPanels.tsx';
 import { OPEN_FILE } from '../lib/openFile.ts';
 import { ActiveHeader, noDrag, PAGES, Rail, Tab, Titlebar, type RailPane } from '../components/ShellChrome.tsx';
 import { ListFilterChips, LIST_STATES } from '../features/session/ListFilters.tsx';
@@ -26,6 +28,10 @@ import { useIsMobile } from '../hooks/use-mobile.ts';
 const MAX_TABS = 8;
 
 const FILTER_TABS = ['All', 'Sessions', 'Bots'] as const;
+const THEME_KEY = 'ormi.theme';
+const storedTheme = (): ThemeChoice => {
+  try { const t = globalThis.localStorage?.getItem(THEME_KEY); return t === 'light' || t === 'dark' ? t : 'system'; } catch { return 'system'; }
+};
 
 export function App({ platform, layout, pairPrefill }: { platform: ClientPlatform; layout?: LayoutDescriptor; pairPrefill?: { account?: string; code?: string } }) {
   const [storedLayout, setStoredLayout] = useState<LayoutDescriptor>(() => {
@@ -33,6 +39,11 @@ export function App({ platform, layout, pairPrefill }: { platform: ClientPlatfor
     try { return JSON.parse(globalThis.localStorage?.getItem('ormi.layout') ?? 'null') ?? defaultLayout; } catch { return defaultLayout; }
   });
   const [tabs, setTabs] = useState<string[]>([]);
+  const [theme, setTheme] = useState<ThemeChoice>(storedTheme);
+  const changeTheme = (next: ThemeChoice) => {
+    setTheme(next);
+    try { globalThis.localStorage?.setItem(THEME_KEY, next); } catch { /* private mode */ }
+  };
   const [route, setRoute] = useState<string>('now');
   const [designSession, setDesignSession] = useState<string>();
   const [designSidebarOpen, setDesignSidebarOpen] = useState(() => !window.matchMedia('(max-width: 850px)').matches);
@@ -126,11 +137,12 @@ export function App({ platform, layout, pairPrefill }: { platform: ClientPlatfor
     };
   }, [platform]);
 
-  useAppliedTheme('system', platform.desktop);
+  useAppliedTheme(theme, platform.desktop);
   const searchRef = useMemo(() => ({ current: null as HTMLInputElement | null }), []);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!e.ctrlKey && !e.metaKey) return;
+      if (e.key === ',') { e.preventDefault(); openRef.current('settings'); return; }
       if (route === 'design') return;
       if (e.key === 'k' || e.key === 'K') { e.preventDefault(); searchRef.current?.focus(); }
       if (e.key === 'n' || e.key === 'N') { e.preventDefault(); setRoute('now'); }
@@ -165,13 +177,15 @@ export function App({ platform, layout, pairPrefill }: { platform: ClientPlatfor
     };
     window.dispatchEvent(new CustomEvent('ormi-layout-change', { detail: descriptor }));
   };
+  const openRef = useRef((id: string) => { void id; });
   const open = (id: string) => {
     if (!PAGES[id]) setDesignSession(id);
     if (id === 'design') { if (!PAGES[route]) setDesignSession(route); setRoute(id); return; }
-    // Pages (design) are routes, not tabs.
-    if (!PAGES[id]) setTabs(ts => ts.includes(id) ? ts : [...ts.slice(-(MAX_TABS - 1)), id]);
+    // Pages (design) are routes, not tabs; Settings is a page that opens as a closable tab.
+    if (!PAGES[id] || id === 'settings') setTabs(ts => ts.includes(id) ? ts : [...ts.slice(-(MAX_TABS - 1)), id]);
     setRoute(id);
   };
+  openRef.current = open;
   const close = (id: string) => setTabs(ts => {
     const next = ts.filter(t => t !== id);
     if (route === id) setRoute(next[next.length - 1] ?? 'now');
@@ -248,6 +262,15 @@ export function App({ platform, layout, pairPrefill }: { platform: ClientPlatfor
                   <div style={{ padding: '0 var(--space-3)', color: 'var(--text-hint)', fontSize: 13 }}>no bots yet</div>
                 )}
               </div>
+              {!onboarding ? <button className={route === 'settings' ? undefined : 'hv-sub'} onClick={() => open('settings')} aria-current={route === 'settings' ? 'page' : undefined} style={{
+                height: 32, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '0 10px', marginTop: 4,
+                font: 'inherit', fontSize: 13, cursor: 'pointer', border: 'none', borderRadius: 8, textAlign: 'left',
+                background: route === 'settings' ? 'var(--bg-selected)' : 'transparent', color: route === 'settings' ? 'var(--text-active)' : 'var(--text-title)',
+              }}>
+                <Settings size={15} style={{ flexShrink: 0 }} />
+                <span style={{ flex: 1 }}>Settings</span>
+                <span style={{ fontSize: 10, color: 'var(--text-hint)' }}>Ctrl ,</span>
+              </button> : null}
             </aside>
             </Panel>
             <Separator className="ormi-handle" />
@@ -267,6 +290,7 @@ export function App({ platform, layout, pairPrefill }: { platform: ClientPlatfor
               {onboarding ? <Onboarding state={state} pairPrefill={pairPrefill}
                   onSkip={platform.desktop ? () => { setOnboardingSkipped(true); setOnboarding(false); } : undefined} />
                 : route === 'now' ? <Now onOpen={open} layout={resolved} />
+                : route === 'settings' ? <SettingsView connection={state} theme={theme} onTheme={changeTheme} />
                 : <SessionView key={route} session={route} rail={rail} onRail={setRail} onOpen={open} handoffOpen={handoffOpen} onHandoffChange={setHandoffOpen} layout={resolved}
                   onLayoutChange={descriptor => window.dispatchEvent(new CustomEvent('ormi-layout-change', { detail: descriptor }))} />}
             </div>

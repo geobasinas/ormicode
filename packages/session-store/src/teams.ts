@@ -44,11 +44,6 @@ export function markTeamMessagesRead(db: Store, ids: string[]): void {
   const update = db.prepare('UPDATE team_messages SET read_at = ? WHERE id = ? AND read_at IS NULL');
   db.transaction(() => { for (const id of ids) update.run(Date.now(), id); })();
 }
-export function settingValue(db: Store, key: string): unknown {
-  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined;
-  if (!row) return undefined;
-  try { return JSON.parse(row.value); } catch { return undefined; }
-}
 
 export function setChildrenParentless(db: Store, parent: string, parentless: boolean): string[] {
   const rows = db.prepare(`UPDATE sessions SET parentless = ?, updated_at = ? WHERE parent = ? AND archived = 0

@@ -22,6 +22,7 @@ const PATCH_INLINE = 256 * 1024;
 import type { Checkpoints } from '@ormicode/checkpoints';
 import type { SecretBroker } from './secrets.ts';
 import { secretMethod } from './secret-methods.ts';
+import { settingsMethod } from './settings-methods.ts';
 import { dataMethod, type DataExports, type StopHub } from './data-methods.ts';
 import type { TerminalHub } from './terminal-methods.ts';
 import { priceFor, type PriceBook } from '@ormicode/pricing';
@@ -339,7 +340,8 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
       case 'pair.create': {
         const { code, codeHash, expiresAt } = await ctx.pairing.createCode();
         ctx.relay()?.pushCode(codeHash, expiresAt);
-        return client.link.reply(id, { code, expiresAt, link: `ormi://pair?c=${code.replace(/\s/g, '')}` });
+        const relay = ctx.relay();
+        return client.link.reply(id, { code, expiresAt, link: `ormi://pair?c=${code.replace(/\s/g, '')}`, ...(relay ? { account: relay.account() } : {}) });
       }
       case 'pair.join': {
         const r = await handleJoin(ctx.pairing, db, String(body.code), String(body.name));
@@ -376,6 +378,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         if (method === 'terminal.open') return await ctx.terminals.open(db, client, id, body);
         if (method.startsWith('terminal.')) return await ctx.terminals.method(client, id, method, body);
         if (method.startsWith('secret.')) return secretMethod(ctx, client, id, method, body);
+        if (method === 'settings.get' || method === 'settings.set') return settingsMethod(ctx, client, id, method, body);
         if (method.startsWith('data.')) return await dataMethod(ctx, client, id, method, body);
         if (method.startsWith('checkpoint.')) return await checkpointMethod(ctx, client, id, method, body);
         if (method.startsWith('session.replay')) return await replayMethod(ctx, client, id, method, body);

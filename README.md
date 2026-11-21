@@ -482,7 +482,7 @@ States with several causes carry a `reason` (e.g. `interrupted`: `host_restart`,
 
 **Capabilities:** maintain a per-vendor, per-transport matrix, versioned with the tested agent. Record streaming, steering, approval interception, interruption, native resume, model discovery and usage as supported, unsupported or unverified. Unsupported operations return a typed error; test adapters with recorded contract fixtures and local smoke tests.
 
-**Agent config:** each session stores the vendor's own values for model, effort, mode/agent (and ACP `configOptions`). Never invented. The worker reports the vendor's advertised `modes`/`configOptions` on `worker.ready`; the daemon stores them on the session row (`config_option` events keep `current` fresh) and `session.get` returns them. The composer shows a Mode chip for `modes` and one chip per `configOptions` entry whose category isn't already covered by the model/effort/mode chips — that includes approval/permission settings; choices call `session.setOption` with the vendor's own value. Options without choices aren't rendered yet. The start composer gets a Mode chip from `agents.modes` when the vendor can enumerate modes without a session (`agentModes`); ACP-negotiated lists only appear once the session exists.
+**Agent config:** each session stores the vendor's own values for model, effort, mode/agent (and ACP `configOptions`). Never invented. The worker reports the vendor's advertised `modes`/`configOptions` on `worker.ready`; the daemon stores them on the session row (`config_option` events keep `current` fresh) and `session.get` returns them. The composer shows a Mode chip for `modes` and one chip per `configOptions` entry whose category isn't already covered by the model/effort/mode chips — that includes approval/permission settings; choices call `session.setOption` with the vendor's own value. Options without choices aren't rendered yet. The start composer gets a Mode chip from `agents.modes` when the vendor can enumerate modes without a session (`agentModes`); ACP-negotiated lists only appear once the session exists. Every mode carries the vendor's name and documented behavior (`description`), and exactly one is flagged `default`: the mode the adapter runs when none is chosen. The chip shows that mode instead of a synthetic `default` entry, sends nothing when it is kept, and drops a pick that the newly selected agent doesn't list. Defaults: Claude `default` (Manual), Codex CLI `read-only`, Codex SDK `workspace-write`, Grok CLI `always-approve`, Grok ACP `ask`, OpenCode `build` (its documented fallback), Vibe the configured `default_agent` or `accept-edits`, pi `full`. Unsafe modes (`bypassPermissions`, `danger-full-access`, `never`) are never listed.
 
 **Titles:** 4–6 words from the first prompt via a utility call (fallback: first 8 words). Renameable.
 
@@ -702,6 +702,10 @@ An uncertain in-flight tool call is marked interrupted, never automatically repl
 - Values are typed in code: durations in ms, sizes in bytes (MB/GB = 10^6/10^9), booleans for on/off. Unknown keys are ignored.
 
 **Over the wire**
+- `settings.get` → `{profile, settings: [{key, value, default, set, min?, max?, choices?}]}` for every account key the hub reads today: `idleTimeout.laptop`/`vps`, `pool.cap`, `utility.agent`, `utility.dailyCapUsd`, `team.children`, `team.childrenMax`, `team.depth`, `team.concurrent`, `team.maxTeams`, `team.silenceMs`. A key is listed only once code reads it, so every value the client can change has an effect.
+- `settings.set {key, value}` validates (type and range; `utility.agent` must be `default` or an installed `vendor/transport`), stores the account value and returns the entry. `value: null` clears it back to the default. Readers re-read the store, so changes apply without a restart. Bad key or value → `protocol.invalid_frame`.
+- Only account keys are settable, from any client including relayed ones. Machine keys (relay URL, profile, resource overrides in `config.json`) stay local-only so a paired device can't redirect the hub.
+
 **Defaults**
 | Key | Default | | Key | Default |
 | --- | --- | --- | --- | --- |
@@ -1018,14 +1022,14 @@ The ACP agent picker and session header warn that **OpenCode may write without a
 **pi** (`@earendil-works/pi-coding-agent`)
 - **CLI:** `pi --mode json` per prompt, `--session-id` first then `--session`, `--model`, `--thinking`.
 - **SDK:** `createAgentSession`: `prompt`, `steer`, `followUp`, `abort`, `waitForIdle`, `session.model`, `session.thinkingLevel`, `SessionManager` for resume, `session.subscribe` for events.
-- No approvals and no sandbox — tools run with pi's own permissions. Sessions are JSONL trees in `~/.pi/agent/sessions/`; a killed process loses nothing written.
+- No approvals and no sandbox — tools run with pi's own permissions. The permission boundary is the tool allowlist ([CLI tools](https://docs.pi.dev/latest/cli#tools)), offered as modes `full` (default tools) and `read-only` (`--tools read,grep,find,ls`; SDK `tools`). The CLI switches per turn; the SDK fixes it at session start. Sessions are JSONL trees in `~/.pi/agent/sessions/`; a killed process loses nothing written.
 
 **Current pi implementation status:** `agent-pi-cli` runs one `pi --mode json` process per turn (`--session-id` then `--session`, LF-only parsing per the [JSON mode docs](https://docs.pi.dev/latest/json)); `--model`, `--thinking` (effort), staged `@file` images and `--list-models` table parsing are wired - claims: resume, model, effort, images. `agent-pi-sdk` wraps `createAgentSession` with `prompt`, `steer`, `abort`, `setModel`, `setThinkingLevel`, `SessionManager` resume and model listing - claims: steer, resume, model, effort. pi has no approvals, so none are forwarded. Both went 7/7 on live smoke against pi 1.5.2 (SDK listed 1636 models, CLI 4). The pi SDK pulls in `@google/genai` and `protobufjs`, whose postinstall scripts are deliberately skipped (`allowBuilds: false` in `pnpm-workspace.yaml`) - nothing in the adapter needs them.
 
 **Grok**
 - **CLI flags:** `-p`, `-m`, `-s` (create a named session), `-r` (resume), `-c` (continue), `--cwd`, `--output-format plain|json|streaming-json`, `--always-approve`, `--no-alt-screen`, `--no-auto-update` (use on long runs). Sessions in `~/.grok/sessions`. Use `-r` to resume rather than reusing `-s`.
 - Permission modes: default ask, `acceptEdits`, `auto`, `dontAsk`, `bypassPermissions`, plus allow/ask/deny rules and hooks. Sandbox profiles `off`, `workspace`, `devbox`, `read-only`, `strict` (child-network blocking Linux-only).
-- **ACP** (`grok agent stdio`): protocol v1, `loadSession`, images, MCP http/sse, session list/resume/close. `session/new` returns models with efforts and `configOptions` for `model` and `reasoning_effort`. Permissions via `session/request_permission`; `_meta.yoloMode` accepted.
+- **ACP** (`grok agent stdio`): protocol v1, `loadSession`, images, MCP http/sse, session list/resume/close. `session/new` returns models with efforts and `configOptions` for `model` and `reasoning_effort`. Permissions via `session/request_permission`. The ACP advertises no session modes; the permission mode is set on `session/new` `_meta` (`yoloMode` = always-approve, `autoMode` = auto, neither = ask), so `grok/acp` lists Ask / Auto / Always approve before start only.
 
 **Current Grok implementation status:** the two daemon transports are separate packages that never import each other. `grok/cli` runs `agent-grok-cli` (`GrokCliAdapter`): one official headless `grok --no-auto-update --always-approve --output-format streaming-json --prompt-file …` process per turn, `--resume <session id>` for later turns, models from `grok models` with names and efforts from `~/.grok/models_cache.json`, and usage from the terminal `end` event. Headless runs cannot answer approval prompts (with `acceptEdits`, writes are cancelled), so by default `grok/cli` spawns with `--always-approve` and has no approval cards or destructive-list interception; use ACP for approvals. The vendor's `--permission-mode` values (`default`, `acceptEdits`, `auto`, `dontAsk`, `plan` — `bypassPermissions` rejected) are enumerated as modes and replace `--always-approve` when chosen; `default`/`dontAsk` then deny what would prompt instead. Stop kills the turn process. The next prompt or retry is rejected, so the daemon restarts the worker and resumes the official session. `grok/acp` runs `agent-grok-acp` (`GrokAcpAdapter`) over `grok --no-auto-update agent stdio`. Permissions forward exact ACP option IDs. `configOptions`/`modes` come from `session/new`+`session/load`; model/effort changes use advertised IDs with `session/set_config_option`, falling back to advertised modes via `session/set_mode`. Missing options are not invented. Sessions started as `grok/cli` before 2026-11-21 ran the ACP wrapper; their ACP session ids may not resume on the headless CLI. See [the source-backed audit](designs/agent-audit-grok.md).
 
@@ -2396,7 +2400,7 @@ Agents can use `frame.update` to add `data-ormi-prototype="frame:<frameId>"`, `d
 
 ## Desktop and web layout
 
-> **Status:** in progress — descriptor validation, safe-mode filtering, restricted desktop `layout.read`/`layout.write` IPC, web localStorage, 300 ms debounced persistence, sidebar resize updates, Home widget ordering, and a 20-entry history are implemented. Safe mode, history and reset have no UI yet; a row-per-region editor was tried and removed. Phone/secondary-panel resize integration remains. · **Needs:** [First screens](#first-screens)
+> **Status:** in progress — descriptor validation, safe-mode filtering, restricted desktop `layout.read`/`layout.write` IPC, web localStorage, 300 ms debounced persistence, sidebar resize updates, Home widget ordering, and a 20-entry history are implemented. Settings → Appearance resets the layout; safe mode and history have no UI yet; a row-per-region editor was tried and removed. Phone/secondary-panel resize integration remains. · **Needs:** [First screens](#first-screens)
 
 **One renderer (`packages/client-ui`) in two shells: Electron on desktop, Worker static assets in the browser.**
 
@@ -2587,10 +2591,10 @@ Network denied unless a domain is listed (requests go through a logging host pro
 │ projects         │                                        │
 │ sessions         │                                        │
 │ needs-you badge  │                                        │
-│                  │                                        │
+│ settings         │                                        │
 └──────────────────┴────────────────────────────────────────┘
 ```
-- **Nav:** Now, Sessions. Teams, Design, Automations, Git, Review, Files are hidden (not greyed out) until built.
+- **Nav:** Now, Sessions, Settings (bottom of the sidebar, `Ctrl/Cmd ,`). Teams, Design, Automations, Git, Review, Files are hidden (not greyed out) until built.
 - **Tabs:** a pinned Now tab plus one per open session (max 8, oldest closes first). Closing a tab never stops the session. With one tab, the strip collapses into the header breadcrumb.
 
 **Right rail:** contextual panels in tabs (resizable, collapsible, saved per session and device), off by default. The first screens ships only **Notes**:
@@ -2655,6 +2659,20 @@ Network denied unless a domain is listed (requests go through a logging host pro
 
 Never show a provider account or sign-out ("Signed in · Claude Code · Max plan" must not ship). Show "Claude Code detected on this machine" with version, read-only.
 
+**Settings** (`packages/client-ui/src/features/settings/`, from `designs/desktop/Desktop — Settings-2` and `designs/mobile/Mobile — Settings`): a closable page tab with a grouped inner nav; under 768 px it becomes the mobile list that opens one section at a time. Every row reads or changes something real; nothing is shown that the hub can't back.
+- **General:** this app's connection (local socket or relay), its pairing with Unpair / Forget browser, the `basic_text` token-storage warning; the hub's machine, uptime, relay state, running agents vs pool and last error (`daemon.status`, `machine.list`).
+- **Appearance:** theme (System / Light / Dark, per device in `localStorage` `ormi.theme`) and Reset layout (default descriptor plus panel sizes).
+- **Keyboard shortcuts:** only shortcuts the code binds.
+- **Agents:** idle timeout for the hub's profile, pool cap, utility agent and daily cap, team limits and silence nudge, all through `settings.set`.
+- **Browser preview:** browser status/install and the two checks (`browser.settings`).
+- **Secrets:** machine or project scope, add, replace and delete; values are write-only.
+- **Paired devices:** create a pairing code (`pair.create` also returns the relay `account` so the code can be used), rename, revoke with a confirm dialog; the current device is marked. The list refreshes while a code is live.
+- **Machines:** status and live memory, disk and pool per machine; registered project folders, removable from the sidebar (files untouched).
+- **Usage:** 7 / 30 day totals, by project and by day (`cost.totals`).
+- **Data and privacy:** export and wipe (local socket only) and what leaves the computer: no telemetry, public price fetch, relay over TLS without extra encryption.
+- **About:** web and hub versions, agent transports (`agents.list`), price table status with Update now.
+- Destructive actions use the themed `AlertDialog`; errors and confirmations go through `feedback` toasts. No language selector: the app is English only, and a one-option picker is noise.
+
 **Keyboard**
 | Action | Shortcut |
 | --- | --- |
@@ -2676,10 +2694,10 @@ Never show a provider account or sign-out ("Signed in · Claude Code · Max plan
 | Home greeting + recents + bots panel | Now leads with needs-you and the digest; bots later |
 | `bots` as a sidebar project + BOTS panel | bots are identities, added later |
 | Right-edge icon rail | not in the first screens |
-| "Signed in · Claude Code · Max plan" | detected agent, read-only |
+| "Signed in · Claude Code · Max plan" | detected agent, read-only (Settings → About lists agent transports) |
 | Notes with three tabs | adopted |
 | Run on, Rename, Duplicate, Export transcript | wait for protocol methods |
-| Language selector | present, English only |
+| Language selector | dropped — English only |
 | Browser, Files, Git, Terminal panels | later ([later screens](#later-screens)) |
 
 **Not in the first screens:** bots, teams, design, automations, Git, Review, Files, browser preview, terminal, artifacts, checkpoints, replay, push, mobile.
@@ -3395,6 +3413,7 @@ Example request and response bodies (inside their corresponding envelopes):
 | Artifacts | `artifact.list`, `get`, `publish`, `reject`, `blob.get` |
 | Preview | `preview.start`, `stop`, `urls`, `capture` |
 | Secrets | `secret.list`, `set`, `remove`, `import` |
+| Settings | `settings.get`, `settings.set` (account keys the hub reads; see [Storage](#storage)) |
 | Checkpoints | `checkpoint.list`, `diff`, `restore`, `fork` |
 | Computer use | `computer.screenshot`, `click`, `type`, `key`, `find`, `stop` |
 | Device lab | `device.list`, `boot`, `shutdown`, `install`, `launch`, `ui`, `tap`, `type`, `logcat`, `record` |

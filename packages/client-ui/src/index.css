@@ -296,3 +296,5 @@ input::placeholder, textarea::placeholder { color: var(--text-hint); }
 .ormi-file-link { cursor: pointer; border-radius: 3px; }
 .ormi-file-link:hover { color: var(--text-title) !important; text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--line-card); }
 .ormi-tree:focus { outline: none; }
+
+.ormi-settings-card > .ormi-settings-row + .ormi-settings-row { border-top: 1px solid var(--line-divider); }

@@ -33,7 +33,7 @@ export function Titlebar({ platform, workspace, onWorkspaceChange, sidebarOpen, 
   );
 }
 
-export const PAGES: Record<string, string> = { now: 'Home', design: 'Design' };
+export const PAGES: Record<string, string> = { now: 'Home', design: 'Design', settings: 'Settings' };
 
 export function Tab({ id, n, active, onSelect, onClose }: { id: string; n?: number; active: boolean; onSelect: () => void; onClose?: () => void }) {
   const details = useSession(PAGES[id] ? undefined : id);

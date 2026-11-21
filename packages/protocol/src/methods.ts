@@ -1,6 +1,6 @@
 import * as z from 'zod/mini';
 import { cursorSchema, jsonObjectSchema, requestIdSchema, sessionIdSchema, idSchema, timestampSchema } from './schema.ts';
-import { portBlock, serviceRequests, serviceResponses, browserRequests, browserResponses, dataRequests, dataResponses } from './service-contracts.ts';
+import { portBlock, serviceRequests, serviceResponses, browserRequests, browserResponses, dataRequests, dataResponses, settingsRequests, settingsResponses } from './service-contracts.ts';
 import { promptContextSchema } from './prompt-context-schema.ts';
 import { designRequests, designResponses } from './design.ts';
 import { projectRequests, projectResponses } from './project-methods.ts';
@@ -68,7 +68,7 @@ const configOptionSchema = z.object({
   current: z.optional(z.union([z.string(), z.boolean()])),
   choices: z.optional(z.array(z.object({ value: z.union([z.string(), z.boolean()]), name: z.optional(z.string()) }))),
 });
-const sessionModeSchema = z.object({ id: nonEmpty, name: z.string() });
+const sessionModeSchema = z.object({ id: nonEmpty, name: z.string(), description: z.optional(z.string()), default: z.optional(z.boolean()) });
 export const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
 export const ATTACHMENTS_MAX_BYTES = 25 * 1024 * 1024;
 const imageSchema = z.object({
@@ -196,7 +196,7 @@ export const requestBodies = {
   'terminal.resize': z.object({ terminal: nonEmpty, cols: cursorSchema, rows: cursorSchema }),
   'terminal.close': z.object({ terminal: nonEmpty }),
   'terminal.list': z.object({}),
-  ...serviceRequests, ...dataRequests,
+  ...serviceRequests, ...dataRequests, ...settingsRequests,
   ...browserRequests,
   'checkpoint.list': z.object(session),
   // Without `to`: what `from` changed since the checkpoint before it.
@@ -240,7 +240,7 @@ export const responseBodies = {
   'session.rename': z.object({ renamed: z.literal(true), title: nonEmpty }),
   'session.export': z.object({ text: z.string() }),
   'session.list': z.object({ sessions: z.array(summarySchema) }),
-  ...serviceResponses, ...dataResponses,
+  ...serviceResponses, ...dataResponses, ...settingsResponses,
   ...browserResponses,
   'session.prompt': z.object({ accepted: z.literal(true) }),
   'session.draft.get': z.object({ text: z.string() }),
@@ -377,11 +377,11 @@ export const responseBodies = {
   }),
   'file.history': gitLogResponse,
   'agents.list': z.object({ agents: z.array(z.object({ vendor: nonEmpty, transports: z.array(nonEmpty) })) }),
-  'agents.modes': z.object({ modes: z.array(z.object({ id: nonEmpty, name: nonEmpty })) }),
+  'agents.modes': z.object({ modes: z.array(sessionModeSchema) }),
   'devices.list': z.object({ devices: z.array(z.object({ id: nonEmpty, name: nonEmpty, trustedAt: timestampSchema })) }),
   'devices.rename': z.object({ renamed: z.literal(true) }),
   'devices.revoke': z.object({ revoked: z.literal(true), relaySynced: z.boolean() }), ...projectResponses,
-  'pair.create': z.object({ code: nonEmpty, expiresAt: timestampSchema, link: nonEmpty }),
+  'pair.create': z.object({ code: nonEmpty, expiresAt: timestampSchema, link: nonEmpty, account: z.optional(nonEmpty) }),
   'pair.join': z.object({ device: nonEmpty, token: nonEmpty }),
 } as const;
 

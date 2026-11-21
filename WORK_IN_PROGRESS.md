@@ -6,9 +6,9 @@ This is an annotated copy of the README, **not a replacement specification or a 
 
 **Status key:** **Implemented** means the described core path exists in inspected source, not that every platform, provider, deployment or acceptance criterion has been verified. **Partial** means working pieces exist but specified capabilities are missing or unverified. **Not started** means the named subsystem is placeholder-only or has no corresponding implementation in the inspected checkout. Retained specification details beyond the checked code pointers are **planned or unverified**, not additional delivery claims. For reference/policy sections, “Implemented” means the documentation exists, not that external claims or runtime behavior have been validated.
 
-## Update — Settings page deferred
+## Update — Settings page is back, hub-backed
 
-The Settings page (`packages/client-ui/src/routes/Settings*.tsx` plus its panels and two tests) was removed from the app. It could only edit client `localStorage` prefs because `settings.get`/`settings.set` don't exist in the protocol yet, and the layout was thin. Client prefs still apply through defaults in `packages/client-ui/src/lib/prefs.ts` (theme resolves `system`, project/vendor defaults feed the composer). The README's Settings spec is kept and marked deferred; revisit once the settings protocol surface and machine/account scopes exist. Git history has the removed implementation.
+The page that was deferred is rebuilt on a real protocol surface: `settings.get`/`settings.set` (`apps/daemon/src/settings-methods.ts`, `packages/protocol/src/settings-contracts.ts`, store helpers in `packages/session-store/src/settings.ts`) expose only the account keys the hub reads live — idle timeout, pool cap, utility agent and cap, team limits and silence nudge — with type/range validation and reset-to-default. The client page lives in `packages/client-ui/src/features/settings/` (General, Appearance, Shortcuts, Agents, Browser preview, Secrets, Paired devices, Machines, Usage, Data and privacy, About) and opens from the sidebar or `Ctrl/Cmd ,`. `pair.create` now also returns the relay account. See README [First screens](README.md#first-screens) → Settings. Not covered yet: project-scope settings, safe mode and layout history UI.
 
 ## Update 2026-11-21 (Europe/Athens, UTC+2)
 

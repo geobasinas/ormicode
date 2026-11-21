@@ -40,6 +40,8 @@ export class RelayClient {
   private config: HubConfig;
   private hooks: RelayHooks;
   constructor(config: HubConfig, hooks: RelayHooks) { this.config = config; this.hooks = hooks; }
+  /** The relay account devices pair into; shown next to a pairing code. */
+  account(): string { return this.config.account; }
 
   start(): void { this.connect(); }
 
