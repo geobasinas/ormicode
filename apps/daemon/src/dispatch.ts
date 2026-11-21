@@ -157,7 +157,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         return client.link.reply(id, { text: lines.join('\n') });
       }
       case 'session.list': {
-        const sessions = listSessions(db, Boolean(body.archived)).map(s => {
+        const sessions = listSessions(db, Boolean(body.archived)).filter(s => !s.deleted).map(s => {
           const base = getSessionPorts(db, s.id);
           return {
             id: s.id, title: s.title, state: sessionStatus(ctx, s).state, parentless: Boolean(s.parentless), project: s.project, vendor: s.vendor,

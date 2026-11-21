@@ -1,6 +1,6 @@
 import { existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { archiveSession, getSession, releaseSessionPorts, unarchiveSession } from '@ormicode/session-store';
+import { archiveSession, getSession, markSessionDeleted, releaseSessionPorts, unarchiveSession } from '@ormicode/session-store';
 import { acquireWorkspace, releaseForSession } from '@ormicode/leases';
 import type { Client, DispatchCtx } from './dispatch.ts';
 import { stopSessionWorker } from './abort-session.ts';
@@ -30,6 +30,7 @@ export async function archiveMethod(ctx: DispatchCtx, client: Client, id: string
   else await ctx.agentBrowser.closeSession(session);
   await ctx.services.stopSession(session); await stopSessionWorker(ctx, session);
   archiveSession(db, session);
+  if (method === 'session.delete') markSessionDeleted(db, session);
   ctx.record(session, 'state', { state: 'archived' });
   ctx.teamLifecycle.unavailable(session);
   releaseForSession(db, session);

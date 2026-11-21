@@ -61,6 +61,20 @@ test('session.archive hides the session, tells every client, and session.unarchi
   } finally { other.close(); await cleanup(); }
 });
 
+test('session.delete hides the session from the archived list while session.archive keeps it', async () => {
+  const { client, startSession, cleanup } = await boot();
+  try {
+    const deleted = await startSession();
+    assert.equal((await client.request('session.delete', { session: deleted })).body.deleted, true);
+    assert.ok(!(await client.request('session.list', { archived: true })).body.sessions.some(s => s.id === deleted));
+    assert.ok(!(await client.request('session.list', {})).body.sessions.some(s => s.id === deleted));
+
+    const archived = await startSession();
+    assert.equal((await client.request('session.archive', { session: archived })).body.archived, true);
+    assert.ok((await client.request('session.list', { archived: true })).body.sessions.some(s => s.id === archived));
+  } finally { await cleanup(); }
+});
+
 test('session.unarchive refuses a workspace another live session now holds', async () => {
   const { client, startSession, cleanup } = await boot();
   try {

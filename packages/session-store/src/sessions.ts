@@ -13,7 +13,7 @@ export interface SessionRow {
   base_commit: string | null; team: string | null; parentless: number;
   state: SessionState; reason: string | null; options: string | null; parent: string | null;
   attempt: number; handed_off: number; worker_pid: number | null;
-  pinned: number; archived: number; last_seq: number; log_dir: string | null;
+  pinned: number; archived: number; deleted: number; last_seq: number; log_dir: string | null;
   created_at: number; updated_at: number;
 }
 
@@ -77,7 +77,12 @@ export function archiveSession(db: Store, id: string): void {
   db.prepare('UPDATE sessions SET archived = 1, updated_at = ? WHERE id = ?').run(Date.now(), id);
 }
 
+/** session.delete also drops the session's files; the row stays for history but leaves session.list. */
+export function markSessionDeleted(db: Store, id: string): void {
+  db.prepare('UPDATE sessions SET deleted = 1, updated_at = ? WHERE id = ?').run(Date.now(), id);
+}
+
 /** Brings an archived session back to the default list; false when it was not archived. */
 export function unarchiveSession(db: Store, id: string): boolean {
-  return db.prepare('UPDATE sessions SET archived = 0, updated_at = ? WHERE id = ? AND archived = 1').run(Date.now(), id).changes > 0;
+  return db.prepare('UPDATE sessions SET archived = 0, deleted = 0, updated_at = ? WHERE id = ? AND archived = 1').run(Date.now(), id).changes > 0;
 }
