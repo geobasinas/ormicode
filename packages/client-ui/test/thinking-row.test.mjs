@@ -49,6 +49,15 @@ test('thinking with text opens by default in readable text and still collapses o
     await act(() => toggle().click());
     assert.match(body().textContent, /not provided/);
     assert.equal(body().style.color, 'var(--text-hint)');
+    await act(() => root.render(null));
+
+    // Inside collapsed turn activity, thinking with text starts folded but still opens on click.
+    await act(() => root.render(createElement(ThinkingRow, { text: 'Folded thought', openByDefault: false })));
+    assert.equal(toggle().getAttribute('aria-expanded'), 'false');
+    assert.equal(body(), null);
+    await act(() => toggle().click());
+    assert.equal(toggle().getAttribute('aria-expanded'), 'true');
+    assert.match(body().textContent, /Folded thought/);
   } finally {
     await act(() => root.unmount());
     for (const name of names) previous[name] ? Object.defineProperty(globalThis, name, previous[name]) : delete globalThis[name];

@@ -253,7 +253,7 @@ export function ToolRow({ call, result, checkpoint, screenshot, previous, screen
           fontSize: 12, lineHeight: '18px', color: 'var(--text-hint)',
         }}>
           {status === 'running' ? <Loader2 size={12} className="animate-spin" style={{ color: 'var(--text-hint)', flexShrink: 0 }} /> : s.icon}
-          <span style={{ whiteSpace: 'nowrap' }}><span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{s.verb}</span>{s.target ? ' ' : ''}{s.target ? (file ? <span className="ormi-file-link" title={`Open ${file} in Files`} onClick={e => { e.stopPropagation(); requestOpenFile(session, file); }}>{s.target}</span> : s.target) : ''}</span>
+          <span style={{ whiteSpace: 'nowrap', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}><span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{s.verb}</span>{s.target ? ' ' : ''}{s.target ? (file ? <span className="ormi-file-link" title={`Open ${file} in Files`} onClick={e => { e.stopPropagation(); requestOpenFile(session, file); }}>{s.target}</span> : s.target) : ''}</span>
           <span style={{ ...mono, fontSize: 11, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>{s.detail ?? ''}</span>
           {s.added || s.removed ? <span style={{ ...mono, fontSize: 11, display: 'inline-flex', gap: 5, flexShrink: 0 }}>
             {s.added ? <span style={{ color: 'var(--accent-mint)' }}>+{s.added}</span> : null}{s.removed ? <span style={{ color: 'var(--accent-red)' }}>−{s.removed}</span> : null}
@@ -276,10 +276,10 @@ export function ToolRow({ call, result, checkpoint, screenshot, previous, screen
   );
 }
 
-export function ThinkingRow({ text }: { text: string }) {
+export function ThinkingRow({ text, openByDefault = true }: { text: string; openByDefault?: boolean }) {
   // Open by default once the agent sent thinking text, so it reads without an extra click; a click overrides.
   const [toggled, setToggled] = useState<boolean | null>(null);
-  const open = toggled ?? Boolean(text.trim());
+  const open = toggled ?? (openByDefault && Boolean(text.trim()));
   return (
     <div style={{ margin: '3px 0' }}>
       <button type="button" aria-expanded={open} onClick={() => setToggled(!open)} className="ormi-tool-line" style={{ background: 'none', border: 0, font: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontSize: 12, lineHeight: '18px', padding: '2px 0', ...hint }}>

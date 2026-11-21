@@ -33,7 +33,7 @@ interface Ctx {
   session: string; liveStart?: number; results: Map<string, TranscriptEvent>; cpAfter: Map<number, TranscriptEvent>;
   calls: Set<string>; attached: Set<number>; children: Map<string, TranscriptEvent[]>;
   hiddenCount: number; showHidden: boolean; toggleHidden(): void; events: TranscriptEvent[]; screenshots: CheckpointScreenshotChoice[]; scratch: boolean;
-  onHandoff?: () => void; onOpenSession?: (session: string) => void; onEditPrompt?: (text: string) => void; busy?: boolean;
+  onHandoff?: () => void; onOpenSession?: (session: string) => void; onEditPrompt?: (text: string) => void; busy?: boolean; inActivity?: boolean;
 }
 
 const nestedKinds = new Set(['tool_call', 'tool_result', 'text', 'text_delta', 'thinking', 'thinking_delta', 'plan']);
@@ -101,7 +101,7 @@ function line(e: TranscriptEvent, ctx: Ctx): ReactNode {
       return <div className="ormi-hover-zone" style={{ padding: '2px 0' }}><Markdown text={String(b.text)} /><AgentActions session={ctx.session} text={String(b.text)} /></div>;
     case 'thinking':
     case 'thinking_delta':
-      return <ThinkingRow text={String(b.text)} />;
+      return <ThinkingRow text={String(b.text)} openByDefault={!ctx.inActivity} />;
     case 'plan':
       return <div style={{ ...mono, ...small, color: 'var(--text-secondary)', fontStyle: 'italic' }}>{String(b.text)}</div>;
     case 'tool_call':
@@ -364,7 +364,7 @@ function renderTurns(events: TranscriptEvent[], ctx: Ctx) {
     const end = part.end?.ts ?? part.events.findLast(event => event.ts !== undefined)?.ts ?? start;
     return <Fragment key={`turn-${part.start.seq}`}>
     {renderEvents(part.prompt ? [part.prompt] : [], turnCtx)}
-    <TurnActivity start={start} end={end} running={!part.end && part.start.seq === ctx.liveStart} activity={renderEvents(activity, turnCtx)}>
+    <TurnActivity start={start} end={end} running={!part.end && part.start.seq === ctx.liveStart} activity={renderEvents(activity, { ...turnCtx, inActivity: true })}>
       {renderEvents(visible.filter(event => event !== part.prompt), turnCtx)}
       {part.end?.kind === 'turn_end' ? <ChangedFilesCard session={ctx.session} events={part.events} allowDiff={!ctx.scratch} /> : null}
     </TurnActivity></Fragment>;
