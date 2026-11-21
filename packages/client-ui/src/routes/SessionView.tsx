@@ -80,7 +80,8 @@ export function SessionView({ session, rail = 'none', onRail, onOpen, handoffOpe
         </div>
       </div> : null}
       {approvalsAtTop && replayAt === undefined ? <Approvals session={session} pending={approvals} events={events} /> : null}
-      {details ? <Transcript header={details.team ? <TeamPanel details={details} onOpen={onOpen} /> : undefined} events={shownEvents} session={session} scratch={scratch} activity={details} busy={replayAt === undefined && ['starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying', 'paused_rate_limited'].includes(details.state)} onHandoff={() => onHandoffChange?.(true)} onOpenSession={onOpen} onEditPrompt={setEditedPrompt} /> : null}
+      {details ? <Transcript header={details.team ? <TeamPanel details={details} onOpen={onOpen} /> : undefined} events={shownEvents} session={session} scratch={scratch} activity={details} busy={replayAt === undefined && ['starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying', 'paused_rate_limited'].includes(details.state)} onHandoff={() => onHandoffChange?.(true)} onOpenSession={onOpen} onEditPrompt={setEditedPrompt} />
+        : <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-hint)', fontSize: 11 }}>Loading session…</div>}
       {!approvalsAtTop && replayAt === undefined ? <Approvals session={session} pending={approvals} events={events} /> : null}
       {replayAt !== undefined && replayInfo
         ? <ReplayBar session={session} info={replayInfo} frame={replayFrame} at={replayAt} onAt={setReplayAt} onExit={() => setReplayAt(undefined)} onForked={onOpen} />
