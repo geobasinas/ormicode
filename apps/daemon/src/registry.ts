@@ -8,7 +8,7 @@ const REGISTRY: Record<string, { pkg: string; cls: string }> = {
   'codex/sdk': { pkg: '@ormicode/agent-codex-sdk', cls: 'CodexSdkAdapter' },
   'codex/cli': { pkg: '@ormicode/agent-codex-cli', cls: 'CodexCliAdapter' },
   'grok/acp': { pkg: '@ormicode/agent-grok-acp', cls: 'GrokAcpAdapter' },
-  'grok/cli': { pkg: '@ormicode/agent-grok-acp', cls: 'GrokInteractiveCliAdapter' },
+  'grok/cli': { pkg: '@ormicode/agent-grok-cli', cls: 'GrokCliAdapter' },
   'opencode/acp': { pkg: '@ormicode/agent-opencode-acp', cls: 'OpenCodeAcpAdapter' },
   'opencode/cli': { pkg: '@ormicode/agent-opencode-cli', cls: 'OpenCodeCliAdapter' },
   'opencode/sdk': { pkg: '@ormicode/agent-opencode-sdk', cls: 'OpenCodeSdkAdapter' },

@@ -2,6 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { GrokCliAdapter, GrokCliMapper } from '../src/index.ts';
 const fixture = fileURLToPath(new URL('./fixture.mjs', import.meta.url));
 const fake = (_cmd, args, options) => spawn(process.execPath, [fixture, ...args], options);
@@ -43,4 +46,44 @@ test('CLI mapper labels terminal usage with the only reported model', () => {
  assert.equal(end({ 'grok-4.6': { inputTokens: 12 } }), 'grok-4.6');
  assert.equal(end({ 'grok-4.6': {}, 'grok-code-fast-1': {} }), undefined);
  assert.equal(end({}), undefined);
+});
+test('CLI stop kills the turn; a resumed adapter continues the official session id', async () => {
+ const adapter = new GrokCliAdapter({ spawn: fake });
+ const handle = await adapter.start({ cwd: process.cwd() });
+ const stream = adapter.events(handle); const kinds = [];
+ await adapter.prompt(handle, { text: 'slow' });
+ for await (const event of stream) {
+  kinds.push(event.kind);
+  if (event.kind === 'text_delta') await adapter.interrupt(handle);
+  if (event.kind === 'interrupted') { assert.equal(event.reason, 'user_abort'); break; }
+ }
+ assert.ok(!kinds.includes('turn_end'));
+ // The daemon answers this rejection by restarting the worker with resume(), then re-prompting.
+ await assert.rejects(adapter.prompt(handle, { text: 'again' }), /recovery/);
+ await adapter.dispose(handle);
+ let id; const next = new GrokCliAdapter({ spawn: fake, onNativeId: (_, value) => { id = value; } });
+ const resumed = await next.resume({ id: 'native-7', cwd: process.cwd() });
+ assert.equal((await run(next, resumed, 'retry')).at(-1).kind, 'turn_end');
+ assert.equal(id, 'native-7');
+ await next.dispose(resumed);
+});
+test('CLI models come from `grok models` with names and efforts from the official cache', { skip: process.platform === 'win32' }, async () => {
+ const dir = await mkdtemp(join(tmpdir(), 'grok-cli-models-'));
+ const executable = join(dir, 'grok');
+ await writeFile(executable, `#!/bin/sh\nexec "${process.execPath}" "${fixture}" "$@"\n`, { mode: 0o755 });
+ await writeFile(join(dir, 'models_cache.json'), JSON.stringify({ models: {
+  'grok-4.6': { info: { name: 'Grok 4.6', reasoning_efforts: [{ value: 'low' }, { value: 'high' }] } },
+  'grok-hidden': { info: { hidden: true, name: 'Hidden' } },
+ } }));
+ const previous = process.env.GROK_HOME; process.env.GROK_HOME = dir;
+ try {
+  assert.deepEqual(await new GrokCliAdapter({ executable }).models(), [
+   { id: 'grok-4.6', name: 'Grok 4.6', efforts: ['low', 'high'] },
+   { id: 'grok-code-fast-1' },
+  ]);
+  assert.deepEqual(await new GrokCliAdapter({ executable: join(dir, 'missing') }).models(), []);
+ } finally {
+  if (previous === undefined) delete process.env.GROK_HOME; else process.env.GROK_HOME = previous;
+  await rm(dir, { recursive: true, force: true });
+ }
 });

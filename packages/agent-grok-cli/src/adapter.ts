@@ -86,7 +86,7 @@ export class GrokCliAdapter implements AgentAdapter {
       await writeFile(promptFile, text, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
       if (session.disposed) return;
       if (session.interrupted) { session.queue.push([{ kind: 'interrupted', reason: 'user_abort' }]); return; }
-      const args = ['--no-auto-update', '--permission-mode', 'dontAsk', '--output-format', 'streaming-json', '--prompt-file', promptFile];
+      const args = ['--no-auto-update', '--always-approve', '--output-format', 'streaming-json', '--prompt-file', promptFile];
       if (session.nativeId) args.push('--resume', session.nativeId);
       if (session.model) args.push('--model', session.model);
       if (session.effort) args.push('--reasoning-effort', session.effort);

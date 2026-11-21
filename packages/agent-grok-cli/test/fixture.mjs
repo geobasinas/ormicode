@@ -1,9 +1,11 @@
 import { readFile } from 'node:fs/promises';
 const args = process.argv.slice(2);
+if (args[0] === 'models') { console.log('Available models:\n  - grok-4.6\n  - grok-code-fast-1'); process.exit(0); }
 const file = args[args.indexOf('--prompt-file') + 1];
 const prompt = await readFile(file, 'utf8');
-if (args.includes('--always-approve') || args[args.indexOf('--permission-mode') + 1] !== 'dontAsk') process.exit(4);
+if (!args.includes('--always-approve') || args.includes('--permission-mode')) process.exit(4); // headless runs cannot answer approval prompts
 const id = args.includes('--resume') ? args[args.indexOf('--resume') + 1] : 'session-1';
 if (prompt === 'broken') { console.log('{invalid'); process.exit(0); }
 console.log(JSON.stringify({ type: 'text', data: prompt }));
-console.log(JSON.stringify({ type: 'end', sessionId: id, stopReason: 'end_turn', usage: { input_tokens: 5, output_tokens: 2 } }));
+if (prompt === 'slow') setTimeout(() => {}, 60_000); // stays mid-turn until killed
+else console.log(JSON.stringify({ type: 'end', sessionId: id, stopReason: 'end_turn', usage: { input_tokens: 5, output_tokens: 2 } }));
