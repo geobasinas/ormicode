@@ -4,7 +4,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Frame, PromptAttachment, PromptContext } from '@ormicode/protocol';
 import {
-  openStore, getSession, getSessionPorts, setState, setWorkerPid, setNativeId, listSessions,
+  openStore, getSession, getSessionPorts, setState, setWorkerPid, setNativeId, listSessions, settingValue,
   type SessionState,
 } from '@ormicode/session-store';
 import { killTree } from './proctree.ts';
@@ -37,6 +37,8 @@ import { UiCheckFollowupGuard } from './ui-check.ts';
 import { finishTurnCheckpoints, recordToolCheckpoint, startTurnCheckpoints } from './turn-checkpoints.ts';
 import { runSessionHook } from './workspace-hooks.ts';
 import { stateFor } from './supervisor-state.ts';
+import { Resources } from './resources.ts';
+import { systemdScopeArgs, overMemoryCap } from './worker-scope.ts';
 import { shouldRecordResume } from './resume-marker.ts';
 import { closeInterruptedTools } from './interrupted-tools.ts';
 import { stopWorkerProcess } from './stop-worker.ts';
@@ -64,8 +66,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   const heldPrompts = new Map<string, HeldPrompt[]>();
   const lastPrompt = new Map<string, { text: string; images?: unknown[]; context?: PromptContext[]; attachments?: PromptAttachment[]; actor?: 'auto' }>();
   const idleTimers = new Map<string, NodeJS.Timeout>();
-  const idleTimeoutMs = Number(process.env.ORMICODE_IDLE_TIMEOUT_MS ?? 20 * 60_000);
-  const poolMax = Number(process.env.ORMICODE_POOL_MAX ?? 8);
+  const resources = new Resources({ dir: ormicodeDir(), readSetting: key => settingValue(db, key) });
   const checkpoints = new Checkpoints(join(ormicodeDir(), 'checkpoints'), {
     max: Number(process.env.ORMICODE_CHECKPOINTS_MAX ?? DEFAULT_LIMITS.max),
     maxBytes: Number(process.env.ORMICODE_CHECKPOINTS_MAX_BYTES ?? DEFAULT_LIMITS.maxBytes),
@@ -129,7 +130,10 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     if (!checkpoints.repo(session).exists()) void snapshotCheckpoint(session, 0, 'baseline');
     const waking = Boolean(db.prepare("SELECT 1 FROM events WHERE session = ? AND kind = 'turn_start' LIMIT 1").get(session));
     const mcpToken = mcpCredentials.issue(session);
-    const proc = spawn(process.execPath, [WORKER_MAIN], {
+    const diskError = resources.diskGuardError();
+    if (diskError) { spawnFailures.set(session, diskError); lastError = diskError.message; return; }
+    const scope = systemdScopeArgs(resources.workerMemoryCapBytes(), [process.execPath, WORKER_MAIN]);
+    const proc = spawn(scope?.command ?? process.execPath, scope?.args ?? [WORKER_MAIN], {
       env: workerEnvironment(row, base, socketPath, secrets, mcpToken),
       stdio: 'ignore', windowsHide: true, detached: process.platform !== 'win32',
     });
@@ -143,6 +147,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
       const wasResuming = resuming.delete(session);
       retries.cancel(session);
       workers.delete(session);
+      resources.forgetWorker(session);
       setWorkerPid(db, session, null);
       const current = getSession(db, session);
       if (!worker.stopping && current && ['starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying'].includes(current.state)) {
@@ -235,9 +240,16 @@ export async function startDaemon(opts: DaemonOptions = {}) {
         setNativeId(db, session, String(body.nativeId));
         answer({ ok: true });
         break;
-      case 'worker.health':
+      case 'worker.health': {
+        const rss = Number(body.rssBytes);
+        resources.observeWorker(session, rss);
+        if (overMemoryCap(rss, resources.workerMemoryCapBytes())) {
+          record(session, 'interrupted', { reason: 'memory_cap' });
+          void stopWorker(session, true);
+        }
         answer({ ok: true });
         break;
+      }
       default:
         link.replyError(id, 'protocol.unknown_method', method);
     }
@@ -261,22 +273,23 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     w.stopping = true;
     await stopWorkerProcess(w.proc, workerLinks.get(session), session, force);
     workers.delete(session);
+    resources.forgetWorker(session);
     setWorkerPid(db, session, null);
   };
   const armIdle = (session: string, state: SessionState) => {
     const existing = idleTimers.get(session);
     if (existing) { clearTimeout(existing); idleTimers.delete(session); }
     if (state === 'idle' || state === 'done') {
-      idleTimers.set(session, setTimeout(() => { void evictWorker(session, 'idle_timeout'); }, idleTimeoutMs).unref());
+      idleTimers.set(session, setTimeout(() => { void evictWorker(session, 'idle_timeout'); }, resources.idleTimeoutMs()).unref());
       enforcePool(session);
     }
   };
   /** `fresh` just became ready or idle, usually because a prompt is waiting for it, so it is never the one evicted. */
   const enforcePool = (fresh: string) => {
     const live = [...workers.entries()].filter(([, w]) => w.ready && !w.stopping);
-    if (live.length <= poolMax) return;
+    if (live.length <= resources.poolSize()) return;
     const idle = live.filter(([s, w]) => s !== fresh && !isSending(s) && getSession(db, s)?.state === 'idle' && !(getSession(db, s)?.pinned));
-    const overflow = live.length - poolMax;
+    const overflow = live.length - resources.poolSize();
     for (const [session] of idle.slice(0, overflow)) void evictWorker(session, 'pool_full');
   };
   const toWorker = async (session: string, method: string, body: Record<string, unknown>) => {
@@ -324,8 +337,12 @@ export async function startDaemon(opts: DaemonOptions = {}) {
       url: process.env.ORMICODE_PRICES_URL === 'off' ? null : process.env.ORMICODE_PRICES_URL,
       maxAgeMs: (Number(process.env.ORMICODE_PRICING_CACHE_MINUTES) || 1440) * 60_000,
     }),
+    resources,
   };
   dispatchCtx.teamLifecycle.start();
+  // Pool size is measured, not fixed: a shrinking machine evicts idle workers.
+  const poolTimer = setInterval(() => enforcePool(''), 60_000);
+  poolTimer.unref();
   // idx summaries keep remote session lists fresh without streaming transcripts.
   let idxTimer: NodeJS.Timeout | undefined;
   const idxSessions = () => listSessions(db).map(s => ({ id: s.id, state: s.state, title: s.title, updatedAt: s.updated_at }));
@@ -392,6 +409,8 @@ export async function startDaemon(opts: DaemonOptions = {}) {
       dispatchCtx.interactions.close(); closing = true;
       dispatchCtx.teamLifecycle.close();
       if (idxTimer) clearTimeout(idxTimer);
+      clearInterval(poolTimer);
+      resources.close();
       for (const t of idleTimers.values()) clearTimeout(t);
       idleTimers.clear();
       retries.close();

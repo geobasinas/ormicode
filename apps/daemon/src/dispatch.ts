@@ -51,6 +51,7 @@ import type { TeamApprovals } from './team-approvals.ts';
 import type { TeamLifecycle } from './team-lifecycle.ts';
 import { shouldResetUiCheckFollowups } from './ui-check.ts';
 import { machineMethod } from './machine-methods.ts';
+import type { Resources } from './resources.ts';
 /** What a client transport must do: send frames and answer requests. */
 export interface ClientLink {
   send(frame: Frame | Record<string, unknown>): void;
@@ -97,6 +98,7 @@ export interface DispatchCtx {
   storePath: string;
   dataExports: DataExports;
   stopHub: StopHub;
+  resources: Resources;
 }
 /** Client-facing session.* / daemon.* request dispatch. */
 export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Frame): Promise<void> {
@@ -121,7 +123,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
     switch (method) {
       case 'agents.list':
         return client.link.reply(id, { agents: agentList() });
-      case 'machine.list': case 'fs.browse': case 'project.list': case 'project.add': case 'project.remove': return await machineMethod(ctx, client, id, method, body);
+      case 'machine.list': case 'machine.status': case 'machine.projects': case 'fs.browse': case 'project.list': case 'project.add': case 'project.remove': return await machineMethod(ctx, client, id, method, body);
       case 'models.list':
         return client.link.reply(id, await listModels(body as { agent?: string; transport?: string; refresh?: boolean }));
       case 'project.branches': return projectBranches(ctx, client, id, body);
@@ -132,7 +134,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
       case 'project.deleteBranch':
         return await projectBranchMethod(ctx, client, id, method, body);
       case 'daemon.status':
-        return client.link.reply(id, { version: '0.0.0', proto: PROTOCOL_VERSION, uptimeMs: Date.now() - ctx.startedAt, liveWorkers: ctx.liveWorkers(), relay: ctx.relay()?.connected() ? 'connected' : 'disconnected', lastError: ctx.lastError() });
+        return client.link.reply(id, { version: '0.0.0', proto: PROTOCOL_VERSION, uptimeMs: Date.now() - ctx.startedAt, liveWorkers: ctx.liveWorkers(), pool: ctx.resources.pool(), relay: ctx.relay()?.connected() ? 'connected' : 'disconnected', lastError: ctx.lastError() });
       case 'session.start': return await startSession(ctx, client, id, body);
       case 'session.rename': {
         const session = String(body.session);

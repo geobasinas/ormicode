@@ -61,12 +61,22 @@ async function browse(client: Client, id: string, body: Record<string, unknown>)
   });
 }
 
-function localMachine() {
-  return { id: LOCAL_MACHINE, name: hostname() || 'local', kind: 'local', status: 'online', heartbeat: Date.now() };
+function localMachine(ctx: DispatchCtx) {
+  return { id: LOCAL_MACHINE, name: hostname() || 'local', kind: 'local', status: 'online', heartbeat: Date.now(), resources: ctx.resources.status() };
 }
 
 export async function machineMethod(ctx: DispatchCtx, client: Client, id: string, method: string, body: Record<string, unknown>): Promise<void> {
-  if (method === 'machine.list') return client.link.reply(id, { machines: [localMachine()] });
+  if (method === 'machine.list') return client.link.reply(id, { machines: [localMachine(ctx)] });
+  if (method === 'machine.status') {
+    const machine = String(body.machine);
+    if (machine !== LOCAL_MACHINE) return client.link.replyError(id, 'machine.unreachable', machine);
+    return client.link.reply(id, { machine: localMachine(ctx) });
+  }
+  if (method === 'machine.projects') {
+    const machine = String(body.machine);
+    if (machine !== LOCAL_MACHINE) return client.link.replyError(id, 'machine.unreachable', machine);
+    return client.link.reply(id, { projects: listProjects(ctx.db).filter(p => p.machine === machine).map(p => ({ identity: p.path, path: p.path })) });
+  }
   if (method === 'project.list') {
     const projects = await Promise.all(listProjects(ctx.db).map(async project => ({ ...project, git: await hasGit(project.path) })));
     return client.link.reply(id, { projects });
