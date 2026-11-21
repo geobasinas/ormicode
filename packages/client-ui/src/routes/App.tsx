@@ -1,6 +1,6 @@
 /** App shell: custom titlebar (frameless window), sidebar with search /
- * new-session / All|Sessions|Bots filter / grouped session list, and the
- * pinned Now tab + session tabs from the layout descriptor. */
+ * new-session / All|Sessions|Bots tabs + state filter chips / grouped session
+ * list, and the pinned Now tab + session tabs from the layout descriptor. */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ClientPlatform } from '@ormicode/client-platform';
 import { PlatformContext } from '../lib/platform.ts';
@@ -18,6 +18,7 @@ import { SettingsView, loadPrefs, type Prefs } from './Settings.tsx';
 import { SessionHeader } from '../features/session/SessionHeader.tsx';
 import { NEEDS_YOU } from '../features/session/state.tsx';
 import { branchLabel } from '../features/session/team-presentation.ts';
+import { ListFilterChips, LIST_STATES } from '../features/session/ListFilters.tsx';
 import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels';
 import { Toaster } from '../components/ui/sonner.tsx';
 import { WorkspaceSwitcher, type Workspace } from './WorkspaceSwitcher.tsx';
@@ -85,7 +86,7 @@ function Tab({ id, n, active, onSelect, onClose }: { id: string; n?: number; act
   );
 }
 
-const FILTER_TABS = ['All', 'Sessions', 'Bots', 'Archived'] as const;
+const FILTER_TABS = ['All', 'Sessions', 'Bots'] as const;
 
 const RAIL_ICONS: { id: string; icon: LucideIcon; label: string; soon?: boolean }[] = [
   { id: 'git', icon: GitBranch, label: 'git' },
@@ -203,6 +204,7 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
     return () => window.removeEventListener(OPEN_FILE, on);
   }, []);
   const [filter, setFilter] = useState<(typeof FILTER_TABS)[number]>('All');
+  const [listFilter, setListFilter] = useState<string>();
   const resolved = useMemo(() => {
     const v = validateLayout(storedLayout);
     return v.ok ? applyLayout(defaultLayout, storedLayout, prefs.safeMode) : defaultLayout;
@@ -337,7 +339,7 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
               <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '0 2px' }}>
                 <div style={{ flex: 1, display: 'flex', gap: 2, padding: 2, background: 'var(--bg-inset)', borderRadius: 9 }}>
                   {FILTER_TABS.map(f => (
-                    <button key={f} onClick={() => setFilter(f)} style={{
+                    <button key={f} onClick={() => { setFilter(f); setListFilter(undefined); }} style={{
                       flex: 1, font: 'inherit', fontSize: 12, fontWeight: filter === f ? 500 : 400, cursor: 'pointer',
                       padding: '4px 0', border: 'none', borderRadius: 7, textAlign: 'center',
                       background: filter === f ? 'var(--bg-selected)' : 'transparent',
@@ -350,9 +352,10 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
                   <FolderPlus size={15} />
                 </button> : null}
               </div>
+              {!onboarding ? <ListFilterChips value={listFilter} onChange={setListFilter} /> : null}
               <div style={{ height: 8 }} />
               <div style={{ flex: 1, overflow: 'auto' }}>
-                {onboarding ? null : filter === 'Archived' ? <ArchivedSessionList active={route !== 'now' ? route : undefined} onSelect={open} query={query} /> : filter !== 'Bots' ? <SessionList active={route !== 'now' ? route : undefined} onSelect={open} query={query} /> : (
+                {onboarding ? null : listFilter === 'archived' ? <ArchivedSessionList active={route !== 'now' ? route : undefined} onSelect={open} query={query} /> : filter !== 'Bots' ? <SessionList active={route !== 'now' ? route : undefined} onSelect={open} query={query} states={listFilter ? LIST_STATES[listFilter] : undefined} /> : (
                   <div style={{ padding: '0 var(--space-3)', color: 'var(--text-hint)', fontSize: 13 }}>no bots yet</div>
                 )}
               </div>

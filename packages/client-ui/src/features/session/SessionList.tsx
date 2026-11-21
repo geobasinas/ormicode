@@ -80,10 +80,14 @@ function TeamRow({ node, active, onSelect, query }: { node: SessionNode; active?
   </div>;
 }
 
-export function SessionList({ active, onSelect, query }: { active?: string; onSelect: (id: string) => void; query?: string }) {
+export function SessionList({ active, onSelect, query, states }: { active?: string; onSelect: (id: string) => void; query?: string; states?: (session: SessionSummary) => boolean }) {
   const { sessions, error } = useSessions();
   const { projects } = useProjects();
-  const groups = useMemo(() => groupSessionProjects(sessions, projects, query), [sessions, projects, query]);
+  const visible = useMemo(() => states ? sessions.filter(states) : sessions, [sessions, states]);
+  const groups = useMemo(() => {
+    const grouped = groupSessionProjects(visible, projects, query);
+    return states ? grouped.filter(group => group.nodes.length) : grouped;
+  }, [visible, projects, query, states]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'auto', gap: 0 }}>
@@ -108,7 +112,7 @@ export function SessionList({ active, onSelect, query }: { active?: string; onSe
           </div>
         );
       })}
-      {!groups.length && !error ? <div style={{ padding: '0 13px', color: 'var(--text-hint)', fontSize: 12 }}>{query ? 'no matches' : 'no sessions yet'}</div> : null}
+      {!groups.length && !error ? <div style={{ padding: '0 13px', color: 'var(--text-hint)', fontSize: 12 }}>{query || states ? 'no matches' : 'no sessions yet'}</div> : null}
       {query?.trim() ? <div style={{ marginTop: 10 }}><ArchivedSessionList active={active} onSelect={onSelect} query={query} heading /></div> : null}
     </div>
   );
