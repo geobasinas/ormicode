@@ -37,6 +37,9 @@ for await (const line of lines) {
     const id = message.id; // reply later so the client handles the notification first
     setTimeout(() => out({ id, result: { data: [{ id: 'gpt-test-1', displayName: 'GPT Test', supportedReasoningEfforts: [{ reasoningEffort: 'low' }, { reasoningEffort: 'high' }] }, { id: 'hidden-model', hidden: true }], nextCursor: null } }), 20);
   }
+  else if (message.method === 'config/read') {
+    out({ id: message.id, result: { config: { model: process.env.ORMICODE_FIXTURE_CONFIG_MODEL ?? 'gpt-test-1' } } });
+  }
   else if (message.method === 'turn/start') {
     if (message.params.threadId !== 'thread-1' || message.params.input[0].type !== 'text' || !Array.isArray(message.params.input[0].text_elements)) process.exit(5);
     const text = message.params.input[0].text;

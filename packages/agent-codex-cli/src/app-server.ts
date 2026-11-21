@@ -86,6 +86,13 @@ export class CodexAppServer {
     if (!parsed.success) throw new Error('Invalid model/list response');
     return parsed.data.data.filter((model) => !('hidden' in model) || !model.hidden).map((model) => ({ id: model.id, ...(model.displayName ? { name: model.displayName } : {}), ...(model.supportedReasoningEfforts?.length ? { efforts: model.supportedReasoningEfforts.map((entry) => entry.reasoningEffort) } : {}) }));
   }
+  /** The `model` the user's config selects; usable even when the picker catalog does not advertise it. */
+  async configuredModel(): Promise<string | undefined> {
+    const response = await this.request('config/read', {});
+    const parsed = z.safeParse(z.looseObject({ config: z.optional(z.looseObject({ model: z.optional(z.string()) })) }), response);
+    if (!parsed.success) throw new Error('Invalid config/read response');
+    return parsed.data.config?.model || undefined;
+  }
   close(): void {
     if (this.closing) return;
     this.closing = true; this.peer.close(); this.child.stdin.end(); this.child.kill();

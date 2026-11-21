@@ -38,7 +38,14 @@ export class CodexCliAdapter implements AgentAdapter {
   }
   async models(): Promise<ModelList> {
     const server = await this.openServer();
-    try { return (await server.models()).map((model) => ({ id: model.id, ...(model.name ? { name: model.name } : {}), ...(model.efforts ? { efforts: model.efforts } : {}) })); }
+    try {
+      const [models, configured] = await Promise.all([server.models(), server.configuredModel()]);
+      const listed = models.map((model) => ({ id: model.id, ...(model.name ? { name: model.name } : {}), ...(model.efforts ? { efforts: model.efforts } : {}) }));
+      // The picker catalog only advertises what the server currently promotes; the
+      // configured default is what an unflagged run actually uses, so keep it selectable.
+      if (configured && !listed.some((model) => model.id === configured)) return [{ id: configured, name: `${configured} (config default)` }, ...listed];
+      return listed;
+    }
     finally { server.close(); }
   }
   async start(spec: StartSpec): Promise<Handle> { return this.create(spec); }

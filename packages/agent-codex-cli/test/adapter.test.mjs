@@ -102,6 +102,14 @@ test('CLI adapter models() survives unknown notifications without a session', as
   assert.doesNotThrow(() => a.onNotification(partial, 'remoteControl/status/changed', { status: 'disabled' }));
 });
 
+test('CLI adapter models() keeps the configured default selectable when the catalog omits it', async () => {
+  const a = new CodexCliAdapter({ spawn: (_command, _args, options) => spawn(process.execPath, [fixture], { ...options, env: { ...process.env, ORMICODE_FIXTURE_CONFIG_MODEL: 'gpt-configured-1' } }) });
+  assert.deepEqual(await a.models(), [
+    { id: 'gpt-configured-1', name: 'gpt-configured-1 (config default)' },
+    { id: 'gpt-test-1', name: 'GPT Test', efforts: ['low', 'high'] },
+  ]);
+});
+
 for (const text of ['approve me', 'question me']) test(`interrupt expires the pending interaction (${text}) and permits another turn`, async t => {
   const a = adapter(), handle = await a.start({ cwd: '/repo' }); t.after(() => a.dispose(handle));
   const stream = a.events(handle)[Symbol.asyncIterator]();
