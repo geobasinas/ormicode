@@ -175,7 +175,8 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
   const open = (id: string) => {
     if (!PAGES[id]) setDesignSession(id);
     if (id === 'design') { if (!PAGES[route]) setDesignSession(route); setRoute(id); return; }
-    setTabs(ts => ts.includes(id) ? ts : [...ts.slice(-(MAX_TABS - 1)), id]);
+    // Pages (settings) are routes, not tabs — the sidebar button owns them.
+    if (!PAGES[id]) setTabs(ts => ts.includes(id) ? ts : [...ts.slice(-(MAX_TABS - 1)), id]);
     setRoute(id);
   };
   const openSettings = () => { setSettingsPeek(onboarding); open('settings'); };
