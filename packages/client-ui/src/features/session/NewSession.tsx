@@ -5,7 +5,7 @@ import { Plus, AtSign, Mic, ArrowUp, ChevronDown, Folder, Laptop, Loader2, FileT
 import { newId } from '@ormicode/protocol';
 import type { PromptContext } from '@ormicode/protocol';
 import { usePlatform } from '../../lib/platform.ts';
-import { PICKABLE_VENDORS, loadPrefs, rememberProject } from '../../routes/Settings.tsx';
+import { PICKABLE_VENDORS, loadPrefs, rememberProject } from '../../lib/prefs.ts';
 import { useImages, useFiles, ImageStrip, ProjectChip, iconBtn } from './composer-parts.tsx';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../components/ui/dropdown-menu.tsx';
 import { AgentChip, GitChip, branchNameIssue, type RepoInfo, type WorkspaceChoice, type WorkspaceMode } from './pickers.tsx';

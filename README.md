@@ -2399,7 +2399,7 @@ Agents can use `frame.update` to add `data-ormi-prototype="frame:<frameId>"`, `d
 
 ## Desktop and web layout
 
-> **Status:** in progress — descriptor validation, safe-mode filtering, restricted desktop `layout.read`/`layout.write` IPC, web localStorage, 300 ms debounced persistence, sidebar resize updates, Home widget ordering, and a 20-entry history are implemented. The settings page exposes safe mode, history and reset; a row-per-region editor was tried and removed. Phone/secondary-panel resize integration remains. · **Needs:** [First screens](#first-screens)
+> **Status:** in progress — descriptor validation, safe-mode filtering, restricted desktop `layout.read`/`layout.write` IPC, web localStorage, 300 ms debounced persistence, sidebar resize updates, Home widget ordering, and a 20-entry history are implemented. Safe mode, history and reset lived in the settings page, which is deferred until the settings protocol exists; a row-per-region editor was tried and removed. Phone/secondary-panel resize integration remains. · **Needs:** [First screens](#first-screens)
 
 **One renderer (`packages/client-ui`) in two shells: Electron on desktop, Worker static assets in the browser.**
 
@@ -2577,7 +2577,7 @@ Network denied unless a domain is listed (requests go through a logging host pro
 
 **The first screens to build, for desktop and web: Now, Sessions, transcript, approvals, layout.** Both shells render them from `client-ui`.
 
-**Onboarding:** both shells use the same pairing flow. Desktop opens it after startup when unpaired or when no remote is configured, and it does not reopen after the app has been online once. Desktop welcome and code steps offer **Skip for now**; skipping is in-memory, so pairing appears again next launch. Desktop pairing says “this app” and allows changing the relay URL; web says “this browser” and has no relay field or skip. Both shells link to Settings from onboarding so local prefs (theme, layout) are reachable before pairing; hub-backed sections show their offline state. The old desktop `PairCard` is removed.
+**Onboarding:** both shells use the same pairing flow. Desktop opens it after startup when unpaired or when no remote is configured, and it does not reopen after the app has been online once. Desktop welcome and code steps offer **Skip for now**; skipping is in-memory, so pairing appears again next launch. Desktop pairing says “this app” and allows changing the relay URL; web says “this browser” and has no relay field or skip. Both shells linked to Settings from onboarding, but the settings page is deferred until the settings protocol exists, so onboarding no longer offers it. The old desktop `PairCard` is removed.
 
 **Project folders:** the sidebar's **Add project folder** button opens a machine chooser and directory browser. Registered folders without visible sessions still appear as empty project groups; searching also matches their names.
 
@@ -2586,15 +2586,15 @@ Network denied unless a domain is listed (requests go through a logging host pro
 ┌ window chrome ─────────────────────────────────────────────┐
 │ sidebar          │ tab strip: Now | session…             │
 │ primary nav      │────────────────────────────────────────│
-│ search           │ main: Now, a session, or Settings      │
+│ search           │ main: Now or a session                 │
 │ projects         │                                        │
 │ sessions         │                                        │
 │ needs-you badge  │                                        │
-│ settings         │                                        │
+│ settings (later) │                                        │
 └──────────────────┴────────────────────────────────────────┘
 ```
-- **Nav:** Now, Sessions, Settings. Teams, Design, Automations, Git, Review, Files are hidden (not greyed out) until built.
-- **Tabs:** a pinned Now tab plus one per open session (max 8, oldest closes first). Closing a tab never stops the session. Settings opens as a tab. With one tab, the strip collapses into the header breadcrumb.
+- **Nav:** Now, Sessions. Settings, Teams, Design, Automations, Git, Review, Files are hidden (not greyed out) until built — Settings is deferred until the settings protocol exists.
+- **Tabs:** a pinned Now tab plus one per open session (max 8, oldest closes first). Closing a tab never stops the session. With one tab, the strip collapses into the header breadcrumb.
 
 **Right rail:** contextual panels in tabs (resizable, collapsible, saved per session and device), off by default. The first screens ships only **Notes**:
 - list/create/rename/delete named notes (`session.getNotes`/`setNotes`/`deleteNote`), one tab each; new = "Untitled".
@@ -2656,7 +2656,8 @@ Network denied unless a domain is listed (requests go through a logging host pro
 **Desktop vs web:** desktop has OS window controls, tray (later), updater status, file dialogs; web has the Worker version indicator, browser tabs, no offline shell. Same components.
 - **Onboarding:** desktop offers "Skip for now" (opens with no relay or data; pairing shows again next launch). Web has no skip. Desktop says "this app" (web: "this browser") and opens pairing on "enter code" (no camera). Never the word "browser" on desktop.
 
-**Settings** (a tab with inner nav)
+**Settings** (a tab with inner nav) — **deferred.** The page was built once and removed again: it could only edit client `localStorage` prefs because `settings.get`/`settings.set` don't exist yet, and its layout was thin. Revisit once the settings protocol surface and machine/account scopes land so the page edits real config. The spec below is kept for that revisit.
+
 - **General:** session defaults — agent, project folder and worktree branch prefix.
 - **Appearance:** theme.
 - **Layout:** safe mode plus layout history and reset to defaults.

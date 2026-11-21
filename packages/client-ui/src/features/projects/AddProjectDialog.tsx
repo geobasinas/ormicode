@@ -5,7 +5,7 @@ import { usePlatform } from '../../lib/platform.ts';
 import { agoText } from '../../lib/format.ts';
 import { feedback } from '../../lib/feedback.ts';
 import { useModalFocus } from '../../lib/useModalFocus.ts';
-import { rememberProject } from '../../routes/Settings.tsx';
+import { rememberProject } from '../../lib/prefs.ts';
 import { useProjects } from './useProjects.ts';
 import { FolderBrowser } from './FolderBrowser.tsx';
 

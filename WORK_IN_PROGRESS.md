@@ -6,6 +6,10 @@ This is an annotated copy of the README, **not a replacement specification or a 
 
 **Status key:** **Implemented** means the described core path exists in inspected source, not that every platform, provider, deployment or acceptance criterion has been verified. **Partial** means working pieces exist but specified capabilities are missing or unverified. **Not started** means the named subsystem is placeholder-only or has no corresponding implementation in the inspected checkout. Retained specification details beyond the checked code pointers are **planned or unverified**, not additional delivery claims. For reference/policy sections, “Implemented” means the documentation exists, not that external claims or runtime behavior have been validated.
 
+## Update — Settings page deferred
+
+The Settings page (`packages/client-ui/src/routes/Settings*.tsx` plus its panels and two tests) was removed from the app. It could only edit client `localStorage` prefs because `settings.get`/`settings.set` don't exist in the protocol yet, and the layout was thin. Client prefs still apply through defaults in `packages/client-ui/src/lib/prefs.ts` (theme resolves `system`, project/vendor defaults feed the composer). The README's Settings spec is kept and marked deferred; revisit once the settings protocol surface and machine/account scopes exist. Git history has the removed implementation.
+
 ## Update 2026-11-21 (Europe/Athens, UTC+2)
 
 Main is at `3309a11`. The commits `6b342ad..3309a11` (31 in total) were each tested in the desktop app and pushed to main. The status rows below still come from the 2026-11-20 audit, except the agent adapters row, which now has a note.

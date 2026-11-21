@@ -6,14 +6,14 @@ import type { ClientPlatform } from '@ormicode/client-platform';
 import { PlatformContext } from '../lib/platform.ts';
 import { useAppliedTheme } from '../lib/theme.ts';
 import { defaultLayout, applyLayout, validateLayout, type LayoutDescriptor } from '../lib/layout.ts';
-import { Search, SquarePen, Settings, FolderPlus, ArrowLeft } from 'lucide-react';
+import { Search, SquarePen, FolderPlus } from 'lucide-react';
 import { SessionList } from '../features/session/SessionList.tsx';
 import { ArchivedSessionList } from '../features/session/ArchivedSessionList.tsx';
 import { Now } from './Now.tsx';
 import { SessionView } from './SessionView.tsx';
 import { DesignPage } from './DesignPage.tsx';
 import { OPEN_FILE } from '../lib/openFile.ts';
-import { SettingsView, loadPrefs, type Prefs } from './Settings.tsx';
+import { loadPrefs, type Prefs } from '../lib/prefs.ts';
 import { ActiveHeader, noDrag, PAGES, Rail, Tab, Titlebar, type RailPane } from '../components/ShellChrome.tsx';
 import { ListFilterChips, LIST_STATES } from '../features/session/ListFilters.tsx';
 import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels';
@@ -29,7 +29,7 @@ const MAX_TABS = 8;
 const FILTER_TABS = ['All', 'Sessions', 'Bots'] as const;
 
 export function App({ platform, theme: initialTheme, layout, pairPrefill }: { platform: ClientPlatform; theme?: string; layout?: LayoutDescriptor; pairPrefill?: { account?: string; code?: string } }) {
-  const [prefs, setPrefs] = useState<Prefs>(() => loadPrefs(initialTheme));
+  const [prefs] = useState<Prefs>(() => loadPrefs(initialTheme));
   const theme = prefs.theme;
   const [storedLayout, setStoredLayout] = useState<LayoutDescriptor>(() => {
     if (layout) return layout;
@@ -41,12 +41,11 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
   const [designSidebarOpen, setDesignSidebarOpen] = useState(() => !window.matchMedia('(max-width: 850px)').matches);
   const [codeSidebarOverride, setCodeSidebarOverride] = useState<boolean>();
   const lastCodeRoute = useRef('now');
-  useEffect(() => { if (route !== 'design' && route !== 'settings') lastCodeRoute.current = route; }, [route]);
+  useEffect(() => { if (route !== 'design') lastCodeRoute.current = route; }, [route]);
   const [toastBottomOffset, setToastBottomOffset] = useState(16);
   const [state, setState] = useState<string>('connecting');
   const [onboarding, setOnboarding] = useState(false);
   const [onboardingSkipped, setOnboardingSkipped] = useState(false);
-  const [settingsPeek, setSettingsPeek] = useState(false);
   const [onlineOnce, setOnlineOnce] = useState(false);
   const [booted, setBooted] = useState(false);
   const mobile = useIsMobile();
@@ -56,7 +55,6 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
     if (state === 'online') {
       setOnlineOnce(true);
       setOnboarding(false);
-      setSettingsPeek(false);
       return;
     }
     if (platform.web) {
@@ -136,11 +134,10 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!e.ctrlKey && !e.metaKey) return;
-      if (route === 'design' && e.key !== ',') return;
+      if (route === 'design') return;
       if (e.key === 'k' || e.key === 'K') { e.preventDefault(); searchRef.current?.focus(); }
       if (e.key === 'n' || e.key === 'N') { e.preventDefault(); setRoute('now'); }
       if (e.key === '1') { e.preventDefault(); setRoute('now'); }
-      if (e.key === ',') { e.preventDefault(); openRef.current('settings'); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -157,7 +154,6 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
   const sidebar = resolved.regions.sidebar;
   const codeSidebarOpen = codeSidebarOverride ?? (sidebar?.visible !== false && sidebar?.collapsed !== true);
   const inDesign = route === 'design' && !onboarding;
-  const openRef = useRef((id: string) => { void id; });
   const shellLayout = useDefaultLayout({ id: 'ormi.shell', storage: globalThis.localStorage });
   const onShellLayoutChanged: typeof shellLayout.onLayoutChanged = (panelLayout, meta) => {
     shellLayout.onLayoutChanged(panelLayout, meta);
@@ -175,12 +171,10 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
   const open = (id: string) => {
     if (!PAGES[id]) setDesignSession(id);
     if (id === 'design') { if (!PAGES[route]) setDesignSession(route); setRoute(id); return; }
-    // Pages (settings) are routes, not tabs — the sidebar button owns them.
+    // Pages (design) are routes, not tabs.
     if (!PAGES[id]) setTabs(ts => ts.includes(id) ? ts : [...ts.slice(-(MAX_TABS - 1)), id]);
     setRoute(id);
   };
-  const openSettings = () => { setSettingsPeek(onboarding); open('settings'); };
-  openRef.current = id => id === 'settings' ? openSettings() : open(id);
   const close = (id: string) => setTabs(ts => {
     const next = ts.filter(t => t !== id);
     if (route === id) setRoute(next[next.length - 1] ?? 'now');
@@ -257,14 +251,6 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
                   <div style={{ padding: '0 var(--space-3)', color: 'var(--text-hint)', fontSize: 13 }}>no bots yet</div>
                 )}
               </div>
-              <button className="hv-sub" onClick={openSettings} style={{
-                height: 32, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10, padding: '0 10px', marginTop: 4,
-                font: 'inherit', cursor: 'pointer', border: 'none', borderRadius: 8, textAlign: 'left',
-                background: route === 'settings' ? 'var(--bg-selected)' : 'transparent',
-              }}>
-                <Settings size={15} style={{ color: route === 'settings' ? 'var(--text-active)' : 'var(--text-label)', flexShrink: 0 }} />
-                <span style={{ fontSize: 12.5, color: route === 'settings' ? 'var(--text-active)' : 'var(--text-label)' }}>Settings</span>
-              </button>
             </aside>
             </Panel>
             <Separator className="ormi-handle" />
@@ -281,18 +267,7 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
               flex: 1, minHeight: 0, overflow: onboarding ? 'auto' : 'hidden', background: 'var(--bg-main)',
               borderRadius: route === 'now' && !onboarding ? '0 12px 12px 12px' : 12,
             }}>
-              {route === 'settings' && (!onboarding || settingsPeek) ? (
-                <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                  {onboarding ? <div style={{ flexShrink: 0, padding: '10px 16px 0' }}>
-                    <button type="button" className="hv-sub" onClick={() => { setSettingsPeek(false); close('settings'); }} style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 8px',
-                      font: 'inherit', fontSize: 12, color: 'var(--text-hint)', background: 'none',
-                      border: 'none', borderRadius: 7, cursor: 'pointer',
-                    }}><ArrowLeft size={13} /> Back</button>
-                  </div> : null}
-                  <div style={{ flex: 1, minHeight: 0 }}><SettingsView prefs={prefs} onPrefs={setPrefs} connection={state} /></div>
-                </div>
-              ) : onboarding ? <Onboarding state={state} pairPrefill={pairPrefill} onOpenSettings={openSettings}
+              {onboarding ? <Onboarding state={state} pairPrefill={pairPrefill}
                   onSkip={platform.desktop ? () => { setOnboardingSkipped(true); setOnboarding(false); } : undefined} />
                 : route === 'now' ? <Now onOpen={open} layout={resolved} />
                 : <SessionView key={route} session={route} rail={rail} onRail={setRail} onOpen={open} handoffOpen={handoffOpen} onHandoffChange={setHandoffOpen} layout={resolved}

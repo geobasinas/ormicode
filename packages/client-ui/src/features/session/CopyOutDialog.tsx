@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { FileText, Folder, Loader2, X } from 'lucide-react';
 import { usePlatform } from '../../lib/platform.ts';
-import { loadPrefs, rememberProject } from '../../routes/Settings.tsx';
+import { loadPrefs, rememberProject } from '../../lib/prefs.ts';
 import type { Entry } from '../files/types.ts';
 import { feedback } from '../../lib/feedback.ts';
 import { useModalFocus } from '../../lib/useModalFocus.ts';
