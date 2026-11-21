@@ -6,6 +6,41 @@ This is an annotated copy of the README, **not a replacement specification or a 
 
 **Status key:** **Implemented** means the described core path exists in inspected source, not that every platform, provider, deployment or acceptance criterion has been verified. **Partial** means working pieces exist but specified capabilities are missing or unverified. **Not started** means the named subsystem is placeholder-only or has no corresponding implementation in the inspected checkout. Retained specification details beyond the checked code pointers are **planned or unverified**, not additional delivery claims. For reference/policy sections, “Implemented” means the documentation exists, not that external claims or runtime behavior have been validated.
 
+## Update 2026-11-21 (Europe/Athens, UTC+2)
+
+Main is at `3309a11`. The commits `6b342ad..3309a11` (31 in total) were each tested in the desktop app and pushed to main. The status rows below still come from the 2026-11-20 audit, except the agent adapters row, which now has a note.
+
+- **Agent packages are separate.** No `agent-*` package imports another one now, only `agent-core` and `protocol`. `pnpm check` guards this (`scripts/check-agent-boundaries.mjs`, `6934be1`, `3309a11`). Each fix:
+  - Claude CLI lists the official `--model` aliases (`23c40c2`).
+  - Codex CLI and SDK no longer depend on each other, and each has its own mapper and model list (`2b4fc9f`).
+  - opencode CLI and ACP have their own server and model-list code (`06f61cb`).
+- **Grok CLI is its own transport.** `grok/cli` runs `agent-grok-cli`, which is the official headless `grok` CLI. It has no approval cards, so approvals stay on `grok/acp`. Both show as separate options in the desktop and web pickers (`9cf3a45`).
+- **Model pickers were checked in the desktop app against the official lists** (Claude CLI and SDK, Codex CLI and SDK, Grok CLI and ACP, opencode, Pi, Vibe). All of them match.
+- **Transcript and session UX fixes:**
+  - The focus ring is neutral instead of green (`315c8b5`).
+  - File comments get their title from the comment text (`af07ddd`).
+  - Tool events that arrive after Stop are dropped (`6b5411b`).
+  - Repeated "resumed" lines collapse into one (`4d498a3`).
+  - Thinking text is readable and open by default (`de9f385`).
+  - Prompt history uses its index (`193d16e`).
+- **Earlier fixes from 2026-11-20 and 21:**
+  - Design canvas, sidebar and polish.
+  - Light theme.
+  - Documented flags for opencode, Pi and Claude CLI.
+  - Codex CLI uses a read-only sandbox, so writes need approval.
+  - Worker lifecycle and eviction.
+  - Archive and restore.
+  - Browser error page.
+  - Usage pricing.
+  - Privacy export and wipe.
+- **Still open** (tracked in issue #5):
+  - Linking several Design agents is untested.
+  - opencode ACP and Pi CLI `--print` write without an approval card. Pi CLI does this by its documented design.
+  - Codex cached tokens may be counted twice.
+  - `pnpm check` fails the 400-line cap (`supervisor.ts` 413, `App.tsx` 403).
+  - The pricing test server leaks.
+  - The test "a full pool still accepts prompts on every session at once" is flaky. It was 932 of 933 passing on `982b688`.
+
 ## Implementation summary
 
 Rows group related README sections; the per-section audit notes below distinguish individual features and limitations.
@@ -19,7 +54,7 @@ Rows group related README sections; the per-section audit notes below distinguis
 | Checkpoints | Implemented | `packages/checkpoints`, `apps/daemon/src/checkpoint-methods.ts` |
 | Replay product | Partial | Journal/checkpoint replay exists; `packages/replay` is a placeholder |
 | Costs / raw logs | Partial | `packages/pricing`, `packages/agent-core/src/raw-log.ts` |
-| Agent adapters, ACP, handoff, models | Implemented | `packages/agent-*`, `apps/daemon/src/registry.ts`, `handoff*`, `models.ts` |
+| Agent adapters, ACP, handoff, models | Implemented | `packages/agent-*`, `apps/daemon/src/registry.ts`, `handoff*`, `models.ts`; since 2026-11-21 each adapter is self-contained (guarded by `pnpm check`) and Grok CLI is its own transport |
 | Agent details, approvals, destructive commands, secrets | Partial | Adapter capability flags; `team-approvals.ts`, `user-interactions.ts`; `packages/secrets` |
 | Rate limits, leases | Implemented | `apps/daemon/src/rate-retry.ts`, `recovery.ts`; `packages/leases` |
 | Teams | Partial | `apps/daemon/src/team-*.ts`, `mcp-wait.ts`; `packages/team-core`; shared Team UI |
