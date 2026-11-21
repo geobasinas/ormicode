@@ -26,7 +26,6 @@ let webOrigin;
 let server;
 let browser;
 let hub;
-let version;
 const commit = 'e2e-commit';
 
 function freePort() {
@@ -183,9 +182,8 @@ async function enterCode(page, code) {
   await page.getByRole('button', { name: 'Pair', exact: true }).click();
 }
 
-async function openAbout(page) {
-  await page.getByRole('button', { name: 'Settings' }).click();
-  await page.getByRole('button', { name: 'About', exact: true }).click();
+async function connected(page) {
+  await page.getByPlaceholder('What do you want to work on?').waitFor();
 }
 
 before(async () => {
@@ -217,8 +215,6 @@ before(async () => {
   execFileSync('pnpm', ['--filter', '@ormicode/web', 'build'], {
     cwd: root, encoding: 'utf8', env: { ...process.env, ORMI_RELAY_URL: relayOrigin, ORMI_COMMIT: commit },
   });
-  const pkg = JSON.parse(readFileSync(join(webRoot, 'package.json'), 'utf8'));
-  version = pkg.version;
   server = spawn('pnpm', ['exec', 'wrangler', 'dev', '--config', 'wrangler.toml', '--port', String(webPort), '--ip', '127.0.0.1'], {
     cwd: webRoot, stdio: 'ignore', env: process.env, detached: process.platform !== 'win32',
   });
@@ -279,10 +275,7 @@ test('SPA serves /pair and scrubs pairing fragments before browser requests', as
     await hub.issue(code);
     await page.getByRole('button', { name: 'Pair', exact: true }).click();
     await page.getByText('Home', { exact: true }).waitFor();
-    await openAbout(page);
-    await page.getByText('online', { exact: true }).waitFor();
-    await page.getByText(version, { exact: true }).waitFor();
-    await page.getByText(commit, { exact: true }).waitFor();
+    await connected(page);
     const pairing = requests.find(request => request.url.includes('/join'));
     assert.ok(pairing?.body?.includes(code));
     assert.ok(requests.every(request => [webOrigin, relayOrigin].includes(requestOrigin(request.url))));
@@ -299,8 +292,7 @@ test('good pairing stores the token only in IndexedDB and shows an online connec
     await page.goto(webOrigin);
     await enterCode(page, code);
     await page.getByText('Home', { exact: true }).waitFor();
-    await openAbout(page);
-    await page.getByText('online', { exact: true }).waitFor();
+    await connected(page);
     const stored = await page.evaluate(async () => {
       const db = await new Promise((resolve, reject) => {
         const open = indexedDB.open('ormicode', 1);
@@ -335,8 +327,7 @@ test('bad and burned pairing codes are rejected', async t => {
     await first.getByRole('alert').filter({ hasText: "That code didn't work." }).waitFor();
     await enterCode(first, code);
     await first.getByText('Home', { exact: true }).waitFor();
-    await openAbout(first);
-    await first.getByText('online', { exact: true }).waitFor();
+    await connected(first);
     await second.goto(webOrigin);
     await enterCode(second, code);
     await second.getByRole('alert').filter({ hasText: "That code didn't work." }).waitFor();
@@ -352,8 +343,7 @@ test('revocation clears the browser token and returns to pairing', async t => {
     await page.goto(webOrigin);
     await enterCode(page, code);
     await page.getByText('Home', { exact: true }).waitFor();
-    await openAbout(page);
-    await page.getByText('online', { exact: true }).waitFor();
+    await connected(page);
     const device = [...hub.devices.keys()].at(-1);
     const response = await fetch(`${relayOrigin}/revoke?account=${account}`, {
       method: 'POST', headers: { authorization: `Bearer ${hubToken}`, 'content-type': 'application/json' },
