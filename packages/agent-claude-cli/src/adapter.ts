@@ -3,8 +3,7 @@ import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from 'n
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { EventQueue, NO_CAPABILITIES, RawLog, attachRawLog } from '@ormicode/agent-core';
-import { ClaudeSdkAdapter } from '@ormicode/agent-claude-sdk';
-import type { AgentAdapter, Handle, NativeRef, PromptInput, StartSpec } from '@ormicode/agent-core';
+import type { AgentAdapter, Handle, ModelList, NativeRef, PromptInput, StartSpec } from '@ormicode/agent-core';
 import { monotonicFactory } from 'ulid';
 import { mapCliMessage } from './map.ts';
 import { PermissionBroker } from './permissions.ts';
@@ -18,6 +17,18 @@ const efforts = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
 const MAX_LINE_BYTES = 1024 * 1024;
 const execFileAsync = promisify(execFile);
 const MIN_VERSION = [2, 1, 259] as const;
+/** Model aliases documented for `claude --model` (https://code.claude.com/docs/en/model-config). */
+export const CLI_MODEL_ALIASES: ModelList = Object.freeze([
+  { id: 'default', name: 'Default (account setting)' },
+  { id: 'best', name: 'Best (same as Opus)' },
+  { id: 'fable', name: 'Fable' },
+  { id: 'opus', name: 'Opus' },
+  { id: 'sonnet', name: 'Sonnet' },
+  { id: 'haiku', name: 'Haiku' },
+  { id: 'opus[1m]', name: 'Opus (1M context)' },
+  { id: 'sonnet[1m]', name: 'Sonnet (1M context)' },
+  { id: 'opusplan', name: 'Opus Plan (Opus plans, Sonnet executes)' },
+].map((model) => Object.freeze(model)));
 
 export function checkClaudeVersion(output: string): { supported: boolean; version?: string; reason: string } {
   const match = /^\s*(\d+)\.(\d+)\.(\d+)\s+\(Claude Code\)/.exec(output);
@@ -50,11 +61,9 @@ export class ClaudeCliAdapter implements AgentAdapter {
       return { available: false, reason: 'Claude CLI not found or version check failed; authentication not checked' };
     }
   }
-  private modelProbe?: ClaudeSdkAdapter;
   async models() {
-    // The CLI takes the same --model values the SDK enumerates via supportedModels().
-    this.modelProbe ??= new ClaudeSdkAdapter();
-    return this.modelProbe.models();
+    // The CLI has no model-listing command; `--model` takes these documented aliases or a full model name.
+    return CLI_MODEL_ALIASES;
   }
   async start(spec: StartSpec): Promise<Handle> { return this.create(spec); }
   async resume(ref: NativeRef): Promise<Handle> { if (!ref.id) throw new Error('native session ID is required'); return this.create({ ...ref }, ref.id); }
