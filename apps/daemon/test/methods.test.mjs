@@ -77,14 +77,15 @@ test('session.start rejects missing project paths without creating them', async 
   await cleanup();
 });
 
-test('session.delete hides the session from the default list', async () => {
+test('session.delete hides the session from every list', async () => {
   const { daemon, client, cleanup } = await boot();
   const session = await startSession(client);
   assert.equal((await client.request('session.delete', { session })).body.deleted, true);
   const list = await client.request('session.list', {});
   assert.ok(!list.body.sessions.some(s => s.id === session));
+  // Deleted rows are marked, not just archived: they never reappear in lists.
   const all = await client.request('session.list', { archived: true });
-  assert.ok(all.body.sessions.some(s => s.id === session));
+  assert.ok(!all.body.sessions.some(s => s.id === session));
   await cleanup();
 });
 

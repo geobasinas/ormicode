@@ -122,6 +122,9 @@ importers:
       '@ormicode/pty-broker':
         specifier: workspace:*
         version: link:../../packages/pty-broker
+      '@ormicode/relay-client':
+        specifier: workspace:*
+        version: link:../../packages/relay-client
       '@ormicode/secrets':
         specifier: workspace:*
         version: link:../../packages/secrets

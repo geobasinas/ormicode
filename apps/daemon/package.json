@@ -34,6 +34,7 @@
     "@ormicode/protocol": "workspace:*",
     "@ormicode/pty-broker": "workspace:*",
     "@ormicode/pixel-diff": "workspace:*",
+    "@ormicode/relay-client": "workspace:*",
     "@ormicode/secrets": "workspace:*",
     "@ormicode/session-store": "workspace:*",
     "parse5": "8.1.1",

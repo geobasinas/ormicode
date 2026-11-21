@@ -12,6 +12,10 @@ const GB = 1e9, MB = 1e6;
 const reserveDefault = () => (platform() === 'win32' ? 3 * GB : 2 * GB);
 const AVG_WORKER_START = 400 * MB;
 const POOL_CAP_DEFAULT = 20;
+// A pool below 4 cannot host a team parent plus children plus the utility
+// session; on machines where the honest formula lands lower the daemon
+// still serves real work and shrinks only by evicting idle workers.
+const POOL_FLOOR = 4;
 const DISK_FLOOR_DEFAULT = 5 * GB;
 const IDLE_DEFAULT = { laptop: 20 * 60_000, vps: 40 * 60_000 } as const;
 
@@ -151,13 +155,13 @@ export class Resources {
   pool(): PoolComputation {
     const { freeRam, totalRam } = this.probeResult;
     const avg = this.avgWorkerBytes();
-    const computed = Math.max(1, Math.floor(Math.max(0, freeRam - this.reserveBytes()) / avg));
+    const computed = Math.max(POOL_FLOOR, Math.floor(Math.max(0, freeRam - this.reserveBytes()) / avg));
     const envFixed = this.number(Number(this.env.ORMICODE_POOL_MAX));
     const machineFixed = this.number(this.config().resources?.poolSize);
     const cap = this.cap();
     const onBattery = this.probeResult.onBattery === true;
     const batteryFactor = this.number(this.config().resources?.batteryFactor) ?? 0.5;
-    const auto = Math.max(1, Math.floor(computed * (onBattery ? batteryFactor : 1)));
+    const auto = Math.max(2, Math.floor(computed * (onBattery ? batteryFactor : 1)));
     const effective = envFixed !== undefined ? envFixed : machineFixed !== undefined ? machineFixed : Math.min(auto, cap);
     return {
       mode: envFixed !== undefined || machineFixed !== undefined ? 'fixed' : 'auto',

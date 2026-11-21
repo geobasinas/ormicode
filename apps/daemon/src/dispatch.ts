@@ -15,6 +15,7 @@ import { handoffRequest } from './handoff-dispatch.ts';
 import { rejectHandoffRequest } from './handoff-transition.ts';
 import type { RelayClient } from './relay.ts';
 import { archiveMethod } from './archive-methods.ts';
+import { remoteSessionMachine, sessionListMethod } from './remote-sessions.ts';
 import { agentList } from './registry.ts';
 import { diffPatch, DiffStatCache } from '@ormicode/git-core';
 const diffStats = new DiffStatCache();
@@ -53,7 +54,7 @@ import { shouldResetUiCheckFollowups } from './ui-check.ts';
 import { machineMethod } from './machine-methods.ts';
 import type { Resources } from './resources.ts';
 import type { UtilityCalls } from './utility.ts';
-import { digestSummarize, overlaySummaries } from './digest-methods.ts';
+import { digestMethod } from './digest-methods.ts';
 import { replayMethod } from './replay-methods.ts';
 import type { DigestEntry } from '@ormicode/digest';
 /** What a client transport must do: send frames and answer requests. */
@@ -104,6 +105,12 @@ export interface DispatchCtx {
   stopHub: StopHub;
   resources: Resources;
   utility: UtilityCalls;
+  /** device → machine id for paired nodes that announced over the relay. */
+  nodeMachines: Map<string, string>;
+  /** machine id → latest session summaries pushed by that node. */
+  remoteSessions: Map<string, { at: number; sessions: Record<string, unknown>[] }>;
+  /** True when a remote machine hasn't been seen recently. */
+  machineUnreachable(machine: string): boolean;
   /** Latest utility-produced digest entries, keyed by the `since` they were built for. */
   digestSummaries: Map<string, { since: number; entry: DigestEntry }>;
 }
@@ -165,29 +172,10 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         }
         return client.link.reply(id, { text: lines.join('\n') });
       }
-      case 'session.list': {
-        const sessions = listSessions(db, Boolean(body.archived)).filter(s => !s.deleted).map(s => {
-          const base = getSessionPorts(db, s.id);
-          return {
-            id: s.id, title: s.title, state: sessionStatus(ctx, s).state, parentless: Boolean(s.parentless), project: s.project, vendor: s.vendor,
-            transport: s.transport, updatedAt: s.updated_at, branch: s.branch,
-            worktree: Boolean(s.worktree), ...sessionTeamView(db, s), delegatedApproval: ctx.teamApprovals.delegatedOnly(s.id),
-            ...(base === undefined ? {} : { ports: { base, count: SESSION_PORT_COUNT } }),
-            ...(s.base_commit && !s.archived ? { diff: diffStats.get(s.cwd, s.base_commit) } : {}),
-          };
-        });
-        return client.link.reply(id, { sessions });
-      }
-      case 'session.digest': {
-        const since = Number(body.since); const computedAt = Date.now();
-        const mechanical = listSessions(db).map(s => digestOf({ id: s.id, state: sessionStatus(ctx, s).state, reason: s.reason, delegatedApproval: ctx.teamApprovals.delegatedOnly(s.id), updatedAt: s.updated_at },
-          replay(db, s.id).filter(e => e.ts > since).map(e => ({ seq: e.seq, ts: e.ts, kind: e.kind, payload: JSON.parse(e.payload) as Record<string, unknown> })),
-          since, computedAt));
-        // Mechanical entries are served now; utility summaries run in the
-        // background and surface through the journaled digest_ready events.
-        void digestSummarize(ctx, since, mechanical).catch(() => undefined);
-        return client.link.reply(id, { since, computedAt, entries: rankDigest(overlaySummaries(ctx.digestSummaries, since, mechanical)) });
-      }
+      case 'session.list':
+        return sessionListMethod(ctx, client, id, body);
+      case 'session.digest':
+        return digestMethod(ctx, client, id, body);
       case 'session.cost':
       case 'cost.totals':
         return costMethod(ctx, client, id, method, body);
@@ -227,7 +215,12 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
       }
       case 'session.get': {
         const s = getSession(db, String(body.session));
-        if (!s) return client.link.replyError(id, 'session.not_found', String(body.session));
+        if (!s) {
+          const machine = remoteSessionMachine(ctx, String(body.session));
+          return machine
+            ? client.link.replyError(id, 'machine.unreachable', machine)
+            : client.link.replyError(id, 'session.not_found', String(body.session));
+        }
         const base = getSessionPorts(db, s.id);
         return client.link.reply(id, {
           id: s.id, title: s.title, ...sessionStatus(ctx, s), lastSeq: s.last_seq, parentless: Boolean(s.parentless), project: s.project, vendor: s.vendor,
@@ -242,7 +235,12 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
       case 'session.prompt': {
         const session = String(body.session);
         const s = getSession(db, session);
-        if (!s) return client.link.replyError(id, 'session.not_found', session);
+        if (!s) {
+          const machine = remoteSessionMachine(ctx, session);
+          return machine
+            ? client.link.replyError(id, 'machine.unreachable', machine)
+            : client.link.replyError(id, 'session.not_found', session);
+        }
         if (promptBusy(s.state)) return client.link.replyError(id, 'session.busy', promptBusy(s.state)!);
         const pending = getPendingPromptData(db, session);
         const context = [...(pending?.context ?? []), ...(body.context as PromptContext[] | undefined ?? [])];
@@ -335,6 +333,11 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
       }
       case 'session.subscribe': {
         const session = String(body.session);
+        // Remote sessions journal on their node; the hub only holds summaries.
+        if (!getSession(db, session)) {
+          const machine = remoteSessionMachine(ctx, session);
+          if (machine) return client.link.replyError(id, 'machine.unreachable', machine);
+        }
         client.subscriptions.add(session);
         for (const row of replay(db, session, Number(body.after ?? 0))) {
           client.link.send(JSON.parse(JSON.stringify({ v: 1, type: 'evt', session, seq: row.seq, ts: row.ts, body: { kind: row.kind, ...JSON.parse(row.payload) } })));

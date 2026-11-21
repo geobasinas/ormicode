@@ -11,3 +11,4 @@ export * from './teams.ts';
 export * from './projects.ts';
 export * from './approvals.ts';
 export * from './snapshot.ts';
+export * from './machines.ts';

@@ -1,7 +1,7 @@
 import { readdir, stat } from 'node:fs/promises';
 import { homedir, hostname } from 'node:os';
 import { basename, dirname, isAbsolute, resolve } from 'node:path';
-import { addProject, listProjects, removeProject } from '@ormicode/session-store';
+import { addProject, listMachines, listProjects, removeProject } from '@ormicode/session-store';
 import type { Client, DispatchCtx } from './dispatch.ts';
 
 const LOCAL_MACHINE = 'm_local';
@@ -65,15 +65,30 @@ function localMachine(ctx: DispatchCtx) {
   return { id: LOCAL_MACHINE, name: hostname() || 'local', kind: 'local', status: 'online', heartbeat: Date.now(), resources: ctx.resources.status() };
 }
 
+/** Registered machines minus the local one, with truthfulness over liveness:
+ * a node that stopped heartbeating is 'offline', never quietly dropped. */
+function remoteMachines(ctx: DispatchCtx) {
+  return listMachines(ctx.db).filter(m => m.id !== LOCAL_MACHINE).map(m => ({
+    id: m.id, name: m.name, kind: m.kind,
+    status: ctx.machineUnreachable(m.id) ? 'offline' : 'online',
+    heartbeat: m.lastSeen,
+    ...(m.meta?.resources ? { resources: m.meta.resources } : {}),
+  }));
+}
+
 export async function machineMethod(ctx: DispatchCtx, client: Client, id: string, method: string, body: Record<string, unknown>): Promise<void> {
-  if (method === 'machine.list') return client.link.reply(id, { machines: [localMachine(ctx)] });
+  if (method === 'machine.list') return client.link.reply(id, { machines: [localMachine(ctx), ...remoteMachines(ctx)] });
   if (method === 'machine.status') {
     const machine = String(body.machine);
-    if (machine !== LOCAL_MACHINE) return client.link.replyError(id, 'machine.unreachable', machine);
-    return client.link.reply(id, { machine: localMachine(ctx) });
+    if (machine === LOCAL_MACHINE) return client.link.reply(id, { machine: localMachine(ctx) });
+    const remote = remoteMachines(ctx).find(m => m.id === machine);
+    return remote
+      ? client.link.reply(id, { machine: remote })
+      : client.link.replyError(id, 'machine.unreachable', machine);
   }
   if (method === 'machine.projects') {
     const machine = String(body.machine);
+    // Projects live on each node; until requests forward, only local is served.
     if (machine !== LOCAL_MACHINE) return client.link.replyError(id, 'machine.unreachable', machine);
     return client.link.reply(id, { projects: listProjects(ctx.db).filter(p => p.machine === machine).map(p => ({ identity: p.path, path: p.path })) });
   }

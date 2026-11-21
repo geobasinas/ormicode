@@ -5,8 +5,11 @@ import { fileURLToPath } from 'node:url';
 import type { Frame, PromptAttachment, PromptContext } from '@ormicode/protocol';
 import {
   openStore, getSession, getSessionPorts, setState, setWorkerPid, setNativeId, listSessions, settingValue,
+  listMachines, touchMachine, upsertMachine,
   type SessionState,
 } from '@ormicode/session-store';
+import { NODE_METHODS, nodeMethod } from './node-methods.ts';
+import { loadNodeConfig, startNode } from './node-client.ts';
 import { killTree } from './proctree.ts';
 import { recoverSessions, resumePolicy, sweepLogs } from './recovery.ts';
 import { handoffBrief } from './handoff.ts';
@@ -255,13 +258,18 @@ export async function startDaemon(opts: DaemonOptions = {}) {
         link.replyError(id, 'protocol.unknown_method', method);
     }
   };
+  // Team parents stay resident even when idle: their worker link is the
+  // delegation target for child approvals and handoffs. Evicting one makes
+  // delegated approvals fall back to the user.
+  const isTeamParent = (session: string) =>
+    Boolean(db.prepare('SELECT 1 FROM teams WHERE parent = ? AND closed_at IS NULL LIMIT 1').get(session));
   const evictWorker = async (session: string, reason: string) => {
     if (closing) return;
     // Re-check at eviction time: a turn may have started, or a prompt may be
     // mid-dispatch, since the pool or idle timer picked this worker.
     const row = getSession(db, session);
     const w = workers.get(session);
-    if (!w || w.stopping || !row || row.pinned || isSending(session) || !['idle', 'done'].includes(row.state)) return;
+    if (!w || w.stopping || !row || row.pinned || isTeamParent(session) || isSending(session) || !['idle', 'done'].includes(row.state)) return;
     await stopWorker(session);
     record(session, 'evicted', { reason, idleMs: 0 });
     setState(db, session, 'idle', reason);
@@ -289,7 +297,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   const enforcePool = (fresh: string) => {
     const live = [...workers.entries()].filter(([, w]) => w.ready && !w.stopping);
     if (live.length <= resources.poolSize()) return;
-    const idle = live.filter(([s, w]) => s !== fresh && !isSending(s) && getSession(db, s)?.state === 'idle' && !(getSession(db, s)?.pinned));
+    const idle = live.filter(([s, w]) => s !== fresh && !isSending(s) && !isTeamParent(s) && getSession(db, s)?.state === 'idle' && !(getSession(db, s)?.pinned));
     const overflow = live.length - resources.poolSize();
     for (const [session] of idle.slice(0, overflow)) void evictWorker(session, 'pool_full');
   };
@@ -341,14 +349,28 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     resources,
     utility: new UtilityCalls({ readSetting: key => settingValue(db, key) }),
     digestSummaries: new Map(),
+    nodeMachines: new Map(),
+    remoteSessions: new Map(),
+    // Nodes that stop heartbeating are offline, never quietly dropped.
+    machineUnreachable: machine => {
+      const seen = listMachines(db).find(m => m.id === machine)?.lastSeen;
+      return !seen || Date.now() - seen > 120_000;
+    },
   };
+  upsertMachine(db, { id: 'm_local', name: 'local', kind: 'local' });
   dispatchCtx.teamLifecycle.start();
   // Pool size is measured, not fixed: a shrinking machine evicts idle workers.
-  const poolTimer = setInterval(() => enforcePool(''), 60_000);
+  const poolTimer = setInterval(() => { enforcePool(''); touchMachine(db, 'm_local'); }, 60_000);
   poolTimer.unref();
   // idx summaries keep remote session lists fresh without streaming transcripts.
   let idxTimer: NodeJS.Timeout | undefined;
-  const idxSessions = () => listSessions(db).map(s => ({ id: s.id, state: s.state, title: s.title, updatedAt: s.updated_at }));
+  const idxSessions = () => {
+    const local = listSessions(db).map(s => ({ id: s.id, state: s.state, title: s.title, updatedAt: s.updated_at }));
+    for (const [machine, remote] of dispatchCtx.remoteSessions)
+      for (const s of remote.sessions)
+        local.push({ ...s, remote: true, machine, state: dispatchCtx.machineUnreachable(machine) ? 'unreachable' : String(s.state ?? 'idle') } as never);
+    return local;
+  };
   const pushIdx = (to: string) => {
     if (!relay || closing) return;
     relay.sendIdx(to, idxSessions());
@@ -368,6 +390,10 @@ export async function startDaemon(opts: DaemonOptions = {}) {
       },
       onRequest: (link, frame) => {
         const client: Client = { link, subscriptions: new Set(), device: (link as RemoteLink).device ?? 'remote' };
+        if (frame.type === 'req' && NODE_METHODS.has(String(frame.method))) {
+          nodeMethod(dispatchCtx, client, String(frame.id), String(frame.method), (frame.body ?? {}) as Record<string, unknown>);
+          return;
+        }
         void onClientFrame(dispatchCtx, client, frame);
       },
       onDeviceOnline: device => pushIdx(device),
@@ -375,6 +401,10 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     });
     relay.start();
   }
+  // A daemon with node.json (and no hub.json) is a node of a remote hub: it
+  // pushes machine.sessions summaries so the hub can list its sessions.
+  const nodeConfig = hubConfig ? undefined : loadNodeConfig();
+  const stopNode = nodeConfig ? startNode(dispatchCtx, nodeConfig) : undefined;
   const server = await serve(socketPath, link => {
     link.onFrame = frame => {
       if (closing) return;
@@ -425,6 +455,7 @@ export async function startDaemon(opts: DaemonOptions = {}) {
       for (const c of clients) if (c.link !== keep?.link) c.link.close();
       for (const link of workerLinks.values()) link.close();
       mcpCredentials.clear();
+      stopNode?.();
       relay?.close();
       server.close();
       db.close(); dataExports.clear();
