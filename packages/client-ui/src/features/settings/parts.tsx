@@ -45,12 +45,12 @@ export function Group({ title, action, children }: { title: string; action?: Rea
 
 export function Row({ title, hint, mono, children, below }: { title: ReactNode; hint?: ReactNode; mono?: boolean; children?: ReactNode; below?: ReactNode }) {
   return <div className="ormi-settings-row" style={{ padding: '6px 14px' }}>
-    <div style={{ display: 'flex', alignItems: 'center', gap: 14, minHeight: 30 }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 14, rowGap: 6, minHeight: 30 }}>
+      <div style={{ flex: '1 1 220px', minWidth: 0 }}>
         <div style={{ fontSize: 13, color: 'var(--text-title)', overflowWrap: 'anywhere' }}>{title}</div>
         {hint ? <div style={{ fontSize: 11.5, lineHeight: 1.35, color: 'var(--text-secondary)', marginTop: 1, fontFamily: mono ? 'var(--font-mono)' : undefined, overflowWrap: 'anywhere' }}>{hint}</div> : null}
       </div>
-      {children ? <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>{children}</div> : null}
+      {children ? <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'wrap', marginLeft: 'auto' }}>{children}</div> : null}
     </div>
     {below}
   </div>;

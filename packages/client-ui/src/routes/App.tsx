@@ -182,6 +182,7 @@ export function App({ platform, layout, pairPrefill }: { platform: ClientPlatfor
     if (!PAGES[id]) setDesignSession(id);
     if (id === 'design') { if (!PAGES[route]) setDesignSession(route); setRoute(id); return; }
     // Pages (design) are routes, not tabs; Settings is a page that opens as a closable tab.
+    if (id === 'settings' && mobile) setCodeSidebarOverride(false);
     if (!PAGES[id] || id === 'settings') setTabs(ts => ts.includes(id) ? ts : [...ts.slice(-(MAX_TABS - 1)), id]);
     setRoute(id);
   };

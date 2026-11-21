@@ -2671,6 +2671,7 @@ Never show a provider account or sign-out ("Signed in · Claude Code · Max plan
 - **Usage:** 7 / 30 day totals, by project and by day (`cost.totals`).
 - **Data and privacy:** export and wipe (local socket only) and what leaves the computer: no telemetry, public price fetch, relay over TLS without extra encryption.
 - **About:** web and hub versions, agent transports (`agents.list`), price table status with Update now.
+- **Web:** the same page ships in the web app. General shows this browser's pairing with Forget browser and the relay; export and wipe stay disabled because they only run on the hub's own computer; About shows the web version and commit. On a phone, opening Settings collapses the session sidebar and rows wrap their controls under the title. `apps/web/test/web-settings.test.mjs` covers this against a stub hub.
 - Destructive actions use the themed `AlertDialog`; errors and confirmations go through `feedback` toasts. No language selector: the app is English only, and a one-option picker is noise.
 
 **Keyboard**
