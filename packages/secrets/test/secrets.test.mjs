@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { MemoryKeyring, account, declared, resolve, Redactor, audit } from '../src/index.ts';
+import { MemoryKeyring, WindowsDpapi, account, declared, resolve, Redactor, audit } from '../src/index.ts';
 
 test('declared names resolve project scope before machine scope and report missing', () => {
   const project = mkdtempSync(join(tmpdir(), 'ormi-sec-'));
@@ -30,4 +30,18 @@ test('audit lines carry names, never values', () => {
   audit(p, { session: 's_1', name: 'API_KEY', action: 'inject' });
   const line = JSON.parse(readFileSync(p, 'utf8'));
   assert.deepEqual([line.session, line.name, line.action, typeof line.ts], ['s_1', 'API_KEY', 'inject', 'number']);
+});
+
+test('Windows DPAPI backend encrypts, stores ciphertext only, and round-trips', { skip: process.platform !== 'win32' }, () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ormi-dpapi-'));
+  const kr = new WindowsDpapi(join(dir, 'secrets.dpapi.json'));
+  kr.set('machine:K', 'v&al=ue');
+  kr.set('project:/p/x:K', 'proj');
+  const file = readFileSync(join(dir, 'secrets.dpapi.json'), 'utf8');
+  assert.ok(!file.includes('v&al=ue'), 'the file only stores ciphertext');
+  assert.equal(kr.get('machine:K'), 'v&al=ue');
+  assert.equal(kr.get('project:/p/x:K'), 'proj');
+  assert.equal(kr.get('machine:ABSENT'), undefined);
+  kr.delete('machine:K');
+  assert.equal(kr.get('machine:K'), undefined);
 });
