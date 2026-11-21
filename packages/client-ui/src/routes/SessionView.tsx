@@ -20,6 +20,7 @@ import { usePlatform } from '../lib/platform.ts';
 import { HandoffDialog } from '../features/session/HandoffDialog.tsx';
 import type { LayoutDescriptor } from '../lib/layout.ts';
 import { TeamPanel } from '../features/session/TeamPanel.tsx';
+import { ReplayBar, useReplayFrame, useReplayInfo } from '../features/session/ReplayBar.tsx';
 
 interface SessionCost {
   input: number; output: number; cacheRead: number; cacheWrite: number; turns: number;
@@ -33,6 +34,10 @@ export function SessionView({ session, rail = 'none', onRail, onOpen, handoffOpe
   const { transport } = usePlatform();
   const [cost, setCost] = useState<SessionCost>();
   const [editedPrompt, setEditedPrompt] = useState<string>();
+  const [replayAt, setReplayAt] = useState<number>();
+  const replayInfo = useReplayInfo(session, replayAt !== undefined);
+  const replayFrame = useReplayFrame(session, replayAt);
+  const shownEvents = replayAt === undefined ? events : events.filter(e => e.seq <= replayAt);
   const notesLayout = useDefaultLayout({ id: 'ormi.session.notes', storage: globalThis.localStorage });
   const browserLayout = useDefaultLayout({ id: 'ormi.session.browser', storage: globalThis.localStorage });
   const railLayout = rail === 'browser' ? browserLayout : notesLayout;
@@ -71,12 +76,15 @@ export function SessionView({ session, rail = 'none', onRail, onOpen, handoffOpe
         <div style={{ width: '100%', maxWidth: 720, height: 38, padding: '0 var(--space-5)', boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-hint)', whiteSpace: 'nowrap', overflow: 'hidden' }}>
           <History size={11} />{[projectName(details.project), details.vendor, stateLabel(details.state)].join(' · ')}
           {cost && tokens > 0 ? <span title={costTitle}> · {compactTokens(tokens)} tokens{cost.usd !== null ? ` · ${cost.source === 'estimate' ? '~' : ''}${formatUsd(cost.usd)}` : ''}</span> : null}
+          {replayAt === undefined ? <button onClick={() => setReplayAt(events.at(-1)?.seq ?? 0)} title="Scrub through the session recording" style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--text-hint)', cursor: 'pointer', fontSize: 11, padding: 0 }}>Replay</button> : null}
         </div>
       </div> : null}
-      {approvalsAtTop ? <Approvals session={session} pending={approvals} events={events} /> : null}
-      {details ? <Transcript header={details.team ? <TeamPanel details={details} onOpen={onOpen} /> : undefined} events={events} session={session} scratch={scratch} activity={details} busy={['starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying', 'paused_rate_limited'].includes(details.state)} onHandoff={() => onHandoffChange?.(true)} onOpenSession={onOpen} onEditPrompt={setEditedPrompt} /> : null}
-      {!approvalsAtTop ? <Approvals session={session} pending={approvals} events={events} /> : null}
-      {composer}
+      {approvalsAtTop && replayAt === undefined ? <Approvals session={session} pending={approvals} events={events} /> : null}
+      {details ? <Transcript header={details.team ? <TeamPanel details={details} onOpen={onOpen} /> : undefined} events={shownEvents} session={session} scratch={scratch} activity={details} busy={replayAt === undefined && ['starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying', 'paused_rate_limited'].includes(details.state)} onHandoff={() => onHandoffChange?.(true)} onOpenSession={onOpen} onEditPrompt={setEditedPrompt} /> : null}
+      {!approvalsAtTop && replayAt === undefined ? <Approvals session={session} pending={approvals} events={events} /> : null}
+      {replayAt !== undefined && replayInfo
+        ? <ReplayBar session={session} info={replayInfo} frame={replayFrame} at={replayAt} onAt={setReplayAt} onExit={() => setReplayAt(undefined)} onForked={onOpen} />
+        : composer}
       <HandoffDialog session={session} details={details} open={handoffOpen}
         onClose={() => onHandoffChange?.(false)} onOpenSession={onOpen} />
     </div>

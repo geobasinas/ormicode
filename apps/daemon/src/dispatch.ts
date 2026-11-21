@@ -54,6 +54,7 @@ import { machineMethod } from './machine-methods.ts';
 import type { Resources } from './resources.ts';
 import type { UtilityCalls } from './utility.ts';
 import { digestSummarize, overlaySummaries } from './digest-methods.ts';
+import { replayMethod } from './replay-methods.ts';
 import type { DigestEntry } from '@ormicode/digest';
 /** What a client transport must do: send frames and answer requests. */
 export interface ClientLink {
@@ -385,6 +386,7 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         if (method.startsWith('secret.')) return secretMethod(ctx, client, id, method, body);
         if (method.startsWith('data.')) return await dataMethod(ctx, client, id, method, body);
         if (method.startsWith('checkpoint.')) return await checkpointMethod(ctx, client, id, method, body);
+        if (method.startsWith('session.replay')) return await replayMethod(ctx, client, id, method, body);
         if (method.startsWith('file.')) return await fileMethod(ctx, client, id, method, body);
         return client.link.replyError(id, 'protocol.unimplemented', method);
     }
