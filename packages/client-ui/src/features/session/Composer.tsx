@@ -252,7 +252,7 @@ export function Composer({ session, details, onGit, onOpenRail, onHandoff, prefi
       : slashAction === 'mode' ? modes.map(item => ({ value: item.id, label: item.name }))
         : [];
   return (
-    <div style={{ padding: compact ? 0 : '0 var(--space-5) var(--space-4)', display: 'flex', justifyContent: 'center' }}>
+    <div style={{ padding: compact ? 0 : 'var(--space-5) var(--space-5) var(--space-4)', display: 'flex', justifyContent: 'center' }}>
       <div onDragOver={event => { event.preventDefault(); setDropping(true); }} onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) setDropping(false); }} onDrop={event => { event.preventDefault(); setDropping(false); void addFiles(event.dataTransfer.files); }} style={{
         width: '100%', maxWidth: 680, background: 'var(--bg-card)', border: '1px solid var(--line-card)',
         borderRadius: 12, padding: '10px 12px 8px', boxSizing: 'border-box', minWidth: 0, position: 'relative',
