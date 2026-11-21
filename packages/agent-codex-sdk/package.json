@@ -9,7 +9,6 @@
   "dependencies": {
     "@openai/codex-sdk": "0.169.0",
     "@ormicode/agent-core": "workspace:*",
-    "@ormicode/protocol": "workspace:*",
-    "@ormicode/agent-codex-cli": "workspace:*"
+    "@ormicode/protocol": "workspace:*"
   }
 }

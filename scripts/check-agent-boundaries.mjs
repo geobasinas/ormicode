@@ -9,8 +9,6 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 // by one. Delete each entry when its import goes; delete the whole list
 // (and the `allowlist` parameter) once it is empty.
 export const TEMP_ALLOWLIST = [
-  { from: 'agent-codex-cli', to: 'agent-codex-sdk' },
-  { from: 'agent-codex-sdk', to: 'agent-codex-cli' }, // cycle with the entry above
   { from: 'agent-opencode-cli', to: 'agent-opencode-sdk' },
   { from: 'agent-opencode-acp', to: 'agent-opencode-sdk' },
 ];

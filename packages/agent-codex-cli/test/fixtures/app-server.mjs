@@ -10,9 +10,10 @@ let workspace;
 let sandbox;
 const pending = new Map();
 const finishTurn = (threadId, turnId) => {
-  notify('item/started', { threadId, turnId, item: { type: 'agent_message', id: 'msg-1', text: 'ok' } });
-  notify('item/completed', { threadId, turnId, item: { type: 'agent_message', id: 'msg-1', text: 'ok' } });
-  notify('turn/completed', { threadId, turn: { id: turnId, usage: { input_tokens: 3, output_tokens: 1, cached_input_tokens: 0, cache_write_input_tokens: 0 } } });
+  notify('item/started', { threadId, turnId, item: { type: 'agentMessage', id: 'msg-1', text: 'ok' } });
+  notify('item/completed', { threadId, turnId, item: { type: 'agentMessage', id: 'msg-1', text: 'ok' } });
+  notify('thread/tokenUsage/updated', { threadId, turnId, tokenUsage: { total: { inputTokens: 3, outputTokens: 1, cachedInputTokens: 0, reasoningOutputTokens: 0, totalTokens: 4 }, last: { inputTokens: 3, outputTokens: 1, cachedInputTokens: 0, reasoningOutputTokens: 0, totalTokens: 4 }, modelContextWindow: null } });
+  notify('turn/completed', { threadId, turn: { id: turnId, items: [], status: 'completed', error: null } });
 };
 const lines = readline.createInterface({ input: process.stdin });
 for await (const line of lines) {
@@ -30,7 +31,12 @@ for await (const line of lines) {
     if (!['read-only', 'workspace-write'].includes(message.params.sandbox)) process.exit(4);
     out({ id: message.id, result: { thread: { id: message.params.threadId ?? 'thread-1' }, model: message.params.model ?? 'gpt-fixture-default' } });
   }
-  else if (message.method === 'model/list') out({ id: message.id, result: { data: [{ id: 'gpt-test-1', displayName: 'GPT Test', supportedReasoningEfforts: [{ reasoningEffort: 'low' }, { reasoningEffort: 'high' }] }, { id: 'hidden-model', hidden: true }], nextCursor: null } });
+  else if (message.method === 'model/list') {
+    // Real app-server emits unrelated notifications (e.g. remote control) while listing models.
+    notify('remoteControl/status/changed', { status: 'disabled' });
+    const id = message.id; // reply later so the client handles the notification first
+    setTimeout(() => out({ id, result: { data: [{ id: 'gpt-test-1', displayName: 'GPT Test', supportedReasoningEfforts: [{ reasoningEffort: 'low' }, { reasoningEffort: 'high' }] }, { id: 'hidden-model', hidden: true }], nextCursor: null } }), 20);
+  }
   else if (message.method === 'turn/start') {
     if (message.params.threadId !== 'thread-1' || message.params.input[0].type !== 'text' || !Array.isArray(message.params.input[0].text_elements)) process.exit(5);
     const text = message.params.input[0].text;

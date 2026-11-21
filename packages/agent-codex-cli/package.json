@@ -7,7 +7,6 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@ormicode/agent-codex-sdk": "workspace:*",
     "@ormicode/agent-core": "workspace:*",
     "@ormicode/protocol": "workspace:*",
     "zod": "4.6.7",

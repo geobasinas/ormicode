@@ -1,34 +1,20 @@
 import { spawn } from 'node:child_process';
 import { EventQueue, NO_CAPABILITIES, RawLog, classifyCommand } from '@ormicode/agent-core';
 import type { AgentAdapter, Handle, ModelList, NativeRef, PromptInput, StartSpec } from '@ormicode/agent-core';
-import type { AgentEvent } from '@ormicode/protocol';
 import { ulid } from 'ulid';
 import * as z from 'zod/mini';
-import { CodexEventMapper } from '@ormicode/agent-codex-sdk';
 import { CodexAppServer } from './app-server.ts';
+import { CodexNotificationMapper } from './map.ts';
 
 type Spawn = NonNullable<Parameters<typeof CodexAppServer.start>[0]>['spawn'];
-interface AppItem { type?: string; id?: string; text?: string; command?: string; aggregatedOutput?: string; exitCode?: number; status?: string; server?: string; tool?: string; arguments?: unknown; result?: unknown; error?: unknown; changes?: unknown; items?: { text?: string; completed?: boolean }[]; summary?: string[] }
-/** Translate app-server camelCase items into the exec-style items the shared mapper understands. */
-function translateItem(item: unknown): unknown {
-  const it = item as AppItem;
-  if (!it || typeof it !== 'object') return item;
-  if (it.type === 'agentMessage') return { type: 'agent_message', id: it.id, text: it.text ?? '' };
-  if (it.type === 'reasoning') return { type: 'reasoning', id: it.id, text: it.text ?? (it.summary ?? []).join('\n') };
-  if (it.type === 'commandExecution') return { type: 'command_execution', id: it.id, command: it.command ?? '', aggregated_output: it.aggregatedOutput ?? '', exit_code: it.exitCode, status: it.status };
-  if (it.type === 'mcpToolCall') return { type: 'mcp_tool_call', id: it.id, server: it.server ?? '', tool: it.tool ?? '', arguments: it.arguments ?? null, result: it.result, error: it.error, status: it.status };
-  if (it.type === 'fileChange') return { type: 'file_change', id: it.id, changes: it.changes ?? [], status: it.status };
-  if (it.type === 'plan') return { type: 'todo_list', id: it.id, items: (it.items ?? []).map((entry) => ({ text: entry.text ?? '', completed: !!entry.completed })) };
-  return item;
-}
 const APPROVAL_OPTIONS = [{ id: 'accept', label: 'Approve' }, { id: 'acceptForSession', label: 'Approve for session' }, { id: 'decline', label: 'Decline' }, { id: 'cancel', label: 'Cancel turn' }];
 
 interface Pending { resolve: (result: unknown) => void; turnId?: string; respond?: (option: string) => unknown; options?: string[] }
 interface Session {
   server: CodexAppServer; queue: EventQueue; log?: RawLog;
   nativeId?: string; turnId?: string; active: boolean; disposed: boolean;
-  model?: string; usageModel?: string; reroutedModel?: string; effort?: string; outputSchema?: unknown; backlog: string[]; lastUsage?: { input_tokens: number; output_tokens: number; cached_input_tokens: number; cache_write_input_tokens: number };
-  approvals: Map<string, Pending>; questions: Map<string, Pending>; mapper?: CodexEventMapper;
+  model?: string; usageModel?: string; effort?: string; outputSchema?: unknown; backlog: string[];
+  approvals: Map<string, Pending>; questions: Map<string, Pending>; mapper: CodexNotificationMapper;
 }
 
 /** Codex app-server adapter: threads, turns, approvals, steering, per-turn model/effort. */
@@ -51,7 +37,7 @@ export class CodexCliAdapter implements AgentAdapter {
     return version ? { available: true, version } : { available: false, reason: 'codex executable not found or --version failed' };
   }
   async models(): Promise<ModelList> {
-    const server = await this.openServer({});
+    const server = await this.openServer();
     try { return (await server.models()).map((model) => ({ id: model.id, ...(model.name ? { name: model.name } : {}), ...(model.efforts ? { efforts: model.efforts } : {}) })); }
     finally { server.close(); }
   }
@@ -63,7 +49,7 @@ export class CodexCliAdapter implements AgentAdapter {
   private async create(spec: StartSpec, nativeId?: string): Promise<Handle> {
     if (!spec.cwd) throw new Error('cwd is required');
     if (spec.mode && spec.mode !== 'read-only' && spec.mode !== 'workspace-write') throw new Error('Unsupported or unsafe sandbox mode');
-    const session: Session = { server: undefined as unknown as CodexAppServer, queue: new EventQueue(), active: false, disposed: false, backlog: [], approvals: new Map(), questions: new Map(), ...(spec.model ? { model: spec.model } : {}), ...(spec.effort ? { effort: spec.effort } : {}), ...(nativeId ? { nativeId } : {}) };
+    const session: Session = { server: undefined as unknown as CodexAppServer, queue: new EventQueue(), active: false, disposed: false, backlog: [], approvals: new Map(), questions: new Map(), mapper: new CodexNotificationMapper(), ...(spec.model ? { model: spec.model } : {}), ...(spec.effort ? { effort: spec.effort } : {}), ...(nativeId ? { nativeId } : {}) };
     const handle = Object.freeze({ id: `codex-cli-${++this.serial}` });
     session.log = spec.logDir ? new RawLog(spec.logDir) : undefined;
     session.server = await this.openServer(session);
@@ -80,11 +66,13 @@ export class CodexCliAdapter implements AgentAdapter {
     this.sessions.set(handle, session);
     return handle;
   }
-  private openServer(session?: Partial<Session>): Promise<CodexAppServer> {
+  /** Only a full session gets handlers; a bare server (e.g. `models()`) ignores notifications. */
+  private openServer(session?: Session): Promise<CodexAppServer> {
+    const live = session?.mapper && session.queue ? session : undefined;
     return CodexAppServer.start({
       spawn: this.spawnFn, log: session?.log,
-      onNotification: session ? (method, params) => this.onNotification(session as Session, method, params) : undefined,
-      onRequest: session ? (method, params) => this.onRequest(session as Session, method, params) : undefined,
+      onNotification: live ? (method, params) => this.onNotification(live, method, params) : undefined,
+      onRequest: live ? (method, params) => this.onRequest(live, method, params) : undefined,
     });
   }
   async prompt(handle: Handle, input: PromptInput): Promise<void> {
@@ -168,44 +156,19 @@ export class CodexCliAdapter implements AgentAdapter {
     return session;
   }
   private onNotification(session: Session, method: string, params: unknown): void {
+    if (!session.mapper || !session.queue) return;
     try { this.handleNotification(session, method, params); }
     catch (error) { session.queue.push([{ kind: 'error', code: 'unknown', message: `notification ${method}: ${error instanceof Error ? error.message : error}` }]); }
   }
   private handleNotification(session: Session, method: string, params: unknown): void {
     if (session.disposed) return;
-    const p = params as Record<string, never>;
-    const mapper = session.mapper ??= new CodexEventMapper();
-    const feed = (event: unknown) => {
-      const mapped = mapper.map(event as never);
-      if (mapped.nativeId) session.nativeId = mapped.nativeId;
-      const model = session.reroutedModel ?? session.usageModel;
-      if (mapped.events.length) session.queue.push(mapped.events.map(e => e.kind === 'usage' && model ? { ...e, model } : e) as AgentEvent[]);
-      if (mapped.terminal) { session.active = false; session.turnId = undefined; session.queue.push([{ kind: 'turn_end' }]); }
-    };
-    if (method === 'item/started') feed({ type: 'item.started', item: translateItem(p.item) });
-    else if (method === 'item/completed') feed({ type: 'item.completed', item: translateItem(p.item) });
-    else if (method === 'turn/started') { session.turnId = (p.turn as { id: string }).id; feed({ type: 'turn.started' }); }
-    else if (method === 'turn/completed') {
-      const turn = p.turn as { id?: string; status?: string; error?: { message?: string } | null };
-      if (turn?.status === 'interrupted' && (turn.id ?? session.turnId)) this.expireTurnInteractions(session, (turn.id ?? session.turnId)!);
-      if (turn?.status === 'failed' || turn?.error?.message) feed({ type: 'turn.failed', error: { message: turn.error?.message ?? 'turn failed' } });
-      else feed({ type: 'turn.completed', usage: session.lastUsage ?? { input_tokens: 0, output_tokens: 0, cached_input_tokens: 0, cache_write_input_tokens: 0 } });
-      session.lastUsage = undefined; session.reroutedModel = undefined;
-    }
-    else if (method === 'model/rerouted') session.reroutedModel = (p as { toModel?: string }).toModel || undefined;
-    else if (method === 'thread/tokenUsage/updated') {
-      const last = (p.tokenUsage as { last?: Record<string, number> })?.last;
-      if (last) session.lastUsage = { input_tokens: last.inputTokens ?? 0, output_tokens: last.outputTokens ?? 0, cached_input_tokens: last.cachedInputTokens ?? 0, cache_write_input_tokens: last.cacheWriteInputTokens ?? 0 };
-    }
-    else if (method === 'thread/started') session.nativeId = (p.thread as { id: string }).id;
-    else if (method === 'item/agentMessage/delta') session.queue.push([{ kind: 'text_delta', text: (p.delta as string) ?? '' }]);
-    else if (method === 'item/reasoning/textDelta') session.queue.push([{ kind: 'thinking_delta', text: (p.delta as string) ?? '' }]);
-    else if (method === 'item/plan/delta') session.queue.push([{ kind: 'text_delta', text: (p.delta as string) ?? '' }]);
-    else if (method === 'error') {
-      const error = p as { message?: string; error?: { message?: string }; willRetry?: boolean };
-      const message = String(error.error?.message ?? error.message ?? 'Codex app-server error');
-      session.queue.push([error.willRetry === true ? { kind: 'state', state: 'retrying', reason: message } : { kind: 'error', code: 'unknown', message }]);
-    }
+    const mapped = session.mapper.map(method, params, session.usageModel);
+    if (mapped.nativeId) session.nativeId = mapped.nativeId;
+    if (mapped.turnId) session.turnId = mapped.turnId;
+    const ended = mapped.ended?.turnId ?? session.turnId;
+    if (mapped.ended?.interrupted && ended) this.expireTurnInteractions(session, ended);
+    if (mapped.events.length) session.queue.push(mapped.events);
+    if (mapped.ended) { session.active = false; session.turnId = undefined; session.queue.push([{ kind: 'turn_end' }]); }
   }
   private onRequest(session: Session, method: string, params: unknown): Promise<unknown> {
     const p = params as { turnId?: string; approvalId?: string; itemId?: string; command?: string; reason?: string; permissions?: Record<string, unknown>; questions?: { id: string; question: string; header: string; options?: { label: string; description?: string }[] | null }[] };

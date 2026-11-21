@@ -302,9 +302,6 @@ importers:
 
   packages/agent-codex-cli:
     dependencies:
-      '@ormicode/agent-codex-sdk':
-        specifier: workspace:*
-        version: link:../agent-codex-sdk
       '@ormicode/agent-core':
         specifier: workspace:*
         version: link:../agent-core
@@ -323,9 +320,6 @@ importers:
       '@openai/codex-sdk':
         specifier: 0.169.0
         version: 0.169.0
-      '@ormicode/agent-codex-cli':
-        specifier: workspace:*
-        version: link:../agent-codex-cli
       '@ormicode/agent-core':
         specifier: workspace:*
         version: link:../agent-core

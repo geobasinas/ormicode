@@ -19,6 +19,7 @@ test('CLI adapter starts a thread, runs a turn with deltas and usage, resumes', 
   const handle = await a.start({ cwd: '/repo', model: 'gpt-test-1', effort: 'low', mode: 'workspace-write' });
   const { events } = await turn(a, handle, 'hi');
   assert.deepEqual(events.map((event) => event.kind), ['turn_start', 'text_delta', 'text', 'usage', 'turn_end']);
+  assert.deepEqual(events.find((event) => event.kind === 'usage'), { kind: 'usage', input: 3, output: 1, cacheRead: 0, cacheWrite: 0, model: 'gpt-test-1' });
   const resumed = await a.resume({ id: 'thread-1', cwd: '/repo' });
   await a.dispose(resumed);
   await a.dispose(handle);
@@ -92,6 +93,13 @@ test('CLI adapter interrupt and model list', async () => {
   const models = await a.models();
   assert.deepEqual(models, [{ id: 'gpt-test-1', name: 'GPT Test', efforts: ['low', 'high'] }]);
   await a.dispose(handle);
+});
+
+test('CLI adapter models() survives unknown notifications without a session', async () => {
+  const a = adapter();
+  assert.deepEqual(await a.models(), [{ id: 'gpt-test-1', name: 'GPT Test', efforts: ['low', 'high'] }]);
+  const partial = { disposed: false };
+  assert.doesNotThrow(() => a.onNotification(partial, 'remoteControl/status/changed', { status: 'disabled' }));
 });
 
 for (const text of ['approve me', 'question me']) test(`interrupt expires the pending interaction (${text}) and permits another turn`, async t => {

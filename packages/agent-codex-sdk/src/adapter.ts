@@ -4,9 +4,10 @@ import { join } from 'node:path';
 import { Codex } from '@openai/codex-sdk';
 import type { CyberAccessProgram, Input, Thread, ThreadOptions, TurnOptions } from '@openai/codex-sdk';
 import { EventQueue, NO_CAPABILITIES, RawLog } from '@ormicode/agent-core';
-import { CodexAppServer } from '@ormicode/agent-codex-cli';
 import type { AgentAdapter, Handle, NativeRef, PromptInput, StartSpec } from '@ormicode/agent-core';
 import { CodexEventMapper } from './map.ts';
+import { listCodexModels } from './models.ts';
+import type { Spawn } from './models.ts';
 import { newId } from '@ormicode/protocol';
 
 const CYBER_PROGRAMS = new Set(['standard', 'daybreak_blue', 'daybreak_red']);
@@ -23,17 +24,18 @@ export class CodexSdkAdapter implements AgentAdapter {
   private readonly sessions = new Map<Handle, Session>();
   private readonly client: CodexClient;
   private readonly onNativeId?: (handle: Handle, id: string) => void;
+  private readonly spawnFn?: Spawn;
   private serial = 0;
-  constructor(options: { client?: CodexClient; onNativeId?: (handle: Handle, id: string) => void } = {}) {
+  constructor(options: { client?: CodexClient; onNativeId?: (handle: Handle, id: string) => void; spawn?: Spawn } = {}) {
     this.client = options.client ?? new Codex();
     this.onNativeId = options.onNativeId;
+    this.spawnFn = options.spawn;
   }
   async detect() { return { available: true, reason: 'SDK package loaded; executable and authentication not checked' }; }
   async models() {
     // The SDK exposes no model list; the backing codex binary answers
-    // model/list over app-server stdio, same as the cli transport.
-    const server = await CodexAppServer.start();
-    try { return await server.models(); } finally { server.close(); }
+    // model/list over its app-server stdio protocol.
+    return listCodexModels({ ...(this.spawnFn ? { spawn: this.spawnFn } : {}) });
   }
   async start(spec: StartSpec): Promise<Handle> { return this.create(spec); }
   async resume(ref: NativeRef): Promise<Handle> {
