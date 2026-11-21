@@ -13,7 +13,7 @@ import { listClaudeModels } from './models.ts';
 type Spawn = (command: string, args: string[], options: SpawnOptionsWithoutStdio) => ChildProcessWithoutNullStreams;
 interface Session { spec: StartSpec; queue: EventQueue; log?: RawLog; nativeId?: string; process?: ChildProcessWithoutNullStreams; running?: Promise<void>; broker?: PermissionBroker; active: boolean; disposed: boolean; needsResumeId: boolean }
 const newId = monotonicFactory();
-const modes = new Set(['default', 'acceptEdits', 'plan', 'dontAsk']);
+const modes = new Set(['default', 'acceptEdits', 'plan', 'dontAsk', 'auto', 'manual']);
 const modeList = [...modes].map(id => ({ id, name: id }));
 const efforts = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
 const MAX_LINE_BYTES = 1024 * 1024;

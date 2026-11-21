@@ -11,6 +11,8 @@ import type { AgentAdapter, Handle, NativeRef, PromptInput, StartSpec } from '@o
 import { GrokCliMapper } from './map.ts';
 
 type Spawn = (command: string, args: string[], options: SpawnOptionsWithoutStdio) => ChildProcessWithoutNullStreams;
+// `bypassPermissions` is excluded: it removes the sandbox boundary entirely.
+const GROK_MODES = new Set(['default', 'acceptEdits', 'auto', 'dontAsk', 'plan']);
 type Session = { spec: StartSpec; log?: RawLog; model?: string; effort?: string; outputSchema?: string; nativeId?: string; queue: EventQueue; active: boolean; disposed: boolean; needsRecovery: boolean; process?: ChildProcessWithoutNullStreams; running?: Promise<void>; interrupted: boolean };
 const execFileAsync = promisify(execFile);
 const limit = 1024 * 1024;
@@ -36,7 +38,7 @@ function grokModelCatalog(): Map<string, { name: string; efforts: string[] }> {
 export class GrokCliAdapter implements AgentAdapter {
   readonly id = 'grok';
   readonly transport = 'cli' as const;
-  readonly capabilities = { ...NO_CAPABILITIES, resume: true, model: true, effort: true, configOptions: true };
+  readonly capabilities = { ...NO_CAPABILITIES, resume: true, model: true, effort: true, modes: true, configOptions: true };
   private sessions = new Map<Handle, Session>();
   private options: { executable?: string; spawn?: Spawn; onNativeId?: (handle: Handle, id: string) => void };
   constructor(options: { executable?: string; spawn?: Spawn; onNativeId?: (handle: Handle, id: string) => void } = {}) { this.options = options; }
@@ -64,7 +66,7 @@ export class GrokCliAdapter implements AgentAdapter {
   }
   private create(spec: StartSpec, nativeId?: string): Handle {
     if (!spec.cwd) throw new Error('cwd is required');
-    if (spec.mode) throw new Error('Grok CLI modes are not supported');
+    if (spec.mode && !GROK_MODES.has(spec.mode)) throw new Error('Unsupported or unsafe Grok permission mode');
     const handle = Object.freeze({ id: `grok-cli-${randomUUID()}` });
     this.sessions.set(handle, { model: spec.model, effort: spec.effort, spec: { ...spec }, log: spec.logDir ? new RawLog(spec.logDir) : undefined, nativeId, queue: new EventQueue(), active: false, disposed: false, needsRecovery: false, interrupted: false });
     return handle;
@@ -86,7 +88,10 @@ export class GrokCliAdapter implements AgentAdapter {
       await writeFile(promptFile, text, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
       if (session.disposed) return;
       if (session.interrupted) { session.queue.push([{ kind: 'interrupted', reason: 'user_abort' }]); return; }
-      const args = ['--no-auto-update', '--always-approve', '--output-format', 'streaming-json', '--prompt-file', promptFile];
+      // Headless cannot answer permission prompts: with no mode chosen, `--always-approve`
+      // keeps runs unblocked; an explicit --permission-mode applies the vendor's own rules
+      // (default/dontAsk deny instead of asking, auto's classifier decides).
+      const args = ['--no-auto-update', ...(session.spec.mode ? ['--permission-mode', session.spec.mode] : ['--always-approve']), '--output-format', 'streaming-json', '--prompt-file', promptFile];
       if (session.nativeId) args.push('--resume', session.nativeId);
       if (session.model) args.push('--model', session.model);
       if (session.effort) args.push('--reasoning-effort', session.effort);
@@ -154,6 +159,16 @@ export class GrokCliAdapter implements AgentAdapter {
   async setEffort(handle: Handle, effort: string): Promise<void> {
     const session = this.get(handle); session.effort = effort;
     session.queue.push([{ kind: 'effort_changed', effort }]);
+  }
+  /** Grok's permission modes are the approval surface; ids are the vendor's own --permission-mode values. */
+  modes(): readonly { id: string; name: string }[] { return [...GROK_MODES].map(id => ({ id, name: id })); }
+  agentModes(): readonly { id: string; name: string }[] { return [...GROK_MODES].map(id => ({ id, name: id })); }
+  async setMode(handle: Handle, mode: string): Promise<void> {
+    const session = this.get(handle);
+    if (session.active) throw new Error('Grok session is busy; mode applies to the next turn');
+    if (!GROK_MODES.has(mode)) throw new Error('Unsupported or unsafe Grok permission mode');
+    session.spec.mode = mode;
+    session.queue.push([{ kind: 'mode_changed', mode, effective: 'next_turn' }]);
   }
   /** 'outputSchema' takes a JSON schema string for --json-schema on the next turn. */
   async setOption(handle: Handle, id: string, value: string | boolean): Promise<void> {

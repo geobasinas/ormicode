@@ -37,6 +37,8 @@ export class CodexSdkAdapter implements AgentAdapter {
     // model/list over its app-server stdio protocol.
     return listCodexModels({ ...(this.spawnFn ? { spawn: this.spawnFn } : {}) });
   }
+  /** Codex sandbox modes are the permission boundary; on the SDK they apply at thread start, so they are enumerable pre-session but not switchable mid-session. */
+  agentModes(): readonly { id: string; name: string }[] { return ['read-only', 'workspace-write'].map(id => ({ id, name: id })); }
   async start(spec: StartSpec): Promise<Handle> { return this.create(spec); }
   async resume(ref: NativeRef): Promise<Handle> {
     if (!ref.id) throw new Error('native thread ID is required');

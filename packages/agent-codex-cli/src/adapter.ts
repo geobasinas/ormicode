@@ -8,12 +8,22 @@ import { CodexNotificationMapper } from './map.ts';
 
 type Spawn = NonNullable<Parameters<typeof CodexAppServer.start>[0]>['spawn'];
 const APPROVAL_OPTIONS = [{ id: 'accept', label: 'Approve' }, { id: 'acceptForSession', label: 'Approve for session' }, { id: 'decline', label: 'Decline' }, { id: 'cancel', label: 'Cancel turn' }];
+// `danger-full-access` is rejected at start, so it is not offered mid-session either.
+const SANDBOX_MODES = ['read-only', 'workspace-write'] as const;
+// `never` would silence the approval forwarding this adapter exists for; the vendor's other
+// policies stay available and apply on the next turn (`turn/start.approvalPolicy`).
+const APPROVAL_POLICIES = ['untrusted', 'on-failure', 'on-request'] as const;
+const sandboxPolicy = (mode: string) =>
+  mode === 'workspace-write'
+    ? { type: 'workspaceWrite', writableRoots: [], networkAccess: false, excludeTmpdirEnvVar: false, excludeSlashTmp: false }
+    : { type: 'readOnly', networkAccess: false };
 
 interface Pending { resolve: (result: unknown) => void; turnId?: string; respond?: (option: string) => unknown; options?: string[] }
 interface Session {
   server: CodexAppServer; queue: EventQueue; log?: RawLog;
   nativeId?: string; turnId?: string; active: boolean; disposed: boolean;
   model?: string; usageModel?: string; effort?: string; outputSchema?: unknown; backlog: string[];
+  sandbox: string; approval?: string;
   approvals: Map<string, Pending>; questions: Map<string, Pending>; mapper: CodexNotificationMapper;
 }
 
@@ -21,7 +31,7 @@ interface Session {
 export class CodexCliAdapter implements AgentAdapter {
   readonly id = 'codex';
   readonly transport = 'cli' as const;
-  readonly capabilities = { ...NO_CAPABILITIES, approvals: true, steer: true, resume: true, model: true, effort: true, configOptions: true };
+  readonly capabilities = { ...NO_CAPABILITIES, approvals: true, steer: true, resume: true, model: true, effort: true, modes: true, configOptions: true };
   private readonly sessions = new Map<Handle, Session>();
   private readonly spawnFn?: Spawn;
   private readonly onNativeId?: (handle: Handle, id: string) => void;
@@ -56,7 +66,7 @@ export class CodexCliAdapter implements AgentAdapter {
   private async create(spec: StartSpec, nativeId?: string): Promise<Handle> {
     if (!spec.cwd) throw new Error('cwd is required');
     if (spec.mode && spec.mode !== 'read-only' && spec.mode !== 'workspace-write') throw new Error('Unsupported or unsafe sandbox mode');
-    const session: Session = { server: undefined as unknown as CodexAppServer, queue: new EventQueue(), active: false, disposed: false, backlog: [], approvals: new Map(), questions: new Map(), mapper: new CodexNotificationMapper(), ...(spec.model ? { model: spec.model } : {}), ...(spec.effort ? { effort: spec.effort } : {}), ...(nativeId ? { nativeId } : {}) };
+    const session: Session = { server: undefined as unknown as CodexAppServer, queue: new EventQueue(), active: false, disposed: false, backlog: [], sandbox: spec.mode ?? 'read-only', approvals: new Map(), questions: new Map(), mapper: new CodexNotificationMapper(), ...(spec.model ? { model: spec.model } : {}), ...(spec.effort ? { effort: spec.effort } : {}), ...(nativeId ? { nativeId } : {}) };
     const handle = Object.freeze({ id: `codex-cli-${++this.serial}` });
     session.log = spec.logDir ? new RawLog(spec.logDir) : undefined;
     session.server = await this.openServer(session);
@@ -88,7 +98,8 @@ export class CodexCliAdapter implements AgentAdapter {
     if (!input.text) throw new Error('prompt must not be empty');
     const text = session.backlog.length ? `${session.backlog.join('\n\n')}\n\n${input.text}` : input.text;
     session.backlog = [];
-    const extra: Record<string, unknown> = {};
+    const extra: Record<string, unknown> = { sandboxPolicy: sandboxPolicy(session.sandbox) };
+    if (session.approval) extra.approvalPolicy = session.approval;
     if (session.model) extra.model = session.model;
     if (session.effort) extra.effort = session.effort;
     if (session.outputSchema !== undefined) extra.outputSchema = session.outputSchema;
@@ -111,9 +122,30 @@ export class CodexCliAdapter implements AgentAdapter {
   }
   async setOption(handle: Handle, id: string, value: string | boolean): Promise<void> {
     const session = this.get(handle);
-    if (id !== 'outputSchema' || typeof value === 'boolean') throw new Error('Unknown Codex option');
-    try { session.outputSchema = value ? JSON.parse(value) : undefined; } catch { throw new Error('outputSchema must be valid JSON'); }
+    if (id === 'approvalPolicy') {
+      if (typeof value !== 'string' || !(APPROVAL_POLICIES as readonly string[]).includes(value)) throw new Error('Unknown or unsafe Codex approval policy');
+      session.approval = value;
+    } else if (id === 'outputSchema' && typeof value === 'string') {
+      try { session.outputSchema = value ? JSON.parse(value) : undefined; } catch { throw new Error('outputSchema must be valid JSON'); }
+    } else throw new Error('Unknown Codex option');
     session.queue.push([{ kind: 'config_option', id, value }]);
+  }
+  /** Sandbox modes are Codex's permission boundary; ids are the vendor's own sandbox-mode names. */
+  modes(): readonly { id: string; name: string }[] { return SANDBOX_MODES.map(id => ({ id, name: id })); }
+  agentModes(): readonly { id: string; name: string }[] { return SANDBOX_MODES.map(id => ({ id, name: id })); }
+  async setMode(handle: Handle, mode: string): Promise<void> {
+    const session = this.get(handle);
+    if (!(SANDBOX_MODES as readonly string[]).includes(mode)) throw new Error('Unsupported or unsafe sandbox mode');
+    session.sandbox = mode; // applied via `turn/start.sandboxPolicy` on the next turn
+    session.queue.push([{ kind: 'mode_changed', mode, effective: 'next_turn' }]);
+  }
+  configOptions(handle: Handle): readonly { id: string; category?: string; type?: string; name?: string; current?: string | boolean; choices?: { value: string | boolean; name?: string }[] }[] {
+    const session = this.sessions.get(handle);
+    return [{
+      id: 'approvalPolicy', name: 'Approval policy', category: 'approval', type: 'select',
+      current: session?.approval ?? 'on-request',
+      choices: APPROVAL_POLICIES.map(value => ({ value, name: value })),
+    }];
   }
   async approve(handle: Handle, requestId: string, optionId: string): Promise<void> {
     const session = this.get(handle);

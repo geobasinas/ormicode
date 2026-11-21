@@ -87,3 +87,16 @@ test('CLI models come from `grok models` with names and efforts from the officia
   await rm(dir, { recursive: true, force: true });
  }
 });
+test('CLI mode swaps --always-approve for --permission-mode on the turn process', async () => {
+ let args; const adapter = new GrokCliAdapter({ spawn: (_cmd, a, o) => { args = a; return fake(_cmd, a, o); } });
+ const handle = await adapter.start({ cwd: process.cwd() });
+ await run(adapter, handle, 'hi');
+ assert.ok(args.includes('--always-approve'));
+ assert.ok(!args.includes('--permission-mode'));
+ await adapter.setMode(handle, 'acceptEdits');
+ await run(adapter, handle, 'hi');
+ assert.ok(!args.includes('--always-approve'));
+ assert.equal(args[args.indexOf('--permission-mode') + 1], 'acceptEdits');
+ await assert.rejects(adapter.setMode(handle, 'bypassPermissions'), /permission mode/);
+ await adapter.dispose(handle);
+});

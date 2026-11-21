@@ -57,3 +57,43 @@ test('CLI default sandbox is read-only so a workspace write waits for approval; 
     } finally { await adapter.dispose(handle); }
   }
 });
+
+test('CLI setMode and approvalPolicy apply to the next turn via sandboxPolicy/approvalPolicy overrides', async t => {
+  const cwd = mkdtempSync(join(tmpdir(), 'codex-turn-')); t.after(() => rmSync(cwd, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }));
+  const fixture = fileURLToPath(new URL('./fixtures/app-server.mjs', import.meta.url));
+  const turns = [];
+  const adapter = new CodexCliAdapter({ spawn: (_cmd, _args, opts) => {
+    const child = spawn(process.execPath, [fixture], opts);
+    const write = child.stdin.write.bind(child.stdin);
+    child.stdin.write = (line, ...rest) => { const frame = JSON.parse(line); if (frame.method === 'turn/start') turns.push(frame.params); return write(line, ...rest); };
+    return child;
+  } });
+  const handle = await adapter.start({ cwd });
+  try {
+    assert.deepEqual(adapter.modes().map(m => m.id), ['read-only', 'workspace-write']);
+    assert.deepEqual(adapter.agentModes().map(m => m.id), ['read-only', 'workspace-write']);
+    const options = adapter.configOptions(handle);
+    assert.equal(options[0].id, 'approvalPolicy');
+    assert.ok(options[0].choices.every(c => c.value !== 'never'));
+
+    const runTurn = async (text) => {
+      await adapter.prompt(handle, { text });
+      for await (const event of adapter.events(handle)) {
+        if (event.kind === 'approval_request') await adapter.approve(handle, event.request, 'accept');
+        if (event.kind === 'turn_end') break;
+      }
+    };
+    await runTurn('approve write');
+    assert.deepEqual(turns.at(-1).sandboxPolicy.type, 'readOnly');
+    assert.equal(turns.at(-1).approvalPolicy, undefined);
+
+    await adapter.setMode(handle, 'workspace-write');
+    await adapter.setOption(handle, 'approvalPolicy', 'on-failure');
+    await runTurn('approve write');
+    assert.equal(turns.at(-1).sandboxPolicy.type, 'workspaceWrite');
+    assert.equal(turns.at(-1).approvalPolicy, 'on-failure');
+
+    await assert.rejects(adapter.setMode(handle, 'danger-full-access'), /sandbox/);
+    await assert.rejects(adapter.setOption(handle, 'approvalPolicy', 'never'), /approval/);
+  } finally { await adapter.dispose(handle); }
+});

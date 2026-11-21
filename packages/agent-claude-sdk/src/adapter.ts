@@ -32,7 +32,7 @@ interface Session {
   logBytes: number;
 }
 const makeId = monotonicFactory();
-const modes = new Set(['default', 'acceptEdits', 'plan', 'dontAsk']);
+const modes = new Set(['default', 'acceptEdits', 'plan', 'dontAsk', 'auto']);
 const modeList = [...modes].map(id => ({ id, name: id }));
 const efforts = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
 const RAW_LOG_CAP = 5 * 1024 * 1024;
