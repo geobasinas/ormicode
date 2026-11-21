@@ -66,7 +66,7 @@ export function setNativeId(db: Store, id: string, nativeId: string | null): voi
 }
 
 /** Vendor-advertised session settings persisted from the worker's ready frame. */
-export interface SessionConfig { options?: unknown[]; modes?: { id: string; name: string }[] }
+export interface SessionConfig { options?: unknown[]; modes?: { id: string; name: string; description?: string; default?: boolean }[] }
 
 export function setSessionConfig(db: Store, id: string, config: SessionConfig): void {
   db.prepare('UPDATE sessions SET options = ? WHERE id = ?').run(JSON.stringify(config), id);

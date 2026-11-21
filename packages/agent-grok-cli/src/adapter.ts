@@ -12,7 +12,17 @@ import { GrokCliMapper } from './map.ts';
 
 type Spawn = (command: string, args: string[], options: SpawnOptionsWithoutStdio) => ChildProcessWithoutNullStreams;
 // `bypassPermissions` is excluded: it removes the sandbox boundary entirely.
-const GROK_MODES = new Set(['default', 'acceptEdits', 'auto', 'dontAsk', 'plan']);
+// `always-approve` is the `--always-approve` flag; the rest are `--permission-mode` values
+// (https://docs.x.ai/build/features/permissions). Headless runs can't answer a prompt, so asking modes deny instead.
+const MODE_LIST = [
+  { id: 'always-approve', name: 'Always approve', description: 'Every tool runs without asking; deny rules and hooks still apply', default: true },
+  { id: 'auto', name: 'Auto', description: 'A classifier approves safe tools; risky ones are denied' },
+  { id: 'acceptEdits', name: 'Accept edits', description: 'Headless runs still cancel file writes; use Grok ACP for approvals' },
+  { id: 'plan', name: 'Plan', description: 'Plans without editing files' },
+  { id: 'default', name: 'Ask', description: 'Anything not already allowed is denied (no one can answer headless)' },
+  { id: 'dontAsk', name: "Don't ask", description: 'Only pre-approved tools run' },
+];
+const GROK_MODES = new Set(MODE_LIST.map(m => m.id));
 type Session = { spec: StartSpec; log?: RawLog; model?: string; effort?: string; outputSchema?: string; nativeId?: string; queue: EventQueue; active: boolean; disposed: boolean; needsRecovery: boolean; process?: ChildProcessWithoutNullStreams; running?: Promise<void>; interrupted: boolean };
 const execFileAsync = promisify(execFile);
 const limit = 1024 * 1024;
@@ -91,7 +101,7 @@ export class GrokCliAdapter implements AgentAdapter {
       // Headless cannot answer permission prompts: with no mode chosen, `--always-approve`
       // keeps runs unblocked; an explicit --permission-mode applies the vendor's own rules
       // (default/dontAsk deny instead of asking, auto's classifier decides).
-      const args = ['--no-auto-update', ...(session.spec.mode ? ['--permission-mode', session.spec.mode] : ['--always-approve']), '--output-format', 'streaming-json', '--prompt-file', promptFile];
+      const args = ['--no-auto-update', ...(session.spec.mode && session.spec.mode !== 'always-approve' ? ['--permission-mode', session.spec.mode] : ['--always-approve']), '--output-format', 'streaming-json', '--prompt-file', promptFile];
       if (session.nativeId) args.push('--resume', session.nativeId);
       if (session.model) args.push('--model', session.model);
       if (session.effort) args.push('--reasoning-effort', session.effort);
@@ -161,8 +171,8 @@ export class GrokCliAdapter implements AgentAdapter {
     session.queue.push([{ kind: 'effort_changed', effort }]);
   }
   /** Grok's permission modes are the approval surface; ids are the vendor's own --permission-mode values. */
-  modes(): readonly { id: string; name: string }[] { return [...GROK_MODES].map(id => ({ id, name: id })); }
-  agentModes(): readonly { id: string; name: string }[] { return [...GROK_MODES].map(id => ({ id, name: id })); }
+  modes() { return MODE_LIST; }
+  agentModes() { return MODE_LIST; }
   async setMode(handle: Handle, mode: string): Promise<void> {
     const session = this.get(handle);
     if (session.active) throw new Error('Grok session is busy; mode applies to the next turn');

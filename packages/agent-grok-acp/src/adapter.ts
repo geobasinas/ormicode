@@ -34,6 +34,14 @@ function grokModelCatalog(): Map<string, { name: string; efforts: string[] }> {
   } catch { return new Map(); }
 }
 
+// Grok permission modes (https://docs.x.ai/build/features/permissions); on ACP they're set per session via
+// `session/new` `_meta` (xai-org/grok-build docs, user-guide/15-agent-mode.md). Ask forwards each prompt as an approval card.
+const GROK_ACP_MODES = [
+  { id: 'ask', name: 'Ask', description: 'Asks before anything not already allowed', default: true },
+  { id: 'auto', name: 'Auto', description: 'A classifier approves safe tools; risky ones still ask' },
+  { id: 'always-approve', name: 'Always approve', description: 'Every tool runs without asking; deny rules and hooks still apply' },
+];
+
 /** Grok ACP adapter. Permission choices are forwarded without changing their scope. */
 export class GrokAcpAdapter implements AgentAdapter {
   readonly id = 'grok';
@@ -66,21 +74,25 @@ export class GrokAcpAdapter implements AgentAdapter {
     if (!ref.id) throw new Error('native session ID is required');
     return this.create(ref.cwd, ref.id, ref);
   }
+  /** Grok ACP advertises no session modes; its permission mode is picked on `session/new` `_meta` (yoloMode / autoMode). */
+  agentModes() { return GROK_ACP_MODES; }
   private async create(cwd: string, existingId: string | undefined, spec?: StartSpec): Promise<Handle> {
     if (!cwd) throw new Error('cwd is required');
+    if (spec?.mode && !GROK_ACP_MODES.some(m => m.id === spec.mode)) throw new Error('Unsupported or unsafe Grok permission mode');
+    const meta: Record<string, boolean> | undefined = spec?.mode === 'always-approve' ? { yoloMode: true } : spec?.mode === 'auto' ? { autoMode: true } : undefined;
     let session: Session | undefined;
     const connection = await AcpConnection.start({ executable: this.options.executable ?? 'grok', args: ['--no-auto-update', 'agent', 'stdio'], cwd, spawn: this.options.spawn, log: spec?.logDir ? new RawLog(spec.logDir) : undefined, onNotification: (method, params) => {
       if (method === 'session/update' && session?.active && session.mapper) session.queue.push(session.mapper.update(params));
     }, onRequest: (_method, params) => session?.active ? session.broker.request(params, session.nativeId) : Promise.resolve({ outcome: { outcome: 'cancelled' } }) });
     try {
-      const bootstrap = existingId ? await connection.loadSession(existingId, cwd, acpMcpServers(spec?.mcpServers)) : await connection.newSession(cwd, acpMcpServers(spec?.mcpServers));
+      const bootstrap = existingId ? await connection.loadSession(existingId, cwd, acpMcpServers(spec?.mcpServers)) : await connection.newSession(cwd, acpMcpServers(spec?.mcpServers), meta);
       const nativeId = bootstrap.sessionId;
       const handle = Object.freeze({ id: `grok-acp-${randomUUID()}` });
       const queue = new EventQueue();
       session = { connection, nativeId, queue, broker: new GrokPermissionBroker(event => queue.push([event])), active: false, disposed: false, needsRecovery: false, cancelRequested: false, options: bootstrap.options, modes: bootstrap.modes, ...(bootstrap.currentMode !== undefined ? { currentMode: bootstrap.currentMode } : {}) };
       this.options.onNativeId?.(handle, nativeId);
       this.sessions.set(handle, session);
-      for (const [category, value] of [['mode', spec?.mode], ['model', spec?.model], [['thought_level', 'thinking'] as const, spec?.effort]] as const) {
+      for (const [category, value] of [['model', spec?.model], [['thought_level', 'thinking'] as const, spec?.effort]] as const) {
         if (value) await this.applyOption(handle, category, value);
       }
       return handle;

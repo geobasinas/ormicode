@@ -115,14 +115,17 @@ export async function openCodeModels(executable?: string): Promise<ModelList> {
   }
 }
 
-const agentRef = z.looseObject({ id: z.string().check(z.minLength(1)), name: z.optional(z.string()), mode: z.optional(z.string()), hidden: z.optional(z.boolean()) });
+const agentRef = z.looseObject({ id: z.string().check(z.minLength(1)), name: z.optional(z.string()), description: z.optional(z.string()), mode: z.optional(z.string()), hidden: z.optional(z.boolean()) });
 
 /** Agents a session can switch to (primary/all, not hidden) — each carries the vendor's own permission ruleset. */
 export async function listOpenCodeAgents(server: OpenCodeServer, cwd?: string): Promise<SessionMode[]> {
   const listed = await server.client.agent.list(cwd ? { location: { directory: cwd } } : {});
   const data = z.safeParse(z.looseObject({ data: z.array(agentRef) }), listed);
   if (!data.success) return [];
-  return data.data.data.flatMap(agent =>
+  const agents: SessionMode[] = data.data.data.flatMap(agent =>
     (agent.mode === undefined || agent.mode === 'primary' || agent.mode === 'all') && agent.hidden !== true
-      ? [{ id: agent.id, name: agent.name ?? agent.id }] : []);
+      ? [{ id: agent.id, name: agent.name ?? agent.id, ...(agent.description ? { description: agent.description } : {}) }] : []);
+  // OpenCode falls back to `build`, then the first visible primary agent (https://opencode.ai/docs/agents/#selection).
+  const fallback = agents.find(agent => agent.id === 'build') ?? agents[0];
+  return agents.map(agent => agent === fallback ? { ...agent, default: true } : agent);
 }

@@ -10,6 +10,11 @@ type Spawn = NonNullable<Parameters<typeof CodexAppServer.start>[0]>['spawn'];
 const APPROVAL_OPTIONS = [{ id: 'accept', label: 'Approve' }, { id: 'acceptForSession', label: 'Approve for session' }, { id: 'decline', label: 'Decline' }, { id: 'cancel', label: 'Cancel turn' }];
 // `danger-full-access` is rejected at start, so it is not offered mid-session either.
 const SANDBOX_MODES = ['read-only', 'workspace-write'] as const;
+// Codex sandbox modes (https://developers.openai.com/codex/agent-approvals-security). The CLI starts read-only, so every write asks.
+const MODE_LIST = [
+  { id: 'read-only', name: 'Read only', description: 'Reads freely; every edit or command asks first', default: true },
+  { id: 'workspace-write', name: 'Workspace write', description: 'Edits and runs commands inside the workspace; asks to go outside it or use the network' },
+];
 // `never` would silence the approval forwarding this adapter exists for; the vendor's other
 // policies stay available and apply on the next turn (`turn/start.approvalPolicy`).
 const APPROVAL_POLICIES = ['untrusted', 'on-failure', 'on-request'] as const;
@@ -131,8 +136,8 @@ export class CodexCliAdapter implements AgentAdapter {
     session.queue.push([{ kind: 'config_option', id, value }]);
   }
   /** Sandbox modes are Codex's permission boundary; ids are the vendor's own sandbox-mode names. */
-  modes(): readonly { id: string; name: string }[] { return SANDBOX_MODES.map(id => ({ id, name: id })); }
-  agentModes(): readonly { id: string; name: string }[] { return SANDBOX_MODES.map(id => ({ id, name: id })); }
+  modes() { return MODE_LIST; }
+  agentModes() { return MODE_LIST; }
   async setMode(handle: Handle, mode: string): Promise<void> {
     const session = this.get(handle);
     if (!(SANDBOX_MODES as readonly string[]).includes(mode)) throw new Error('Unsupported or unsafe sandbox mode');

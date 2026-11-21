@@ -101,3 +101,14 @@ test('CLI mapper reads usage from the message snapshot when the event has no top
   const usage = end.events.find(event => event.kind === 'usage');
   assert.deepEqual(usage, { kind: 'usage', input: 182, output: 2, cacheRead: 4, cacheWrite: 0, costUsd: 0.031 });
 });
+test('CLI read-only mode passes the documented review tool allowlist and switches per turn', async () => {
+  const seen = []; const adapter = new PiCliAdapter({ spawn: (cmd, args, options) => { seen.push(args); return fake(cmd, args, options); } });
+  const handle = await adapter.start({ cwd: process.cwd(), mode: 'read-only' });
+  await run(adapter, handle, 'look');
+  assert.equal(seen[0][seen[0].indexOf('--tools') + 1], 'read,grep,find,ls');
+  await adapter.setMode(handle, 'full');
+  await run(adapter, handle, 'edit');
+  assert.equal(seen[1].includes('--tools'), false);
+  await assert.rejects(adapter.setMode(handle, 'yolo'), /Unsupported pi mode/);
+  await adapter.dispose(handle);
+});

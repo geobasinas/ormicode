@@ -16,11 +16,20 @@ const limit = 1024 * 1024;
 const efforts = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 const MIME_EXT: Record<string, string> = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp', 'image/gif': '.gif' };
 
+// pi has no approval prompts (https://docs.pi.dev/latest/security); its permission boundary is the tool
+// allowlist (https://docs.pi.dev/latest/cli#tools). `read-only` is the docs' review selection.
+const READ_ONLY_TOOLS = ['read', 'grep', 'find', 'ls'];
+const PI_MODES = [
+  { id: 'full', name: 'Full access', description: 'Read, bash, edit and write run without asking', default: true },
+  { id: 'read-only', name: 'Read only', description: 'Only read, grep, find and ls; no edits or shell commands' },
+];
+const piMode = (mode?: string) => { if (mode && !PI_MODES.some(m => m.id === mode)) throw new Error('Unsupported pi mode'); return mode; };
+
 /** One `pi --print --mode json` process per prompt. Later turns resume with `--session` using the id Pi reports. */
 export class PiCliAdapter implements AgentAdapter {
   readonly id = 'pi';
   readonly transport = 'cli' as const;
-  readonly capabilities = { ...NO_CAPABILITIES, resume: true, model: true, effort: true, images: true };
+  readonly capabilities = { ...NO_CAPABILITIES, resume: true, model: true, effort: true, modes: true, images: true };
   private sessions = new Map<Handle, Session>();
   private options: { executable?: string; spawn?: Spawn; onNativeId?: (handle: Handle, id: string) => void };
   constructor(options: { executable?: string; spawn?: Spawn; onNativeId?: (handle: Handle, id: string) => void } = {}) { this.options = options; }
@@ -45,7 +54,7 @@ export class PiCliAdapter implements AgentAdapter {
   }
   private create(spec: StartSpec, nativeId?: string): Handle {
     if (!spec.cwd) throw new Error('cwd is required');
-    if (spec.mode) throw new Error('pi CLI modes are not supported');
+    piMode(spec.mode);
     if (spec.effort && !['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(spec.effort)) throw new Error('Unsupported pi thinking level');
     const handle = Object.freeze({ id: `pi-cli-${randomUUID()}` });
     this.sessions.set(handle, { model: spec.model, effort: spec.effort, spec: { ...spec }, log: spec.logDir ? new RawLog(spec.logDir) : undefined, nativeId, queue: new EventQueue(), active: false, disposed: false, needsRecovery: false, interrupted: false });
@@ -79,6 +88,7 @@ export class PiCliAdapter implements AgentAdapter {
       if (session.nativeId) args.push('--session', session.nativeId);
       if (session.model) args.push('--model', session.model);
       if (session.effort) args.push('--thinking', session.effort);
+      if (session.spec.mode === 'read-only') args.push('--tools', READ_ONLY_TOOLS.join(','));
       const images = session.pendingImages ?? []; session.pendingImages = [];
       args.push(...images.map(path => `@${path}`), text);
       child = (this.options.spawn ?? spawn)(this.options.executable ?? 'pi', args, { cwd: session.spec.cwd, windowsHide: true, shell: false });
@@ -137,6 +147,14 @@ export class PiCliAdapter implements AgentAdapter {
   async setModel(handle: Handle, model: string): Promise<void> {
     const session = this.get(handle); session.model = model;
     session.queue.push([{ kind: 'model_changed', model }]);
+  }
+  modes() { return PI_MODES; }
+  agentModes() { return PI_MODES; }
+  /** Each turn is its own process, so the tool allowlist applies from the next turn. */
+  async setMode(handle: Handle, mode: string): Promise<void> {
+    const session = this.get(handle);
+    piMode(mode); session.spec.mode = mode;
+    session.queue.push([{ kind: 'mode_changed', mode, effective: 'next_turn' }]);
   }
   async setEffort(handle: Handle, effort: string): Promise<void> {
     const session = this.get(handle);

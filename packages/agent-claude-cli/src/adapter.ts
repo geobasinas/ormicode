@@ -13,8 +13,16 @@ import { listClaudeModels } from './models.ts';
 type Spawn = (command: string, args: string[], options: SpawnOptionsWithoutStdio) => ChildProcessWithoutNullStreams;
 interface Session { spec: StartSpec; queue: EventQueue; log?: RawLog; nativeId?: string; process?: ChildProcessWithoutNullStreams; running?: Promise<void>; broker?: PermissionBroker; active: boolean; disposed: boolean; needsResumeId: boolean }
 const newId = monotonicFactory();
-const modes = new Set(['default', 'acceptEdits', 'plan', 'dontAsk', 'auto', 'manual']);
-const modeList = [...modes].map(id => ({ id, name: id }));
+// Claude Code permission modes (https://code.claude.com/docs/en/permission-modes); `bypassPermissions` is never offered.
+const modeList = [
+  { id: 'default', name: 'Manual', description: 'Asks before edits, shell commands and network access', default: true },
+  { id: 'acceptEdits', name: 'Accept edits', description: 'Edits files and runs common filesystem commands without asking' },
+  { id: 'plan', name: 'Plan', description: 'Reads and plans; no edits until you approve the plan' },
+  { id: 'auto', name: 'Auto', description: 'A classifier reviews each action instead of asking you' },
+  { id: 'dontAsk', name: "Don't ask", description: 'Only pre-approved tools run; anything that would ask is denied' },
+];
+// `manual` is the CLI's documented alias for `default`: accepted, not listed twice.
+const modes = new Set([...modeList.map(m => m.id), 'manual']);
 const efforts = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
 const MAX_LINE_BYTES = 1024 * 1024;
 const execFileAsync = promisify(execFile);

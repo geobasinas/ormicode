@@ -1,7 +1,7 @@
 /** Pieces shared by the Home and session composers: image attachments
  * (pick or paste), picker chips and inline-editable chips. */
 import { useRef, useState, type ClipboardEvent, type ReactNode } from 'react';
-import { Check, ChevronDown, FolderOpen, MousePointerSquareDashed, Pencil, RefreshCw, X } from 'lucide-react';
+import { Check, ChevronDown, FolderOpen, MousePointerSquareDashed, Pencil, RefreshCw, ShieldCheck, X } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuLabel } from '../../components/ui/dropdown-menu.tsx';
 import { projectName } from '../../lib/format.ts';
 import type { ListedModel } from './useModels.ts';
@@ -131,6 +131,40 @@ export function MenuChip({ value, choices, onChange, label, icon, title }: {
         <DropdownMenuRadioGroup value={value} onValueChange={onChange}>
           {choices.map(c => <DropdownMenuRadioItem key={c.value} value={c.value}>{c.name ?? c.value}</DropdownMenuRadioItem>)}
         </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+export interface ModeChoice { id: string; name: string; description?: string; default?: boolean }
+
+/** The mode actually in effect: the stored one if the vendor lists it, else the vendor's own default. */
+export function effectiveMode(modes: ModeChoice[], value: string | undefined): ModeChoice | undefined {
+  return modes.find(m => m.id === value) ?? modes.find(m => m.default) ?? modes[0];
+}
+
+/** Permission/approval mode chip: the vendor's own modes, names and documented behavior. */
+export function ModeChip({ modes, value, onChange }: { modes: ModeChoice[]; value: string | undefined; onChange: (id: string) => void }) {
+  const current = effectiveMode(modes, value);
+  if (!current) return null;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button className="hv-sub" style={chip} title={current.description ? `${current.name}: ${current.description}` : current.name} aria-label={`Mode: ${current.name}`}>
+          <ShieldCheck size={13} style={{ flexShrink: 0, color: 'var(--text-secondary)' }} /><span className="ormi-chip-text">{current.name}</span>{chev}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" style={{ maxWidth: 320 }}>
+        <DropdownMenuLabel>Mode</DropdownMenuLabel>
+        {modes.map(m => (
+          <DropdownMenuItem key={m.id} onSelect={() => onChange(m.id)} className="text-xs" style={{ alignItems: 'flex-start' }}>
+            <span style={{ width: 16, flexShrink: 0, display: 'inline-flex', paddingTop: 1 }}>{m.id === current.id ? <Check size={13} /> : null}</span>
+            <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+              <span style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>{m.name}{m.default ? <span style={{ fontSize: 10.5, color: 'var(--text-hint)' }}>default</span> : null}</span>
+              {m.description ? <span style={{ fontSize: 11, lineHeight: 1.35, color: 'var(--text-secondary)', whiteSpace: 'normal' }}>{m.description}</span> : null}
+            </span>
+          </DropdownMenuItem>
+        ))}
       </DropdownMenuContent>
     </DropdownMenu>
   );

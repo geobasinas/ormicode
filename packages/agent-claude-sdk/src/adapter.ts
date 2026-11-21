@@ -32,8 +32,15 @@ interface Session {
   logBytes: number;
 }
 const makeId = monotonicFactory();
-const modes = new Set(['default', 'acceptEdits', 'plan', 'dontAsk', 'auto']);
-const modeList = [...modes].map(id => ({ id, name: id }));
+// Claude Code permission modes (https://code.claude.com/docs/en/permission-modes); `bypassPermissions` is never offered.
+const modeList = [
+  { id: 'default', name: 'Manual', description: 'Asks before edits, shell commands and network access', default: true },
+  { id: 'acceptEdits', name: 'Accept edits', description: 'Edits files and runs common filesystem commands without asking' },
+  { id: 'plan', name: 'Plan', description: 'Reads and plans; no edits until you approve the plan' },
+  { id: 'auto', name: 'Auto', description: 'A classifier reviews each action instead of asking you' },
+  { id: 'dontAsk', name: "Don't ask", description: 'Only pre-approved tools run; anything that would ask is denied' },
+];
+const modes = new Set(modeList.map(m => m.id));
 const efforts = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
 const RAW_LOG_CAP = 5 * 1024 * 1024;
 

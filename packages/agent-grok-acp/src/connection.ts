@@ -63,9 +63,9 @@ export class AcpConnection {
     if (!method || !z.safeParse(z.json(), params).success) throw new Error('Invalid ACP notification');
     this.send({ jsonrpc: '2.0', method, params });
   }
-  async newSession(cwd: string, mcpServers: AcpMcpServer[] = []): Promise<AcpBootstrap> {
+  async newSession(cwd: string, mcpServers: AcpMcpServer[] = [], meta?: Record<string, boolean>): Promise<AcpBootstrap> {
     if (!cwd) throw new Error('cwd is required');
-    return this.bootstrap(await this.request('session/new', { cwd, mcpServers }), 'session/new');
+    return this.bootstrap(await this.request('session/new', { cwd, mcpServers, ...(meta ? { _meta: meta } : {}) }), 'session/new');
   }
   async loadSession(sessionId: string, cwd: string, mcpServers: AcpMcpServer[] = []): Promise<AcpBootstrap> {
     if (!sessionId || !cwd) throw new Error('session ID and cwd are required');

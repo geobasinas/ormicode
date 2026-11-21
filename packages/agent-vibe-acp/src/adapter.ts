@@ -18,15 +18,29 @@ type Session = { connection: AcpConnection; nativeId: string; queue: EventQueue;
 const execFileAsync = promisify(execFile);
 
 // Builtin agent ids documented by `vibe --help`; customs live in .vibe/agents/*.toml.
-const VIBE_BUILTIN_AGENTS = ['ask', 'accept-edits', 'smart-approve', 'auto-approve'].map(id => ({ id, name: id }));
-function vibeAgents(cwd: string): { id: string; name: string }[] {
+// Names and behavior from https://docs.mistral.ai/vibe/code/cli/agents.
+const VIBE_BUILTIN_AGENTS: { id: string; name: string; description?: string; default?: boolean }[] = [
+  { id: 'accept-edits', name: 'Accept edits', description: 'Edits files without asking; shell commands and other tools ask' },
+  { id: 'ask', name: 'Ask', description: 'Asks before running any tool' },
+  { id: 'smart-approve', name: 'Smart approve', description: 'Runs calls it judges safe; asks before risky ones' },
+  { id: 'auto-approve', name: 'Auto-approve', description: 'Every tool runs without asking, including shell commands' },
+];
+/** `default_agent` from config.toml (project, then VIBE_HOME), else Vibe's documented default `accept-edits`. */
+function vibeDefaultAgent(cwd: string, vibeHome: string): string {
+  for (const file of [join(cwd, '.vibe', 'config.toml'), join(vibeHome, 'config.toml')]) {
+    try { const m = /^\s*default_agent\s*=\s*["']([^"']+)["']/m.exec(readFileSync(file, 'utf8')); if (m) return m[1]!; } catch { /* no config */ }
+  }
+  return 'accept-edits';
+}
+function vibeAgents(cwd: string): { id: string; name: string; description?: string; default?: boolean }[] {
   const vibeHome = process.env.VIBE_HOME ?? join(homedir(), '.vibe');
   const custom = [join(cwd, '.vibe', 'agents'), join(vibeHome, 'agents')].flatMap(dir => {
     try { return readdirSync(dir).filter(file => file.endsWith('.toml')).map(file => ({ id: file.slice(0, -5), name: file.slice(0, -5) })); }
     catch { return []; }
   });
   const seen = new Set<string>();
-  return [...custom, ...VIBE_BUILTIN_AGENTS].filter(agent => !seen.has(agent.id) && seen.add(agent.id));
+  const fallback = vibeDefaultAgent(cwd, vibeHome);
+  return [...VIBE_BUILTIN_AGENTS, ...custom].filter(agent => !seen.has(agent.id) && seen.add(agent.id)).map(agent => agent.id === fallback ? { ...agent, default: true } : agent);
 }
 
 /** Vibe ACP adapter (`vibe-acp`, protocol v1). Permission choices are forwarded without changing their scope. */

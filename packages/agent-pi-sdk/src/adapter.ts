@@ -17,7 +17,7 @@ export interface PiSessionLike {
   setThinkingLevel(level: unknown): void;
   dispose(): void;
 }
-export type PiCreateOptions = { cwd: string; model?: unknown; thinkingLevel?: string; sessionManager?: unknown };
+export type PiCreateOptions = { cwd: string; model?: unknown; thinkingLevel?: string; sessionManager?: unknown; tools?: string[] };
 export type PiCreateSession = (options: PiCreateOptions) => Promise<{ session: PiSessionLike }>;
 type Session = {
   session: PiSessionLike; queue: EventQueue; mapper: PiSdkMapper; unsubscribe: () => void;
@@ -25,6 +25,15 @@ type Session = {
   interruptRequested: boolean; settledAborted: boolean; running?: Promise<void>;
 };
 const execFileAsync = promisify(execFile);
+// pi has no approval prompts (https://docs.pi.dev/latest/security); its permission boundary is the tool
+// allowlist (https://docs.pi.dev/latest/cli#tools). `read-only` is the docs' review selection.
+const READ_ONLY_TOOLS = ['read', 'grep', 'find', 'ls'];
+const PI_MODES = [
+  { id: 'full', name: 'Full access', description: 'Read, bash, edit and write run without asking', default: true },
+  { id: 'read-only', name: 'Read only', description: 'Only read, grep, find and ls; no edits or shell commands' },
+];
+const piMode = (mode?: string) => { if (mode && !PI_MODES.some(m => m.id === mode)) throw new Error('Unsupported pi mode'); return mode; };
+
 const efforts = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 
 const defaultCreate: PiCreateSession = async options => {
@@ -49,6 +58,8 @@ export class PiSdkAdapter implements AgentAdapter {
     this.resolveModelRef = options.resolveModel;
     this.onNativeId = options.onNativeId;
   }
+  /** The tool allowlist is fixed when the session is created, so modes are picked before start only. */
+  agentModes() { return PI_MODES; }
   async detect() {
     try {
       const { stdout } = await execFileAsync('pi', ['--version'], { timeout: 5000, windowsHide: true });
@@ -68,10 +79,10 @@ export class PiSdkAdapter implements AgentAdapter {
     return result.model;
   }
   async start(spec: StartSpec): Promise<Handle> {
-    if (spec.mode) throw new Error('pi modes are not supported');
+    piMode(spec.mode);
     if (spec.effort && !efforts.includes(spec.effort)) throw new Error('Unsupported pi thinking level');
     const model = spec.model ? await this.resolveModel(spec.model) : undefined;
-    return this.attach(spec, await this.create({ cwd: spec.cwd, ...(model !== undefined ? { model } : {}), ...(spec.effort ? { thinkingLevel: spec.effort } : {}) }));
+    return this.attach(spec, await this.create({ cwd: spec.cwd, ...(model !== undefined ? { model } : {}), ...(spec.effort ? { thinkingLevel: spec.effort } : {}), ...(spec.mode === 'read-only' ? { tools: READ_ONLY_TOOLS } : {}) }));
   }
   async resume(ref: NativeRef): Promise<Handle> {
     if (!ref.id || !ref.cwd) throw new Error('native session ID and cwd are required');

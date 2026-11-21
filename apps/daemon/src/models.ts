@@ -24,10 +24,11 @@ interface ModelCache { version?: number; entries: Record<string, CacheEntry> }
 interface AdapterPair { agent: string; transport: string; invalid?: string }
 
 const MODES_TTL_MS = 60_000;
-const modesCache = new Map<string, { at: number; modes: { id: string; name: string }[] }>();
+type ModeEntry = { id: string; name: string; description?: string; default?: boolean };
+const modesCache = new Map<string, { at: number; modes: ModeEntry[] }>();
 
 /** Modes enumerable before a session exists (agents.modes): static lists, config files, agent catalogs. */
-export async function listAgentModes(body: { agent: string; transport: string; cwd?: string }): Promise<{ modes: { id: string; name: string }[] }> {
+export async function listAgentModes(body: { agent: string; transport: string; cwd?: string }): Promise<{ modes: ModeEntry[] }> {
   const key = `${body.agent}\0${body.transport}\0${body.cwd ?? ''}`;
   const hit = modesCache.get(key);
   if (hit && Date.now() - hit.at < MODES_TTL_MS) return { modes: hit.modes };
@@ -35,7 +36,13 @@ export async function listAgentModes(body: { agent: string; transport: string; c
   const listed = adapter.agentModes ? await adapter.agentModes(body.cwd) : [];
   const modes = (listed ?? [])
     .filter(mode => mode && typeof mode.id === 'string' && mode.id.length > 0)
-    .map(mode => ({ id: mode.id, name: typeof mode.name === 'string' && mode.name ? mode.name : mode.id }));
+    .map((mode): ModeEntry => ({
+      id: mode.id, name: typeof mode.name === 'string' && mode.name ? mode.name : mode.id,
+      ...(typeof mode.description === 'string' && mode.description ? { description: mode.description } : {}),
+    }));
+  // Exactly one default: the adapter's flagged mode, if it flagged one.
+  const flagged = (listed ?? []).find(mode => mode?.default === true)?.id;
+  for (const mode of modes) if (mode.id === flagged) { mode.default = true; break; }
   modesCache.set(key, { at: Date.now(), modes });
   return { modes };
 }

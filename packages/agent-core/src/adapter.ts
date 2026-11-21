@@ -24,7 +24,8 @@ export interface HandoffState { summary: string }
 /** A vendor-advertised session setting (ACP configOptions). `current` is the live value. */
 export interface SessionOption { id: string; category?: string; type?: string; name?: string; current?: string | boolean; choices?: { value: string | boolean; name?: string }[] }
 /** A vendor-advertised session mode (permission/agent modes). */
-export interface SessionMode { id: string; name: string }
+/** `default` marks the mode the adapter runs when none is chosen; `description` is the vendor's documented behavior. */
+export interface SessionMode { id: string; name: string; description?: string; default?: boolean }
 
 /** Capabilities describe verified behavior; unsupported operations are omitted. */
 export interface AgentAdapter {
