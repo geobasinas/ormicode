@@ -3494,6 +3494,10 @@ Big decisions waiting for the owner. Add one as `Q<n>: question — options — 
 | --- | --- | --- |
 | [Happy](https://github.com/slopus/happy) | Open-source phone/web client + CLI wrapper + relay server | You run `happy` instead of `claude`. Expo app. QR-code pairing. End-to-end encrypted relay that also stores history for catch-up. |
 | [Paseo](https://paseo.sh) | Open-source self-hosted daemon + Electron/Expo/CLI clients | The closest to ormicode. Daemon owns agent processes and a WebSocket API. Wraps agent CLIs instead of proxying model calls. Optional worktree per agent. MCP server so agents can drive it. Handoff skill. E2E relay or your own tunnel. |
+| [T3Code](https://t3.codes) | Open-source control plane, desktop/web/iOS/Android | Very close to ormicode in shape: server owns execution, clients are views, RPC contract, provider adapters, checkpoints, PR linking, multi-environment. Event-sourced v2 orchestrator with effect worker and projection maintenance. Worth studying for idempotent commands and PR settlement. |
+| [Synara](https://github.com/Emanuele-web04/synara) | Local-first desktop app (Bun/Electron) | Split chats/terminals/browser previews/diffs in one window; handoff between providers; no cloud. Early. Confirms our "one window" direction; multi-pane tiling is the take-away. |
+| [Paradev (Superset)](https://paradev.com) | Desktop app for parallel agents (macOS primary) | Worktree per task, built-in diff review, in-app browser, per-workspace ports, automations, remote hosts, cloud workspaces (Pro), MCP server, CLI, SDK, setup/teardown scripts, design mode, PR feedback to agent. Polished UX; macOS/iOS only. |
+| [PandaCode](https://github.com/aicodeking/pandacode) | Tauri/Rust desktop, no Chromium, SQLite | Extremely feature-dense: agent teams with local model routing (ONNX), `/btw` side threads, schedules, multi-channel bots, projectless chats, account pools, turn checks, visual progress timeline, design canvas, simulators, GitHub view, Connect relay, cloud agents, crash-restart guard, explicit resource limits, session tiling. Best source for UX patterns and resource discipline. |
 | [Conductor](https://www.conductor.build) | Closed macOS app | One git worktree per workspace. Built-in diff review and merge. Uses your existing Claude login. |
 | [Superset](https://superset.sh) | Desktop app for 10+ parallel agents | Worktree per workspace. Per-repo setup and teardown scripts with workspace env vars. Per-workspace port allocation. |
 | [Vibe Kanban](https://github.com/BloopAI/vibe-kanban) | Open-source local kanban for agents | Task cards dispatched to agents, each in a worktree. Diff review with comments, then PR. SQLite, local-first. One "executor" abstraction per agent. Is both an MCP client and server. |
@@ -3547,8 +3551,82 @@ Big decisions waiting for the owner. Add one as `Q<n>: question — options — 
 10. **Same task, several agents, compare** (Agent HQ, Cursor). A "best of N" action: send one prompt to 2–4 agents, each in its own worktree as forks of one task, then compare the diffs side by side and keep one. This builds on [Handoff](#handoff) attempt lineage and [Review](#review). Show the cost estimate first. *(later)*
 11. **Adopt sessions started outside ormicode** (VS Code). Scan the agents' own session stores (`~/.claude`, `~/.codex`, `~/.pi/agent/sessions`, OpenCode's server) and offer to import a session. It becomes an ormicode session resumed natively in its folder. Read-only until you adopt it, and never touch the original files. *(later)*
 12. **Bring a session's branch into the foreground** (Cursor). One action on a session that checks its branch out in the main checkout (and stops the session's worktree use) so you can run and poke at it yourself, and another to send it back. It respects the one-session-per-checkout rule. *(later)*
+13. **Command receipts + idempotent retry** (T3). Add a `command_receipts` table so retried commands dedupe. *(next)*
+14. **Intent vs side effects split** (T3). Decide events without provider/FS I/O; run side effects in an effect worker after commit. *(next)*
+15. **Hot replay window + projection high-water marks** (T3). Keep ~24 h of events for reconnect, prune covered events, keep high-water marks. *(next)*
+16. **Multi-pane tiling of sessions** (PandaCode). "Open beside" for 2–6 threads in one window. *(next)*
+17. **Slim approval bar with "Approve all"** (PandaCode). Grouped one-line approvals above the prompt. *(next)*
+18. **Account pool rotation on rate limit** (PandaCode). Rotate accounts and continue the same conversation. *(next)*
+19. **Post-turn check hook** (PandaCode). Run project's test/check after a clean turn; queue an editable fix prompt on failure. *(next)*
+20. **Crash-restart watchdog + crash reports** (PandaCode). Second process restarts daemon after crash, restores drafts. *(next)*
+21. **Persistent terminals across hub restarts** (Paradev). Reattach ptys after restart. *(later)*
+22. **In-thread find with match highlighting** (PandaCode). Client-only ⌘F over the transcript. *(next)*
+23. **Side threads (`/btw`)** (PandaCode). Question on the side while the agent keeps working. *(later)*
+24. **Recurrence + "after thread finishes" triggers for automations** (PandaCode/Paseo/Codex). *(later)*
+25. **Element-level comments on agent-published pages** (Paradev/PandaCode). *(later)*
+26. **Simulators in the inspector** (PandaCode). iOS/Android simulators beside chat. *(later)*
+27. **Publish `@ormicode/client` + thin MCP server** (Paseo/T3). *(next)*
 
-## Where we deliberately differ
+## Deep dive: T3Code, Synara, Paseo, Paradev, PandaCode (2026-11-21)
+
+**What reading their code (READMEs, docs, package maps) shows, and where ormicode can do better.** These are ideas, not decisions; adopt only where they fit our principles. Checked 2026-11-21 against the repos' default branches.
+
+### Where they're stronger than us today (implemented areas)
+
+| Area | Them | Us | Gap / action |
+| --- | --- | --- | --- |
+| **Command idempotency** | T3: v2 orchestrator serializes commands; `EventSink` commits events + projections + accepted-command receipt + outbox in one tx; retries dedupe by receipt. | Journal append is one tx (event+outbox+last_seq), but no command receipt table. | Add a `command_receipts` table keyed by (device, command id) so a retried `session.prompt`/`session.handoff` can't double-run. Medium effort, high value. |
+| **Intent vs side effects** | T3: orchestrator decides events without provider/FS I/O; `EffectWorker` runs side effects after commit and feeds results back. Recovery retires effects tied to a lost provider process. | Dispatch handles side effects inline in the worker path. | Split "decide event" from "run provider/checkpoint" so a crash mid-side-effect can't leave a persisted projection ahead of the log. Aligns with our crash-harness goals. |
+| **Projection-based pruning** | T3: keeps ~1 day of events for reconnect replay, then prunes covered events while keeping high-water marks, stream versions, `thread.created`, running-run updates and referenced prompt anchors. Projections are source of truth. | Retention is time-based (60 days) only. | Add a "hot replay window" (e.g. 24 h) plus projection high-water marks so reconnects are cheap and idle threads resume without snapshots. Keep full retention as the cold tier. |
+| **Turn vs checkpoint milestones** | T3: a late checkpoint or diff must not extend the recorded provider duration or keep the client showing provider work as active. | Checkpoints are `packages/checkpoints`; verify they don't gate turn_end. | Audit `turn_end` ordering: journal `turn_end` before checkpoint completion; treat checkpoints as follow-up effects. |
+| **PR settlement** | T3: server-owned `ThreadSettlementService` evaluates PR/inactivity settings without a client; merge notifications invalidate cached PR state; `PullRequestSyncReactor` re-reads open links when a run that ran a merge/close command ends; guarded `thread.auto-settle`. | GitHub integration is placeholder (`packages/github-app` empty). | When GitHub lands, copy this shape: server-owned settlement, no client-derived state, forge CLI command names per forge. |
+| **Multi-environment settings ownership** | T3: client prefs stay in client; environment defaults/project overrides stay on owning server; "All environments" is an explicit bulk edit, not a durable global. | Single hub; node pairing is next. | When node pairing lands, adopt this ownership split so multi-machine settings don't silently cross environments. |
+| **Native crash isolation** | T3: native modules never load in Electron main on the startup path; snapshot/crash-prone addons run in forked Node children or worker threads with deadlines. | Desktop bundles native modules in-process. | Move crash-prone native capability (accessibility, ffi) into forked children with deadlines, per T3. Also implement the RAM-derived pool (audit gap) and job-object memory caps. |
+| **Multi-pane tiling** | PandaCode: tile up to 6 threads in one window, focused tile full, others live; Paradev/Synara: split chats/terminals/browser in one window. | Desktop is single-session focus. | Add "open beside" / tiling for 2-4 sessions in one window. High UX value, matches "one full-screen window is normal mode." |
+| **Approvals UX** | PandaCode: slim bar above prompt, one line each, grouped "Approve all". | Approvals are forwarded word-for-word; UI TBD. | Adopt the slim-bar grouped UX; keep our word-for-word forwarding and destructive list. |
+| **Account pool rotation** | PandaCode: pool several Claude/Codex accounts; on a rate limit, move the task to the next account and continue the same conversation. | Rate limits pause/resume on reset; no account rotation. | Add optional account pools per vendor, rotating on `paused_rate_limited`. Reuses existing rate-limit machinery. |
+| **Turn checks** | PandaCode: after a clean turn, optionally run the project's own test/check command; a failure queues one editable fix message. | No post-turn check hook. | Add an optional `postTurnCheck` command per project that runs after a clean turn and queues a fix prompt on failure. Small, high value. |
+| **Crash-restart guard** | PandaCode: a second process restarts after a crash, keeps crash reports, restores unsent drafts; guard's own state file. | Reboot recovery marks sessions interrupted; no auto-restart guard process. | Add a watchdog process that restarts the daemon after a crash, writes a crash report, and restores drafts. Fits our "honest state" principle. |
+| **Resource discipline** | PandaCode: no background polling/recursive watchers; agents exit after each turn and resume by session id; explicit limits on terminal history/frames/files/diffs; only current 100-message page loaded; reports core RSS. | Fixed pool of 8, 20-min eviction; RAM-derived policy not implemented; no job-object caps. | Implement RAM-derived pool (audit gap), per-worker memory caps, and explicit per-subsystem limits with a "Resource usage" view. |
+| **Public TS SDK / MCP** | Paseo: `@getpaseo/client` SDK and MCP server so agents drive it; Paradev: SDK + MCP; T3: RPC contract. | Protocol exists; no published client package or MCP server for external agents. | Publish `@ormicode/client` over the protocol and a thin MCP server (already an adopted idea; not implemented). High leverage for agents-driving-agents. |
+| **Port allocation per worktree** | Paradev/Paseo: ports detected/allocated per workspace. | Adopted idea; verify implementation. | Confirm `PORT` is exported to every session even without `services.yaml` (audit). |
+| **Teardown scripts** | Paradev/Superset: setup + teardown per workspace. | `.ormi/setup` only; teardown adopted but unimplemented. | Add `.ormi/teardown` running on worktree removal. |
+| **Bots / channels** | PandaCode: Telegram/Slack/Discord/WhatsApp/web chat bots, each conversation is a task; PandaCode Connect relay + push. | Bots placeholder package. | PandaCode's model (bot conversation = ordinary task) matches our "bot" definition exactly; adopt when bots land. |
+| **Projectless chats** | PandaCode: "New chat" with no codebase in its own folder. | Scratchpads already do this (`~/.ormicode/scratch/<session>`). | We're at parity; ensure UX matches (one-click new chat, folder shown). |
+| **Side threads (`/btw`)** | PandaCode: ask a question on the side while the agent keeps working, in a tab that can read the main thread. | No side threads. | Add as a "later" feature; low cost, high daily value. |
+| **Schedules** | PandaCode/Paseo/Paradev: wake a thread later, repeat, or after another thread finishes; automations. | Automations placeholder. | Adopt recurrence + "after thread finishes" triggers. |
+| **Visual progress / design canvas** | PandaCode: PiP timeline of annotated screenshots; HTML artboards beside chat with element comments. | Artifacts package placeholder. | When artifacts land, add element-level commenting on agent-published pages (Paradev "Pages" too). |
+| **Simulators in inspector** | PandaCode: iOS Simulator + Android emulator in inspector tab. | Device lab placeholder. | Adopt when device lab lands; agents tapping through what they built is high value. |
+| **Persistent terminals across restarts** | Paradev: terminal sessions survive restarts. | Terminals belong to project and survive session close; hub restart likely kills them. | Persist terminal sessions across hub restarts (reattach by pty id). |
+| **Find/search in thread** | PandaCode: ⌘F searches messages with all matches highlighted; inspector search finds file names/text. | Search is global FTS5; per-thread find may be missing. | Add in-thread find with match highlighting (client-only, cheap). |
+| **Keyboard shortcut remapping** | Paradev: every action remappable via Settings. | Keybinds exist but remapping UI unknown. | Ensure full remapping UI ships with desktop. |
+
+### Where we're already ahead (keep these)
+
+- **Always-on hub that survives restarts** with honest `interrupted` state and a journal crash harness (T3 and PandaCode recover, but our crash-harness discipline and "interrupted says interrupted" are unusually explicit).
+- **Windows + Linux first** (Paradev is macOS-only; PandaCode supports Windows/Linux but macOS-primary).
+- **Self-contained adapters** guarded by `pnpm check` (no adapter-to-adapter imports) — T3's provider packages are similar but heavier.
+- **Pairing/security model** (12-digit code, hashes only, constant-time compare, origin allowlist) is more explicit than most.
+- **No credential handling** (principle 2) — shared with all of them, but we state it as a principle.
+
+### Recommended priority (next)
+
+1. **Command receipts + intent/side-effect split** (T3) — strengthens the crash guarantees we already promise.
+2. **RAM-derived pool + per-worker memory caps + resource view** (PandaCode) — closes an audit gap.
+3. **Multi-pane tiling + slim approval bar + in-thread find** (PandaCode) — pure UX, no daemon work.
+4. **Account pool rotation on rate limit** (PandaCode) — builds on existing rate-limit code.
+5. **Post-turn check hook** (PandaCode) — small, high daily value.
+6. **Publish `@ormicode/client` + thin MCP server** (Paseo/T3) — already an adopted idea; ship it.
+7. **Crash-restart watchdog** (PandaCode) — aligns with reboot-recovery.
+8. **Teardown scripts + verify PORT export** (Paradev) — adopted, finish it.
+
+### Open questions this raises
+
+- Should we expose a public TS SDK and MCP server now (Paseo/Paradev ship them early) or wait until node pairing lands? **Recommendation:** ship the SDK now (thin, over existing protocol), MCP after bots/teams. Not destructive, so decide and move on.
+- Do we want E2E-encrypted relay as an option (PandaCode Connect, Paseo relay) or stay trusted-relay (our deliberate difference)? **Recommendation:** stay trusted-relay; revisit only if a second person ever hosts the relay. Keep as deliberate difference.
+
+Sources: [pingdotgg/t3code](https://github.com/pingdotgg/t3code) (docs/internals/overview.md, README), [Emanuele-web04/synara](https://github.com/Emanuele-web04/synara), [getpaseo/paseo](https://github.com/getpaseo/paseo), [paradevai/paradev](https://github.com/paradevai/paradev), [aicodeking/pandacode](https://github.com/aicodeking/pandacode). Checked 2026-11-21.
+
 
 | They do | We do | Why |
 | --- | --- | --- |
