@@ -39,6 +39,7 @@ import { runSessionHook } from './workspace-hooks.ts';
 import { stateFor } from './supervisor-state.ts';
 import { Resources } from './resources.ts';
 import { systemdScopeArgs, overMemoryCap } from './worker-scope.ts';
+import { UtilityCalls } from './utility.ts';
 import { shouldRecordResume } from './resume-marker.ts';
 import { closeInterruptedTools } from './interrupted-tools.ts';
 import { stopWorkerProcess } from './stop-worker.ts';
@@ -338,6 +339,8 @@ export async function startDaemon(opts: DaemonOptions = {}) {
       maxAgeMs: (Number(process.env.ORMICODE_PRICING_CACHE_MINUTES) || 1440) * 60_000,
     }),
     resources,
+    utility: new UtilityCalls({ readSetting: key => settingValue(db, key) }),
+    digestSummaries: new Map(),
   };
   dispatchCtx.teamLifecycle.start();
   // Pool size is measured, not fixed: a shrinking machine evicts idle workers.

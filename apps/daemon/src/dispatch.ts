@@ -52,6 +52,9 @@ import type { TeamLifecycle } from './team-lifecycle.ts';
 import { shouldResetUiCheckFollowups } from './ui-check.ts';
 import { machineMethod } from './machine-methods.ts';
 import type { Resources } from './resources.ts';
+import type { UtilityCalls } from './utility.ts';
+import { digestSummarize, overlaySummaries } from './digest-methods.ts';
+import type { DigestEntry } from '@ormicode/digest';
 /** What a client transport must do: send frames and answer requests. */
 export interface ClientLink {
   send(frame: Frame | Record<string, unknown>): void;
@@ -99,6 +102,9 @@ export interface DispatchCtx {
   dataExports: DataExports;
   stopHub: StopHub;
   resources: Resources;
+  utility: UtilityCalls;
+  /** Latest utility-produced digest entries, keyed by the `since` they were built for. */
+  digestSummaries: Map<string, { since: number; entry: DigestEntry }>;
 }
 /** Client-facing session.* / daemon.* request dispatch. */
 export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Frame): Promise<void> {
@@ -173,10 +179,13 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
       }
       case 'session.digest': {
         const since = Number(body.since); const computedAt = Date.now();
-        const entries = listSessions(db).map(s => digestOf({ id: s.id, state: sessionStatus(ctx, s).state, reason: s.reason, delegatedApproval: ctx.teamApprovals.delegatedOnly(s.id), updatedAt: s.updated_at },
+        const mechanical = listSessions(db).map(s => digestOf({ id: s.id, state: sessionStatus(ctx, s).state, reason: s.reason, delegatedApproval: ctx.teamApprovals.delegatedOnly(s.id), updatedAt: s.updated_at },
           replay(db, s.id).filter(e => e.ts > since).map(e => ({ seq: e.seq, ts: e.ts, kind: e.kind, payload: JSON.parse(e.payload) as Record<string, unknown> })),
           since, computedAt));
-        return client.link.reply(id, { since, computedAt, entries: rankDigest(entries) });
+        // Mechanical entries are served now; utility summaries run in the
+        // background and surface through the journaled digest_ready events.
+        void digestSummarize(ctx, since, mechanical).catch(() => undefined);
+        return client.link.reply(id, { since, computedAt, entries: rankDigest(overlaySummaries(ctx.digestSummaries, since, mechanical)) });
       }
       case 'session.cost':
       case 'cost.totals':

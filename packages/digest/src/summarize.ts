@@ -4,10 +4,11 @@ export interface DigestEvent { seq: number; ts: number; kind: string; payload: R
 export interface DigestSession { id: string; state: string; updatedAt: number; reason?: string | null; delegatedApproval?: boolean }
 export type Rank = 'waiting' | 'failed' | 'done' | 'progressed' | 'silent';
 export interface Wants { kind: 'approval' | 'question' | 'rate_limit'; since: number }
+export type DigestSource = 'mechanical' | 'summary';
 export type DigestEntry =
-  | { session: string; rank: Exclude<Rank, 'silent'>; source: 'mechanical'; changed: { paths: string[]; result?: string };
+  | { session: string; rank: Exclude<Rank, 'silent'>; source: DigestSource; changed: { paths: string[]; result?: string };
       wants: Wants | null; dropped: string[]; where: { state: string; ageMs: number }; cost: { tokens: number } }
-  | { session: string; rank: 'silent'; source: 'mechanical'; silentMs: number };
+  | { session: string; rank: 'silent'; source: DigestSource; silentMs: number };
 
 const PATH_KEYS = ['file_path', 'filePath', 'path', 'notebook_path'];
 const clip = (s: string, n = 200) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
