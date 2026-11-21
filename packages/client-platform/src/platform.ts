@@ -46,7 +46,7 @@ export interface DesktopExtras {
   openExternal(url: string): Promise<void>;
   previewClearData(partition: string): Promise<void>;
   /** Tell Chromium the persisted theme so `prefers-color-scheme` matches the window. */
-  setTheme?(theme: 'light' | 'dark'): void;
+  setTheme?(theme: 'light' | 'dark' | 'system'): void;
 }
 
 export interface WebExtras {

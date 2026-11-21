@@ -31,7 +31,7 @@ interface OrmiBridge {
   layoutWrite(descriptor: unknown): Promise<void>;
   openExternal(url: string): Promise<void>;
   previewClearData(partition: string): Promise<void>;
-  setTheme?(theme: 'light' | 'dark'): void;
+  setTheme?(theme: 'light' | 'dark' | 'system'): void;
 }
 
 declare global {

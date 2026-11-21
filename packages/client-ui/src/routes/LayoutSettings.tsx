@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { appendLayoutHistory, defaultLayout, revertLayout, validateLayout, type LayoutDescriptor, type LayoutHistoryEntry } from '../lib/layout.ts';
+import { Group, Row, ctl } from './SettingsRows.tsx';
+import { SettingsSwitch } from './SettingsSwitch.tsx';
 
 const LAYOUT_KEY = 'ormi.layout';
 const HISTORY_KEY = 'ormi.layout.history';
-const control = { height: 26, boxSizing: 'border-box' as const, padding: '0 8px', border: '1px solid var(--line-card)', borderRadius: 6, background: 'var(--bg-inset)', color: 'var(--text-active)', font: 'inherit', fontSize: 11 };
+const actionButton = { ...ctl, cursor: 'pointer', fontSize: 11 } as const;
 
 function stored(): LayoutDescriptor {
   try {
@@ -39,32 +41,19 @@ export function LayoutSettings({ safeMode, onSafeMode }: { safeMode: boolean; on
     {!validation.ok || validation.unknown.length ? <div role="status" style={{ marginTop: 12, padding: '8px 10px', border: '1px solid var(--line-card)', borderRadius: 7, color: 'var(--text-secondary)', fontSize: 11 }}>
       Invalid stored layout — using safe defaults. {[...validation.errors, ...validation.unknown.map(id => `unknown region ${id}`)].join(' · ')}
     </div> : null}
-    <section style={group}>
-      <div style={caption}>SAFETY</div>
-      <div style={card}>
-        <Row title="Safe mode" hint="Ignore layouts an agent publishes; your own changes still apply">
-          <button role="switch" aria-checked={safeMode} onClick={() => onSafeMode(!safeMode)} style={switchStyle(safeMode)}><span style={knob} /></button>
-        </Row>
-      </div>
-    </section>
-    <section style={group}>
-      <div style={caption}>HISTORY</div>
-      <div style={card}>
-        {history.map((entry, index) => <Row key={`${entry.timestamp}-${index}`} title={relativeTime(entry.timestamp)} tooltip={new Date(entry.timestamp).toLocaleString()}>
-          <span style={sourceTag}>{entry.source}</span>
-          <button style={actionButton} onClick={() => { const value = revertLayout(history, index); if (value) save(value); }}>Revert to this</button>
-        </Row>)}
-        {!history.length ? <Row title="No layout changes yet" /> : null}
-        <Row title="Reset to defaults"><button style={actionButton} onClick={() => save(defaultLayout)}>Reset to defaults</button></Row>
-      </div>
-    </section>
+    <Group title="SAFETY">
+      <Row title="Safe mode" hint="Ignore layouts an agent publishes; your own changes still apply">
+        <SettingsSwitch ariaLabel="Safe mode" on={safeMode} onChange={onSafeMode} />
+      </Row>
+    </Group>
+    <Group title="HISTORY">
+      {history.map((entry, index) => <Row key={`${entry.timestamp}-${index}`} title={relativeTime(entry.timestamp)} hint={`${entry.source} · ${new Date(entry.timestamp).toLocaleString()}`}>
+        <button style={actionButton} onClick={() => { const value = revertLayout(history, index); if (value) save(value); }}>Revert</button>
+      </Row>)}
+      {!history.length ? <Row title="No layout changes yet" /> : null}
+      <Row title="Reset to defaults" hint="Restore the built-in layout"><button style={actionButton} onClick={() => save(defaultLayout)}>Reset</button></Row>
+    </Group>
   </>;
-}
-
-function Row({ title, hint, tooltip, children }: { title: string; hint?: string; tooltip?: string; children?: React.ReactNode }) {
-  return <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 44, padding: '7px 12px', borderTop: '1px solid var(--line-card)' }}>
-    <div title={tooltip} style={{ flex: 1, minWidth: 0, fontSize: 12, color: 'var(--text-title)' }}>{title}{hint ? <div style={{ marginTop: 2, fontSize: 10, color: 'var(--text-hint)' }}>{hint}</div> : null}</div>{children}
-  </div>;
 }
 
 function relativeTime(timestamp: number): string {
@@ -77,11 +66,3 @@ function relativeTime(timestamp: number): string {
   const days = Math.floor(hours / 24);
   return `${days} day${days === 1 ? '' : 's'} ago`;
 }
-
-const group = { marginTop: 18 };
-const caption = { marginBottom: 7, fontSize: 10, fontWeight: 500, letterSpacing: 1, color: 'var(--text-label)' };
-const card = { overflow: 'hidden', border: '1px solid var(--line-card)', borderRadius: 9, background: 'var(--bg-card)' };
-const knob = { width: 13, height: 13, borderRadius: 99, background: 'var(--bg-main)' };
-const switchStyle = (on: boolean) => ({ width: 30, height: 17, padding: 2, border: 0, borderRadius: 99, background: on ? 'var(--bg-selected)' : 'var(--bg-raised)', display: 'flex', justifyContent: on ? 'flex-end' : 'flex-start', cursor: 'pointer' });
-const actionButton = { ...control, cursor: 'pointer' };
-const sourceTag = { padding: '2px 6px', borderRadius: 99, background: 'var(--bg-inset)', color: 'var(--text-hint)', fontSize: 9, lineHeight: 1.4 };

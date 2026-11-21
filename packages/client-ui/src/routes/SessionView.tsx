@@ -11,7 +11,7 @@ import { NotesPanel } from '../features/notes/NotesPanel.tsx';
 import { TerminalPane } from '../features/terminal/TerminalPane.tsx';
 import { GitPane } from '../features/git/GitPane.tsx';
 import { BrowserPane } from '../features/browser/BrowserPane.tsx';
-import type { RailPane } from './App.tsx';
+import type { RailPane } from '../components/ShellChrome.tsx';
 import { History } from 'lucide-react';
 import { compactTokens, formatUsd, projectName } from '../lib/format.ts';
 import { stateLabel } from '../features/session/state.tsx';

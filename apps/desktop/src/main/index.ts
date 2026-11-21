@@ -345,7 +345,7 @@ app.whenReady().then(async () => {
   });
   ipcMain.on('ormi:hubLabel', e => { e.returnValue = loadRemoteFile()?.relayUrl ?? socketPath(); });
   ipcMain.on('ormi:theme', (_e, theme: unknown) => {
-    if (theme === 'light' || theme === 'dark') nativeTheme.themeSource = theme;
+    if (theme === 'light' || theme === 'dark' || theme === 'system') nativeTheme.themeSource = theme;
   });
   ipcMain.on('ormi:win:min', () => { if (win) void minimizeAnimated(win); });
   ipcMain.on('ormi:win:max', () => { if (win) toggleMax(win); });

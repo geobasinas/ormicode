@@ -5,7 +5,7 @@ import { Plus, AtSign, Mic, ArrowUp, ChevronDown, Folder, Laptop, Loader2, FileT
 import { newId } from '@ormicode/protocol';
 import type { PromptContext } from '@ormicode/protocol';
 import { usePlatform } from '../../lib/platform.ts';
-import { VENDORS, loadPrefs, rememberProject } from '../../routes/Settings.tsx';
+import { PICKABLE_VENDORS, loadPrefs, rememberProject } from '../../routes/Settings.tsx';
 import { useImages, useFiles, ImageStrip, ProjectChip, iconBtn } from './composer-parts.tsx';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../components/ui/dropdown-menu.tsx';
 import { AgentChip, GitChip, branchNameIssue, type RepoInfo, type WorkspaceChoice, type WorkspaceMode } from './pickers.tsx';
@@ -34,7 +34,7 @@ function branchNameFor(prompt: string, prefix: string) {
   return `${prefix}${slug || 'task'}`;
 }
 type Agent = { vendor: string; transports: string[] };
-const FALLBACK: Agent[] = VENDORS.map(vendor => ({ vendor, transports: ['cli'] }));
+const FALLBACK: Agent[] = PICKABLE_VENDORS.map(vendor => ({ vendor, transports: ['cli'] }));
 
 export function NewSession({ onStarted }: { onStarted: (session: string) => void }) {
   const { transport, desktop } = usePlatform();

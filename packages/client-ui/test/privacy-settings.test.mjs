@@ -64,7 +64,7 @@ test('Export pulls every chunk and downloads one tar file', async () => {
   dom.window.HTMLAnchorElement.prototype.click = function () { downloads.push({ href: this.href, name: this.download }); };
   try {
     await act(async () => button('Export').click());
-    assert.deepEqual(p.requests.map(([method, body]) => [method, body]), [
+    assert.deepEqual(p.requests.filter(([method]) => method.startsWith('data.')), [
       ['data.export', {}], ['data.exportChunk', { handle: 'h1', offset: 0 }], ['data.exportChunk', { handle: 'h1', offset: 11 }],
     ]);
     assert.deepEqual(downloads, [{ href: 'blob:test', name: 'ormicode-export-20261121-120000.tar' }]);

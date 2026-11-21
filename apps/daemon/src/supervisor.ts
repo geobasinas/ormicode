@@ -2,9 +2,9 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { rmSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Frame, PromptAttachment, PromptContext } from '@ormicode/protocol';
+import type { PromptAttachment, PromptContext } from '@ormicode/protocol';
 import {
-  openStore, getSession, getSessionPorts, setState, setWorkerPid, setNativeId, listSessions, settingValue,
+  openStore, getSession, getSessionPorts, setState, setWorkerPid, listSessions, settingValue,
   listMachines, touchMachine, upsertMachine,
   type SessionState,
 } from '@ormicode/session-store';
@@ -37,19 +37,17 @@ import { Services } from './services.ts';
 import { AgentBrowser } from './agent-browser.ts';
 import { CheckpointScreenshotScheduler, checkpointSnapshot } from './checkpoint-screenshots.ts';
 import { UiCheckFollowupGuard } from './ui-check.ts';
-import { finishTurnCheckpoints, recordToolCheckpoint, startTurnCheckpoints } from './turn-checkpoints.ts';
 import { runSessionHook } from './workspace-hooks.ts';
 import { stateFor } from './supervisor-state.ts';
 import { Resources } from './resources.ts';
-import { systemdScopeArgs, overMemoryCap } from './worker-scope.ts';
+import { systemdScopeArgs } from './worker-scope.ts';
 import { UtilityCalls } from './utility.ts';
-import { shouldRecordResume } from './resume-marker.ts';
 import { closeInterruptedTools } from './interrupted-tools.ts';
 import { stopWorkerProcess } from './stop-worker.ts';
 import { DataExports, stopSignal, type StopHub } from './data-methods.ts';
+import { createWorkerFrameHandler, type Worker } from './worker-frames.ts';
 const WORKER_MAIN = join(dirname(fileURLToPath(import.meta.url)), 'worker-main.ts');
 const startedAt = Date.now();
-interface Worker { proc: ChildProcess; session: string; pid: number | undefined; ready: boolean; stopping?: boolean }
 type HeldPrompt = { text: string; images?: unknown[]; context?: PromptContext[]; attachments?: PromptAttachment[]; actor?: 'auto' };
 export interface DaemonOptions { socketPath?: string; storePath?: string; mcpCredentials?: McpCredentials }
 export async function startDaemon(opts: DaemonOptions = {}) {
@@ -165,98 +163,6 @@ export async function startDaemon(opts: DaemonOptions = {}) {
     });
     proc.on('error', e => { lastError = String(e); });
     if (waking) void runSessionHook(row, 'resume', base, record); return worker;
-  };
-  const onWorkerFrame = (link: Link, frame: Frame) => {
-    if (frame.type !== 'req') return;
-    const { id, method } = frame;
-    const body = frame.body as Record<string, unknown>;
-    const session = String(body.session ?? '');
-    const answer = (b: Record<string, unknown>) => link.reply(id, b);
-    switch (method) {
-      case 'worker.ready': {
-        const w = workers.get(session);
-        let recap = false;
-        if (w) {
-          w.ready = true; w.pid = Number(body.pid) || w.pid; setWorkerPid(db, session, w.pid ?? null);
-          // A prompt may already be waiting on this worker. Stay off the idle
-          // evict list so pool pressure cannot drop it before the turn starts.
-          if (!isSending(session)) { setState(db, session, 'idle'); armIdle(session, 'idle'); }
-          enforcePool(session);
-          dispatchCtx.teamLifecycle.available(session);
-          if (resuming.delete(session) && shouldRecordResume(db, session)) record(session, 'resumed', {});
-          const uptoSeq = recapPending.get(session);
-          if (uptoSeq !== undefined) {
-            recapPending.delete(session);
-            recap = true;
-            const brief = handoffBrief(db, session, 12, uptoSeq);
-            record(session, 'handoff_brief', { text: brief });
-            void sendPrompt(session, `You are resuming work after a conversation rewind. Context recap:\n${brief}\nContinue where the session left off.`, undefined, { journal: false });
-          }
-        }
-        answer({ ok: true });
-        resumeQueuedChildren(dispatchCtx, session);
-        if (!recap) void drainQueue(session);
-        break;
-      }
-      case 'worker.event': {
-        let kind = String(body.kind);
-        dispatchCtx.teamLifecycle.event(session, kind, body.payload as Record<string, unknown>);
-        if (kind === 'text_delta' || kind === 'thinking_delta') {
-          delta(session, kind, String((body.payload as Record<string, unknown>)?.text ?? ''));
-          return answer({ seq: 0 });
-        }
-        // A stream that ends while no turn is in flight is a clean stop, not a crash.
-        if (kind === 'interrupted' && (body.payload as Record<string, unknown>)?.reason === 'stream_ended'
-            && !['starting', 'running', 'awaiting_approval', 'awaiting_input', 'retrying'].includes(getSession(db, session)?.state ?? '')) {
-          return answer({ seq: 0 });
-        }
-        if (kind === 'turn_start') startTurnCheckpoints(session, services, turnCheckpoints, handoffsInTurn);
-        if (kind === 'interrupted') closeInterruptedTools(db, session, record);
-        let payload = secrets.redact(session, mcpCredentials.redact(body.payload as Record<string, unknown>));
-        [kind, payload] = dispatchCtx.teamApprovals.event(session, kind, payload);
-        const { seq } = append(db, session, { kind, payload: { kind, ...payload }, ts: Number(body.ts) || Date.now() });
-        const frameOut = JSON.stringify({ v: 1, type: 'evt', session, seq, ts: Number(body.ts) || Date.now(), body: { kind, ...payload } });
-        fanout(session, frameOut);
-        relay?.sendEvt(session, seq, JSON.parse(frameOut));
-        idxSoon();
-        recordToolCheckpoint(session, kind, payload, seq, toolNames, turnCheckpoints);
-        const mapped = stateFor[kind];
-        if (mapped) {
-          setState(db, session, mapped, typeof payload?.reason === 'string' ? payload.reason as string : undefined);
-          armIdle(session, mapped);
-        }
-        if (kind === 'error' && typeof payload?.resetAt === 'number'
-            && (payload.code === 'rate_limited' || payload.code === 'plan_limit')) {
-          setState(db, session, 'paused_rate_limited', String(payload.code));
-          retries.schedule(session, payload.resetAt);
-        }
-        answer({ seq });
-        if (kind === 'turn_end') finishTurnCheckpoints(session, turnCheckpoints, uiCheckFollowups, enqueueAutoPrompt, record, drainQueue);
-        if (kind === 'interrupted') void drainQueue(session, true, true);
-        break;
-      }
-      case 'worker.state':
-        setState(db, session, body.state as SessionState, body.reason as string | undefined);
-        dispatchCtx.teamLifecycle.event(session, 'state', body);
-        answer({ seq: 0 });
-        break;
-      case 'worker.native':
-        setNativeId(db, session, String(body.nativeId));
-        answer({ ok: true });
-        break;
-      case 'worker.health': {
-        const rss = Number(body.rssBytes);
-        resources.observeWorker(session, rss);
-        if (overMemoryCap(rss, resources.workerMemoryCapBytes())) {
-          record(session, 'interrupted', { reason: 'memory_cap' });
-          void stopWorker(session, true);
-        }
-        answer({ ok: true });
-        break;
-      }
-      default:
-        link.replyError(id, 'protocol.unknown_method', method);
-    }
   };
   // Team parents stay resident even when idle: their worker link is the
   // delegation target for child approvals and handoffs. Evicting one makes
@@ -405,6 +311,15 @@ export async function startDaemon(opts: DaemonOptions = {}) {
   // pushes machine.sessions summaries so the hub can list its sessions.
   const nodeConfig = hubConfig ? undefined : loadNodeConfig();
   const stopNode = nodeConfig ? startNode(dispatchCtx, nodeConfig) : undefined;
+  const onWorkerFrame = createWorkerFrameHandler({
+    db, workers, dispatchCtx,
+    delta, fanout, relay: () => relay, idxSoon,
+    toolNames, turnCheckpoints, handoffsInTurn, resuming, recapPending, retries, uiCheckFollowups,
+    secrets, mcpCredentials, resources, record,
+    isSending: session => isSending(session),
+    armIdle, enforcePool, stopWorker,
+    sendPrompt, drainQueue, enqueueAutoPrompt,
+  });
   const server = await serve(socketPath, link => {
     link.onFrame = frame => {
       if (closing) return;

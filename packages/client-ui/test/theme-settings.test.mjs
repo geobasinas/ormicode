@@ -58,11 +58,11 @@ test('Appearance changes persist and apply the light palette, survive reload and
     await act(async () => root.render(createElement(Settings)));
     const appearance = [...document.querySelectorAll('nav button')].find(button => button.textContent === 'Appearance');
     await act(async () => appearance.click());
-    const switches = () => [...document.querySelectorAll('[role="switch"]')];
-    await act(async () => switches()[1].click());
+    const radios = () => [...document.querySelectorAll('[role="radio"]')];
+    await act(async () => radios()[1].click());
     const html = document.documentElement;
-    assert.equal(switches()[1].getAttribute('aria-checked'), 'true');
-    assert.equal(switches()[0].getAttribute('aria-checked'), 'false');
+    assert.equal(radios()[1].getAttribute('aria-checked'), 'true');
+    assert.equal(radios()[0].getAttribute('aria-checked'), 'false');
     assert.equal(JSON.parse(localStorage.getItem('ormi.prefs')).theme, 'light');
     assert.equal(loadPrefs().theme, 'light');
     assert.equal(html.dataset.theme, 'light');
@@ -76,9 +76,9 @@ test('Appearance changes persist and apply the light palette, survive reload and
     await act(async () => root.render(createElement(Settings, { key: 'reload' })));
     assert.equal(document.documentElement.style.getPropertyValue('--bg-main'), '#F2F2F2');
     await act(async () => [...document.querySelectorAll('nav button')].find(button => button.textContent === 'Appearance').click());
-    await act(async () => switches()[0].click());
-    assert.equal(switches()[0].getAttribute('aria-checked'), 'true');
-    assert.equal(switches()[1].getAttribute('aria-checked'), 'false');
+    await act(async () => radios()[0].click());
+    assert.equal(radios()[0].getAttribute('aria-checked'), 'true');
+    assert.equal(radios()[1].getAttribute('aria-checked'), 'false');
     assert.equal(JSON.parse(localStorage.getItem('ormi.prefs')).theme, 'dark');
     assert.equal(loadPrefs().theme, 'dark');
     assert.equal(document.documentElement.dataset.theme, 'dark');
@@ -86,8 +86,8 @@ test('Appearance changes persist and apply the light palette, survive reload and
     assert.equal(document.documentElement.classList.contains('light'), false);
     assert.equal(document.documentElement.style.colorScheme, 'only dark');
     assert.equal(document.documentElement.style.getPropertyValue('--bg-window'), '#101010');
-    localStorage.setItem('ormi.prefs', '{broken'); assert.equal(loadPrefs().theme, 'dark');
-    localStorage.removeItem('ormi.prefs'); assert.equal(loadPrefs().theme, 'dark');
+    localStorage.setItem('ormi.prefs', '{broken'); assert.equal(loadPrefs().theme, 'system');
+    localStorage.removeItem('ormi.prefs'); assert.equal(loadPrefs().theme, 'system');
   } finally {
     await act(async () => root.unmount());
     for (const name of names) { if (previous[name]) Object.defineProperty(globalThis, name, previous[name]); else delete globalThis[name]; }
