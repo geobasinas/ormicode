@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
-import { expandPrompt } from '../src/prompt-context.ts';
+import { expandPrompt, promptTitle } from '../src/prompt-context.ts';
 import { PreviewInspector } from '../src/preview-inspector.ts';
 
 function makeRepo() {
@@ -116,4 +116,13 @@ test('element and console contexts expand with details for the agent', () => {
   } finally {
     rmSync(cwd, { recursive: true, force: true });
   }
+});
+
+test('a file-line comment titles an untitled session by the comment, not its file header', () => {
+  const comment = 'About `cool things.txt` line 1:\n\n```text\nest file.\n```\n\nchange this to testing file';
+  assert.equal(promptTitle(comment), 'change this to testing file');
+  assert.equal(promptTitle('About `a.ts` lines 2–4:\n\n```typescript\n\n```\n\n  fix it\nplease'), 'fix it');
+  assert.equal(promptTitle('About the weather today\nmore'), 'About the weather today');
+  assert.equal(promptTitle(`  ${'x'.repeat(80)}`), `${'x'.repeat(57)}…`);
+  assert.equal(promptTitle('\n  \n'), '');
 });

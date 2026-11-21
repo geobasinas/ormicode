@@ -15,6 +15,14 @@ export function promptBusy(state: string): string | undefined {
   return ['running', 'awaiting_input', 'retrying'].includes(state) ? 'turn in progress' : undefined;
 }
 
+/** Title for an untitled session's first prompt. A file-line comment is named by the comment itself,
+ * so its `About \`path\` line N:` header doesn't make the current session read like a new one. */
+export function promptTitle(text: string): string {
+  const comment = /^About `[^`\n]+` lines? [^\n]*:\n\n```[^\n]*\n[\s\S]*?\n```\n\n([\s\S]+)$/.exec(text)?.[1];
+  const first = (comment ?? text).split('\n').map(l => l.trim()).find(Boolean) ?? '';
+  return first.length > 60 ? `${first.slice(0, 57)}…` : first;
+}
+
 export interface PromptAttachmentInfo { name: string; mimeType: string; size: number; path: string }
 export interface PromptAppendix {
   text: string;

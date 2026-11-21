@@ -35,7 +35,7 @@ import { designMethod } from './design-methods.ts';
 import { projectSearchFiles } from './project-search.ts';
 import { queueMethod } from './queue-methods.ts';
 import { composerMethod } from './composer-methods.ts';
-import { expandPrompt, PromptInvalidError, promptBusy, validatePrompt } from './prompt-context.ts';
+import { expandPrompt, PromptInvalidError, promptBusy, promptTitle, validatePrompt } from './prompt-context.ts';
 import { retryPrompt } from './prompt-methods.ts';
 import { listModels } from './models.ts';
 import { startSession } from './session-start.ts';
@@ -247,8 +247,8 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
         }
         // Untitled sessions pick up the first real prompt as their title.
         if (!s.title) {
-          const first = String(body.text).split('\n').map(l => l.trim()).find(Boolean) ?? '';
-          if (first) setTitle(ctx.db, session, first.length > 60 ? `${first.slice(0, 57)}…` : first);
+          const title = promptTitle(String(body.text));
+          if (title) setTitle(ctx.db, session, title);
         }
         let sent: boolean;
         try {
