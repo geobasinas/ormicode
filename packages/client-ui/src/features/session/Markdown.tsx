@@ -5,7 +5,7 @@ import remarkGfm from 'remark-gfm';
 
 const inlineCode: React.CSSProperties = {
   background: 'var(--bg-inset)', borderRadius: 4, padding: '1px 4px',
-  fontFamily: 'var(--font-mono)', fontSize: 12,
+  fontFamily: 'var(--font-mono)', fontSize: '0.857em',
 };
 
 function CodeBlock({ value, language }: { value: string; language: string }) {
@@ -35,8 +35,8 @@ function CodeBlock({ value, language }: { value: string; language: string }) {
           borderRadius: 4, cursor: 'pointer', fontSize: 10,
         }}>{copied ? <><Check size={11} />Copied</> : <><Copy size={11} />Copy</>}</button>
       </div>
-      <pre style={{ margin: 0, padding: '8px 10px', overflowX: 'auto', fontSize: 12, lineHeight: 1.5 }}>
-        <code style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{value}</code>
+      <pre style={{ margin: 0, padding: '8px 10px', overflowX: 'auto', fontSize: '0.857em', lineHeight: 1.5 }}>
+        <code style={{ fontFamily: 'var(--font-mono)' }}>{value}</code>
       </pre>
     </div>
   );
@@ -44,9 +44,9 @@ function CodeBlock({ value, language }: { value: string; language: string }) {
 
 const components: Components = {
   p: ({ children }) => <p style={{ margin: '0 0 8px' }}>{children}</p>,
-  h1: ({ children }) => <h1 style={{ color: 'var(--text-title)', fontSize: 17, fontWeight: 600, margin: '12px 0 6px' }}>{children}</h1>,
-  h2: ({ children }) => <h2 style={{ color: 'var(--text-title)', fontSize: 15, fontWeight: 600, margin: '12px 0 6px' }}>{children}</h2>,
-  h3: ({ children }) => <h3 style={{ color: 'var(--text-title)', fontSize: 14, fontWeight: 600, margin: '12px 0 6px' }}>{children}</h3>,
+  h1: ({ children }) => <h1 style={{ color: 'var(--text-title)', fontSize: '1.214em', fontWeight: 600, margin: '12px 0 6px' }}>{children}</h1>,
+  h2: ({ children }) => <h2 style={{ color: 'var(--text-title)', fontSize: '1.071em', fontWeight: 600, margin: '12px 0 6px' }}>{children}</h2>,
+  h3: ({ children }) => <h3 style={{ color: 'var(--text-title)', fontSize: '1em', fontWeight: 600, margin: '12px 0 6px' }}>{children}</h3>,
   ul: ({ children, className }) => <ul className={className} style={{ paddingLeft: 18, margin: '4px 0 8px' }}>{children}</ul>,
   ol: ({ children, className }) => <ol className={className} style={{ paddingLeft: 18, margin: '4px 0 8px' }}>{children}</ol>,
   li: ({ children, className }) => <li className={className} style={{ margin: '3px 0' }}>{children}</li>,
@@ -65,7 +65,7 @@ const components: Components = {
   },
   table: ({ children }) => (
     <div style={{ overflowX: 'auto', margin: '8px 0' }}>
-      <table style={{ borderCollapse: 'collapse', fontSize: 12.5, minWidth: '100%', width: 'max-content' }}>{children}</table>
+      <table style={{ borderCollapse: 'collapse', fontSize: '0.893em', minWidth: '100%', width: 'max-content' }}>{children}</table>
     </div>
   ),
   th: ({ children }) => <th style={{ background: 'var(--bg-card)', border: '1px solid var(--line-card)', padding: '5px 8px', textAlign: 'left' }}>{children}</th>,
@@ -78,9 +78,9 @@ const components: Components = {
   }} style={{ color: 'var(--text-title)', textDecoration: 'underline', textDecorationColor: 'var(--line-card)' }}>{children}</a>,
 };
 
-export function Markdown({ text, muted = false }: { text: string; muted?: boolean }) {
+export function Markdown({ text, muted = false, size = 14 }: { text: string; muted?: boolean; size?: number }) {
   return (
-    <div className="ormi-markdown" style={{ color: muted ? 'var(--text-hint)' : 'var(--text-label)', fontSize: 14, lineHeight: 1.55, overflowWrap: 'anywhere' }}>
+    <div className="ormi-markdown" style={{ color: muted ? 'var(--text-hint)' : 'var(--text-label)', fontSize: size, lineHeight: 1.55, overflowWrap: 'anywhere' }}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml components={components}>{text}</ReactMarkdown>
     </div>
   );

@@ -27,6 +27,6 @@ export function HandoffRow({ text }: { text: string }) {
       display: 'inline-flex', alignItems: 'center', gap: 5, padding: 0, border: 0,
       background: 'transparent', color: 'var(--text-hint)', fontSize: 12, cursor: 'pointer',
     }}><ArrowRight size={12} />Handoff brief <ChevronRight size={11} style={{ transform: expanded ? 'rotate(90deg)' : undefined }} /></button>
-    {expanded ? <div style={{ margin: '4px 0 5px 18px' }}><Markdown text={text} /></div> : null}
+    {expanded ? <div style={{ margin: '4px 0 5px 18px' }}><Markdown text={text} size={12} /></div> : null}
   </div>;
 }
