@@ -41,6 +41,15 @@ Main is at `3309a11`. The commits `6b342ad..3309a11` (31 in total) were each tes
   - The pricing test server leaks.
   - The test "a full pool still accepts prompts on every session at once" is flaky. It was 932 of 933 passing on `982b688`.
 
+## Update 2026-11-21 (cont.)
+
+Main is at `1e5bb90`. Follow-up fixes on top of `3309a11`:
+
+- **Model lists come from the installed CLIs.** Claude CLI no longer serves a stale hardcoded alias list: `agent-claude-cli` probes the CLI's stream-json control channel (`initialize` → `result.models`) for ids, display names and effort levels, still without an SDK dependency (`328f67c`). Codex CLI keeps its live `model/list` catalog and additionally surfaces the configured default model when the account catalog omits it (`a65bdce`). Note the Codex catalog is account-driven: a free-tier account sees fewer models than a paid one.
+- **Sidebar filters are icon chips.** `Archived` left the All|Sessions|Bots tab row; a filter row under the tabs now offers Needs you, Running and Archived (`2150682`), kept on one scrollable line at narrow sidebar widths (`daeec0b`).
+- **Transcript polish.** Thinking and handoff markdown render at 12px to match the compact rows (`78d74aa`); tool rows no longer overflow long tool names (`90f54cf`), and thinking inside an expanded "Worked" turn starts collapsed.
+- **Deleted sessions leave the Archived list.** `session.delete` used to be indistinguishable from archive, so deleted sessions showed a Restore button that could not bring their files back. Migration `0012` adds a `deleted` column; `session.list` filters it while cost totals and design activity keep the history (`1e5bb90`). Sessions deleted before this change have no marker and remain listed.
+
 ## Implementation summary
 
 Rows group related README sections; the per-section audit notes below distinguish individual features and limitations.
