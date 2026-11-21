@@ -5,7 +5,7 @@ import { promisify } from 'node:util';
 import { OpenCode } from '@opencode/client';
 import type { OpenCodeClient } from '@opencode/client';
 import * as z from 'zod/mini';
-import type { ModelList } from '@ormicode/agent-core';
+import type { ModelList, SessionMode } from '@ormicode/agent-core';
 
 // Own copy of the short-lived `opencode serve` + model/list helper. Adapters
 // must not import each other, so this mirrors agent-opencode-sdk/src/server.ts
@@ -113,4 +113,24 @@ export async function openCodeModels(executable?: string): Promise<ModelList> {
       return stdout.split('\n').map(line => line.trim()).filter(id => id.includes('/')).map(id => ({ id }));
     } catch { return []; }
   }
+}
+
+const agentRef = z.looseObject({ id: z.string().check(z.minLength(1)), name: z.optional(z.string()), mode: z.optional(z.string()), hidden: z.optional(z.boolean()) });
+
+/** Agents a session can switch to (primary/all, not hidden) — each carries the vendor's own permission ruleset. */
+export async function listOpenCodeAgents(server: OpenCodeServer, cwd?: string): Promise<SessionMode[]> {
+  const listed = await server.client.agent.list(cwd ? { location: { directory: cwd } } : {});
+  const data = z.safeParse(z.looseObject({ data: z.array(agentRef) }), listed);
+  if (!data.success) return [];
+  return data.data.data.flatMap(agent =>
+    (agent.mode === undefined || agent.mode === 'primary' || agent.mode === 'all') && agent.hidden !== true
+      ? [{ id: agent.id, name: agent.name ?? agent.id }] : []);
+}
+
+/** agent/list needs a short-lived serve instance; there is no `opencode agents` CLI fallback. */
+export async function openCodeAgents(executable?: string, cwd?: string): Promise<SessionMode[]> {
+  try {
+    const server = await OpenCodeServer.start({ ...(executable ? { executable } : {}), ...(cwd ? { cwd } : {}) });
+    try { return await listOpenCodeAgents(server, cwd); } finally { server.close(); }
+  } catch { return []; }
 }

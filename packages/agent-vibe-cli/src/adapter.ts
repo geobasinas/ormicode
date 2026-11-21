@@ -1,6 +1,6 @@
 import { spawn, execFile } from 'node:child_process';
 import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { mkdtemp, writeFile, unlink, rmdir } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -14,6 +14,13 @@ type Spawn = (command: string, args: string[], options: SpawnOptionsWithoutStdio
 type Session = { spec: StartSpec; model?: string; mode?: string; nativeId?: string; queue: EventQueue; log?: RawLog; active: boolean; disposed: boolean; needsRecovery: boolean; process?: ChildProcessWithoutNullStreams; running?: Promise<void>; interrupted: boolean };
 const execFileAsync = promisify(execFile);
 const limit = 1024 * 1024;
+// Builtin --agent values documented by `vibe --help`.
+const VIBE_BUILTIN_AGENTS = [
+  { id: 'ask', name: 'ask' },
+  { id: 'accept-edits', name: 'accept-edits' },
+  { id: 'smart-approve', name: 'smart-approve' },
+  { id: 'auto-approve', name: 'auto-approve' },
+];
 
 /** One `vibe --output streaming` process per turn. Headless runs deny approval-needing calls, so approvals are not forwarded. */
 export class VibeCliAdapter implements AgentAdapter {
@@ -37,6 +44,18 @@ export class VibeCliAdapter implements AgentAdapter {
       const block = /\bmodels\s*=\s*\[([\s\S]*?)\]/.exec(config)?.[1] ?? '';
       return [...block.matchAll(/\balias\s*=\s*"([^"]+)"/g)].map(match => ({ id: match[1]! }));
     } catch { return []; }
+  }
+  /** `--agent` accepts the builtin agents plus customs from .vibe/agents/*.toml — each carries its own approval behavior. */
+  modes(handle: Handle) {
+    const cwd = this.get(handle).spec.cwd;
+    const vibeHome = process.env.VIBE_HOME ?? join(homedir(), '.vibe');
+    const dirs = [join(cwd, '.vibe', 'agents'), join(vibeHome, 'agents')];
+    const custom = dirs.flatMap(dir => {
+      try { return readdirSync(dir).filter(file => file.endsWith('.toml')).map(file => ({ id: file.slice(0, -5), name: file.slice(0, -5) })); }
+      catch { return []; }
+    });
+    const seen = new Set<string>();
+    return [...custom, ...VIBE_BUILTIN_AGENTS].filter(agent => !seen.has(agent.id) && seen.add(agent.id));
   }
   async start(spec: StartSpec): Promise<Handle> { return this.create(spec); }
   async resume(ref: NativeRef): Promise<Handle> {

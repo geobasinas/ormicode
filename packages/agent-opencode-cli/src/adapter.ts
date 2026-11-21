@@ -8,7 +8,7 @@ import { promisify } from 'node:util';
 import { EventQueue, NO_CAPABILITIES, RawLog, attachRawLog } from '@ormicode/agent-core';
 import type { AgentAdapter, Handle, NativeRef, PromptInput, StartSpec } from '@ormicode/agent-core';
 import { OpenCodeCliMapper } from './map.ts';
-import { openCodeModels } from './server.ts';
+import { openCodeAgents, openCodeModels } from './server.ts';
 
 type Spawn = (command: string, args: string[], options: SpawnOptionsWithoutStdio) => ChildProcessWithoutNullStreams;
 type Session = { spec: StartSpec; log?: RawLog; model?: string; effort?: string; mode?: string; imageDir?: string; pendingImages?: string[]; nativeId?: string; queue: EventQueue; active: boolean; disposed: boolean; needsRecovery: boolean; process?: ChildProcessWithoutNullStreams; running?: Promise<void>; interrupted: boolean };
@@ -33,6 +33,10 @@ export class OpenCodeCliAdapter implements AgentAdapter {
   }
   async models() {
     return openCodeModels(this.options.executable);
+  }
+  /** Switchable OpenCode agents (build/plan/custom) — the vendor's permission-carrying modes, passed as `--agent`. */
+  async modes(handle: Handle) {
+    return openCodeAgents(this.options.executable, this.get(handle).spec.cwd);
   }
   async start(spec: StartSpec): Promise<Handle> { return this.create(spec); }
   async resume(ref: NativeRef): Promise<Handle> {

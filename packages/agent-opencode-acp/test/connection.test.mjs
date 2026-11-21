@@ -10,7 +10,7 @@ test('ACP initializes, creates and loads sessions, streams updates and cancels u
  const updates = [];
  const connection = await AcpConnection.start({ executable: 'fixture', args: [], spawn: fake, onNotification: (method, params) => updates.push({ method, params }) });
  try {
-  const sessionId = await connection.newSession('/repo');
+  const { sessionId } = await connection.newSession('/repo');
   await connection.loadSession(sessionId, '/repo');
   assert.equal(await connection.prompt(sessionId, 'hello'), 'end_turn');
   assert.equal(updates[0].params.update.content.text, 'hello');

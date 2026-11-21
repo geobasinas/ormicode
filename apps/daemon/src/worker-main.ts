@@ -145,8 +145,8 @@ try {
   // ride the ready frame so the supervisor can serve them from session.get.
   let sessionConfig: { options?: unknown[]; modes?: unknown[] } | undefined;
   try {
-    const options = adapter.configOptions?.(handle);
-    const modes = adapter.modes?.(handle);
+    const options = await adapter.configOptions?.(handle);
+    const modes = await adapter.modes?.(handle);
     const config: { options?: unknown[]; modes?: unknown[] } = {};
     if (options?.length) config.options = [...options];
     if (modes?.length) config.modes = [...modes];

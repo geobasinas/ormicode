@@ -2,7 +2,8 @@ import { spawn } from 'node:child_process';
 import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from 'node:child_process';
 import * as z from 'zod/mini';
 import type { RawLog } from '@ormicode/agent-core';
-import type { AcpMcpServer } from './options.ts';
+import type { AcpMcpServer, ConfigOption } from './options.ts';
+import { parseModes, parseOptions } from './options.ts';
 import { attachRawLog } from '@ormicode/agent-core';
 
 type Spawn = (command: string, args: string[], options: SpawnOptionsWithoutStdio) => ChildProcessWithoutNullStreams;
@@ -15,6 +16,7 @@ const frame = z.union([
   z.looseObject({ jsonrpc: z.literal('2.0'), id, error: z.looseObject({ code: z.number().check(z.int()), message: z.string() }) }).check(z.refine(value => !Object.hasOwn(value, 'result') && !Object.hasOwn(value, 'method'))),
 ]);
 const limit = 1024 * 1024;
+export interface AcpBootstrap { sessionId: string; options: ConfigOption[]; modes: { id: string; name: string }[]; currentMode?: string }
 
 /** A bounded ACP v1 stdio connection. Unsupported client requests fail closed. */
 export class AcpConnection {
@@ -61,17 +63,30 @@ export class AcpConnection {
     if (!method || !z.safeParse(z.json(), params).success) throw new Error('Invalid ACP notification');
     this.send({ jsonrpc: '2.0', method, params });
   }
-  async newSession(cwd: string, mcpServers: AcpMcpServer[] = []): Promise<string> {
+  async newSession(cwd: string, mcpServers: AcpMcpServer[] = []): Promise<AcpBootstrap> {
     if (!cwd) throw new Error('cwd is required');
-    const result = await this.request('session/new', { cwd, mcpServers });
-    const parsed = z.safeParse(z.looseObject({ sessionId: z.string().check(z.minLength(1)) }), result);
-    if (!parsed.success) throw new Error('Invalid ACP session/new response');
-    return parsed.data.sessionId;
+    return this.bootstrap(await this.request('session/new', { cwd, mcpServers }), 'session/new');
   }
-  async loadSession(sessionId: string, cwd: string, mcpServers: AcpMcpServer[] = []): Promise<void> {
+  async loadSession(sessionId: string, cwd: string, mcpServers: AcpMcpServer[] = []): Promise<AcpBootstrap> {
     if (!sessionId || !cwd) throw new Error('session ID and cwd are required');
     if (!this.supportsLoadSession) throw new Error('OpenCode did not advertise session loading');
-    await this.request('session/load', { sessionId, cwd, mcpServers });
+    return this.bootstrap(await this.request('session/load', { sessionId, cwd, mcpServers }), 'session/load', sessionId);
+  }
+  private bootstrap(result: unknown, method: string, expectedId?: string): AcpBootstrap {
+    const parsed = z.safeParse(z.looseObject({ sessionId: z.optional(z.string()), configOptions: z.optional(z.json()), modes: z.optional(z.json()) }), result);
+    const sessionId = parsed.success ? (parsed.data?.sessionId ?? expectedId) : undefined;
+    if (!sessionId || (expectedId && parsed.data?.sessionId !== undefined && parsed.data.sessionId !== expectedId)) throw new Error(`Invalid ACP ${method} response`);
+    const { modes, currentMode } = parseModes(parsed.data?.modes);
+    return { sessionId, options: parseOptions(parsed.data?.configOptions), modes, ...(currentMode !== undefined ? { currentMode } : {}) };
+  }
+  /** Applies one advertised config option; returns the agent's refreshed option list. */
+  async setConfigOption(sessionId: string, configId: string, value: string | boolean): Promise<ConfigOption[]> {
+    const result = await this.request('session/set_config_option', { sessionId, configId, value });
+    const parsed = z.safeParse(z.looseObject({ configOptions: z.optional(z.json()) }), result);
+    return parseOptions(parsed.success ? parsed.data.configOptions : undefined);
+  }
+  async setMode(sessionId: string, modeId: string): Promise<void> {
+    await this.request('session/set_mode', { sessionId, modeId });
   }
   async prompt(sessionId: string, text: string, timeoutMs = 300_000): Promise<string> {
     if (!sessionId || !text) throw new Error('session ID and prompt are required');

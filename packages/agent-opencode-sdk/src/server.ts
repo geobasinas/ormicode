@@ -4,7 +4,7 @@ import { randomBytes } from 'node:crypto';
 import { OpenCode } from '@opencode/client';
 import type { OpenCodeClient } from '@opencode/client';
 import * as z from 'zod/mini';
-import type { ModelList } from '@ormicode/agent-core';
+import type { ModelList, SessionMode } from '@ormicode/agent-core';
 
 type Spawn = (command: string, args: string[], options: SpawnOptionsWithoutStdio) => ChildProcessWithoutNullStreams;
 
@@ -103,4 +103,16 @@ export async function listOpenCodeModels(server: OpenCodeServer): Promise<ModelL
   const data = z.safeParse(z.looseObject({ data: z.array(modelRef) }), listed);
   if (!data.success) return [];
   return data.data.data.map(model => ({ id: `${model.providerID}/${model.modelID ?? model.id}`, ...(model.name !== undefined ? { name: model.name } : {}), ...(model.variants?.length ? { efforts: model.variants.map(variant => variant.id) } : {}) }));
+}
+
+const agentRef = z.looseObject({ id: z.string().check(z.minLength(1)), name: z.optional(z.string()), mode: z.optional(z.string()), hidden: z.optional(z.boolean()) });
+
+/** Agents a session can switch to (primary/all, not hidden) — each carries the vendor's own permission ruleset. */
+export async function listOpenCodeAgents(server: OpenCodeServer, cwd?: string): Promise<SessionMode[]> {
+  const listed = await server.client.agent.list(cwd ? { location: { directory: cwd } } : {});
+  const data = z.safeParse(z.looseObject({ data: z.array(agentRef) }), listed);
+  if (!data.success) return [];
+  return data.data.data.flatMap(agent =>
+    (agent.mode === undefined || agent.mode === 'primary' || agent.mode === 'all') && agent.hidden !== true
+      ? [{ id: agent.id, name: agent.name ?? agent.id }] : []);
 }

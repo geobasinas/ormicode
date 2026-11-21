@@ -30,6 +30,23 @@ test('OpenCode ACP adapter streams and completes a turn through its own transpor
  await adapter.dispose(resumed);
 });
 
+test('OpenCode ACP exposes advertised config options and mode choices, and applies them by id', async () => {
+ const adapter = new OpenCodeAcpAdapter({ spawn: fake });
+ const handle = await adapter.start({ cwd: process.cwd() });
+ try {
+  assert.deepEqual(adapter.configOptions(handle).map(option => option.id), ['model', 'mode']);
+  assert.deepEqual(adapter.modes(handle), [{ id: 'build', name: 'Build' }, { id: 'plan', name: 'Plan' }]);
+  const kinds = [];
+  const collecting = (async () => { for await (const event of adapter.events(handle)) { kinds.push(event.kind); if (kinds.length === 2) break; } })();
+  await adapter.setMode(handle, 'plan');
+  await adapter.setOption(handle, 'model', 'opencode/beam-free');
+  await collecting;
+  assert.deepEqual(kinds, ['mode_changed', 'config_option']);
+  assert.equal(adapter.configOptions(handle).find(option => option.id === 'model').current, 'opencode/beam-free');
+  await assert.rejects(adapter.setOption(handle, 'bogus', 'x'), /Unknown OpenCode config option/);
+ } finally { await adapter.dispose(handle); }
+});
+
 test('OpenCode mapper preserves tool pairing and rejects other sessions', () => {
  const mapper = new OpenCodeTurnMapper('s1');
  const update = (value) => ({ sessionId: 's1', update: value });

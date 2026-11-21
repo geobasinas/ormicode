@@ -48,10 +48,10 @@ export interface AgentAdapter {
   exportState?(handle: Handle): Promise<HandoffState>;
   events(handle: Handle): AsyncIterable<AgentEvent>;
   commands?(handle: Handle): Promise<AgentCommand[]>;
-  /** Advertised config options for this session (approval/permission settings included); omitted when the transport has none. */
-  configOptions?(handle: Handle): readonly SessionOption[];
-  /** Advertised session modes (e.g. permission modes); omitted when the transport has no enumerable list. */
-  modes?(handle: Handle): readonly SessionMode[];
+  /** Advertised config options for this session (approval/permission settings included); omitted when the transport has none. May be async when discovery needs I/O. */
+  configOptions?(handle: Handle): readonly SessionOption[] | Promise<readonly SessionOption[]>;
+  /** Advertised session modes (e.g. permission modes); omitted when the transport has no enumerable list. May be async when discovery needs I/O. */
+  modes?(handle: Handle): readonly SessionMode[] | Promise<readonly SessionMode[]>;
   dispose(handle: Handle): Promise<void>;
 }
 

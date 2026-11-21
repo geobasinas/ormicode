@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto';
 import * as z from 'zod/mini';
 import { EventQueue, NO_CAPABILITIES } from '@ormicode/agent-core';
 import type { AgentAdapter, Handle, ModelList, NativeRef, PromptInput, StartSpec } from '@ormicode/agent-core';
-import { OpenCodeServer, listOpenCodeModels } from './server.ts';
+import { OpenCodeServer, listOpenCodeAgents, listOpenCodeModels } from './server.ts';
 import { OpenCodeEventMapper } from './map.ts';
 import { OpenCodePermissionBroker } from './permissions.ts';
 
@@ -45,6 +45,11 @@ export class OpenCodeSdkAdapter implements AgentAdapter {
   }
   async models(): Promise<ModelList> {
     return listOpenCodeModels(await this.ensureServer());
+  }
+  /** Switchable OpenCode agents (build/plan/custom) — the vendor's permission-carrying modes. */
+  async modes(handle: Handle) {
+    const session = this.get(handle);
+    return listOpenCodeAgents(await this.ensureServer(), session.spec.cwd);
   }
   async start(spec: StartSpec): Promise<Handle> {
     if (!spec.cwd) throw new Error('cwd is required');

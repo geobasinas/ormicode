@@ -3,13 +3,23 @@ import { writeFileSync } from 'node:fs';
 const lines = readline.createInterface({ input: process.stdin });
 let promptId;
 let expectedOutcome = 'cancelled';
+const configOptions = [
+ { id: 'model', category: 'model', type: 'select', currentValue: 'opencode/big-pickle', options: [{ value: 'opencode/big-pickle', name: 'Big Pickle' }, { value: 'opencode/beam-free', name: 'Beam Free' }] },
+ { id: 'mode', category: 'mode', type: 'select', currentValue: 'build', options: [{ value: 'build', name: 'Build' }, { value: 'plan', name: 'Plan' }] },
+];
 for await (const line of lines) {
  const message = JSON.parse(line);
  if (message.jsonrpc !== '2.0') process.exit(4);
  const reply = (result) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: message.id, result }) + '\n');
  if (message.method === 'initialize') reply({ protocolVersion: 1, agentCapabilities: { loadSession: true } });
- else if (message.method === 'session/new') reply({ sessionId: 'session-1' });
- else if (message.method === 'session/load') reply({});
+ else if (message.method === 'session/new') reply({ sessionId: 'session-1', configOptions });
+ else if (message.method === 'session/load') reply({ sessionId: message.params.sessionId, configOptions });
+ else if (message.method === 'session/set_config_option') {
+  const option = configOptions.find(entry => entry.id === message.params.configId);
+  if (option) option.currentValue = message.params.value;
+  reply({ configOptions });
+ }
+ else if (message.method === 'session/set_mode') reply({});
  else if (message.method === 'session/prompt') {
   promptId = message.id;
   const ask = ['approval-test', 'approval-allow'].includes(message.params.prompt[0].text);
