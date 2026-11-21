@@ -51,6 +51,13 @@ export class OpenCodeSdkAdapter implements AgentAdapter {
     const session = this.get(handle);
     return listOpenCodeAgents(await this.ensureServer(), session.spec.cwd);
   }
+  /** Pre-session enumeration owns a short-lived server — ensureServer is for live sessions only. */
+  async agentModes(cwd?: string) {
+    try {
+      const server = await OpenCodeServer.start({ ...(this.options.executable ? { executable: this.options.executable } : {}), ...(this.options.spawn ? { spawn: this.options.spawn } : {}), ...(cwd ? { cwd } : {}) });
+      try { return await listOpenCodeAgents(server, cwd); } finally { server.close(); }
+    } catch { return []; }
+  }
   async start(spec: StartSpec): Promise<Handle> {
     if (!spec.cwd) throw new Error('cwd is required');
     const server = await this.ensureServer();

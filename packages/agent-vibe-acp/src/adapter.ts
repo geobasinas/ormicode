@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -16,6 +16,18 @@ import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from 'n
 type Spawn = (command: string, args: string[], options: SpawnOptionsWithoutStdio) => ChildProcessWithoutNullStreams;
 type Session = { connection: AcpConnection; nativeId: string; queue: EventQueue; broker: VibePermissionBroker; active: boolean; disposed: boolean; needsRecovery: boolean; mapper?: VibeTurnMapper; running?: Promise<void>; cancelRequested: boolean; options: ConfigOption[]; modes: Mode[]; currentMode?: string };
 const execFileAsync = promisify(execFile);
+
+// Builtin agent ids documented by `vibe --help`; customs live in .vibe/agents/*.toml.
+const VIBE_BUILTIN_AGENTS = ['ask', 'accept-edits', 'smart-approve', 'auto-approve'].map(id => ({ id, name: id }));
+function vibeAgents(cwd: string): { id: string; name: string }[] {
+  const vibeHome = process.env.VIBE_HOME ?? join(homedir(), '.vibe');
+  const custom = [join(cwd, '.vibe', 'agents'), join(vibeHome, 'agents')].flatMap(dir => {
+    try { return readdirSync(dir).filter(file => file.endsWith('.toml')).map(file => ({ id: file.slice(0, -5), name: file.slice(0, -5) })); }
+    catch { return []; }
+  });
+  const seen = new Set<string>();
+  return [...custom, ...VIBE_BUILTIN_AGENTS].filter(agent => !seen.has(agent.id) && seen.add(agent.id));
+}
 
 /** Vibe ACP adapter (`vibe-acp`, protocol v1). Permission choices are forwarded without changing their scope. */
 export class VibeAcpAdapter implements AgentAdapter {
@@ -135,6 +147,8 @@ export class VibeAcpAdapter implements AgentAdapter {
   /** Advertised ACP config options for this session. */
   configOptions(handle: Handle): ConfigOption[] { return this.get(handle).options; }
   modes(handle: Handle): Mode[] { return this.get(handle).modes; }
+  /** Negotiated modes are the same builtin/custom agent ids the CLI accepts; customs are project-scoped. */
+  agentModes(cwd?: string): Mode[] { return vibeAgents(cwd ?? process.cwd()); }
   events(handle: Handle) { return this.get(handle).queue.subscribe(); }
   async dispose(handle: Handle): Promise<void> {
     const session = this.sessions.get(handle); if (!session) return;

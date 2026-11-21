@@ -33,6 +33,7 @@ export class FakeAdapter implements AgentAdapter {
   }
   modes(): readonly SessionMode[] { return this.fakeModes ?? []; }
   configOptions(): readonly SessionOption[] { return this.fakeOptions ?? []; }
+  agentModes(): readonly SessionMode[] { return this.fakeModes ?? []; }
   async detect() { return { available: true, version: 'fake-1' }; }
   async models(): Promise<ModelList> {
     const models = process.env.ORMICODE_FAKE_MODELS;

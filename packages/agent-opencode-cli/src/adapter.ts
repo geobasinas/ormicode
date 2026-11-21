@@ -38,6 +38,9 @@ export class OpenCodeCliAdapter implements AgentAdapter {
   async modes(handle: Handle) {
     return openCodeAgents(this.options.executable, this.get(handle).spec.cwd);
   }
+  async agentModes(cwd?: string) {
+    return openCodeAgents(this.options.executable, cwd);
+  }
   async start(spec: StartSpec): Promise<Handle> { return this.create(spec); }
   async resume(ref: NativeRef): Promise<Handle> {
     if (!ref.id) throw new Error('native session ID is required');

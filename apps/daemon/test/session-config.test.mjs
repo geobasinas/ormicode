@@ -58,3 +58,16 @@ test('vendor modes and config options reach session.get from the worker ready fr
     assert.equal(got?.options?.[0]?.current, 'ask');
   } finally { await cleanup(); }
 });
+
+test('agents.modes enumerates modes without a live session', async () => {
+  const { client, cleanup } = await boot({
+    ORMICODE_FAKE_MODES: JSON.stringify([{ id: 'ask', name: 'Ask' }, { id: 'plan', name: 'Plan' }]),
+  });
+  try {
+    const res = await client.request('agents.modes', { agent: 'fake', transport: 'cli' });
+    assert.equal(res.type, 'res', JSON.stringify(res));
+    assert.deepEqual(res.body.modes, [{ id: 'ask', name: 'Ask' }, { id: 'plan', name: 'Plan' }]);
+    const unknown = await client.request('agents.modes', { agent: 'nope', transport: 'cli' });
+    assert.equal(unknown.type, 'err');
+  } finally { await cleanup(); }
+});

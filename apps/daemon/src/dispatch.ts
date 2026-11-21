@@ -37,7 +37,7 @@ import { queueMethod } from './queue-methods.ts';
 import { composerMethod } from './composer-methods.ts';
 import { expandPrompt, PromptInvalidError, promptBusy, promptTitle, validatePrompt } from './prompt-context.ts';
 import { retryPrompt } from './prompt-methods.ts';
-import { listModels } from './models.ts';
+import { listAgentModes, listModels } from './models.ts';
 import { startSession } from './session-start.ts';
 import { copyOutMethod } from './scratch-methods.ts';
 import { serviceMethod } from './service-methods.ts';
@@ -135,6 +135,13 @@ export async function onClientFrame(ctx: DispatchCtx, client: Client, frame: Fra
     switch (method) {
       case 'agents.list':
         return client.link.reply(id, { agents: agentList() });
+      case 'agents.modes': {
+        try {
+          return client.link.reply(id, await listAgentModes(body as { agent: string; transport: string; cwd?: string }));
+        } catch (error) {
+          return client.link.replyError(id, 'agent.unsupported', error instanceof Error ? error.message : String(error));
+        }
+      }
       case 'machine.list': case 'machine.status': case 'machine.projects': case 'fs.browse': case 'project.list': case 'project.add': case 'project.remove': return await machineMethod(ctx, client, id, method, body);
       case 'models.list':
         return client.link.reply(id, await listModels(body as { agent?: string; transport?: string; refresh?: boolean }));

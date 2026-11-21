@@ -22,6 +22,18 @@ const VIBE_BUILTIN_AGENTS = [
   { id: 'auto-approve', name: 'auto-approve' },
 ];
 
+/** --agent accepts builtins plus customs from .vibe/agents/*.toml — each carries its own approval behavior. */
+function vibeAgents(cwd: string): { id: string; name: string }[] {
+  const vibeHome = process.env.VIBE_HOME ?? join(homedir(), '.vibe');
+  const dirs = [join(cwd, '.vibe', 'agents'), join(vibeHome, 'agents')];
+  const custom = dirs.flatMap(dir => {
+    try { return readdirSync(dir).filter(file => file.endsWith('.toml')).map(file => ({ id: file.slice(0, -5), name: file.slice(0, -5) })); }
+    catch { return []; }
+  });
+  const seen = new Set<string>();
+  return [...custom, ...VIBE_BUILTIN_AGENTS].filter(agent => !seen.has(agent.id) && seen.add(agent.id));
+}
+
 /** One `vibe --output streaming` process per turn. Headless runs deny approval-needing calls, so approvals are not forwarded. */
 export class VibeCliAdapter implements AgentAdapter {
   readonly id = 'vibe';
@@ -45,17 +57,11 @@ export class VibeCliAdapter implements AgentAdapter {
       return [...block.matchAll(/\balias\s*=\s*"([^"]+)"/g)].map(match => ({ id: match[1]! }));
     } catch { return []; }
   }
-  /** `--agent` accepts the builtin agents plus customs from .vibe/agents/*.toml — each carries its own approval behavior. */
   modes(handle: Handle) {
-    const cwd = this.get(handle).spec.cwd;
-    const vibeHome = process.env.VIBE_HOME ?? join(homedir(), '.vibe');
-    const dirs = [join(cwd, '.vibe', 'agents'), join(vibeHome, 'agents')];
-    const custom = dirs.flatMap(dir => {
-      try { return readdirSync(dir).filter(file => file.endsWith('.toml')).map(file => ({ id: file.slice(0, -5), name: file.slice(0, -5) })); }
-      catch { return []; }
-    });
-    const seen = new Set<string>();
-    return [...custom, ...VIBE_BUILTIN_AGENTS].filter(agent => !seen.has(agent.id) && seen.add(agent.id));
+    return vibeAgents(this.get(handle).spec.cwd);
+  }
+  agentModes(cwd?: string) {
+    return vibeAgents(cwd ?? process.cwd());
   }
   async start(spec: StartSpec): Promise<Handle> { return this.create(spec); }
   async resume(ref: NativeRef): Promise<Handle> {

@@ -189,6 +189,7 @@ export class ClaudeCliAdapter implements AgentAdapter {
   }
   /** Claude's permission modes are the approval surface; ids are the vendor's own words. */
   modes(): readonly { id: string; name: string }[] { return modeList; }
+  agentModes(): readonly { id: string; name: string }[] { return modeList; }
   events(handle: Handle) { return this.get(handle).queue.subscribe(); }
   async setModel(handle: Handle, model: string): Promise<void> {
     const session = this.idle(handle);

@@ -379,6 +379,7 @@ Compare `ui:geometry` with `ui:mockup` numbers instead of asking for screenshots
 - Prints one JSON line on start: `{"socketPath","storePath","version"}` so the installer and CLI can find it.
 - `daemon.status` returns version, uptime, live workers, relay state, last error.
 - `agents.list` returns `{agents: [{vendor, transports}]}` — the vendor/transport pairs with an installed adapter (plus `fake`), so clients only offer what `session.start` accepts.
+- `agents.modes {agent, transport, cwd?}` returns the modes enumerable without a live session (`agentModes` on the adapter: Claude's permission modes, OpenCode's `agent.list` agents, Vibe's builtin+custom agents). Vendors that only negotiate modes at session start return none; the session's own `modes`/`options` populate the composer after start. Results cache 60 s per agent+transport+cwd.
 - Shutdown drains, closes workers gracefully, and marks sessions interrupted only if mid-turn.
 
 **Worker messages** (local only, never over the relay)
@@ -481,7 +482,7 @@ States with several causes carry a `reason` (e.g. `interrupted`: `host_restart`,
 
 **Capabilities:** maintain a per-vendor, per-transport matrix, versioned with the tested agent. Record streaming, steering, approval interception, interruption, native resume, model discovery and usage as supported, unsupported or unverified. Unsupported operations return a typed error; test adapters with recorded contract fixtures and local smoke tests.
 
-**Agent config:** each session stores the vendor's own values for model, effort, mode/agent (and ACP `configOptions`). Never invented. The worker reports the vendor's advertised `modes`/`configOptions` on `worker.ready`; the daemon stores them on the session row (`config_option` events keep `current` fresh) and `session.get` returns them. The composer shows a Mode chip for `modes` and one chip per `configOptions` entry whose category isn't already covered by the model/effort/mode chips — that includes approval/permission settings; choices call `session.setOption` with the vendor's own value. Options without choices aren't rendered yet.
+**Agent config:** each session stores the vendor's own values for model, effort, mode/agent (and ACP `configOptions`). Never invented. The worker reports the vendor's advertised `modes`/`configOptions` on `worker.ready`; the daemon stores them on the session row (`config_option` events keep `current` fresh) and `session.get` returns them. The composer shows a Mode chip for `modes` and one chip per `configOptions` entry whose category isn't already covered by the model/effort/mode chips — that includes approval/permission settings; choices call `session.setOption` with the vendor's own value. Options without choices aren't rendered yet. The start composer gets a Mode chip from `agents.modes` when the vendor can enumerate modes without a session (`agentModes`); ACP-negotiated lists only appear once the session exists.
 
 **Titles:** 4–6 words from the first prompt via a utility call (fallback: first 8 words). Renameable.
 

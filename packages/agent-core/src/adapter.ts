@@ -52,6 +52,8 @@ export interface AgentAdapter {
   configOptions?(handle: Handle): readonly SessionOption[] | Promise<readonly SessionOption[]>;
   /** Advertised session modes (e.g. permission modes); omitted when the transport has no enumerable list. May be async when discovery needs I/O. */
   modes?(handle: Handle): readonly SessionMode[] | Promise<readonly SessionMode[]>;
+  /** Modes enumerable without a live session (static lists, config files, agent catalogs). Omitted when the vendor only negotiates modes at session start. */
+  agentModes?(cwd?: string): readonly SessionMode[] | Promise<readonly SessionMode[]>;
   dispose(handle: Handle): Promise<void>;
 }
 

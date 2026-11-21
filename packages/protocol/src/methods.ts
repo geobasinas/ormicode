@@ -125,10 +125,7 @@ export const requestBodies = {
   'session.draft.get': z.object({ session: draftSession }),
   'session.draft.set': z.object({ session: draftSession, text: z.string().check(z.maxLength(1_000_000)) }),
   'session.commands': z.object({ session: sessionIdSchema }),
-  'prompts.history': z.object({
-    project: z.optional(nonEmpty), query: z.optional(z.string()),
-    limit: z.optional(z.number().check(z.int(), z.gte(1), z.lte(100))),
-  }),
+  'prompts.history': z.object({ project: z.optional(nonEmpty), query: z.optional(z.string()), limit: z.optional(z.number().check(z.int(), z.gte(1), z.lte(100))) }),
   'session.steer': z.object({ ...session, text: nonEmpty, images: z.optional(z.array(imageSchema)), context: contextSchema, attachments: attachmentsSchema }),
   'session.queue.add': z.object({ ...session, text: nonEmpty, images: z.optional(z.array(imageSchema)), context: contextSchema, attachments: attachmentsSchema }),
   'session.queue.list': z.object(session),
@@ -158,6 +155,8 @@ export const requestBodies = {
   'session.answer': z.object({ ...session, request: requestIdSchema, answers: z.record(nonEmpty, nonEmpty) }),
   // Installed agent adapters: which vendor/transport pairs session.start accepts.
   'agents.list': z.object({}),
+  // Modes enumerable without a live session (permission/agent modes). cwd scopes project agents.
+  'agents.modes': z.object({ agent: nonEmpty, transport: nonEmpty, cwd: z.optional(nonEmpty) }),
   'git.diff': z.object(session),
   'git.status': z.object(session),
   'git.stage': z.object({ ...session, paths: z.optional(z.array(nonEmpty)) }),
@@ -378,6 +377,7 @@ export const responseBodies = {
   }),
   'file.history': gitLogResponse,
   'agents.list': z.object({ agents: z.array(z.object({ vendor: nonEmpty, transports: z.array(nonEmpty) })) }),
+  'agents.modes': z.object({ modes: z.array(z.object({ id: nonEmpty, name: nonEmpty })) }),
   'devices.list': z.object({ devices: z.array(z.object({ id: nonEmpty, name: nonEmpty, trustedAt: timestampSchema })) }),
   'devices.rename': z.object({ renamed: z.literal(true) }),
   'devices.revoke': z.object({ revoked: z.literal(true), relaySynced: z.boolean() }), ...projectResponses,

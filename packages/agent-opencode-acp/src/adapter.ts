@@ -7,7 +7,7 @@ import type { ConfigOption, Mode } from './options.ts';
 import { AcpConnection } from './connection.ts';
 import { OpenCodeTurnMapper } from './map.ts';
 import { OpenCodePermissionBroker } from './permissions.ts';
-import { openCodeModels } from './server.ts';
+import { listOpenCodeAgents, openCodeModels, OpenCodeServer } from './server.ts';
 import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from 'node:child_process';
 import { acpMcpServers } from './options.ts';
 
@@ -32,6 +32,13 @@ export class OpenCodeAcpAdapter implements AgentAdapter {
   }
   async models() {
     return openCodeModels(this.options.executable);
+  }
+  /** The `mode`-category config option carries OpenCode agents — enumerable pre-session via agent.list. */
+  async agentModes(cwd?: string) {
+    try {
+      const server = await OpenCodeServer.start({ ...(this.options.executable ? { executable: this.options.executable } : {}), ...(this.options.spawn ? { spawn: this.options.spawn } : {}), ...(cwd ? { cwd } : {}) });
+      try { return await listOpenCodeAgents(server, cwd); } finally { server.close(); }
+    } catch { return []; }
   }
   async start(spec: StartSpec): Promise<Handle> {
     return this.create(spec.cwd, undefined, spec.logDir, spec.mcpServers, spec);

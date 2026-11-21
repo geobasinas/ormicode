@@ -5,7 +5,7 @@ import { Plus, AtSign, Mic, ArrowUp, ChevronDown, Folder, Laptop, Loader2, FileT
 import { newId } from '@ormicode/protocol';
 import type { PromptContext } from '@ormicode/protocol';
 import { usePlatform } from '../../lib/platform.ts';
-import { useImages, useFiles, ImageStrip, ProjectChip, iconBtn } from './composer-parts.tsx';
+import { useImages, useFiles, ImageStrip, ProjectChip, MenuChip, iconBtn } from './composer-parts.tsx';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../components/ui/dropdown-menu.tsx';
 import { AgentChip, GitChip, branchNameIssue, type RepoInfo, type WorkspaceChoice, type WorkspaceMode } from './pickers.tsx';
 import { useModels } from './useModels.ts';
@@ -59,6 +59,8 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
   const [via, setVia] = useState<string>();
   const [model, setModel] = useState('default');
   const [effort, setEffort] = useState('default');
+  const [mode, setMode] = useState('default');
+  const [modes, setModes] = useState<{ id: string; name: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [workspace, setWorkspace] = useState<WorkspaceChoice>({ kind: 'current' });
@@ -167,6 +169,16 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
   const transports = agents.find(a => a.vendor === vendor)?.transports ?? ['cli'];
   const chosen = via && transports.includes(via) ? via : transports[0]!;
   const modelList = useModels(vendor, agentsLoaded ? chosen : undefined);
+  // Pre-start mode enumeration (agents.modes): only vendors whose modes don't
+  // require a live session answer — the rest populate the session chip instead.
+  useEffect(() => {
+    if (!agentsLoaded) return;
+    let alive = true;
+    transport.request('agents.modes', { agent: vendor, transport: chosen, ...(project !== 'scratch' ? { cwd: project } : {}) })
+      .then(r => { if (alive && r.type === 'res') setModes((r.body as { modes: { id: string; name: string }[] }).modes ?? []); })
+      .catch(() => { if (alive) setModes([]); });
+    return () => { alive = false; };
+  }, [vendor, chosen, project, agentsLoaded, transport]);
   const detachedBlocked = Boolean(repo?.detached && workspace.kind === 'current');
   const branchNameInvalid = Boolean(repo && (workspace.kind === 'branch' || workspace.kind === 'worktree') && branchNameIssue(branchName, repo));
   const currentBusy = Boolean(repo?.current && repo.busyBranches.includes(repo.current));
@@ -244,7 +256,7 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
     try {
       const res = await transport.request('session.start', {
         machine: newId('m'), project, vendor, transport: chosen,
-        model, effort, mode: 'default',
+        model, effort, mode,
         ...(context.length ? { context } : {}),
         ...(files.wire.length ? { attachments: files.wire } : {}),
         workspace: project === 'scratch' ? { kind: 'scratch' }
@@ -319,6 +331,9 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
           model={model} models={modelList.models} onModel={setModel}
           effort={effort} onEffort={setEffort}
           loading={modelList.loading} refresh={modelList.refresh} />
+        {modes.length ? <MenuChip title="mode — the vendor's own permission/agent modes" label="Mode" value={mode}
+          choices={[{ value: 'default', name: 'default' }, ...modes.map(m => ({ value: m.id, name: m.name }))]}
+          onChange={setMode} /> : null}
         <button onClick={() => void send()} disabled={!text.trim() || busy || detachedBlocked || repoLoading || branchNameInvalid} title={detachedBlocked ? 'HEAD is detached — pick a new branch or a worktree' : repoLoading ? 'Loading Git branches…' : branchNameInvalid ? 'Enter a valid new branch name' : 'start session'} style={{
           width: 26, height: 26, borderRadius: '50%', border: 'none', cursor: 'pointer', marginLeft: 2,
           background: 'var(--text-active)', color: 'var(--text-onAccent)', opacity: text.trim() && !detachedBlocked && !repoLoading && !branchNameInvalid ? 1 : 0.5,

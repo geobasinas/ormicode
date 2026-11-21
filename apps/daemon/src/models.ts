@@ -23,6 +23,23 @@ interface CacheEntry { cachedAt: number; models: ListedModel[] }
 interface ModelCache { version?: number; entries: Record<string, CacheEntry> }
 interface AdapterPair { agent: string; transport: string; invalid?: string }
 
+const MODES_TTL_MS = 60_000;
+const modesCache = new Map<string, { at: number; modes: { id: string; name: string }[] }>();
+
+/** Modes enumerable before a session exists (agents.modes): static lists, config files, agent catalogs. */
+export async function listAgentModes(body: { agent: string; transport: string; cwd?: string }): Promise<{ modes: { id: string; name: string }[] }> {
+  const key = `${body.agent}\0${body.transport}\0${body.cwd ?? ''}`;
+  const hit = modesCache.get(key);
+  if (hit && Date.now() - hit.at < MODES_TTL_MS) return { modes: hit.modes };
+  const adapter = await createAdapter(body.agent, body.transport, {});
+  const listed = adapter.agentModes ? await adapter.agentModes(body.cwd) : [];
+  const modes = (listed ?? [])
+    .filter(mode => mode && typeof mode.id === 'string' && mode.id.length > 0)
+    .map(mode => ({ id: mode.id, name: typeof mode.name === 'string' && mode.name ? mode.name : mode.id }));
+  modesCache.set(key, { at: Date.now(), modes });
+  return { modes };
+}
+
 function cachePath(): string {
   const dir = join(ormicodeDir(), 'cache');
   mkdirSync(dir, { recursive: true });
