@@ -18,7 +18,7 @@ export const LIST_STATES: Record<string, (session: SessionSummary) => boolean> =
 
 export function ListFilterChips({ value, onChange }: { value?: string; onChange: (id?: string) => void }) {
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, padding: '6px 4px 0' }}>
+    <div style={{ display: 'flex', gap: 3, padding: '6px 2px 0', overflowX: 'auto', scrollbarWidth: 'none' }}>
       {LIST_FILTERS.map(({ id, label, icon: Icon, tint, fill }) => {
         const active = value === id;
         return (
@@ -26,12 +26,12 @@ export function ListFilterChips({ value, onChange }: { value?: string; onChange:
             title={id === 'archived' ? 'Show archived sessions' : `Show ${label.toLowerCase()} sessions`}
             onClick={() => onChange(active ? undefined : id)}
             style={{
-              display: 'inline-flex', alignItems: 'center', gap: 5, font: 'inherit', fontSize: 11.5,
-              fontWeight: active ? 500 : 400, padding: '3px 8px', border: 'none', borderRadius: 7, cursor: 'pointer',
+              display: 'inline-flex', alignItems: 'center', gap: 4, font: 'inherit', fontSize: 11, flexShrink: 0,
+              fontWeight: active ? 500 : 400, padding: '2px 7px', border: 'none', borderRadius: 7, cursor: 'pointer', whiteSpace: 'nowrap',
               background: active ? 'var(--bg-selected)' : 'transparent',
               color: active ? 'var(--text-active)' : 'var(--text-secondary)',
             }}>
-            <Icon size={12} fill={fill ? 'currentColor' : 'none'} style={{ color: tint ?? (active ? 'var(--text-active)' : 'var(--text-hint)'), flexShrink: 0 }} />
+            <Icon size={11} fill={fill ? 'currentColor' : 'none'} style={{ color: tint ?? (active ? 'var(--text-active)' : 'var(--text-hint)'), flexShrink: 0 }} />
             {label}
           </button>
         );
