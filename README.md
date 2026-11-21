@@ -3168,7 +3168,7 @@ This is about *where capability lives*, not how plain the UI looks. The UI can b
 
 **Dependency rules**
 - `protocol` and `crypto` depend on nothing internal. `protocol` has no Node types, because mobile imports it.
-- Agent packages depend only on `agent-core` and `protocol`, never the daemon. **One adapter never imports another**, not even the two for the same vendor. Shared agent logic lives in `agent-core`.
+- An adapter package may import `@ormicode/agent-core`, `@ormicode/protocol`, its own official vendor libraries and general npm libraries — never another adapter, and never the daemon. **One adapter never imports another**, not even the two for the same vendor. `agent-core` must not import any adapter. Shared agent logic lives in `agent-core`. `scripts/check-agent-boundaries.mjs` enforces the adapter-to-adapter part of this for imports, relative paths and `package.json` dependencies, with no allowlist.
 - The daemon depends on everything above, and nothing depends on the daemon or `apps/`.
 - Clients depend on `protocol`, `data-hooks`, `ui-tokens`, `view-host`, `plugin-host`, `client-platform` (and `client-ui` for desktop and web), never on daemon code.
 
@@ -3187,7 +3187,7 @@ ormicode/
 ├─ tsconfig.base.json
 ├─ vitest.config.ts
 ├─ .nvmrc  .gitignore  .gitattributes
-├─ scripts/{check-rules.mjs,check-rules.test.mjs,allowlist.json}
+├─ scripts/{check-rules.mjs,check-rules.test.mjs,check-agent-boundaries.mjs,allowlist.json}
 ├─ README.md  AGENTS.md  CLAUDE.md  LICENSE  SECURITY.md
 ├─ apps/
 │  ├─ daemon/   src/{main,supervisor,worker,ipc,upgrade,metrics}.ts

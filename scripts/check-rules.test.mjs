@@ -47,7 +47,7 @@ test('agent boundary check passes adapters that import only agent-core, protocol
     },
   });
   try {
-    assert.deepEqual(checkAgentBoundaries(root, []), []);
+    assert.deepEqual(checkAgentBoundaries(root), []);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -67,34 +67,13 @@ test('agent boundary check flags adapter-to-adapter imports, relative reaches an
     },
   });
   try {
-    const errors = checkAgentBoundaries(root, []);
+    const errors = checkAgentBoundaries(root);
     assert.equal(errors.length, 5, errors.join('\n'));
     assert.ok(errors.some((e) => /agent-core[\\/]src[\\/]index\.ts:1: agent-core must not import '@ormicode\/agent-foo-sdk'/.test(e)));
     assert.ok(errors.some((e) => /package\.json: dependencies must not include @ormicode\/agent-foo-sdk/.test(e)));
     assert.ok(errors.some((e) => /adapter\.ts:1: agent-foo-cli must not import/.test(e)));
     assert.ok(errors.some((e) => /probe\.mjs:1: relative import .* reaches into packages\/agent-foo-sdk/.test(e)));
     assert.ok(errors.some((e) => /a\.test\.mjs:1: relative import .* reaches into packages\/agent-core/.test(e)));
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test('agent boundary allowlist permits named imports and reports stale entries', () => {
-  const root = agentTree({
-    'agent-foo-sdk': { files: { 'src/index.ts': 'export {};\n' } },
-    'agent-foo-cli': {
-      deps: { '@ormicode/agent-foo-sdk': 'workspace:*' },
-      files: { 'src/adapter.ts': "import { x } from '@ormicode/agent-foo-sdk';\n" },
-    },
-  });
-  try {
-    assert.deepEqual(checkAgentBoundaries(root, [{ from: 'agent-foo-cli', to: 'agent-foo-sdk' }]), []);
-    const errors = checkAgentBoundaries(root, [
-      { from: 'agent-foo-cli', to: 'agent-foo-sdk' },
-      { from: 'agent-foo-sdk', to: 'agent-foo-cli' },
-    ]);
-    assert.equal(errors.length, 1);
-    assert.match(errors[0], /Stale agent boundary allowlist entry agent-foo-sdk -> agent-foo-cli/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

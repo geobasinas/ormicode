@@ -5,11 +5,6 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 // @ormicode/protocol, vendor SDKs and general npm libs — never another
 // adapter. agent-core must not import any adapter either.
 
-// Temporary: known adapter-to-adapter imports that later steps remove one
-// by one. Delete each entry when its import goes; delete the whole list
-// (and the `allowlist` parameter) once it is empty.
-export const TEMP_ALLOWLIST = [];
-
 const scanDirs = ['src', 'test', 'scripts'];
 const skip = new Set(['node_modules', 'dist', 'out', 'coverage', '.turbo']);
 const specifier = /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+|\brequire\s*\(\s*)['"]([^'"]+)['"]/g;
@@ -26,16 +21,10 @@ function sourceFiles(dir) {
   return files;
 }
 
-export function checkAgentBoundaries(base, allowlist = TEMP_ALLOWLIST) {
+export function checkAgentBoundaries(base) {
   const packagesDir = join(base, 'packages');
   const errors = [];
-  const used = new Set();
-  const allowed = (from, to) => {
-    const hit = allowlist.find((entry) => entry.from === from && entry.to === to);
-    if (hit) used.add(hit);
-    return Boolean(hit);
-  };
-  const forbidden = (from, to) => to !== from && to !== 'agent-core' && !allowed(from, to);
+  const forbidden = (from, to) => to !== from && to !== 'agent-core';
   const names = existsSync(packagesDir)
     ? readdirSync(packagesDir, { withFileTypes: true }).filter((e) => e.isDirectory() && e.name.startsWith('agent-')).map((e) => e.name)
     : [];
@@ -67,9 +56,6 @@ export function checkAgentBoundaries(base, allowlist = TEMP_ALLOWLIST) {
         if (to && forbidden(name, to)) errors.push(`${where}: ${name} must not import '${spec}' (adapters may import only @ormicode/agent-core and @ormicode/protocol)`);
       }
     }
-  }
-  for (const entry of allowlist) {
-    if (!used.has(entry)) errors.push(`Stale agent boundary allowlist entry ${entry.from} -> ${entry.to}; delete it from scripts/check-agent-boundaries.mjs`);
   }
   return errors;
 }
