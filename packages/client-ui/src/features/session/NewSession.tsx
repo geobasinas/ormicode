@@ -5,7 +5,6 @@ import { Plus, AtSign, Mic, ArrowUp, ChevronDown, Folder, Laptop, Loader2, FileT
 import { newId } from '@ormicode/protocol';
 import type { PromptContext } from '@ormicode/protocol';
 import { usePlatform } from '../../lib/platform.ts';
-import { PICKABLE_VENDORS, loadPrefs, rememberProject } from '../../lib/prefs.ts';
 import { useImages, useFiles, ImageStrip, ProjectChip, iconBtn } from './composer-parts.tsx';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../components/ui/dropdown-menu.tsx';
 import { AgentChip, GitChip, branchNameIssue, type RepoInfo, type WorkspaceChoice, type WorkspaceMode } from './pickers.tsx';
@@ -34,7 +33,7 @@ function branchNameFor(prompt: string, prefix: string) {
   return `${prefix}${slug || 'task'}`;
 }
 type Agent = { vendor: string; transports: string[] };
-const FALLBACK: Agent[] = PICKABLE_VENDORS.map(vendor => ({ vendor, transports: ['cli'] }));
+const FALLBACK: Agent[] = ['claude', 'codex', 'opencode', 'pi', 'grok', 'vibe'].map(vendor => ({ vendor, transports: ['cli'] }));
 
 export function NewSession({ onStarted }: { onStarted: (session: string) => void }) {
   const { transport, desktop } = usePlatform();
@@ -47,12 +46,12 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
   const [mentionIndex, setMentionIndex] = useState(0);
   const mentionRange = useRef<{ start: number; end: number } | undefined>(undefined);
   const [dropping, setDropping] = useState(false);
-  const [vendor, setVendor] = useState(() => loadPrefs().defaultVendor);
-  const [project, setProject] = useState(() => loadPrefs().defaultProject);
-  const [projects, setProjects] = useState<string[]>(() => loadPrefs().projects ?? []);
+  const [vendor, setVendor] = useState('claude');
+  const [project, setProject] = useState('scratch');
   const { projects: registeredProjects } = useProjects();
-  const [branchPrefix] = useState(() => loadPrefs().worktreeBranchPrefix ?? 'ormi/');
-  const [branchName, setBranchName] = useState(() => branchNameFor('', loadPrefs().worktreeBranchPrefix ?? 'ormi/'));
+  const [projects, setProjects] = useState<string[]>([]);
+  const [branchPrefix] = useState('ormi/');
+  const [branchName, setBranchName] = useState(() => branchNameFor('', 'ormi/'));
   const branchNameEdited = useRef(false);
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>('local');
   const [agents, setAgents] = useState<Agent[]>(FALLBACK);
@@ -299,11 +298,11 @@ export function NewSession({ onStarted }: { onStarted: (session: string) => void
         <button style={{ ...iconBtn, color: 'var(--text-hint)', cursor: 'default' }} title="voice (soon)" disabled><Mic size={16} /></button>
         <span style={{ flex: 1 }} />
         <ProjectChip title="project folder or 'scratch'" icon={<Folder size={12} style={{ color: 'var(--text-hint)' }} />}
-          value={project} projects={[...projects, ...registeredProjects.map(project => project.path)]}
-          onChange={v => { setProject(v); if (v !== 'scratch') { rememberProject(v); setProjects(loadPrefs().projects ?? []); } }}
+          value={project} projects={registeredProjects.map(project => project.path)}
+          onChange={setProject}
           onBrowse={async () => {
             const picked = await desktop?.pickFolder().catch(() => null) ?? null;
-            if (picked) { setProject(picked); rememberProject(picked); setProjects(loadPrefs().projects ?? []); }
+            if (picked) setProject(picked);
             return picked;
           }} />
         {repo ? <GitChip title="choose a local branch or worktree" project={project}

@@ -11,7 +11,7 @@ import { mapSdkMessage } from '@ormicode/agent-claude-sdk';
 import { mapCliMessage } from '@ormicode/agent-claude-cli';
 import { costMethod } from '../src/cost-methods.ts';
 
-test('header and Settings usage price Codex/Claude aliases and journaled Grok ACP usage', async () => {
+test('usage totals price Codex/Claude aliases and journaled Grok ACP usage', async () => {
  const dir = mkdtempSync(join(tmpdir(), 'agent-costs-')); const db = openStore(join(dir, 'store.db'));
  const table = fromOpenRouter({ data: [
   { id: 'openai/codex-mini', pricing: { prompt: '0.0000015', completion: '0.000006' } },
@@ -32,7 +32,7 @@ test('header and Settings usage price Codex/Claude aliases and journaled Grok AC
    await costMethod(ctx, client, 'header', 'session.cost', { session: id });
    assert.equal(result.usd, usd); assert.equal(result.source, 'estimate');
   }
-  await costMethod(ctx, client, 'settings', 'cost.totals', {});
+  await costMethod(ctx, client, 'totals', 'cost.totals', {});
   assert.equal(result.total.usd, 4.7); assert.equal(result.total.tokens, 3_000_000); assert.equal(result.total.unpriced, 0);
   assert.equal(result.sessions.length, 3);
  } finally { db.close(); rmSync(dir, { recursive: true, force: true, maxRetries: 40, retryDelay: 250}); }
@@ -40,7 +40,8 @@ test('header and Settings usage price Codex/Claude aliases and journaled Grok AC
 
 test('reported-model estimates persist across refresh and restart for headers and every totals bucket', async t => {
  const dir = mkdtempSync(join(tmpdir(), 'reported-price-pin-'));
- const path = join(dir, 'store.db'); let db = openStore(path); t.after(() => db.close()); t.after(() => rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}));
+ const path = join(dir, 'store.db'); let db = openStore(path); t.after(() => db.close());
+ t.after(() => rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}));
  const old = fromOpenRouter({ data: [{ id: 'x-ai/grok-code-fast-1', pricing: { prompt: '0.0000002', completion: '0.0000015' } }] });
  const refreshed = fromOpenRouter({ data: [{ id: 'x-ai/grok-code-fast-1', pricing: { prompt: '0.0000001', completion: '0.000001' } }] });
  let table = old;
@@ -58,7 +59,7 @@ test('reported-model estimates persist across refresh and restart for headers an
   await costMethod(ctx, client, 'header', 'session.cost', { session });
   assert.equal(result.usd, 0.2); assert.equal(result.priceVersion, old.version);
  }
- await costMethod(ctx, client, 'settings', 'cost.totals', {});
+ await costMethod(ctx, client, 'totals', 'cost.totals', {});
  assert.equal(result.total.usd, 0.4);
  assert.equal(result.projects[0].usd, 0.4); assert.equal(result.days[0].usd, 0.4);
  assert.deepEqual(result.sessions.map(row => row.usd), [0.2, 0.2]);
@@ -66,9 +67,10 @@ test('reported-model estimates persist across refresh and restart for headers an
  assert.equal(result.total.usd, null); assert.deepEqual(result.sessions, []);
 });
 
-test('Settings totals price Claude CLI rows by reported model and fall back to running-cost deltas', async t => {
+test('usage totals price Claude CLI rows by reported model and fall back to running-cost deltas', async t => {
  const dir = mkdtempSync(join(tmpdir(), 'claude-cli-costs-'));
- const db = openStore(join(dir, 'store.db')); t.after(() => db.close()); t.after(() => rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}));
+ const db = openStore(join(dir, 'store.db')); t.after(() => db.close());
+ t.after(() => rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200}));
  const table = fromOpenRouter({ data: [{ id: 'anthropic/claude-sonnet-4.6', pricing: { prompt: '0.000003', completion: '0.000015' } }] });
  const ctx = { db, prices: { ensure: async () => {}, table: () => table } };
  let result; const client = { link: { reply: (_id, body) => { result = body; } } };
@@ -82,7 +84,7 @@ test('Settings totals price Claude CLI rows by reported model and fall back to r
  assert.deepEqual([result.usd, result.source], [3, 'estimate']);
  await costMethod(ctx, client, 'header', 'session.cost', { session: 'old' });
  assert.deepEqual([result.usd, result.source], [1.5, 'reported']);
- await costMethod(ctx, client, 'settings', 'cost.totals', {});
+ await costMethod(ctx, client, 'totals', 'cost.totals', {});
  assert.deepEqual([result.total.usd, result.total.unpriced], [4.5, 0]);
  assert.deepEqual(result.sessions.map(row => [row.session, row.usd, row.unpriced]), [['cli', 3, 0], ['old', 1.5, 0]]);
 });

@@ -13,7 +13,6 @@ import { Now } from './Now.tsx';
 import { SessionView } from './SessionView.tsx';
 import { DesignPage } from './DesignPage.tsx';
 import { OPEN_FILE } from '../lib/openFile.ts';
-import { loadPrefs, type Prefs } from '../lib/prefs.ts';
 import { ActiveHeader, noDrag, PAGES, Rail, Tab, Titlebar, type RailPane } from '../components/ShellChrome.tsx';
 import { ListFilterChips, LIST_STATES } from '../features/session/ListFilters.tsx';
 import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels';
@@ -28,9 +27,7 @@ const MAX_TABS = 8;
 
 const FILTER_TABS = ['All', 'Sessions', 'Bots'] as const;
 
-export function App({ platform, theme: initialTheme, layout, pairPrefill }: { platform: ClientPlatform; theme?: string; layout?: LayoutDescriptor; pairPrefill?: { account?: string; code?: string } }) {
-  const [prefs] = useState<Prefs>(() => loadPrefs(initialTheme));
-  const theme = prefs.theme;
+export function App({ platform, layout, pairPrefill }: { platform: ClientPlatform; layout?: LayoutDescriptor; pairPrefill?: { account?: string; code?: string } }) {
   const [storedLayout, setStoredLayout] = useState<LayoutDescriptor>(() => {
     if (layout) return layout;
     try { return JSON.parse(globalThis.localStorage?.getItem('ormi.layout') ?? 'null') ?? defaultLayout; } catch { return defaultLayout; }
@@ -104,8 +101,8 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
   const [listFilter, setListFilter] = useState<string>();
   const resolved = useMemo(() => {
     const v = validateLayout(storedLayout);
-    return v.ok ? applyLayout(defaultLayout, storedLayout, prefs.safeMode) : defaultLayout;
-  }, [storedLayout, prefs.safeMode]);
+    return v.ok ? applyLayout(defaultLayout, storedLayout) : defaultLayout;
+  }, [storedLayout]);
   const layoutWriteTimer = useRef<number | undefined>(undefined);
   useEffect(() => {
     if (resolved.regions.rightRail?.collapsed !== false) setRail('none');
@@ -129,7 +126,7 @@ export function App({ platform, theme: initialTheme, layout, pairPrefill }: { pl
     };
   }, [platform]);
 
-  useAppliedTheme(theme, platform.desktop);
+  useAppliedTheme('system', platform.desktop);
   const searchRef = useMemo(() => ({ current: null as HTMLInputElement | null }), []);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

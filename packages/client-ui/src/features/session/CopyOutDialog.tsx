@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { FileText, Folder, Loader2, X } from 'lucide-react';
 import { usePlatform } from '../../lib/platform.ts';
-import { loadPrefs, rememberProject } from '../../lib/prefs.ts';
+import { useProjects } from '../projects/useProjects.ts';
 import type { Entry } from '../files/types.ts';
 import { feedback } from '../../lib/feedback.ts';
 import { useModalFocus } from '../../lib/useModalFocus.ts';
 
 export function CopyOutDialog({ session, onClose, initialPaths = [] }: { session: string; onClose(): void; initialPaths?: string[] }) {
   const { transport, desktop } = usePlatform();
-  const projects = loadPrefs().projects ?? [];
+  const { projects: registered } = useProjects();
+  const projects = registered.map(r => r.path);
   const [project, setProject] = useState(projects[0] ?? '');
   const [dest, setDest] = useState('');
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -36,7 +37,7 @@ export function CopyOutDialog({ session, onClose, initialPaths = [] }: { session
   const toggle = (path: string) => setSelected(current => current.includes(path) ? current.filter(item => item !== path) : [...current, path]);
   const chooseFolder = async () => {
     const path = await desktop?.pickFolder?.();
-    if (path) { setProject(path); rememberProject(path); }
+    if (path) setProject(path);
   };
   const copy = async () => {
     if (!selected.length || !project) return;
@@ -44,7 +45,6 @@ export function CopyOutDialog({ session, onClose, initialPaths = [] }: { session
     try {
       const result = await transport.request('session.copyOut', { session, paths: selected, project, ...(dest.trim() ? { dest: dest.trim() } : {}), ...(overwrite ? { overwrite: true } : {}) });
       if (result.type === 'res') {
-        rememberProject(project);
         const copied = (result.body as { copied?: unknown[] }).copied ?? [];
         feedback.success(`Copied ${copied.length} file${copied.length === 1 ? '' : 's'} to project`, desktop?.openPath ? {
           label: 'Open', onClick: () => { void desktop.openPath(project); },

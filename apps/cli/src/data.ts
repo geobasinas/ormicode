@@ -1,5 +1,5 @@
 /**
- * `ormi export [file]` and `ormi wipe [--confirm wipe]` (README: Storage and settings).
+ * `ormi export [file]` and `ormi wipe [--confirm wipe]` (README: Storage).
  * Export reads a consistent store snapshot, so it works with the hub running.
  * Wipe refuses while the hub is running or anything holds the store open.
  */
@@ -40,7 +40,7 @@ export async function wipeCommand(args: string[]): Promise<number> {
   if (args.length !== 0 && (args.length !== 2 || at !== 0)) { console.error(WIPE_USAGE); return 2; }
   if (!existsSync(home())) { console.log(`nothing to wipe: ${home()} does not exist`); return 0; }
   if (await hubRunning()) {
-    console.error(`the hub is running on ${socketPath()}; stop it first (or use Settings → Data and privacy). Nothing was deleted.`);
+    console.error(`the hub is running on ${socketPath()}; stop it first. Nothing was deleted.`);
     return 1;
   }
   if (daemon.storeBusy(home())) {

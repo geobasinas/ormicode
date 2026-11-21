@@ -33,7 +33,7 @@ This README is the whole spec: what every feature does, how the code is built, a
   - [Reboot recovery](#reboot-recovery)
   - [Eviction](#eviction)
   - [Resources](#resources)
-  - [Storage and settings](#storage-and-settings)
+  - [Storage](#storage)
   - [Sessions without a project](#sessions-without-a-project)
   - [Checkpoints](#checkpoints)
   - [Replay](#replay)
@@ -396,7 +396,7 @@ Compare `ui:geometry` with `ui:mockup` numbers instead of asking for screenshots
 
 If a worker loses the supervisor it stops (no unbounded buffering).
 
-**Spawning:** `node apps/daemon/src/worker-main.ts` with env vars `ORMICODE_SOCKET`, `ORMICODE_SESSION`, `ORMICODE_VENDOR`, `ORMICODE_CWD`, `ORMICODE_ADAPTER` (and agent settings). Exits before `ready` → session `failed` with the exit code. The built-in `fake` vendor is a test agent (one text turn, then ends) used by the crash tests; real sessions never pick it.
+**Spawning:** `node apps/daemon/src/worker-main.ts` with env vars `ORMICODE_SOCKET`, `ORMICODE_SESSION`, `ORMICODE_VENDOR`, `ORMICODE_CWD`, `ORMICODE_ADAPTER` (and agent config). Exits before `ready` → session `failed` with the exit code. The built-in `fake` vendor is a test agent (one text turn, then ends) used by the crash tests; real sessions never pick it.
 
 **Self-update**
 1. `ormi upgrade` downloads into `versions/<semver>` and runs `ormi --self-check` against a temp store.
@@ -418,7 +418,7 @@ If a worker loses the supervisor it stops (no unbounded buffering).
 
 **Doctor:** `ormi doctor` checks Node version, git and gh (installed + logged in), each agent binary, shell (Git Bash on Windows), socket permissions, relay reachability, store integrity, long-path support. `daemon.health` adds store/migrations, search index, socket, workers, relay, version. `ormi doctor --repair` rebuilds the search index and trims a torn journal tail.
 
-**Config:** machine settings in `~/.ormicode/config.json` (validated, migrated on start). Account settings live in the store ([Storage](#storage-and-settings)).
+**Config:** machine config in `~/.ormicode/config.json` (validated, migrated on start). Account config lives in the store ([Storage](#storage)).
 
 **When things fail**
 - **Worker crash:** restart with backoff, up to 5 times where recovery is safe. Then mark it `failed`, preserving its journal and workspace. Never switch vendors automatically; offer a manual handoff when available, showing the target vendor, model and available cost information.
@@ -481,7 +481,7 @@ States with several causes carry a `reason` (e.g. `interrupted`: `host_restart`,
 
 **Capabilities:** maintain a per-vendor, per-transport matrix, versioned with the tested agent. Record streaming, steering, approval interception, interruption, native resume, model discovery and usage as supported, unsupported or unverified. Unsupported operations return a typed error; test adapters with recorded contract fixtures and local smoke tests.
 
-**Agent settings:** each session stores the vendor's own values for model, effort, mode/agent (and ACP `configOptions`). Never invented.
+**Agent config:** each session stores the vendor's own values for model, effort, mode/agent (and ACP `configOptions`). Never invented.
 
 **Titles:** 4–6 words from the first prompt via a utility call (fallback: first 8 words). Renameable.
 
@@ -572,7 +572,7 @@ bot_memory(bot TEXT, key TEXT, value TEXT, updated_at INTEGER, PRIMARY KEY(bot, 
 **Integrity:** each row stores a CRC32C of its payload; mismatches are reported. A torn last row is dropped on open. `ormi doctor --repair` rebuilds search and lists gaps.
 
 **Retention**
-- `session.delete` is a soft delete, not immediate erasure. Expiry removes event bodies, tool output, search entries and blobs under their respective settings while retaining the session summary record. Active sessions and pending approvals are exempt until inactive or resolved. Pinned and `keep` archives are exempt. Relay deletion is retried when unavailable; independent exports and backups are not changed. After expiry, summaries come from the retained session record, not deleted events. A permanent-delete operation is not implemented until its semantics are specified.
+- `session.delete` is a soft delete, not immediate erasure. Expiry removes event bodies, tool output, search entries and blobs under their respective limits while retaining the session summary record. Active sessions and pending approvals are exempt until inactive or resolved. Pinned and `keep` archives are exempt. Relay deletion is retried when unavailable; independent exports and backups are not changed. After expiry, summaries come from the retained session record, not deleted events. A permanent-delete operation is not implemented until its semantics are specified.
 - Events/transcripts: 60 days (7 days to forever).
 - Tool output: separate setting, 60 days default (14 suggested for heavy use).
 - Raw logs: 7 days, 5 MB per session.
@@ -659,11 +659,11 @@ An uncertain in-flight tool call is marked interrupted, never automatically repl
   - Example: 8 GB box, 1 GB used, 2 GB reserve, 400 MB each → 12 workers. 16 GB → 32, capped at 20 (`pool.cap`).
 - **Resizing a VPS:** noticed within a minute. Growing is instant; shrinking only evicts idle workers.
 - **Disk guard:** won't start a worker below 5 GB free, and says why.
-- **Battery:** pool halves on battery, back to normal when plugged in. A setting.
+- **Battery:** pool halves on battery, back to normal when plugged in. Configurable.
 - **Overrides:** pool size, worker memory cap, reserve, disk floor — each shown next to the computed value.
 - Never guess from hostnames or specs.
 
-## Storage and settings
+## Storage
 
 > **Status:** now · **Needs:** [Daemon](#daemon)
 
@@ -674,7 +674,7 @@ An uncertain in-flight tool call is marked interrupted, never automatically repl
   store.db            SQLite, WAL
   blobs/              blob files, indexed in the store
   daemon.sock         local socket (Linux)
-  config.json         machine settings
+  config.json         machine config
   device.token        device or hub token (keychain if available)
   logs/               daemon.log, sessions/<id>/{stdout,stderr}.log, meta.json
   cache/              models.json (1 h), prices.json (1 day)
@@ -693,7 +693,7 @@ An uncertain in-flight tool call is marked interrupted, never automatically repl
   terminals/          terminal state and scrollback
 ```
 
-**Where settings live**
+**Where config lives**
 - **Machine** (`config.json`): `machine.id` (`m_` id, set once), `machine.name` (hostname until renamed), relay URL, warm pool, idle timeout, memory cap, shell, log level, install path, profile (laptop/VPS — set at install, never guessed), resume policy.
 - **Account** (in the store): retention, tool output and log retention, eviction defaults, push and quiet hours, resume policy, terminal confirmation, sandbox cap, approval reminders.
 - **Project:** worktree root, agent defaults, base branch.
@@ -701,10 +701,6 @@ An uncertain in-flight tool call is marked interrupted, never automatically repl
 - Values are typed in code: durations in ms, sizes in bytes (MB/GB = 10^6/10^9), booleans for on/off. Unknown keys are ignored.
 
 **Over the wire**
-- `settings.get` → list of `{key, value, scope}` for every known key (resolved values).
-- `settings.set {key, value}` → validates, saves the account value, applies without restart, returns it.
-- Only account keys can be set remotely. Machine keys (relay URL, update settings) are local-only so a paired device can't redirect the hub. Bad key/value → `protocol.invalid_frame`.
-
 **Defaults**
 | Key | Default | | Key | Default |
 | --- | --- | --- | --- | --- |
@@ -732,9 +728,9 @@ An uncertain in-flight tool call is marked interrupted, never automatically repl
 
 **Migration:** `config.json` has `schemaVersion`; small forward-only migrations on start, with a `.bak.1` copy first. The store uses SQL migrations.
 
-**Export/import:** `ormi export [file]` → tar of store, config and daemon log (no tokens, no session logs). The store is a `VACUUM INTO` snapshot, so export works while the hub runs; device token hashes are cleared in the copy, keys that look like credentials are dropped from `config.json`, and a `manifest.json` lists what was included. Settings → Data and privacy downloads the same tar through `data.export` / `data.exportChunk` (local socket only, never over the relay). `ormi import` merges into a new machine, refusing id collisions unless forced (not built yet).
+**Export/import:** `ormi export [file]` → tar of store, config and daemon log (no tokens, no session logs). The store is a `VACUUM INTO` snapshot, so export works while the hub runs; device token hashes are cleared in the copy, keys that look like credentials are dropped from `config.json`, and a `manifest.json` lists what was included. Local-socket clients download the same tar through `data.export` / `data.exportChunk` (never over the relay). `ormi import` merges into a new machine, refusing id collisions unless forced (not built yet).
 
-**Wipe:** `ormi wipe [--confirm wipe]` deletes store, logs, cache and keys after a typed confirmation (the word `wipe`). It also deletes `blobs/`, `notes/`, `checkpoints/`, `terminals/`, `recordings/` and `artifacts/`, which only make sense with the store. It keeps `config.json`, `scratch/`, `skills/`, `teams/`, `automations.json`, `destructive.json`, `mcp/`, `versions/` and keyring secrets (delete those in Settings → Secrets). The CLI refuses while the hub is running or the store is open. Settings → Data and privacy uses `data.wipe {confirm}` instead (local socket only): the hub shuts down, closes the store, wipes, replies and exits; it does not restart by itself. Every target is first moved into one `.wipe-*` folder inside `~/.ormicode`, and the moves are undone if one fails, so a wipe never stops half way. Nothing outside `~/.ormicode` is touched, and symlinks are removed, not followed.
+**Wipe:** `ormi wipe [--confirm wipe]` deletes store, logs, cache and keys after a typed confirmation (the word `wipe`). It also deletes `blobs/`, `notes/`, `checkpoints/`, `terminals/`, `recordings/` and `artifacts/`, which only make sense with the store. It keeps `config.json`, `scratch/`, `skills/`, `teams/`, `automations.json`, `destructive.json`, `mcp/`, `versions/` and keyring secrets (delete those with `ormi secret delete`). The CLI refuses while the hub is running or the store is open. Local-socket clients use `data.wipe {confirm}` instead: the hub shuts down, closes the store, wipes, replies and exits; it does not restart by itself. Every target is first moved into one `.wipe-*` folder inside `~/.ormicode`, and the moves are undone if one fails, so a wipe never stops half way. Nothing outside `~/.ormicode` is touched, and symlinks are removed, not followed.
 
 **Housekeeping:** nightly prune; `VACUUM` monthly or when free pages > 20%; daemon log rotates at 20 MB × 5; two old versions kept; `ormi status` shows total disk use. Test restoring a backup on a throwaway hub now and then.
 
@@ -772,7 +768,7 @@ Checking afterwards and rolling back is faster than reviewing every change upfro
 - It has its own index, so the worktree's index is never read. Files in `.gitignore` are skipped.
 - Each checkpoint is a commit under a per-session ref named by journal seq. Its message only has session, seq and tool name.
 - Commits run in a background queue per session, off the main event path. No change = no checkpoint.
-- Settings: `checkpoints.enabled` (on), `checkpoints.max` (200), `checkpoints.maxBytes` (1 GB).
+- Config: `checkpoints.enabled` (on), `checkpoints.max` (200), `checkpoints.maxBytes` (1 GB).
 
 **Restore — three modes, from the session timeline**
 1. **Files only.** Put the files back, keep the conversation. The common one: "the last ten minutes were wrong, redo it".
@@ -787,7 +783,7 @@ Checking afterwards and rolling back is faster than reviewing every change upfro
 - `checkpoint.diff` → stores the patch as a blob (like `git.diff`).
 - `checkpoint.restore` with `mode: 'files'` → refused while a turn is running; deletes files the checkpoint doesn't have.
 - `checkpoint.fork` takes `{session, id, branch?}` → returns `{session, branch, cwd, from}`.
-  - New session, same project/vendor/transport/agent settings, new worktree on a new branch from the source's HEAD.
+  - New session, same project/vendor/transport/agent config, new worktree on a new branch from the source's HEAD.
   - Default branch name: `<branch>-fork-<6 random chars>`.
   - Checkpoint files are written before the worker starts; the new session starts with no conversation.
   - If writing fails, the new worktree, branch and session are removed.
@@ -803,7 +799,7 @@ Checking afterwards and rolling back is faster than reviewing every change upfro
 
 **Automations:** a bad overnight run can be rolled back to its first checkpoint.
 
-**Implementation status:** `packages/checkpoints` (`ShadowRepo` + per-session `Checkpoints` queue) and `apps/daemon/src/checkpoint-methods.ts`. The supervisor takes a `baseline` checkpoint at a session's first `tool_call`, then one after every `tool_result`, and journals a `checkpoint` event (`checkpoint_restored` after a file restore). Checkpoints are parentless commits under `refs/ormi/cp/<seq>`, so pruning a ref frees its objects; the shadow repo also excludes `.ormi/` so sibling worktrees are never captured. Until `settings.*` exists, the settings are env vars: `ORMICODE_CHECKPOINTS=0` (off), `ORMICODE_CHECKPOINTS_MAX`, `ORMICODE_CHECKPOINTS_MAX_BYTES`. Until blob storage exists, `checkpoint.diff` returns the patch inline as `{patch, truncated}`, capped at 1 MiB. `checkpoint.restore` supports files and conversation modes: conversation rewind restores files, clears the native resume id, journals the rewind point, and supplies a recap bounded to events at or before the checkpoint. The recap path is used for all adapters; although the Claude SDK declares `resumeSessionAt`, this journal currently has no SDK prompt UUID per checkpoint to pass to that option. The tool-row popover previews per-file changes, opens files in the Files pane, confirms restores with a changed-file count, and can fork from the checkpoint. Rewound transcript events can be shown or hidden.
+**Implementation status:** `packages/checkpoints` (`ShadowRepo` + per-session `Checkpoints` queue) and `apps/daemon/src/checkpoint-methods.ts`. The supervisor takes a `baseline` checkpoint at a session's first `tool_call`, then one after every `tool_result`, and journals a `checkpoint` event (`checkpoint_restored` after a file restore). Checkpoints are parentless commits under `refs/ormi/cp/<seq>`, so pruning a ref frees its objects; the shadow repo also excludes `.ormi/` so sibling worktrees are never captured. Until a config protocol exists, the knobs are env vars: `ORMICODE_CHECKPOINTS=0` (off), `ORMICODE_CHECKPOINTS_MAX`, `ORMICODE_CHECKPOINTS_MAX_BYTES`. Until blob storage exists, `checkpoint.diff` returns the patch inline as `{patch, truncated}`, capped at 1 MiB. `checkpoint.restore` supports files and conversation modes: conversation rewind restores files, clears the native resume id, journals the rewind point, and supplies a recap bounded to events at or before the checkpoint. The recap path is used for all adapters; although the Claude SDK declares `resumeSessionAt`, this journal currently has no SDK prompt UUID per checkpoint to pass to that option. The tool-row popover previews per-file changes, opens files in the Files pane, confirms restores with a changed-file count, and can fork from the checkpoint. Rewound transcript events can be shown or hidden.
 
 ## Replay
 
@@ -871,7 +867,7 @@ Checking afterwards and rolling back is faster than reviewing every change upfro
 
 **Never shown:** projected monthly spend, savings, streaks, anything that looks like a business dashboard.
 
-**Implementation status:** `packages/pricing` has no built-in prices. The table comes from OpenRouter's public models API (`https://openrouter.ai/api/v1/models`, no key; `ORMICODE_PRICES_URL` overrides, `off` disables), fetched on first use and cached for `pricing.cacheMinutes` (env `ORMICODE_PRICING_CACHE_MINUTES`, default 1440) in `~/.ormicode/cache/prices.json`. A failed fetch keeps the last cache; with no cache there are no dollar figures. Hand edits in `~/.ormicode/prices.json` (`{models: {id: {input, output, cacheRead?, cacheWrite?}}}`, USD per million) win. Model ids are matched exactly after normalising (vendor prefix, `.`→`-`, date suffix dropped; `:batch`/`:free` variants ignored), so `claude-sonnet-4-6-20260217` finds `anthropic/claude-sonnet-4.6`; no near-miss guessing. The first estimate pins that model's price and version in `session_prices` (migration `0003`), so later table updates do not rewrite it. `session.cost {session}` returns `{input, output, cacheRead, cacheWrite, turns, usd, source: reported|estimate|none, priceVersion, model}`; agent-reported `costUsd` is used as is and any unpriced usage makes session `usd` null. `cost.totals {since?}` returns token, dollar, unpriced-event and estimate buckets for the total, projects, local dates and sessions; `ormi cost totals [--since <ms>]` prints the response. `pricing.status`, `pricing.refresh` → `{version, source: openrouter|cache|none, fetchedAt, models, error?}` and `pricing.get {model}` remain available via `ormi pricing status|refresh|get`. The session meta line shows tokens and cost; Settings → Usage shows the last 30 days by project and the latest 14 days with usage.
+**Implementation status:** `packages/pricing` has no built-in prices. The table comes from OpenRouter's public models API (`https://openrouter.ai/api/v1/models`, no key; `ORMICODE_PRICES_URL` overrides, `off` disables), fetched on first use and cached for `pricing.cacheMinutes` (env `ORMICODE_PRICING_CACHE_MINUTES`, default 1440) in `~/.ormicode/cache/prices.json`. A failed fetch keeps the last cache; with no cache there are no dollar figures. Hand edits in `~/.ormicode/prices.json` (`{models: {id: {input, output, cacheRead?, cacheWrite?}}}`, USD per million) win. Model ids are matched exactly after normalising (vendor prefix, `.`→`-`, date suffix dropped; `:batch`/`:free` variants ignored), so `claude-sonnet-4-6-20260217` finds `anthropic/claude-sonnet-4.6`; no near-miss guessing. The first estimate pins that model's price and version in `session_prices` (migration `0003`), so later table updates do not rewrite it. `session.cost {session}` returns `{input, output, cacheRead, cacheWrite, turns, usd, source: reported|estimate|none, priceVersion, model}`; agent-reported `costUsd` is used as is and any unpriced usage makes session `usd` null. `cost.totals {since?}` returns token, dollar, unpriced-event and estimate buckets for the total, projects, local dates and sessions; `ormi cost totals [--since <ms>]` prints the response. `pricing.status`, `pricing.refresh` → `{version, source: openrouter|cache|none, fetchedAt, models, error?}` and `pricing.get {model}` remain available via `ormi pricing status|refresh|get`. The session meta line shows tokens and cost; `cost.totals` covers the last 30 days by project and the latest 14 days with usage.
 
 **Retries:** a retried turn can be billed twice. Usage is recorded per attempt, the session total is the sum, and retries are marked so a big number has an explanation.
 
@@ -959,7 +955,7 @@ Optional methods = optional features. No `steer` means the client queues instead
 
 **Raw logs:** each worker saves the agent's stderr/stdout ([Raw logs](#raw-logs)).
 
-**Choosing a transport:** each session stores vendor, transport, model, effort, mode. You pick the transport per session (and set a default per agent in settings). Defaults: SDK where one exists (Claude, Codex, OpenCode, pi), otherwise ACP (Grok, Vibe). Every transport in the table above is built and kept working, with its own fixtures and smoke test. If the preferred transport isn't available, fall back and record what actually ran. Effort uses only the levels that vendor offers for that model.
+**Choosing a transport:** each session stores vendor, transport, model, effort, mode. You pick the transport per session (and a default per agent). Defaults: SDK where one exists (Claude, Codex, OpenCode, pi), otherwise ACP (Grok, Vibe). Every transport in the table above is built and kept working, with its own fixtures and smoke test. If the preferred transport isn't available, fall back and record what actually ran. Effort uses only the levels that vendor offers for that model.
 
 **Version changes:** on worker start the adapter journals one `agent_version` event (binary + version). If it changed since last session, the client shows the update command once.
 
@@ -1074,7 +1070,7 @@ The ACP agent picker and session header warn that **OpenCode may write without a
 | Request ids | null allowed | string or integer |
 | Batches | allowed | removed |
 
-**Settings (config options):** `session/new` and `session/resume` return the full `configOptions` list; `session/set_config_option` replaces it. Categories `mode`, `model`, `model_config`, `thought_level` map to the same picker as native agents. v1 agents with only `modes` use `session/set_mode`. Unknown option types are shown read-only, not dropped.
+**Config options:** `session/new` and `session/resume` return the full `configOptions` list; `session/set_config_option` replaces it. Categories `mode`, `model`, `model_config`, `thought_level` map to the same picker as native agents. v1 agents with only `modes` use `session/set_mode`. Unknown option types are shown read-only, not dropped.
 
 **Approvals:** `session/request_permission` in both (v1 sends a `toolCall`; v2 sends `title`, `description`, `subject`). Option kinds `allow_once`, `allow_always`, `reject_once`, `reject_always`. Forward verbatim, return `optionId` or `cancelled`. Never guess scope from the kind.
 
@@ -1110,7 +1106,7 @@ node packages/agent-acp/scripts/smoke.ts --human
 
 Replay fixtures: a `vibe-acp` v1 and a `codex-acp` v2 capture, each checking one `initialize`, `turn_start`, text, usage, `turn_end`. Recheck the [v2 migration guide](https://agentclientprotocol.com/protocol/v2/migration) while v2 is a draft. No agent needs `session/delete` or `additionalDirectories` yet.
 
-**Current `agent-acp` implementation status:** the generic adapter exists and speaks v1 and v2 through separate protocol profiles (`src/v1.ts`, `src/v2.ts` — no interleaved version checks; the shared layer is only `jsonrpc.ts` framing and `profile.ts` types). Negotiation sends a v2 `initialize` first: a `protocolVersion: 1` answer selects the v1 profile on the same connection, and a `-32022` rejection respawns once at v1 (`preferV1` skips v2 entirely). v2 ends turns on the `idle` `state_update`, never the prompt response; v1 keeps the response `stopReason` contract. Resume is `session/load` on v1 and `session/resume` with `replayFrom: start` on v2; settings go through `session/set_config_option` (v2 `configId`+`type`, v1 value form) with a `session/set_mode` fallback for v1 mode lists. Permissions forward `optionId`s verbatim for both param shapes. The synthetic fixture covers both versions' turns, permissions, resume, config options, cancel and `-32022` fallback; real-agent captures and terminal/file client methods are still missing; the negotiated `acpVersion` is stored per session via `adapter.acpVersion(handle)`. Effort categories fall back `thought_level` to `thinking`.
+**Current `agent-acp` implementation status:** the generic adapter exists and speaks v1 and v2 through separate protocol profiles (`src/v1.ts`, `src/v2.ts` — no interleaved version checks; the shared layer is only `jsonrpc.ts` framing and `profile.ts` types). Negotiation sends a v2 `initialize` first: a `protocolVersion: 1` answer selects the v1 profile on the same connection, and a `-32022` rejection respawns once at v1 (`preferV1` skips v2 entirely). v2 ends turns on the `idle` `state_update`, never the prompt response; v1 keeps the response `stopReason` contract. Resume is `session/load` on v1 and `session/resume` with `replayFrom: start` on v2; config options go through `session/set_config_option` (v2 `configId`+`type`, v1 value form) with a `session/set_mode` fallback for v1 mode lists. Permissions forward `optionId`s verbatim for both param shapes. The synthetic fixture covers both versions' turns, permissions, resume, config options, cancel and `-32022` fallback; real-agent captures and terminal/file client methods are still missing; the negotiated `acpVersion` is stored per session via `adapter.acpVersion(handle)`. Effort categories fall back `thought_level` to `thinking`.
 
 ## Handoff
 
@@ -1253,7 +1249,7 @@ No approval from the agent = none shown. Before starting a transport without app
 
 **Never:** auto-approve using our own risk rules, rewrite the agent's text, hide an option, or show an approval the agent didn't ask for.
 
-**Settings:** reminder delay, stale badge delay, sound, quiet hours, and default autonomy per project. Everything else is the agent's own config.
+**Config:** reminder delay, stale badge delay, sound, quiet hours, and default autonomy per project. Everything else is the agent's own config.
 
 ## Destructive commands
 
@@ -1407,7 +1403,7 @@ secrets:
 
 **Board:** one shared document per team at `~/.ormicode/teams/<id>/board.md` (outside every worktree). Append-only timestamped entries, plus a current-state section only the parent writes. Children use tools to read/write it.
 
-**Limits (settings):** 4 children by default, max 8, depth 2, 3 running at once, max 3 teams. Caps instead of token budgets, since chatter grows fast.
+**Limits:** 4 children by default, max 8, depth 2, 3 running at once, max 3 teams. Caps instead of token budgets, since chatter grows fast.
 
 **Tools**
 | Tool | Does |
@@ -1455,7 +1451,7 @@ Parent-only except `team_send`, `team_reply`, `team_inbox`, `team_board_read`, `
 
 Parent worker loss, eviction, failure or archive persists `parentless` on its children without stopping them. `team.tree` / `team.status` and `session.get` / `session.list` expose the boolean; `team_parent_changed` journals transitions. A live parent's new turn, worker reattachment or explicit `session.resume` clears it (archived parents remain unavailable). Parent-directed messages, including urgent ones, become durable user-facing questions rather than waking the missing parent. The existing question action acknowledges them; `session.answer` also accepts a reply, queued back to the child at its next step. Session summaries show `awaiting_input` until answered, without changing the child's running worker state. Approvals use the user path. Already user-routed requests stay with the user after reattachment; no duplicate parent delivery.
 
-**Worktrees and merging:** one worktree per child. The parent reviews each diff, merges the child branch with `git.merge`, and fixes conflicts itself (or applies parts by hand if a merge doesn't fit). Child worktrees are kept after merging; a cleanup action in settings lists them by age and size.
+**Worktrees and merging:** one worktree per child. The parent reviews each diff, merges the child branch with `git.merge`, and fixes conflicts itself (or applies parts by hand if a merge doesn't fit). Child worktrees are kept after merging; a cleanup action lists them by age and size.
 
 **In the UI**
 - Children nest under the parent; tapping one opens it, back returns with scroll and live state intact.
@@ -1833,7 +1829,7 @@ The hub sends a short summary through the relay Worker to Firebase (FCM); the ap
 - Removing a worktree with uncommitted changes is refused unless forced.
 - Agents' own worktree features are always off.
 
-**Cleanup:** a settings panel lists per project: worktrees (size, last used), branches merged into base, branches with no upstream. Delete per item, or a sweep of merged/empty ones. Nothing auto-deleted unless you turn that on.
+**Cleanup:** a panel lists per project: worktrees (size, last used), branches merged into base, branches with no upstream. Delete per item, or a sweep of merged/empty ones. Nothing auto-deleted unless you turn that on.
 
 **Commits**
 - The agent commits its own work when it wants. The daemon only commits for a sandbox return with auto-commit on, or an explicit `session.commit`. Messages are the agent's.
@@ -2050,15 +2046,15 @@ services:
 | `ormi_ask_user` | `session.askUser` | Ask you a question (choices or free text) and return the answer; self-only, team parent only |
 | Team tools | `team.*` | The `team_*` tools, with parent/child permissions enforced by the daemon ([Teams](#teams)) |
 
-**Limits:** a session can only message, wait on or hand off sessions it started (plus itself). Sessions started by an agent count toward the pool and team caps. A session started through `ormi_start` records which session asked. Nothing here can touch settings, devices, secrets or the destructive list.
+**Limits:** a session can only message, wait on or hand off sessions it started (plus itself). Sessions started by an agent count toward the pool and team caps. A session started through `ormi_start` records which session asked. Nothing here can touch config, devices, secrets or the destructive list.
 
-**Session authentication:** the daemon mints a random 256-bit credential on each worker spawn. The worker removes `ORMI_MCP_TOKEN` from its inherited environment and passes it only in the built-in server's MCP environment alongside `ORMI_SESSION`. The server sends `{session, token}` as request-envelope `mcp` metadata, never tool arguments; the daemon checks the token with `timingSafeEqual`. Credentials rotate on respawn and expire on stop, eviction, exit or daemon restart; they are never journaled or included in events or daemon logs. Missing/invalid/expired proof returns `mcp.unauthorized`; actor/ownership mismatches return `mcp.forbidden`. All `team.*`, `session.start` with `parent`, and agent-approval handoffs require proof. Authenticated MCP calls enforce self/child ownership in the daemon for prompt/wait, self-only handoff/notes/browser, and cannot call settings, devices or secrets. Ordinary non-agent desktop/CLI operations keep their existing paths.
+**Session authentication:** the daemon mints a random 256-bit credential on each worker spawn. The worker removes `ORMI_MCP_TOKEN` from its inherited environment and passes it only in the built-in server's MCP environment alongside `ORMI_SESSION`. The server sends `{session, token}` as request-envelope `mcp` metadata, never tool arguments; the daemon checks the token with `timingSafeEqual`. Credentials rotate on respawn and expire on stop, eviction, exit or daemon restart; they are never journaled or included in events or daemon logs. Missing/invalid/expired proof returns `mcp.unauthorized`; actor/ownership mismatches return `mcp.forbidden`. All `team.*`, `session.start` with `parent`, and agent-approval handoffs require proof. Authenticated MCP calls enforce self/child ownership in the daemon for prompt/wait, self-only handoff/notes/browser, and cannot call config, devices or secrets. Ordinary non-agent desktop/CLI operations keep their existing paths.
 
 **Controller server (`ormi mcp serve`)** — *later*
 
 A stdio MCP server added to any outside MCP client (Claude Desktop, Cursor, VS Code, or Claude Code run by hand) to orchestrate ormicode. Talks to the local daemon socket, or a remote hub through `ormi connect` / the relay.
 
-**Identity:** a paired device with its own token, not a session. Pairing an MCP client = pairing a device; revoke it in the device list. Not bound by the "only sessions it started" rule, but still can't touch settings, devices, secrets or the destructive list.
+**Identity:** a paired device with its own token, not a session. Pairing an MCP client = pairing a device; revoke it in the device list. Not bound by the "only sessions it started" rule, but still can't touch config, devices, secrets or the destructive list.
 
 **Tools:** list/get/start/prompt/wait/cancel sessions; read the Needs You queue; answer approvals and questions (off by default, a per-device setting; destructive approvals never); hand off; read transcript summary and diff; use the team tools (it can be a team's parent from outside).
 
@@ -2241,7 +2237,7 @@ CLI is for you and scripts; the built-in MCP server is for models. Both use the 
 
 **Bots:** a thread can bind to a [bot](#bots) chat instead; the bot posts session cards.
 
-**Privacy:** the chat provider sees every message — said clearly at setup, in docs and in settings.
+**Privacy:** the chat provider sees every message — said clearly at setup and in docs.
 
 **Scope:** acts as you, only over sessions your devices can see.
 
@@ -2399,7 +2395,7 @@ Agents can use `frame.update` to add `data-ormi-prototype="frame:<frameId>"`, `d
 
 ## Desktop and web layout
 
-> **Status:** in progress — descriptor validation, safe-mode filtering, restricted desktop `layout.read`/`layout.write` IPC, web localStorage, 300 ms debounced persistence, sidebar resize updates, Home widget ordering, and a 20-entry history are implemented. Safe mode, history and reset lived in the settings page, which is deferred until the settings protocol exists; a row-per-region editor was tried and removed. Phone/secondary-panel resize integration remains. · **Needs:** [First screens](#first-screens)
+> **Status:** in progress — descriptor validation, safe-mode filtering, restricted desktop `layout.read`/`layout.write` IPC, web localStorage, 300 ms debounced persistence, sidebar resize updates, Home widget ordering, and a 20-entry history are implemented. Safe mode, history and reset have no UI yet; a row-per-region editor was tried and removed. Phone/secondary-panel resize integration remains. · **Needs:** [First screens](#first-screens)
 
 **One renderer (`packages/client-ui`) in two shells: Electron on desktop, Worker static assets in the browser.**
 
@@ -2461,7 +2457,7 @@ Each has `order`, `size`, `collapsed`, `visible`. Unknown ids are kept but ignor
 
 **Transport in each shell:** both give `client-ui` a `ClientPlatform` (`TokenStore` + `ProtocolTransport`); the renderer never sees a socket or token.
 - **Web:** the leader tab runs the relay client; other tabs talk to it over `BroadcastChannel`. Leader chosen with the Web Locks API; another tab takes over if it closes. Token, cursor and layout are per browser profile.
-- **Desktop:** the relay client runs in Electron's main process; preload exposes only request/subscribe/unsubscribe/events/state over IPC. Token encrypted with `safeStorage` in `~/.ormicode/desktop/device.token` (0600). On Linux, check `safeStorage.getSelectedStorageBackend()` after `ready`. If it returns `basic_text` (no keyring found), the encryption is only obfuscation, so show a warning in Settings and in `ormi doctor` ([safeStorage](https://www.electronjs.org/docs/latest/api/safe-storage)).
+- **Desktop:** the relay client runs in Electron's main process; preload exposes only request/subscribe/unsubscribe/events/state over IPC. Token encrypted with `safeStorage` in `~/.ormicode/desktop/device.token` (0600). On Linux, check `safeStorage.getSelectedStorageBackend()` after `ready`. If it returns `basic_text` (no keyring found), the encryption is only obfuscation, so show a warning in the client and in `ormi doctor` ([safeStorage](https://www.electronjs.org/docs/latest/api/safe-storage)).
 
 **Desktop vs web**
 | | Desktop | Web |
@@ -2577,7 +2573,7 @@ Network denied unless a domain is listed (requests go through a logging host pro
 
 **The first screens to build, for desktop and web: Now, Sessions, transcript, approvals, layout.** Both shells render them from `client-ui`.
 
-**Onboarding:** both shells use the same pairing flow. Desktop opens it after startup when unpaired or when no remote is configured, and it does not reopen after the app has been online once. Desktop welcome and code steps offer **Skip for now**; skipping is in-memory, so pairing appears again next launch. Desktop pairing says “this app” and allows changing the relay URL; web says “this browser” and has no relay field or skip. Both shells linked to Settings from onboarding, but the settings page is deferred until the settings protocol exists, so onboarding no longer offers it. The old desktop `PairCard` is removed.
+**Onboarding:** both shells use the same pairing flow. Desktop opens it after startup when unpaired or when no remote is configured, and it does not reopen after the app has been online once. Desktop welcome and code steps offer **Skip for now**; skipping is in-memory, so pairing appears again next launch. Desktop pairing says “this app” and allows changing the relay URL; web says “this browser” and has no relay field or skip. The old desktop `PairCard` is removed.
 
 **Project folders:** the sidebar's **Add project folder** button opens a machine chooser and directory browser. Registered folders without visible sessions still appear as empty project groups; searching also matches their names.
 
@@ -2590,10 +2586,10 @@ Network denied unless a domain is listed (requests go through a logging host pro
 │ projects         │                                        │
 │ sessions         │                                        │
 │ needs-you badge  │                                        │
-│ settings (later) │                                        │
+│                  │                                        │
 └──────────────────┴────────────────────────────────────────┘
 ```
-- **Nav:** Now, Sessions. Settings, Teams, Design, Automations, Git, Review, Files are hidden (not greyed out) until built — Settings is deferred until the settings protocol exists.
+- **Nav:** Now, Sessions. Teams, Design, Automations, Git, Review, Files are hidden (not greyed out) until built.
 - **Tabs:** a pinned Now tab plus one per open session (max 8, oldest closes first). Closing a tab never stops the session. With one tab, the strip collapses into the header breadcrumb.
 
 **Right rail:** contextual panels in tabs (resizable, collapsible, saved per session and device), off by default. The first screens ships only **Notes**:
@@ -2640,14 +2636,14 @@ Network denied unless a domain is listed (requests go through a logging host pro
 | Hub offline | last known state and age; nothing shown as live |
 | Worker crashed | `interrupted` with reason and resume |
 | Approval expired | marked expired after reboot; not re-asked |
-| Web deploy changed | version in Settings; reload offered, never forced mid-turn |
+| Web deploy changed | version surfaced in the client; reload offered, never forced mid-turn |
 | Protocol mismatch | which side to reload/upgrade |
 | Nothing yet | one clear action: start a session or change filter |
 
 **Designs** (implement from the images; if a design and this spec disagree, follow the spec and note it in [Open questions](#open-questions)):
 - Desktop onboarding: `designs/onboarding/desktop/` (20 frames, not in the repo yet).
-- **Desktop app screens** in `designs/desktop/` (14): Home, Bot chat, Notes, Session options, Settings (two pages), Terminal, Browser, Files, and Git (Changes, Branches, History, Pull request, Stash).
-- **Mobile screens** in `designs/mobile/` (27): Home, Session, Search, Settings, Bots, Bot chat, Notes, Files, Browser, Terminal and Git (Changes, Branches, History, Pull request, Stash), plus the open states: the agent, mode, model and effort pickers, model and effort together, composer menu, additional tools, session actions, and the Notes, Files, Browser and Terminal options menus.
+- **Desktop app screens** in `designs/desktop/` (13): Home, Bot chat, Notes, Session options, Terminal, Browser, Files, and Git (Changes, Branches, History, Pull request, Stash).
+- **Mobile screens** in `designs/mobile/` (26): Home, Session, Search, Bots, Bot chat, Notes, Files, Browser, Terminal and Git (Changes, Branches, History, Pull request, Stash), plus the open states: the agent, mode, model and effort pickers, model and effort together, composer menu, additional tools, session actions, and the Notes, Files, Browser and Terminal options menus.
 - **Mobile components** in `designs/mobile/components/`: floating bottom nav, status bar, All / Sessions / Bots tabs.
 - Phone-width web uses the mobile screens.
 - Colours come from the [dark palette](#themes).
@@ -2656,19 +2652,7 @@ Network denied unless a domain is listed (requests go through a logging host pro
 **Desktop vs web:** desktop has OS window controls, tray (later), updater status, file dialogs; web has the Worker version indicator, browser tabs, no offline shell. Same components.
 - **Onboarding:** desktop offers "Skip for now" (opens with no relay or data; pairing shows again next launch). Web has no skip. Desktop says "this app" (web: "this browser") and opens pairing on "enter code" (no camera). Never the word "browser" on desktop.
 
-**Settings** (a tab with inner nav) — **deferred.** The page was built once and removed again: it could only edit client `localStorage` prefs because `settings.get`/`settings.set` don't exist yet, and its layout was thin. Revisit once the settings protocol surface and machine/account scopes land so the page edits real config. The spec below is kept for that revisit.
-
-- **General:** session defaults — agent, project folder and worktree branch prefix.
-- **Appearance:** theme.
-- **Layout:** safe mode plus layout history and reset to defaults.
-- **Keyboard shortcuts:** the table below.
-- **Paired devices:** list and revoke.
-- **Browser:** preview browser detection, checkpoint screenshots and UI check.
-- **Usage:** token and cost totals for the last 30 days.
-- **Secrets:** declared names with inline set/delete; values never shown.
-- **Data & privacy (desktop only):** export the store as a tar; wipe after a typed confirmation. Hidden on web — both are local-socket-only and the web client's only local data is its relay token.
-- **About:** version, commit, relay, plus per shell: web shows the paired device and "Forget this browser"; desktop shows daemon status and warns when `safeStorage` has no keyring.
-- Never show a provider account or sign-out ("Signed in · Claude Code · Max plan" must not ship). Show "Claude Code detected on this machine" with version, read-only.
+Never show a provider account or sign-out ("Signed in · Claude Code · Max plan" must not ship). Show "Claude Code detected on this machine" with version, read-only.
 
 **Keyboard**
 | Action | Shortcut |
@@ -3042,7 +3026,7 @@ For review or advice alone, do not change the reviewed files, commit or push unl
 
 Status lines (*now*, *next*, *later*) say what is current. Do not build a *later* section unless the owner asks. For an open-ended implementation request, work on the first incomplete slice only; begin the next only when asked. A slice is complete when its acceptance checks pass on supported platforms or the owner accepts a documented limitation. A targeted request can change its stated scope. If instructions conflict, the owner’s current request takes precedence, followed by repository instructions; reconcile the slice plan and status lines before implementing. Build each slice end to end:
 
-1. **Hub core:** [Daemon](#daemon), [Journal](#journal), [Sessions](#sessions), [Storage and settings](#storage-and-settings), [Git rules](#git-rules), [Reboot recovery](#reboot-recovery) and [Eviction](#eviction), driven by the fake agent and the [CLI](#cli). Runs on Windows and Linux.
+1. **Hub core:** [Daemon](#daemon), [Journal](#journal), [Sessions](#sessions), [Storage](#storage), [Git rules](#git-rules), [Reboot recovery](#reboot-recovery) and [Eviction](#eviction), driven by the fake agent and the [CLI](#cli). Runs on Windows and Linux.
 2. **First real agent:** the Claude SDK adapter, with [Approvals](#approvals), [Destructive commands](#destructive-commands), [Rate limits](#rate-limits), [Models](#models) and [Raw logs](#raw-logs). Done when you can start, steer, approve and resume a Claude session from the CLI.
 3. **The rest of the agents, every native transport:** Codex (SDK + CLI), OpenCode (SDK + CLI + ACP), pi (SDK + CLI), Grok (CLI + ACP) and Vibe (CLI + ACP), plus the Claude CLI. Build one transport per agent first so each agent works end to end, then add its other transports in the same slice.
 4. **Remote access:** [Relay](#relay), [Pairing](#pairing) and `ormi connect`, so the CLI works from another machine.
@@ -3122,7 +3106,7 @@ This is about *where capability lives*, not how plain the UI looks. The UI can b
 | `git-core` | Branches, worktrees, hooks, diff, push, PRs via gh, graph, conflicts |
 | `pty-broker` | Terminals, ConPTY on Windows, adopt protocol |
 | `platform` | Paths, process trees, job objects, systemd scopes, installers |
-| `config` | Settings keys, defaults, resolution, migration |
+| `config` | Config keys, defaults, resolution, migration |
 | `pricing` | Price table, fetch, cache, estimates |
 | `logs` | Agent stdout/stderr capture, rotation, reading |
 | `artifacts` | Publish, snapshot, render, limits |
@@ -3198,7 +3182,7 @@ ormicode/
 │  │            resources/{icon.png,fonts/}
 │  ├─ web/      vite.config.ts, wrangler.toml, src/{index.html,main.tsx,app.tsx}
 │  ├─ mobile/   app.json, metro.config.js, app/{_layout,index}.tsx,
-│  │            app/{sessions,teams,design,automations,settings,git,review,files}/,
+│  │            app/{sessions,teams,design,automations,git,review,files}/,
 │  │            features/{session,git,review,files,teams,design}/, components/, assets/fonts/
 │  ├─ relay/    wrangler.toml, migrations/, src/{index,metrics,hooks/github}.ts,
 │  │            src/do/{account,pairing}.ts
@@ -3422,7 +3406,6 @@ Example request and response bodies (inside their corresponding envelopes):
 | Eval | `eval.suite.list`, `eval.suite.save`, `eval.run`, `eval.compare` |
 | Models | `models.list`, `refresh`, `addManual`, `setDefault` |
 | Devices | `devices.list`, `revoke`, `rename` |
-| Settings | `settings.get`, `set` |
 | Teams | Built: `team.spawn`, `tree`, `status`, `message` (send/reply), `inbox`, `board` (read/append/setState), `approve`, `cancel`, `reassign`, `close`, `diff`, `report`, `askUser`, `openPr`. Calls carry the calling session as `actor` with worker MCP proof; child-targeted calls carry `session`. `session.askUser` exposes the shared self-only question path. Planned: `policy` |
 | Bots | `bot.list`, `get`, `create`, `update`, `delete`, `message`, `memory.get`, `memory.set`, `template.export`, `template.import` |
 | Automations | `automation.list`, `get`, `save`, `run`, `toggle`, `runs` |
@@ -3582,7 +3565,7 @@ Big decisions waiting for the owner. Add one as `Q<n>: question — options — 
 | **Projection-based pruning** | T3: keeps ~1 day of events for reconnect replay, then prunes covered events while keeping high-water marks, stream versions, `thread.created`, running-run updates and referenced prompt anchors. Projections are source of truth. | Retention is time-based (60 days) only. | Add a "hot replay window" (e.g. 24 h) plus projection high-water marks so reconnects are cheap and idle threads resume without snapshots. Keep full retention as the cold tier. |
 | **Turn vs checkpoint milestones** | T3: a late checkpoint or diff must not extend the recorded provider duration or keep the client showing provider work as active. | Checkpoints are `packages/checkpoints`; verify they don't gate turn_end. | Audit `turn_end` ordering: journal `turn_end` before checkpoint completion; treat checkpoints as follow-up effects. |
 | **PR settlement** | T3: server-owned `ThreadSettlementService` evaluates PR/inactivity settings without a client; merge notifications invalidate cached PR state; `PullRequestSyncReactor` re-reads open links when a run that ran a merge/close command ends; guarded `thread.auto-settle`. | GitHub integration is placeholder (`packages/github-app` empty). | When GitHub lands, copy this shape: server-owned settlement, no client-derived state, forge CLI command names per forge. |
-| **Multi-environment settings ownership** | T3: client prefs stay in client; environment defaults/project overrides stay on owning server; "All environments" is an explicit bulk edit, not a durable global. | Single hub; node pairing is next. | When node pairing lands, adopt this ownership split so multi-machine settings don't silently cross environments. |
+| **Multi-environment config ownership** | T3: client prefs stay in client; environment defaults/project overrides stay on owning server; "All environments" is an explicit bulk edit, not a durable global. | Single hub; node pairing is next. | When node pairing lands, adopt this ownership split so multi-machine config doesn't silently cross environments. |
 | **Native crash isolation** | T3: native modules never load in Electron main on the startup path; snapshot/crash-prone addons run in forked Node children or worker threads with deadlines. | Desktop bundles native modules in-process. | Move crash-prone native capability (accessibility, ffi) into forked children with deadlines, per T3. Also implement the RAM-derived pool (audit gap) and job-object memory caps. |
 | **Multi-pane tiling** | PandaCode: tile up to 6 threads in one window, focused tile full, others live; Paradev/Synara: split chats/terminals/browser in one window. | Desktop is single-session focus. | Add "open beside" / tiling for 2-4 sessions in one window. High UX value, matches "one full-screen window is normal mode." |
 | **Approvals UX** | PandaCode: slim bar above prompt, one line each, grouped "Approve all". | Approvals are forwarded word-for-word; UI TBD. | Adopt the slim-bar grouped UX; keep our word-for-word forwarding and destructive list. |
@@ -3601,7 +3584,7 @@ Big decisions waiting for the owner. Add one as `Q<n>: question — options — 
 | **Simulators in inspector** | PandaCode: iOS Simulator + Android emulator in inspector tab. | Device lab placeholder. | Adopt when device lab lands; agents tapping through what they built is high value. |
 | **Persistent terminals across restarts** | Paradev: terminal sessions survive restarts. | Terminals belong to project and survive session close; hub restart likely kills them. | Persist terminal sessions across hub restarts (reattach by pty id). |
 | **Find/search in thread** | PandaCode: ⌘F searches messages with all matches highlighted; inspector search finds file names/text. | Search is global FTS5; per-thread find may be missing. | Add in-thread find with match highlighting (client-only, cheap). |
-| **Keyboard shortcut remapping** | Paradev: every action remappable via Settings. | Keybinds exist but remapping UI unknown. | Ensure full remapping UI ships with desktop. |
+| **Keyboard shortcut remapping** | Paradev: every action remappable in-app. | Keybinds exist but remapping UI unknown. | Ensure full remapping UI ships with desktop. |
 
 ### Where we're already ahead (keep these)
 
@@ -3722,7 +3705,7 @@ Sources: [ADE comparison](https://developertoolkit.ai/en/ecosystem/agent-tools/a
 
 | Feature | Use | Read | Watch out for |
 | --- | --- | --- | --- |
-| [Journal](#journal) / [Storage](#storage-and-settings) | `better-sqlite3`, WAL, FTS5 | [WAL](https://sqlite.org/wal.html), [FTS5](https://sqlite.org/fts5.html), [PRAGMA user_version](https://sqlite.org/pragma.html#pragma_user_version), [better-sqlite3 API](https://github.com/WiseLibs/better-sqlite3/blob/master/docs/api.md) | It's a native addon, so it needs prebuilt binaries for Node 26 and a rebuild for Electron if the desktop app ever opens the store (it shouldn't: only the daemon does). Keep it inside `session-store`. One writer (the supervisor). Run `PRAGMA journal_mode=WAL` and a `busy_timeout` on open. |
+| [Journal](#journal) / [Storage](#storage) | `better-sqlite3`, WAL, FTS5 | [WAL](https://sqlite.org/wal.html), [FTS5](https://sqlite.org/fts5.html), [PRAGMA user_version](https://sqlite.org/pragma.html#pragma_user_version), [better-sqlite3 API](https://github.com/WiseLibs/better-sqlite3/blob/master/docs/api.md) | It's a native addon, so it needs prebuilt binaries for Node 26 and a rebuild for Electron if the desktop app ever opens the store (it shouldn't: only the daemon does). Keep it inside `session-store`. One writer (the supervisor). Run `PRAGMA journal_mode=WAL` and a `busy_timeout` on open. |
 | Ids | ULID (`ulid` package or ~30 lines by hand) | [ULID spec](https://github.com/ulid/spec), [Crockford base32](https://www.crockford.com/base32.html) | Use the monotonic variant so ids made in the same millisecond still sort. |
 | Journal row checks | CRC32C | [RFC 3720 §B.4 (CRC32C)](https://www.rfc-editor.org/rfc/rfc3720#appendix-B.4) | Node has no built-in CRC32C. A small pure-JS table version is enough at this size. |
 | [Daemon](#daemon) local socket | `node:net` named pipe / unix socket | [net.Server.listen(path)](https://nodejs.org/api/net.html#serverlistenpath-backlog-callback), [named pipes](https://learn.microsoft.com/en-us/windows/win32/ipc/named-pipes) | Remove a stale unix socket file before listening. Pipe names on Windows are `\\.\pipe\…`. |

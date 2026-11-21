@@ -19,7 +19,7 @@ test('sign-out clears frame HTML/CSS and all app-owned account caches without to
     ['ormi.term.session', 'terminal IDs'],
     ['ormi.workspaceMode:/private/path', 'folder'],
     ['ormi.digest.since', '1'],
-    ['ormi.prefs', '{"projects":["/private/path"]}'],
+    ['ormi.other', '{"private":true}'],
     ['another-app', 'untouched'],
   ]);
   storage(t, () => ({ get length() { return data.size; }, key: index => [...data.keys()][index], removeItem: key => data.delete(key) }));

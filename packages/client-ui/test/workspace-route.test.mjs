@@ -8,5 +8,4 @@ test('Code workspace restores an open session and falls back to Home safely', ()
   assert.equal(codeWorkspaceRoute('s_closed', ['s_one']), 'now');
   assert.equal(codeWorkspaceRoute('', []), 'now');
   assert.equal(codeWorkspaceRoute('design', ['design']), 'now');
-  assert.equal(codeWorkspaceRoute('settings', ['settings']), 'now');
 });

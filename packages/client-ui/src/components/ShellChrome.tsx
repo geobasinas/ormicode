@@ -80,7 +80,7 @@ const PANES: string[] = ['notes', 'git', 'terminal', 'files', 'browser', 'design
 
 export function Rail({ route, rail, onRail, onDesign }: { route: string; rail: RailPane; onRail: (r: RailPane) => void; onDesign(): void }) {
   const isSession = !PAGES[route];
-  const details = useSession(isSession && route !== 'settings' ? route : undefined);
+  const details = useSession(isSession ? route : undefined);
   return (
     <div style={{
       width: 46, flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center',

@@ -1,5 +1,5 @@
 /**
- * data.* methods behind Settings → Data and privacy. Local socket clients
+ * data.* methods for export and wipe. Local socket clients
  * only: a paired phone or browser can't pull the whole store or wipe the hub.
  * Export streams a tar in base64 chunks (frames cap at 256 KiB); wipe stops
  * the hub first so the store is closed before anything is deleted.

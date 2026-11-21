@@ -1,5 +1,5 @@
-// Machine settings from ~/.ormicode/config.json. Machine-scope keys only —
-// anything account-scoped lives in the store's settings table instead.
+// Machine config from ~/.ormicode/config.json. Machine-scope keys only —
+// anything account-scoped lives in the store's `settings` table instead.
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ormicodeDir } from './socket.ts';

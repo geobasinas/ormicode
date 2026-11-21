@@ -1,5 +1,5 @@
 /**
- * `ormi export` and `ormi wipe` (README: Storage and settings). Both stay
+ * `ormi export` and `ormi wipe` (README: Storage). Both stay
  * inside ORMICODE_HOME: paths are resolved against the real home, symlinks
  * are never followed out of it, and temp files live in the home itself.
  */
@@ -17,7 +17,7 @@ export const WIPE_TARGETS = [
   'hub.json', 'remote.json', 'device.token', 'device-id', join('desktop', 'device.token'), join('desktop', 'remote.json'),
   'notes', 'checkpoints', 'terminals', 'recordings', 'artifacts',
 ];
-/** Left alone so a wipe never takes your own files, settings or the installed app. */
+/** Left alone so a wipe never takes your own files or the installed app. */
 export const WIPE_KEEPS = ['config.json', 'scratch/', 'skills/', 'teams/', 'automations.json', 'destructive.json', 'mcp/', 'versions/', 'OS keyring secrets'];
 
 export class ConfirmationError extends Error {}
@@ -88,7 +88,7 @@ function appendBuffer(out: number, name: string, data: Buffer): void {
 }
 
 const SECRET_KEY = /token|secret|password|passwd|credential|api[-_]?key|private[-_]?key/i;
-/** config.json holds machine settings, not credentials, but drop anything named like one anyway. */
+/** config.json holds machine config, not credentials, but drop anything named like one anyway. */
 function scrubbed(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(scrubbed);
   if (!value || typeof value !== 'object') return value;

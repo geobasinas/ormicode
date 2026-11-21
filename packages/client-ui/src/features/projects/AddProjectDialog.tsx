@@ -5,7 +5,6 @@ import { usePlatform } from '../../lib/platform.ts';
 import { agoText } from '../../lib/format.ts';
 import { feedback } from '../../lib/feedback.ts';
 import { useModalFocus } from '../../lib/useModalFocus.ts';
-import { rememberProject } from '../../lib/prefs.ts';
 import { useProjects } from './useProjects.ts';
 import { FolderBrowser } from './FolderBrowser.tsx';
 
@@ -45,7 +44,6 @@ export function AddProjectDialog({ open, onClose }: { open: boolean; onClose(): 
       const result = await transport.request('project.add', { machine: target.id, path });
       if (result.type === 'err') { setError(messageFor(result.code)); return; }
       const project = (result.body as { project: { path: string; name: string } }).project;
-      rememberProject(project.path);
       await refresh();
       feedback.success(`Added ${project.name}`);
       onClose();

@@ -11,7 +11,7 @@ export function DesignPagePicker({ pages, selected, disabled, onSelect, onStart 
     <select className="design-input" aria-label="Active page" value={active.id} disabled={disabled} onChange={event => onSelect(event.target.value)}>
       {pages.pages.map(page => <option key={page.id} value={page.id}>{page.name}</option>)}
     </select>
-    <details><summary>Page settings</summary><fieldset disabled={disabled}>
+    <details><summary>Page options</summary><fieldset disabled={disabled}>
       <input className="design-input" key={active.id + active.name} aria-label="Page name" defaultValue={active.name} maxLength={120} onBlur={event => { const name = event.target.value.trim(); if (name && name !== active.name) act({ type: 'page.rename', pageId: active.id, name }); }} onKeyDown={event => { if (event.key === 'Enter') event.currentTarget.blur(); }} />
       <button type="button" className="design-button" onClick={() => act({ type: 'page.add', name: `Page ${pages.pages.length + 1}` })} disabled={pages.pages.length >= 24}>Add page</button>
       <button type="button" className="design-button" disabled={index === 0} onClick={() => act({ type: 'page.move', pageId: active.id, index: index - 1 })}>Move up</button>
